@@ -50,6 +50,57 @@ The screen shows, per channel, the measured level in volts, whether a cable is
 reported (`P`), whether a signal is moving (`~`), the gate level and the number
 of trigger edges counted, plus the tick duration and count.
 
+## The simulator
+
+`cargo run -p oc-sim` opens a terminal interface running the real `oc-core`
+engine against an in-memory platform. The module's 128x64 screen is drawn with
+braille characters, so every pixel stays individually visible.
+
+| Key            | Action                                            |
+|----------------|---------------------------------------------------|
+| `Tab`          | select which CV input the arrows drive            |
+| `←` / `→`      | selected CV input by ±100 mV (`Shift` for ±1 V)   |
+| `Home`         | selected CV input to 0 V                          |
+| `p`            | toggle the cable on the selected CV input         |
+| `z` `x` `c` `v`| pulse triggers 1 to 4                             |
+| `Z` `X` `C` `V`| hold triggers 1 to 4 high or low                  |
+| `[` / `]`      | left encoder anticlockwise / clockwise            |
+| `,` / `.`      | right encoder (`<` / `>` for ten detents)         |
+| `Enter` / `b`  | press the left / right encoder                    |
+| `↑` / `↓`      | the module's up / down buttons                    |
+| `1` `2` `3`    | paused, real time, 50x                            |
+| `Space`        | run a single tick while paused                    |
+| `?`            | show the key map                                  |
+| `q` / `Esc`    | quit                                              |
+
+### Scenarios
+
+Inputs can be recorded and replayed, which turns a bug found by hand into a
+committed regression test:
+
+```sh
+cargo run -p oc-sim -- run --record bug.scn   # play, then quit
+cargo run -p oc-sim -- replay bug.scn         # headless, prints the final state
+```
+
+The format is plain text and meant to be edited and reviewed:
+
+```text
+ticks 40
+0  cv 2 -2500
+0  patch 2 on
+10 trigger 1 high
+20 encoder 2 +15
+```
+
+`crates/oc-sim/tests/scenarios/` holds the committed scenarios, each with a
+golden snapshot of the resulting screen. After an intentional change to the
+rendering, regenerate them with:
+
+```sh
+UPDATE_SCREENS=1 cargo test -p oc-sim --test scenarios
+```
+
 ## Performance
 
 Measured on the host with `cargo bench`, for orientation only — the target is a

@@ -1,0 +1,4 @@
+# Select channel three with the left encoder, then dial +1.500 V on it.
+ticks 60
+5 encoder 1 +2
+10 encoder 2 +15

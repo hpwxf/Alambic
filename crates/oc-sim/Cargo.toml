@@ -9,7 +9,10 @@ repository.workspace = true
 authors.workspace = true
 
 [dependencies]
+anyhow.workspace = true
+clap = { workspace = true, features = ["derive"] }
 oc-core.workspace = true
+ratatui.workspace = true
 
 [lints]
 workspace = true

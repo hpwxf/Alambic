@@ -37,6 +37,15 @@ clap = { version = "4.5", features = ["derive"] }
 # Shared embedded/host libraries
 embedded-graphics = "0.8.2"
 
+# Terminal UI for the simulator. Only the crossterm backend is enabled; the
+# default feature set also pulls in the calendar widget and alternative
+# backends we have no use for.
+ratatui = { version = "0.30", default-features = false, features = [
+    "crossterm",
+    "layout-cache",
+    "underline-color",
+] }
+
 # Test & bench tooling
 criterion = "0.7"
 proptest = "1.7"

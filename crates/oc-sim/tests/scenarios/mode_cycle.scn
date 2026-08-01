@@ -1,0 +1,9 @@
+# Press UP twice to walk OFFS -> RAMP -> ZERO, with a CV input patched
+# throughout so that the mode change is visible on the outputs.
+ticks 80
+0 cv 2 3000
+0 patch 2 on
+10 button up down
+20 button up up
+30 button up down
+40 button up up

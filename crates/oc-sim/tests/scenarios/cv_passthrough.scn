@@ -1,0 +1,10 @@
+# Every CV input is driven to a distinct level and mirrored on its output.
+# Channel one is the selected one, so it carries the offset instead.
+ticks 40
+0 cv 1 1000
+0 cv 2 -2500
+0 cv 3 5000
+0 cv 4 -5000
+0 patch 1 on
+0 patch 2 on
+0 patch 3 on

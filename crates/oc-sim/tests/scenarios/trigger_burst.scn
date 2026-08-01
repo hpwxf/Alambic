@@ -1,0 +1,18 @@
+# Four clean gates on TR1, plus a deliberately bouncing one on TR2.
+# TR1 must count four edges, TR2 exactly one.
+ticks 120
+2 trigger 1 high
+12 trigger 1 low
+22 trigger 1 high
+32 trigger 1 low
+42 trigger 1 high
+52 trigger 1 low
+62 trigger 1 high
+72 trigger 1 low
+
+# A noisy contact: high, low, high, low, then settled high.
+80 trigger 2 high
+81 trigger 2 low
+82 trigger 2 high
+83 trigger 2 low
+84 trigger 2 high
