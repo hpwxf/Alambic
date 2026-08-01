@@ -1248,12 +1248,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "oc-drivers"
+version = "0.1.0"
+dependencies = [
+ "embedded-hal 1.0.0",
+ "oc-core",
+]
+
+[[package]]
 name = "oc-firmware"
 version = "0.1.0"
 dependencies = [
  "cortex-m",
- "embedded-io",
+ "embedded-hal 1.0.0",
  "oc-core",
+ "oc-drivers",
  "teensy4-bsp",
  "teensy4-panic",
 ]
@@ -2555,6 +2564,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "clap",
+ "sha2",
 ]
 
 [[package]]

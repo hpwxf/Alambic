@@ -2,30 +2,33 @@
 //!
 //! `xtask` is the single supported entry point for everything that a bare
 //! `cargo` invocation cannot express: cross-compiling the firmware for
-//! `thumbv7em-none-eabihf`, reporting its memory footprint, and producing the
-//! Intel HEX image consumed by the Teensy loader.
+//! `thumbv7em-none-eabihf`, reporting its memory footprint, producing the
+//! Intel HEX image consumed by the Teensy loader, and flashing it under the
+//! pre-flight checks in [`xtask::validate`].
 //!
 //! Run it through the workspace alias: `cargo xtask <command>`.
 
 mod cargo;
+mod flash;
 mod llvm;
 mod paths;
 
 use anyhow::Result;
 use clap::{Parser, Subcommand, ValueEnum};
 
+use crate::flash::FlashArgs;
 use crate::paths::FirmwareArtifact;
 
 /// Compilation target of the firmware binary.
-pub(crate) const FIRMWARE_TARGET: &str = "thumbv7em-none-eabihf";
+pub(crate) const FIRMWARE_TARGET: &str = xtask::FIRMWARE_TARGET;
 
 /// Cargo package name of the firmware binary.
-pub(crate) const FIRMWARE_PACKAGE: &str = "oc-firmware";
+pub(crate) const FIRMWARE_PACKAGE: &str = xtask::FIRMWARE_PACKAGE;
 
 #[derive(Debug, Parser)]
 #[command(
     name = "xtask",
-    about = "Build, inspect and package the Ornament & Crime firmware",
+    about = "Build, inspect, package and flash the Ornament & Crime firmware",
     version
 )]
 struct Cli {
@@ -41,6 +44,8 @@ enum Command {
     Size(BuildArgs),
     /// Produce the Intel HEX image under `dist/`.
     Hex(BuildArgs),
+    /// Validate and flash the firmware to a Teensy 4.0.
+    Flash(FlashArgs),
 }
 
 #[derive(Debug, Clone, clap::Args)]
@@ -95,6 +100,7 @@ fn main() -> Result<()> {
             llvm::objcopy_ihex(&artifact.elf, &hex)?;
             println!("hex: {}", hex.display());
         }
+        Command::Flash(args) => flash::flash(&args)?,
     }
 
     Ok(())

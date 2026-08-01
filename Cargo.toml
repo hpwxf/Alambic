@@ -2,6 +2,7 @@
 resolver = "3"
 members = [
     "crates/oc-core",
+    "crates/oc-drivers",
     "crates/oc-firmware",
     "crates/oc-sim",
     "crates/oc-vcv-ffi",
@@ -14,6 +15,7 @@ members = [
 # explicitly with `cargo xtask build` (or `cargo fw`).
 default-members = [
     "crates/oc-core",
+    "crates/oc-drivers",
     "crates/oc-sim",
     "crates/oc-vcv-ffi",
     "xtask",
@@ -29,13 +31,17 @@ authors = ["Pascal Havé"]
 
 [workspace.dependencies]
 oc-core = { path = "crates/oc-core", version = "0.1.0" }
+oc-drivers = { path = "crates/oc-drivers", version = "0.1.0" }
 
 # Host tooling
 anyhow = "1.0"
 clap = { version = "4.5", features = ["derive"] }
+# SHA-256 of firmware images printed by `cargo xtask flash` before confirmation.
+sha2 = "0.10"
 
 # Shared embedded/host libraries
 embedded-graphics = "0.8.2"
+embedded-hal = "1.0"
 
 # Terminal UI for the simulator. Only the crossterm backend is enabled; the
 # default feature set also pulls in the calendar widget and alternative
