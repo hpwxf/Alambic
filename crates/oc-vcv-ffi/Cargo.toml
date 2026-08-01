@@ -1,0 +1,20 @@
+[package]
+name = "oc-vcv-ffi"
+description = "C ABI over oc-core, consumed by the VCV Rack 2 module"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[lib]
+# `staticlib` is what the VCV Rack plugin links against; `rlib` keeps the crate
+# testable from ordinary Rust integration tests.
+crate-type = ["staticlib", "rlib"]
+
+[dependencies]
+oc-core.workspace = true
+
+[lints]
+workspace = true

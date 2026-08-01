@@ -1,0 +1,78 @@
+name: CI
+
+on:
+  push:
+    branches: [master, main]
+  pull_request:
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+  # NOTE: do not set `RUSTFLAGS` here. The environment variable *replaces*
+  # `target.thumbv7em-none-eabihf.rustflags` from `.cargo/config.toml`, which
+  # would drop `-Tt4link.x` and break the firmware link. Warnings are denied
+  # per invocation instead.
+
+jobs:
+  format:
+    name: rustfmt
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check formatting
+        run: cargo fmt --all -- --check
+
+  lint:
+    name: clippy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: Swatinem/rust-cache@v2
+      - name: Clippy (host crates)
+        run: cargo clippy --all-targets --all-features -- -D warnings
+      - name: Clippy (firmware, ARM)
+        run: >
+          cargo clippy --package oc-firmware
+          --target thumbv7em-none-eabihf -- -D warnings
+
+  test:
+    name: test
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: Swatinem/rust-cache@v2
+      - name: Run tests
+        run: cargo test --all-features
+
+  firmware:
+    name: firmware image
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: Swatinem/rust-cache@v2
+      - name: Build, measure and package
+        run: |
+          cargo xtask build
+          cargo xtask size
+          cargo xtask hex
+      - name: Upload firmware image
+        uses: actions/upload-artifact@v4
+        with:
+          name: oc-firmware-hex
+          path: dist/oc-firmware.hex
+          if-no-files-found: error
+
+  bench:
+    name: benchmarks (smoke)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: Swatinem/rust-cache@v2
+      # `--no-run` keeps CI time bounded while still catching benchmark
+      # compilation rot; timing runs happen locally.
+      - name: Compile benchmarks
+        run: cargo bench --no-run

@@ -1,0 +1,17 @@
+# Linker configuration for the Teensy 4.0 (i.MX RT1062).
+#
+# `t4link.x` is *generated* at build time by `teensy4-bsp`'s build script
+# through `imxrt-rt::RuntimeBuilder`. It owns the whole memory map (FlexSPI
+# flash, ITCM/DTCM FlexRAM split, OCRAM) and the i.MX RT boot sections
+# (FlexSPI Configuration Block, Image Vector Table, boot data). See
+# `crates/oc-firmware/MEMORY.md` for the resulting layout.
+[target.thumbv7em-none-eabihf]
+rustflags = [
+    "-C", "link-arg=-Tt4link.x",
+]
+
+[alias]
+xtask = "run --package xtask --release --"
+# Convenience shorthands; `cargo xtask build` is the supported entry point.
+fw = "build --package oc-firmware --target thumbv7em-none-eabihf"
+sim = "run --package oc-sim"

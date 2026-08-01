@@ -1,0 +1,25 @@
+[package]
+name = "oc-firmware"
+description = "Ornament & Crime firmware for the Teensy 4.0 (i.MX RT1062)"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+publish = false
+
+[dependencies]
+oc-core.workspace = true
+
+# `rt` pulls in `imxrt-rt`, which generates `t4link.x` (memory map + FlexSPI
+# Configuration Block + Image Vector Table) and provides the reset handler.
+teensy4-bsp = { version = "0.6", features = ["rt"] }
+teensy4-panic = "0.2"
+cortex-m = "0.7"
+# Must match the version re-exported by `imxrt-hal`, otherwise the `Write`
+# impl on `Lpuart` belongs to a different trait.
+embedded-io = "0.7"
+
+[lints]
+workspace = true

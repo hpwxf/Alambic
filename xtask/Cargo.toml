@@ -1,0 +1,17 @@
+[package]
+name = "xtask"
+description = "Build, packaging and flashing automation for the Ornament & Crime firmware"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+publish = false
+
+[dependencies]
+anyhow.workspace = true
+clap.workspace = true
+
+[lints]
+workspace = true

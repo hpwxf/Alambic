@@ -1,0 +1,73 @@
+[workspace]
+resolver = "3"
+members = [
+    "crates/oc-core",
+    "crates/oc-firmware",
+    "crates/oc-sim",
+    "crates/oc-vcv-ffi",
+    "xtask",
+]
+
+# `oc-firmware` only builds for `thumbv7em-none-eabihf`, so it is deliberately
+# excluded from the default set: bare `cargo build`, `cargo test` and
+# `cargo clippy` then operate on host crates only. The firmware is built
+# explicitly with `cargo xtask build` (or `cargo fw`).
+default-members = [
+    "crates/oc-core",
+    "crates/oc-sim",
+    "crates/oc-vcv-ffi",
+    "xtask",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.85"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/haveneer/Alambic"
+authors = ["Pascal Havé"]
+
+[workspace.dependencies]
+oc-core = { path = "crates/oc-core", version = "0.1.0" }
+
+# Host tooling
+anyhow = "1.0"
+clap = { version = "4.5", features = ["derive"] }
+
+# Shared embedded/host libraries
+embedded-graphics = "0.8.2"
+
+# Test & bench tooling
+criterion = "0.7"
+proptest = "1.7"
+
+[workspace.lints.rust]
+missing_debug_implementations = "warn"
+rust_2018_idioms = { level = "warn", priority = -1 }
+unreachable_pub = "warn"
+
+[workspace.lints.clippy]
+pedantic = { level = "warn", priority = -1 }
+# Numeric casts are pervasive and deliberate in DSP/fixed-point code; they are
+# reviewed case by case with explicit `#[allow]` where a cast is not obvious.
+module_name_repetitions = "allow"
+
+[profile.release]
+# `debug = 2` costs nothing in flash (debug info is not loaded onto the target)
+# but is required by defmt/panic backtraces and by `cargo xtask size`.
+debug = 2
+codegen-units = 1
+lto = "fat"
+opt-level = 3
+overflow-checks = true
+
+[profile.dev]
+opt-level = 1
+
+[profile.dev.package."*"]
+opt-level = 3
+
+# Benchmarks must never run with a debug-instrumented profile.
+[profile.bench]
+debug = 2
+lto = "thin"

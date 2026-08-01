@@ -1,0 +1,21 @@
+/target
+/dist
+**/*.rs.bk
+*.hex
+*.bin
+
+# VCV Rack plugin build artifacts
+/vcv/**/build/
+/vcv/**/dist/
+/vcv/**/plugin.dylib
+/vcv/**/plugin.so
+/vcv/**/plugin.dll
+
+# IDE
+.idea/workspace.xml
+.idea/tasks.xml
+.idea/usage.statistics.xml
+.idea/shelf/
+
+# macOS
+.DS_Store

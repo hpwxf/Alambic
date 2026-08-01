@@ -1,0 +1,19 @@
+[package]
+name = "oc-core"
+description = "Hardware-independent core of the Ornament & Crime Rust firmware"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[dependencies]
+embedded-graphics.workspace = true
+
+[dev-dependencies]
+criterion.workspace = true
+proptest.workspace = true
+
+[lints]
+workspace = true

@@ -1,0 +1,15 @@
+[package]
+name = "oc-sim"
+description = "Native simulator and terminal UI for the Ornament & Crime Rust firmware"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[dependencies]
+oc-core.workspace = true
+
+[lints]
+workspace = true
