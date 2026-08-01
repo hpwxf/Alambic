@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Minimal panel background for the Diagnostic module. The screen and
+     controls are positioned in Diagnostic.cpp using mm2px() offsets, not by
+     reading component positions out of this file, so no "components" layer
+     is required here. -->
+<svg xmlns="http://www.w3.org/2000/svg" width="71.12mm" height="128.5mm"
+     viewBox="0 0 71.12 128.5">
+  <rect x="0" y="0" width="71.12" height="128.5" fill="#1c1c1c" />
+  <rect x="1" y="1" width="69.12" height="126.5" fill="none" stroke="#3a3a3a" stroke-width="0.5" />
+  <text x="35.56" y="6" font-family="sans-serif" font-size="4" fill="#d0d0d0" text-anchor="middle">
+    Ornament &amp; Crime (Rust)
+  </text>
+  <text x="35.56" y="35" font-family="sans-serif" font-size="3" fill="#909090" text-anchor="middle">
+    L SEL          R OFFS
+  </text>
+  <text x="35.56" y="43" font-family="sans-serif" font-size="3" fill="#909090" text-anchor="middle">
+    UP / DOWN
+  </text>
+  <text x="35.56" y="57" font-family="sans-serif" font-size="3" fill="#909090" text-anchor="middle">
+    CV IN
+  </text>
+  <text x="35.56" y="69" font-family="sans-serif" font-size="3" fill="#909090" text-anchor="middle">
+    TRIG IN
+  </text>
+  <text x="35.56" y="81" font-family="sans-serif" font-size="3" fill="#909090" text-anchor="middle">
+    CV OUT (A-D)
+  </text>
+  <text x="35.56" y="122" font-family="sans-serif" font-size="3" fill="#606060" text-anchor="middle">
+    Diagnostic
+  </text>
+</svg>

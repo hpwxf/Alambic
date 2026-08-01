@@ -16,5 +16,8 @@ crate-type = ["staticlib", "rlib"]
 [dependencies]
 oc-core.workspace = true
 
+[build-dependencies]
+cbindgen.workspace = true
+
 [lints]
 workspace = true

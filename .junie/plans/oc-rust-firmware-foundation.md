@@ -339,15 +339,17 @@ Le module réel affiche l'écran de diagnostic et réagit aux CV, triggers et en
 - ~~Ajouter la plateforme Renode `renode/oc-teensy40.repl` et `.resc` et le smoke test boot + log LPUART, branché en CI.~~ **NON FAIT / RESTE À FAIRE.** Le firmware ne pilote aucun UART : tous les LPUART disponibles sur les broches 0 à 23 entrent en conflit avec la façade (LPUART2 sur 14/15 = encodeur droit, LPUART6 sur 0/1 = TR1/TR2, LPUART4 sur 7/8 = OLED). Le smoke test « boot + log LPUART » doit donc être reformulé : soit bannière sur USB CDC (à implémenter d'abord), soit vérification via semihosting, soit observation de l'écriture SPI. À traiter dans un jalon ultérieur.
 - Commit Git.
 
-###   Step 5: Livrer le module VCV Rack 2 au-dessus de la staticlib Rust
+### ✓ Step 5: Livrer le module VCV Rack 2 au-dessus de la staticlib Rust
 Un module O&C (Rust) apparait dans VCV Rack 2, câblable et affichant le même écran que le firmware.
 
-- Implémenter `crates/oc-vcv-ffi` en `staticlib` exposant l'ABI C (`oc_engine_new`, `free`, `set_cv_in`, `set_trigger`, `encoder`, `button`, `tick`, `cv_out`, `framebuffer`).
-- Rendre chaque fonction défensive (pointeurs nuls, index hors borne) et empêcher tout déroulement de panique à travers la frontière.
-- Générer l'en-tête C avec `cbindgen` depuis le build.
-- Écrire `vcv/OrnamentCrimeRust/src/plugin.cpp` réduit au strict minimum : déclaration du module, 4 entrées CV, 4 entrées trigger, 4 sorties CV, 2 encodeurs, 4 boutons, widget d'écran nanovg lisant le framebuffer, sans aucune logique métier.
-- Transmettre `isConnected()` de chaque port à `oc_engine_set_cv_in`, et décimer l'appel à `oc_engine_tick` pour garder environ 1 kHz quel que soit le taux d'échantillonnage.
+- Implémenter `crates/oc-vcv-ffi` en `staticlib` exposant l'ABI C (`oc_engine_new`, `free`, `set_cv_in`, `set_trigger`, `encoder`, `button`, `tick`, `cv_out`, `framebuffer`), plus des accesseurs de comptage de canaux (`oc_engine_cv_channels`, etc.) pour que le C++ n'ait jamais à coder en dur le nombre de canaux.
+- Rendre chaque fonction défensive (pointeurs nuls, index hors borne) et empêcher tout déroulement de panique à travers la frontière (`catch_unwind` + `AssertUnwindSafe`, justifié en commentaire).
+- Générer l'en-tête C avec `cbindgen` depuis le build (`build.rs`, `cbindgen.toml`) ; l'ABI n'expose que des types C primitifs dans ses signatures pour que cbindgen n'ait jamais besoin de traverser vers `oc-core`.
+- Écrire `vcv/OrnamentCrimeRust/src/plugin.cpp` et `Diagnostic.cpp` réduits au strict minimum : déclaration du module, 4 entrées CV, 4 entrées trigger, 4 sorties CV, 2 encodeurs, 4 boutons, widget d'écran nanovg (rectangles NanoVG par pixel allumé) lisant le framebuffer, sans aucune logique métier.
+- Transmettre `isConnected()` de chaque port à `oc_engine_set_cv_in`, et décimer l'appel à `oc_engine_tick` à ~1 kHz via un accumulateur de microsecondes, quel que soit le taux d'échantillonnage.
 - Ajouter `plugin.json` et le panneau SVG dans `res/`.
-- Ajouter `xtask vcv build` qui compile la staticlib puis pilote le `Makefile` du Rack SDK, et `xtask vcv install` qui dépose le plugin dans le dossier utilisateur de Rack.
-- Ajouter les tests de robustesse de l'ABI dans `crates/oc-vcv-ffi/tests/` et documenter la procédure de test utilisateur dans le README.
+- Ajouter `xtask vcv build` (staticlib + en-tête + `make` du Rack SDK) et `xtask vcv install` (idem puis cible `install` du SDK, qui dépose déjà le `.vcvplugin` dans le bon dossier utilisateur par OS).
+- Ajouter les tests de robustesse de l'ABI dans `crates/oc-vcv-ffi/tests/abi.rs` (pointeurs nuls partout, index hors borne, deux moteurs indépendants, tick sans configuration préalable) et documenter la procédure utilisateur dans le README.
+- **Vérifié en conditions réelles** (au-delà des tests unitaires) : le plugin C++ a été compilé et lié avec succès contre un vrai Rack SDK 2.6.x téléchargé pour l'occasion — tous les symboles `oc_engine_*` sont résolus dans `plugin.dylib`, et `cargo xtask vcv build`/`install` reproduisent ce résultat de bout en bout, `make install` déposant un `.vcvplugin` valide dans un dossier utilisateur Rack de test.
+- **RESTE À FAIRE** : le plugin n'a jamais été chargé dans une session VCV Rack réellement lancée — la disposition du panneau et l'émulation d'encodeur par rotation de potentiomètre (mouvement du bouton, pas position absolue) sont donc une première version à affiner à l'usage, pas un résultat validé à l'œil.
 - Commit Git.

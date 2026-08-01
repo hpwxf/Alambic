@@ -12,12 +12,14 @@ mod cargo;
 mod flash;
 mod llvm;
 mod paths;
+mod vcv;
 
 use anyhow::Result;
 use clap::{Parser, Subcommand, ValueEnum};
 
 use crate::flash::FlashArgs;
 use crate::paths::FirmwareArtifact;
+use crate::vcv::VcvArgs;
 
 /// Compilation target of the firmware binary.
 pub(crate) const FIRMWARE_TARGET: &str = xtask::FIRMWARE_TARGET;
@@ -46,6 +48,19 @@ enum Command {
     Hex(BuildArgs),
     /// Validate and flash the firmware to a Teensy 4.0.
     Flash(FlashArgs),
+    /// Build or install the VCV Rack 2 plugin.
+    Vcv {
+        #[command(subcommand)]
+        action: VcvAction,
+    },
+}
+
+#[derive(Debug, Subcommand)]
+pub(crate) enum VcvAction {
+    /// Build the `oc-vcv-ffi` staticlib and the plugin's native binary.
+    Build(VcvArgs),
+    /// Build the plugin and install it into the current user's Rack.
+    Install(VcvArgs),
 }
 
 #[derive(Debug, Clone, clap::Args)]
@@ -101,6 +116,10 @@ fn main() -> Result<()> {
             println!("hex: {}", hex.display());
         }
         Command::Flash(args) => flash::flash(&args)?,
+        Command::Vcv { action } => match action {
+            VcvAction::Build(args) => vcv::build(&args)?,
+            VcvAction::Install(args) => vcv::install(&args)?,
+        },
     }
 
     Ok(())

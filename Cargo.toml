@@ -38,6 +38,9 @@ anyhow = "1.0"
 clap = { version = "4.5", features = ["derive"] }
 # SHA-256 of firmware images printed by `cargo xtask flash` before confirmation.
 sha2 = "0.10"
+# Generates the C header for oc-vcv-ffi from its own build script; only the
+# library API is needed, not cbindgen's own command-line front end.
+cbindgen = { version = "0.29", default-features = false }
 
 # Shared embedded/host libraries
 embedded-graphics = "0.8.2"
