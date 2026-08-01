@@ -326,7 +326,7 @@ Un `cargo build --release -p oc-firmware` produit un binaire ARM valide, et la C
 - Écrire les tests d'intégration `crates/oc-sim/tests/scenarios/` avec assertions sur les CV out et des instantanés de framebuffer.
 - Commit Git.
 
-### * Step 4: Implémenter le firmware Teensy 4.0 et l'outil de flash sécurisé
+### ✓ Step 4: Implémenter le firmware Teensy 4.0 et l'outil de flash sécurisé
 Le module réel affiche l'écran de diagnostic et réagit aux CV, triggers et encodeurs, flashé par `cargo xtask flash`.
 
 - Centraliser tout le brochage O&C dans `crates/oc-firmware/src/board.rs` : table unique, documentée, revue avant le premier flash.
@@ -336,7 +336,7 @@ Le module réel affiche l'écran de diagnostic et réagit aux CV, triggers et en
 - Isoler et documenter chaque bloc `unsafe` avec une section `# Safety`.
 - Implémenter `xtask flash` : validations ELF ARM, taille, présence du FCB, vecteur de reset, cible, détection USB `16C0`, empreinte SHA-256 et confirmation, puis délégation à `teensy_loader_cli`.
 - Ajouter `xtask/tests/` couvrant les refus sur binaires invalides.
-- Ajouter la plateforme Renode `renode/oc-teensy40.repl` et `.resc` et le smoke test boot + log LPUART, branché en CI.
+- ~~Ajouter la plateforme Renode `renode/oc-teensy40.repl` et `.resc` et le smoke test boot + log LPUART, branché en CI.~~ **NON FAIT / RESTE À FAIRE.** Le firmware ne pilote aucun UART : tous les LPUART disponibles sur les broches 0 à 23 entrent en conflit avec la façade (LPUART2 sur 14/15 = encodeur droit, LPUART6 sur 0/1 = TR1/TR2, LPUART4 sur 7/8 = OLED). Le smoke test « boot + log LPUART » doit donc être reformulé : soit bannière sur USB CDC (à implémenter d'abord), soit vérification via semihosting, soit observation de l'écriture SPI. À traiter dans un jalon ultérieur.
 - Commit Git.
 
 ###   Step 5: Livrer le module VCV Rack 2 au-dessus de la staticlib Rust
