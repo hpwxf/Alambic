@@ -15,5 +15,9 @@ embedded-graphics.workspace = true
 criterion.workspace = true
 proptest.workspace = true
 
+[[bench]]
+name = "engine"
+harness = false
+
 [lints]
 workspace = true

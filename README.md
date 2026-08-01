@@ -24,6 +24,48 @@ behaviour runs on hardware, in a native simulator, and inside VCV Rack 2.
 read and write signals, which is what makes the simulator a meaningful proxy
 for the hardware.
 
+## The diagnostic applet
+
+The first milestone's application is deliberately trivial musically: it makes
+every input and output observable so that a freshly flashed module can be
+validated from the front panel alone.
+
+| Control              | Effect                                     |
+|----------------------|--------------------------------------------|
+| left encoder, turn   | select the channel driven by the offset    |
+| left encoder, press  | reset the trigger counters                 |
+| right encoder, turn  | change the offset by 100 mV per detent     |
+| right encoder, press | set the offset back to 0 V                 |
+| up / down            | next / previous output mode                |
+
+Output modes:
+
+* **OFFS** — the selected channel emits the offset, the other three mirror the
+  matching CV input, exercising the input and output paths at once;
+* **RAMP** — a two-second saw across the whole output range, each channel
+  shifted by a quarter period;
+* **ZERO** — all outputs pinned at 0 V, to measure the output offset error.
+
+The screen shows, per channel, the measured level in volts, whether a cable is
+reported (`P`), whether a signal is moving (`~`), the gate level and the number
+of trigger edges counted, plus the tick duration and count.
+
+## Performance
+
+Measured on the host with `cargo bench`, for orientation only — the target is a
+600 MHz Cortex-M7 with the code in ITCM:
+
+| Benchmark        | Time     |
+|------------------|----------|
+| `applet/update`  | ~12 ns   |
+| `applet/render`  | ~18 µs   |
+| `engine/tick`    | ~17 µs   |
+
+Screen rendering dominates by three orders of magnitude, and an OLED panel
+cannot show more than about 60 frames per second anyway, so the redraw rate is
+decoupled from the control loop through `Engine::set_render_interval`. The CV
+outputs are refreshed on every tick regardless.
+
 ## Requirements
 
 The toolchain is pinned by `rust-toolchain.toml`; `rustup` installs everything
