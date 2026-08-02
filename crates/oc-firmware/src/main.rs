@@ -53,6 +53,9 @@ use teensy4_bsp as bsp;
 use teensy4_panic as _;
 
 use bsp::board as bsp_board;
+use bsp::hal::iomuxc;
+// `Iomuxc` is not re-exported through the HAL prelude; the pin crate is.
+use bsp::pins::imxrt_iomuxc::Iomuxc;
 
 use oc_core::Engine;
 use oc_core::platform::{CV_CHANNELS, Clock as _, CvChannel};
@@ -65,6 +68,16 @@ use oc_drivers::triggers::Triggers;
 use crate::clock::SystemClock;
 use crate::cv_in::CvInputs;
 use crate::delay::CycleDelay;
+
+/// Enables the internal pull-up (and hysteresis) required by every panel
+/// digital input, then returns the pad so it can be claimed as a GPIO.
+///
+/// `Port::input` only muxes the pad to GPIO; the electrical configuration is
+/// a separate step. Forgetting it leaves buttons and encoders floating.
+fn with_pullup<P: Iomuxc>(mut pin: P) -> P {
+    iomuxc::configure(&mut pin, board::DIGITAL_INPUT_CONFIG);
+    pin
+}
 
 /// How long to spin-poll USB after bringing the CDC backend up, so a host that
 /// is already watching has a chance to finish enumeration before the first
@@ -136,13 +149,23 @@ fn main() -> ! {
 
     // ---- trigger inputs: pins 0 and 1 on GPIO1, 2 and 3 on GPIO4 ------------
     // `Port::input` is fallible only when a pin does not belong to the port, so
-    // each `expect` documents a fact the pinout table already states.
+    // each `expect` documents a fact the pinout table already states. The
+    // pull-up is applied first: the front-end buffers are open-collector /
+    // active-low against the MCU pad.
     let triggers = Triggers::new(
         [
-            gpio1.input(pins.p0).expect("P0 is a GPIO1 pin"),
-            gpio1.input(pins.p1).expect("P1 is a GPIO1 pin"),
-            gpio4.input(pins.p2).expect("P2 is a GPIO4 pin"),
-            gpio4.input(pins.p3).expect("P3 is a GPIO4 pin"),
+            gpio1
+                .input(with_pullup(pins.p0))
+                .expect("P0 is a GPIO1 pin"),
+            gpio1
+                .input(with_pullup(pins.p1))
+                .expect("P1 is a GPIO1 pin"),
+            gpio4
+                .input(with_pullup(pins.p2))
+                .expect("P2 is a GPIO4 pin"),
+            gpio4
+                .input(with_pullup(pins.p3))
+                .expect("P3 is a GPIO4 pin"),
         ],
         board::TRIGGER_POLARITY,
     );
@@ -198,22 +221,40 @@ fn main() -> ! {
     usb_log.poll();
 
     // ---- panel controls -----------------------------------------------------
+    // Encoders and buttons short to ground; without the internal pull-up the
+    // lines float and neither detents nor presses ever reach the engine.
     let panel = Panel::new(
         [
             EncoderPins {
-                line_a: gpio1.input(pins.p22).expect("P22 is a GPIO1 pin"),
-                line_b: gpio1.input(pins.p21).expect("P21 is a GPIO1 pin"),
+                line_a: gpio1
+                    .input(with_pullup(pins.p22))
+                    .expect("P22 is a GPIO1 pin"),
+                line_b: gpio1
+                    .input(with_pullup(pins.p21))
+                    .expect("P21 is a GPIO1 pin"),
             },
             EncoderPins {
-                line_a: gpio1.input(pins.p16).expect("P16 is a GPIO1 pin"),
-                line_b: gpio1.input(pins.p15).expect("P15 is a GPIO1 pin"),
+                line_a: gpio1
+                    .input(with_pullup(pins.p16))
+                    .expect("P16 is a GPIO1 pin"),
+                line_b: gpio1
+                    .input(with_pullup(pins.p15))
+                    .expect("P15 is a GPIO1 pin"),
             },
         ],
         [
-            gpio1.input(pins.p23).expect("P23 is a GPIO1 pin"),
-            gpio1.input(pins.p14).expect("P14 is a GPIO1 pin"),
-            gpio4.input(pins.p5).expect("P5 is a GPIO4 pin"),
-            gpio4.input(pins.p4).expect("P4 is a GPIO4 pin"),
+            gpio1
+                .input(with_pullup(pins.p23))
+                .expect("P23 is a GPIO1 pin"),
+            gpio1
+                .input(with_pullup(pins.p14))
+                .expect("P14 is a GPIO1 pin"),
+            gpio4
+                .input(with_pullup(pins.p5))
+                .expect("P5 is a GPIO4 pin"),
+            gpio4
+                .input(with_pullup(pins.p4))
+                .expect("P4 is a GPIO4 pin"),
         ],
         board::BUTTON_POLARITY,
     );

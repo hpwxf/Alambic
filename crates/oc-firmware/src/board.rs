@@ -64,6 +64,7 @@ use oc_core::calibration::{
 use oc_core::platform::CV_CHANNELS;
 use oc_drivers::ssd130x::Controller;
 use oc_drivers::triggers::Polarity;
+use teensy4_bsp::hal::iomuxc::{Config, Hysteresis, PullKeeper};
 
 /// SPI clock for the DAC8565 and the OLED, in hertz.
 ///
@@ -101,6 +102,18 @@ pub(crate) const TRIGGER_POLARITY: Polarity = Polarity::ActiveLow;
 
 /// Buttons and encoder switches short to ground against an internal pull-up.
 pub(crate) const BUTTON_POLARITY: Polarity = Polarity::ActiveLow;
+
+/// Pad configuration for every panel digital input (triggers, buttons, encoder
+/// lines and encoder switches).
+///
+/// The panel shorts these pins to ground and relies on the MCU's internal
+/// pull-up. `Port::input` only selects the GPIO alternate; without this pad
+/// config the pins float, quadrature decoding never settles, and every
+/// active-low button looks stuck or dead. Hysteresis keeps mechanical contacts
+/// from chattering at the pad.
+pub(crate) const DIGITAL_INPUT_CONFIG: Config = Config::zero()
+    .set_pull_keeper(Some(PullKeeper::Pullup22k))
+    .set_hysteresis(Hysteresis::Enabled);
 
 /// Bit offset of the onboard LED within GPIO2.
 ///
