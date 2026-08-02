@@ -8,6 +8,15 @@ license.workspace = true
 repository.workspace = true
 authors.workspace = true
 
+[features]
+default = []
+# Use Unicode octant glyphs for the module screen instead of classic braille.
+# Same 2x4 resolution, but denser and more regularly spaced, so terminals no
+# longer show horizontal banding between rows. Needs a font that covers the
+# Symbols for Legacy Computing Supplement (U+1CD00..); without it the screen
+# shows replacement characters.
+octant = []
+
 [dependencies]
 anyhow.workspace = true
 clap = { workspace = true, features = ["derive"] }

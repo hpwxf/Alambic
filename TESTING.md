@@ -158,7 +158,10 @@ checked two ways:
 1. **Behavioural assertions** in `scenarios.rs` — expected CV outputs, cable
    presence, trigger counts, offset and mode after the sequence.
 2. **Golden screen snapshot** — the rendered framebuffer is compared
-   byte-for-byte, in braille, against the matching `*.screen` file.
+   byte-for-byte, as dense terminal glyphs (classic braille by default;
+   Unicode octants with `--features octant`), against the matching
+   `*.screen` file. Committed snapshots always use the default braille
+   renderer — regenerate them without the `octant` feature.
 
 A dedicated test (`every_scenario_replays_identically_twice`) replays each
 scenario twice and asserts an identical outcome, and

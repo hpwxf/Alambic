@@ -7,7 +7,7 @@
 //! * [`simulator`] — the module itself, wrapping `Engine::tick`;
 //! * [`scenario`] — a text format for recording and replaying inputs;
 //! * [`clock`] — the paused, real-time and turbo speed policies;
-//! * [`braille`] — the 128x64 screen rendered as terminal characters;
+//! * [`braille`] — the 128x64 screen rendered as terminal glyphs;
 //! * [`tui`] — the interactive terminal interface.
 //!
 //! # Example
@@ -25,6 +25,7 @@
 //! assert_eq!(simulator.cv_out()[1], -1_500);
 //! ```
 
+/// Dense 2x4 terminal glyphs for the module screen (braille by default).
 pub mod braille;
 pub mod clock;
 pub mod scenario;

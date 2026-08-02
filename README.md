@@ -59,13 +59,36 @@ of trigger edges counted, plus the tick duration and count.
 
 `cargo run -p oc-sim` opens a terminal interface running the real `oc-core`
 engine against an in-memory platform. The module's 128x64 screen is drawn with
-braille characters, so every pixel stays individually visible; the "module
-screen" panel keeps this fixed 128x64 size (64x16 characters) regardless of
-how wide the terminal is. Like the firmware and the VCV Rack module, the
-simulator boots into the boot splash screen (name, version and a border
+braille characters by default (2x4 dots per cell), so every pixel stays
+individually visible and almost every terminal font can render it; the
+"module screen" panel keeps this fixed 128x64 size (64x16 characters)
+regardless of how wide the terminal is. If your font leaves visible
+horizontal banding between braille rows, rebuild with
+`cargo run -p oc-sim --features octant` to use denser Unicode octant glyphs
+instead (same resolution; needs a font that covers the Symbols for Legacy
+Computing Supplement — see below). Like the firmware and the VCV Rack module,
+the simulator boots into the boot splash screen (name, version and a border
 tracing itself around the screen) before the diagnostic applet takes over,
 and `r` replays that same boot sequence at any time, exactly like a host's
 "Initialize" action.
+
+**Fonts that render octants well** (for `--features octant`): the block is
+Unicode 16.0 *Symbols for Legacy Computing Supplement* (around U+1CD00).
+SauceCodePro Nerd Font / Source Code Pro usually do **not** include it yet.
+Good bets as of 2025–2026:
+
+* [JuliaMono](https://juliamono.netlify.app/) — deliberately wide Unicode;
+* [Cascadia Code](https://github.com/microsoft/cascadia-code) (recent builds);
+* [Noto Sans Mono](https://fonts.google.com/noto/specimen/Noto+Sans+Mono) /
+  Noto Sans Symbols 2 as a fallback face if your terminal can stack fonts;
+* Some [Nerd Font](https://www.nerdfonts.com/) like [CaskaydiaMono Nerd font](https://github.com/ryanoasis/nerd-fonts/releases/download/v3.4.0/CascadiaMono.zip) 
+  patched builds pick up octants when the upstream face has them.
+
+Quick check in the terminal (should look like a solid 2×4 block, not `?`/`�`):
+
+```text
+echo -e '\U1cd00\U1cd01\U1cd02\U1cd03  \U1cd3f'
+```
 
 | Key            | Action                                            |
 |----------------|---------------------------------------------------|

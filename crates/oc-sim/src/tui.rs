@@ -291,7 +291,7 @@ impl Tui {
             Constraint::Min(0),
         ])
         .areas(module);
-        // The module screen is a fixed 128x64 OLED (64x16 braille characters):
+        // The module screen is a fixed 128x64 OLED (64x16 braille/octant glyphs):
         // it never grows past that, however much room the terminal offers.
         let [screen, _] = Layout::horizontal([
             Constraint::Length(u16::try_from(braille::COLUMNS).unwrap_or(64) + 2),
@@ -358,7 +358,7 @@ impl Tui {
         );
     }
 
-    /// Draws the module's OLED as braille.
+    /// Draws the module's OLED as terminal glyphs (braille, or octants with `--features octant`).
     fn draw_screen(&mut self, frame: &mut Frame<'_>, area: Rect) {
         let lines: Vec<Line<'_>> = braille::render(self.simulator.frame())
             .into_iter()
