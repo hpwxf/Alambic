@@ -182,7 +182,11 @@ struct Diagnostic : Module {
 struct DiagnosticScreen : TransparentWidget {
     Diagnostic *module = nullptr;
     // Size, in pixels, of one framebuffer pixel once drawn on the panel.
-    static constexpr float kPixelSize = 1.2f;
+    // Chosen so that 128 x 64 framebuffer pixels exactly fill the widget's
+    // 46mm x 23mm box (46 * MM2PX / 128 == 23 * MM2PX / 64, since 46:23
+    // matches the framebuffer's 128:64 aspect ratio) instead of overflowing
+    // or falling short of it.
+    static constexpr float kPixelSize = 1.0611467f;
 
     void draw(const DrawArgs &args) override {
         nvgBeginPath(args.vg);
@@ -226,24 +230,47 @@ struct DiagnosticWidget : ModuleWidget {
         addChild(createWidget<ScrewSilver>(Vec(RACK_GRID_WIDTH, RACK_GRID_HEIGHT - RACK_GRID_WIDTH)));
         addChild(createWidget<ScrewSilver>(Vec(box.size.x - 2 * RACK_GRID_WIDTH, RACK_GRID_HEIGHT - RACK_GRID_WIDTH)));
 
-        addParam(createParamCentered<RoundBlackKnob>(mm2px(Vec(15.f, 20.f)), module, Diagnostic::LEFT_ENCODER_PARAM));
-        addParam(
-            createParamCentered<RoundBlackKnob>(mm2px(Vec(35.f, 20.f)), module, Diagnostic::RIGHT_ENCODER_PARAM));
-        addParam(createParamCentered<TL1105>(mm2px(Vec(15.f, 32.f)), module, Diagnostic::LEFT_BUTTON_PARAM));
-        addParam(createParamCentered<TL1105>(mm2px(Vec(35.f, 32.f)), module, Diagnostic::RIGHT_BUTTON_PARAM));
-        addParam(createParamCentered<TL1105>(mm2px(Vec(25.f, 26.f)), module, Diagnostic::UP_PARAM));
-        addParam(createParamCentered<TL1105>(mm2px(Vec(25.f, 38.f)), module, Diagnostic::DOWN_PARAM));
+        // Two encoder columns, positioned to straddle the screen the same
+        // way the real O&C hardware lays out UP/DOWN over left/right knobs.
+        constexpr float kLeftColumn = 21.10f;
+        constexpr float kRightColumn = 50.02f;
 
+        // UP/DOWN sit just under the screen, one per column.
+        addParam(createParamCentered<TL1105>(mm2px(Vec(kLeftColumn, 38.f)), module, Diagnostic::UP_PARAM));
+        addParam(createParamCentered<TL1105>(mm2px(Vec(kRightColumn, 38.f)), module, Diagnostic::DOWN_PARAM));
+
+        // The two rotary encoders themselves.
+        addParam(createParamCentered<RoundBlackKnob>(mm2px(Vec(kLeftColumn, 50.f)), module,
+                                                       Diagnostic::LEFT_ENCODER_PARAM));
+        addParam(createParamCentered<RoundBlackKnob>(mm2px(Vec(kRightColumn, 50.f)), module,
+                                                       Diagnostic::RIGHT_ENCODER_PARAM));
+
+        // Each encoder's push-to-click, directly beneath its knob so the
+        // pairing reads visually even though Rack models them as two
+        // separate widgets (a knob can't both drag and click in this API).
+        addParam(createParamCentered<TL1105>(mm2px(Vec(kLeftColumn, 60.f)), module, Diagnostic::LEFT_BUTTON_PARAM));
+        addParam(
+            createParamCentered<TL1105>(mm2px(Vec(kRightColumn, 60.f)), module, Diagnostic::RIGHT_BUTTON_PARAM));
+
+        // 3x4 I/O block: TRIG IN, then CV IN, then OUT, matching the
+        // silkscreen order on the panel (and on the real hardware) instead
+        // of grouping by channel.
+        constexpr float kColumnX[kCvChannels] = {12.f, 28.f, 44.f, 60.f};
+        constexpr float kTrigRowY = 78.f;
+        constexpr float kCvRowY = 98.f;
+        constexpr float kOutRowY = 118.f;
         for (int channel = 0; channel < kCvChannels; ++channel) {
-            addInput(createInputCentered<PJ301MPort>(mm2px(Vec(8.f + 8.f * static_cast<float>(channel), 60.f)),
-                                                      module, Diagnostic::CV1_INPUT + channel));
-            addInput(createInputCentered<PJ301MPort>(mm2px(Vec(8.f + 8.f * static_cast<float>(channel), 72.f)),
-                                                      module, Diagnostic::TR1_INPUT + channel));
-            addOutput(createOutputCentered<PJ301MPort>(mm2px(Vec(8.f + 8.f * static_cast<float>(channel), 84.f)),
-                                                        module, Diagnostic::A_OUTPUT + channel));
+            addInput(createInputCentered<PJ301MPort>(mm2px(Vec(kColumnX[channel], kTrigRowY)), module,
+                                                       Diagnostic::TR1_INPUT + channel));
+            addInput(createInputCentered<PJ301MPort>(mm2px(Vec(kColumnX[channel], kCvRowY)), module,
+                                                       Diagnostic::CV1_INPUT + channel));
+            addOutput(createOutputCentered<PJ301MPort>(mm2px(Vec(kColumnX[channel], kOutRowY)), module,
+                                                         Diagnostic::A_OUTPUT + channel));
         }
 
-        auto *screen = createWidget<DiagnosticScreen>(mm2px(Vec(4.f, 8.f)));
+        // Screen: centered horizontally on the 71.12mm-wide panel; the
+        // panel art draws a 1mm bezel frame around this exact box.
+        auto *screen = createWidget<DiagnosticScreen>(mm2px(Vec(12.56f, 9.f)));
         screen->module = module;
         screen->box.size = mm2px(Vec(46.f, 23.f));
         addChild(screen);
