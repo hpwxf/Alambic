@@ -1,0 +1,26 @@
+{
+  "slug": "OrnamentCrimeAlambic",
+  "name": "Ornament & Crime (Alambic)",
+  "version": "2.0.0",
+  "license": "MIT",
+  "brand": "Ornament & Crime (Alambic)",
+  "author": "Pascal Have",
+  "authorEmail": "",
+  "authorUrl": "https://github.com/hpwxf/Alambic",
+  "pluginUrl": "https://github.com/hpwxf/Alambic",
+  "manualUrl": "https://github.com/hpwxf/Alambic/blob/main/README.md",
+  "sourceUrl": "https://github.com/hpwxf/Alambic",
+  "donateUrl": "",
+  "changelogUrl": "",
+  "modules": [
+    {
+      "slug": "Diagnostic",
+      "name": "Diagnostic",
+      "description": "I/O diagnostic applet for the Ornament & Crime Alambic firmware core",
+      "tags": [
+        "Utility",
+        "Dual/Multi"
+      ]
+    }
+  ]
+}

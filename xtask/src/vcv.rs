@@ -1,5 +1,5 @@
-//! Builds and installs the VCV Rack 2 plugin on top of the `oc-vcv-ffi`
-//! staticlib.
+//! Builds, installs and cleans the VCV Rack 2 plugin on top of the
+//! `oc-vcv-ffi` staticlib.
 //!
 //! This module deliberately does none of the C++ compilation itself: the
 //! Rack SDK's own `Makefile` framework (`$(RACK_DIR)/plugin.mk`) already
@@ -9,8 +9,15 @@
 //! which is exactly the point of the plan's requirement that "toute la
 //! chaîne reste pilotée par `cargo`": a contributor never has to remember to
 //! rebuild `oc-vcv-ffi` or copy its header before calling `make` by hand.
+//!
+//! `vcv clean` is the exception that does not call `make`: the C++ side
+//! sometimes keeps stale object files and a previously linked `plugin.*`
+//! around after a failed or partial rebuild, and wiping those plus the host
+//! `oc-vcv-ffi` artefacts is more reliable when done directly than through
+//! the SDK's `clean` target (which also requires a configured `RACK_DIR`).
 
 use std::env;
+use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
@@ -22,7 +29,7 @@ use crate::{Profile, cargo, paths};
 const VCV_FFI_PACKAGE: &str = "oc-vcv-ffi";
 
 /// Location of the plugin sources, relative to the workspace root.
-const VCV_PLUGIN_DIR: &str = "vcv/OrnamentCrimeRust";
+const VCV_PLUGIN_DIR: &str = "vcv/OrnamentCrimeAlambic";
 
 /// CLI arguments shared by `vcv build` and `vcv install`.
 #[derive(Debug, Clone, clap::Args)]
@@ -71,8 +78,107 @@ pub(crate) fn install(args: &VcvArgs) -> Result<()> {
     let rack_dir = resolve_rack_dir(args)?;
     let staticlib = build_ffi_and_copy_header(args.profile)?;
     run_make(&rack_dir, &staticlib, "install")?;
-    println!("installed OrnamentCrimeRust into the Rack user plugin directory");
+    println!("installed OrnamentCrimeAlambic into the Rack user plugin directory");
     Ok(())
+}
+
+/// Removes every generated artefact involved in a VCV plugin build so the
+/// next `vcv build` starts from a clean tree.
+///
+/// This deliberately does **not** require `--rack-dir` / `RACK_DIR`: stale
+/// C++ objects are exactly what you want to wipe when the SDK path is
+/// broken or when a previous build left half-linked leftovers. It covers:
+///
+/// * the Rack-side directories and binaries (`build/`, `dep/`, `dist/`,
+///   `plugin.{dylib,so,dll}`) that `make clean` would remove;
+/// * the header copied next to the plugin sources by
+///   [`build_ffi_and_copy_header`];
+/// * the cbindgen header under `crates/oc-vcv-ffi/include/`;
+/// * Cargo's host artefacts for the `oc-vcv-ffi` package itself.
+pub(crate) fn clean() -> Result<()> {
+    let root = paths::workspace_root();
+    let plugin_dir = root.join(VCV_PLUGIN_DIR);
+
+    for name in plugin_clean_dirs() {
+        remove_path_if_exists(&plugin_dir.join(name))?;
+    }
+    for name in plugin_binary_names() {
+        remove_path_if_exists(&plugin_dir.join(name))?;
+    }
+    remove_path_if_exists(&plugin_dir.join("src").join("oc_vcv_ffi.h"))?;
+    remove_path_if_exists(&root.join("crates").join(VCV_FFI_PACKAGE).join("include"))?;
+
+    clean_vcv_ffi()?;
+
+    println!("cleaned VCV plugin and `{VCV_FFI_PACKAGE}` host artefacts");
+    Ok(())
+}
+
+/// Directory names under the plugin tree that a full clean must remove.
+///
+/// Kept as a function so the unit tests can pin the set without reaching
+/// into the clean body.
+fn plugin_clean_dirs() -> &'static [&'static str] {
+    // Mirrors the Rack SDK's `clean` target (`build`, `dist`) plus `dep`,
+    // which holds intermediate dependency stamps and is otherwise left
+    // behind by a plain `make clean`.
+    &["build", "dep", "dist"]
+}
+
+/// Every platform-specific name the Rack SDK may give the linked plugin.
+///
+/// Cleaning all three keeps a cross-compiled or accidentally-renamed
+/// leftover from surviving a host-only clean.
+fn plugin_binary_names() -> &'static [&'static str] {
+    &["plugin.dylib", "plugin.so", "plugin.dll"]
+}
+
+/// Deletes `path` if it exists (file or directory); no-ops when absent.
+fn remove_path_if_exists(path: &Path) -> Result<()> {
+    if !path.exists() {
+        return Ok(());
+    }
+
+    let metadata =
+        fs::symlink_metadata(path).with_context(|| format!("cannot inspect {}", path.display()))?;
+    if metadata.is_dir() {
+        fs::remove_dir_all(path)
+            .with_context(|| format!("cannot remove directory {}", path.display()))?;
+    } else {
+        fs::remove_file(path).with_context(|| format!("cannot remove file {}", path.display()))?;
+    }
+    println!("removed {}", path.display());
+    Ok(())
+}
+
+/// Runs `cargo clean -p oc-vcv-ffi` for every host profile we care about.
+///
+/// `cargo clean -p <pkg>` without `--release` only wipes the *dev* profile.
+/// `vcv build` defaults to release, so cleaning dev alone leaves the release
+/// staticlib and its build-script fingerprint intact: the next build is a
+/// no-op, `build.rs` never re-runs, and the cbindgen header we just deleted
+/// under `include/` is not regenerated. Cleaning both profiles forces a
+/// real rebuild (and header rewrite) on the next `vcv build`/`vcv install`.
+fn clean_vcv_ffi() -> Result<()> {
+    for extra in vcv_ffi_clean_profile_args() {
+        let mut command = Command::new(cargo_binary());
+        command
+            .current_dir(paths::workspace_root())
+            .arg("clean")
+            .arg("--package")
+            .arg(VCV_FFI_PACKAGE);
+        command.args(*extra);
+        cargo::run(command)?;
+    }
+    Ok(())
+}
+
+/// Extra `cargo clean` arguments, one entry per host profile to wipe.
+///
+/// The empty slice is the default (dev) profile; `--release` is required
+/// separately because Cargo does not clean release artefacts unless asked.
+fn vcv_ffi_clean_profile_args() -> &'static [&'static [&'static str]] {
+    &[&[], &["--release"]]
 }
 
 /// Resolves the Rack SDK directory from `--rack-dir` or `RACK_DIR`.
@@ -220,7 +326,10 @@ fn which(binary: &str) -> Option<PathBuf> {
 
 #[cfg(test)]
 mod tests {
-    use super::{VcvArgs, resolve_rack_dir, staticlib_file_name};
+    use super::{
+        VcvArgs, plugin_binary_names, plugin_clean_dirs, resolve_rack_dir, staticlib_file_name,
+        vcv_ffi_clean_profile_args,
+    };
     use crate::Profile;
 
     #[test]
@@ -239,5 +348,33 @@ mod tests {
         };
         let resolved = resolve_rack_dir(&args).expect("an explicit path always resolves");
         assert_eq!(resolved, std::path::Path::new("/explicit/path"));
+    }
+
+    #[test]
+    fn clean_removes_every_rack_side_directory_make_would() {
+        // `make clean` drops `build` and `dist`; we also drop `dep`, which
+        // the SDK leaves alone. Losing any of these from the set would let
+        // a stale intermediate survive `vcv clean`.
+        assert_eq!(plugin_clean_dirs(), &["build", "dep", "dist"]);
+    }
+
+    #[test]
+    fn clean_covers_every_host_plugin_binary_name() {
+        // A macOS-only clean would leave a Linux CI leftover (or vice
+        // versa) if someone checked a binary in by mistake; pin the full
+        // set so a platform-gated trim is a deliberate edit.
+        assert_eq!(
+            plugin_binary_names(),
+            &["plugin.dylib", "plugin.so", "plugin.dll"]
+        );
+    }
+
+    #[test]
+    fn clean_wipes_both_dev_and_release_ffi_artefacts() {
+        // `cargo clean -p` defaults to dev only; without an explicit
+        // `--release` pass the release staticlib (and its build.rs
+        // fingerprint) survives, so the next `vcv build` never regenerates
+        // the cbindgen header we deleted under `include/`.
+        assert_eq!(vcv_ffi_clean_profile_args(), &[&[][..], &["--release"][..]]);
     }
 }

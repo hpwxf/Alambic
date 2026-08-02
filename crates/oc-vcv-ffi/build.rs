@@ -1,7 +1,7 @@
 //! Generates `include/oc_vcv_ffi.h` from the ABI in `src/lib.rs`.
 //!
 //! Running this on every build (rather than as a separate, easy-to-forget
-//! step) is what keeps the C header honest: `vcv/OrnamentCrimeRust` includes
+//! step) is what keeps the C header honest: `vcv/OrnamentCrimeAlambic` includes
 //! it directly, so a signature that drifts from the header would otherwise
 //! only be caught by the C++ compiler, far from the Rust change that caused
 //! it.

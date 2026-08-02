@@ -113,7 +113,7 @@ sequence, since nothing here depends on, or blocks, hardware flashing.
 **Proves:** the C ABI cannot be made to crash or corrupt memory by any input
 a C++ caller could plausibly send, including programmer mistakes (null
 pointers, stale indices).
-**Does not prove:** that `vcv/OrnamentCrimeRust`'s C++ actually calls the ABI
+**Does not prove:** that `vcv/OrnamentCrimeAlambic`'s C++ actually calls the ABI
 correctly, or that the module behaves sensibly inside a running VCV Rack —
 see *What is not tested yet*.
 
@@ -515,7 +515,7 @@ under Eurorack power-supply noise; none of that is in scope for this plan.
 
 * **The VCV Rack 2 module inside an actual running Rack instance.** The ABI
   is implemented and defensively tested (see *VCV Rack ABI robustness*
-  above), and `vcv/OrnamentCrimeRust` has been built and linked successfully
+  above), and `vcv/OrnamentCrimeAlambic` has been built and linked successfully
   against a real Rack SDK, but nobody has yet loaded the resulting plugin
   into VCV Rack and patched cables to it. There is no automated way to do
   that; treat the panel layout and the knob-as-encoder interaction in

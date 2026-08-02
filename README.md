@@ -22,7 +22,7 @@ behaviour runs on hardware, in a native simulator, and inside VCV Rack 2.
 | `crates/oc-firmware` | Teensy 4.0 binary; the only crate that touches registers           |
 | `crates/oc-sim`      | Native backend and terminal UI, with a deterministic virtual clock |
 | `crates/oc-vcv-ffi`  | `staticlib` exposing a C ABI to the VCV Rack 2 module              |
-| `vcv/OrnamentCrimeRust` | The Rack SDK plugin shim: module declaration and widget only, no behaviour |
+| `vcv/OrnamentCrimeAlambic` | The Rack SDK plugin shim: module declaration and widget only, no behaviour |
 | `xtask`              | Build, packaging, flashing and VCV plugin automation                |
 
 `oc-core` holds **all** behaviour. The three backends only differ in how they
@@ -229,7 +229,7 @@ achieved instead.
 `crates/oc-vcv-ffi` builds `oc-core` into a `staticlib` behind a small,
 defensive C ABI (every function tolerates a null pointer or an out-of-range
 index, and no Rust panic is allowed to unwind across the boundary). The C++
-side, `vcv/OrnamentCrimeRust`, is a thin shim required by the Rack SDK: module
+side, `vcv/OrnamentCrimeAlambic`, is a thin shim required by the Rack SDK: module
 declaration, port/param mapping, and a widget that reads the framebuffer —
 **no behaviour lives there**. The whole point is that the module inside VCV
 Rack runs the exact same `oc-core` engine as the firmware and the simulator,
@@ -245,14 +245,19 @@ Rack source) matching your platform, extracted anywhere:
 ```sh
 cargo xtask vcv build --rack-dir /path/to/Rack-SDK     # or set $RACK_DIR
 cargo xtask vcv install --rack-dir /path/to/Rack-SDK   # build + drop into your Rack user folder
+cargo xtask vcv clean                                  # wipe plugin + oc-vcv-ffi artefacts
 ```
 
-Both commands rebuild `oc-vcv-ffi`, regenerate its C header with `cbindgen`,
-and copy it next to the plugin sources before invoking the Rack SDK's own
-`Makefile` — a plain `make` in `vcv/OrnamentCrimeRust` never sees a stale
-header or a staticlib built for the wrong profile. `vcv install` finishes by
-running the SDK's own `install` target, which already knows the correct
-plugin folder for the current OS.
+`build` and `install` rebuild `oc-vcv-ffi`, regenerate its C header with
+`cbindgen`, and copy it next to the plugin sources before invoking the Rack
+SDK's own `Makefile` — a plain `make` in `vcv/OrnamentCrimeAlambic` never sees a
+stale header or a staticlib built for the wrong profile. `vcv install`
+finishes by running the SDK's own `install` target, which already knows the
+correct plugin folder for the current OS. If a C++ rebuild looks polluted by
+older objects or a previously linked `plugin.*`, run `vcv clean` first: it
+removes the plugin's `build`/`dep`/`dist` trees, the linked binary, the
+copied header, and Cargo's host artefacts for `oc-vcv-ffi`, without needing
+a Rack SDK path.
 
 The plugin has been built and linked successfully against a real Rack SDK
 (2.6.x) during development, producing a loadable `.vcvplugin`; it has not yet

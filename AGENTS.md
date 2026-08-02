@@ -26,7 +26,7 @@ screen are explicitly out of scope for now.
 | `crates/oc-firmware`  | yes (bin)| `deny(unsafe_code)`, currently zero `unsafe` of its own | Pure wiring: turns `teensy4-bsp`/`imxrt-hal` resources into the `oc-core` platform traits, runs the 1 kHz loop. The one crate that cannot be tested on the host. |
 | `crates/oc-sim`       | no       | ordinary                    | Host backend + ratatui TUI + deterministic virtual clock; runs the real `oc-core` engine. |
 | `crates/oc-vcv-ffi`   | no       | ordinary (defensive C ABI)  | `staticlib`/`rlib` exposing a defensive C ABI over `oc-core` (`oc_engine_*`), linked into the VCV Rack 2 module. Every function tolerates a null pointer or an out-of-range index and never lets a Rust panic unwind across the boundary (`catch_unwind`). |
-| `vcv/OrnamentCrimeRust` | n/a (C++) | n/a | The Rack SDK plugin shim: module/port declaration, a widget reading the ABI's framebuffer, no behaviour of its own. Built by `cargo xtask vcv build\|install`, not by hand. |
+| `vcv/OrnamentCrimeAlambic` | n/a (C++) | n/a | The Rack SDK plugin shim: module/port declaration, a widget reading the ABI's framebuffer, no behaviour of its own. Built by `cargo xtask vcv build\|install`, not by hand. |
 | `xtask`               | no       | ordinary                    | The only supported build/flash/VCV entry point: cross-compilation, size report, HEX packaging, the pre-flash validation gate (`xtask::validate`), and the `vcv` subcommand (`xtask/src/vcv.rs`). |
 
 `oc-core` is the single source of behavioural truth. The firmware, the
@@ -169,8 +169,8 @@ Full protocol, per level, with exact commands and what each proves: see
 ## Known gaps (do not assume these are done)
 
 * **The VCV Rack 2 module has never been loaded into a running Rack
-  instance.** `crates/oc-vcv-ffi` and `vcv/OrnamentCrimeRust` are implemented
-  and `vcv/OrnamentCrimeRust` has been built and linked against a real Rack
+  instance.** `crates/oc-vcv-ffi` and `vcv/OrnamentCrimeAlambic` are implemented
+  and `vcv/OrnamentCrimeAlambic` has been built and linked against a real Rack
   SDK, but the panel layout and the knob-as-encoder interaction in
   `Diagnostic.cpp` have not been exercised inside Rack itself. Building it
   requires a separately downloaded [Rack SDK](https://vcvrack.com/downloads)
@@ -203,6 +203,6 @@ Full protocol, per level, with exact commands and what each proves: see
 | Flash orchestration (confirm, invoke loader)       | `xtask/src/flash.rs` |
 | The C ABI linked into VCV Rack                    | `crates/oc-vcv-ffi/src/lib.rs` |
 | VCV plugin build/install orchestration            | `xtask/src/vcv.rs` |
-| The VCV Rack plugin shim (module, widget)         | `vcv/OrnamentCrimeRust/src/Diagnostic.cpp` |
+| The VCV Rack plugin shim (module, widget)         | `vcv/OrnamentCrimeAlambic/src/Diagnostic.cpp` |
 | Full test protocol                                | `TESTING.md` |
 | Full requirements, decisions, delivery status     | `.junie/plans/oc-rust-firmware-foundation.md` |

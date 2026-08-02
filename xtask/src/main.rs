@@ -48,7 +48,7 @@ enum Command {
     Hex(BuildArgs),
     /// Validate and flash the firmware to a Teensy 4.0.
     Flash(FlashArgs),
-    /// Build or install the VCV Rack 2 plugin.
+    /// Build, install or clean the VCV Rack 2 plugin.
     Vcv {
         #[command(subcommand)]
         action: VcvAction,
@@ -61,6 +61,8 @@ pub(crate) enum VcvAction {
     Build(VcvArgs),
     /// Build the plugin and install it into the current user's Rack.
     Install(VcvArgs),
+    /// Remove plugin build artefacts and the `oc-vcv-ffi` host artefacts.
+    Clean,
 }
 
 #[derive(Debug, Clone, clap::Args)]
@@ -119,6 +121,7 @@ fn main() -> Result<()> {
         Command::Vcv { action } => match action {
             VcvAction::Build(args) => vcv::build(&args)?,
             VcvAction::Install(args) => vcv::install(&args)?,
+            VcvAction::Clean => vcv::clean()?,
         },
     }
 

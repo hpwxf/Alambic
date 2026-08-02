@@ -14,7 +14,7 @@
   <rect x="1" y="1" width="69.12" height="126.5" fill="none" stroke="#3a3a3a" stroke-width="0.5" />
 
   <!-- Title -->
-  <text x="35.56" y="5.6" font-size="3.6" fill="#d8d8d8" text-anchor="middle" font-weight="bold">O&amp;C &#183; RUST</text>
+  <text x="35.56" y="5.6" font-size="3.6" fill="#d8d8d8" text-anchor="middle" font-weight="bold">O&amp;C &#183; ALAMBIC</text>
   <text x="35.56" y="126.5" font-size="2.6" fill="#5a5a5a" text-anchor="middle">Diagnostic</text>
 
   <!-- Screen bezel. Widget sits at (12.56,9) size (46,23); this frame is

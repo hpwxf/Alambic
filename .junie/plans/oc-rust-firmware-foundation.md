@@ -185,7 +185,7 @@ Alambic/
 - memory.x
 - oc-sim/                  # backend hote + TUI ratatui + horloge virtuelle
 - oc-vcv-ffi/              # staticlib, ABI C
-- vcv/OrnamentCrimeRust/      # plugin.json, res/*.svg, src/plugin.cpp (minimal)
+- vcv/OrnamentCrimeAlambic/      # plugin.json, res/*.svg, src/plugin.cpp (minimal)
 - xtask/                      # build, flash, vcv, renode, ci
 - renode/oc-teensy40.repl|.resc
 - .github/workflows/ci.yml
@@ -345,7 +345,7 @@ Un module O&C (Rust) apparait dans VCV Rack 2, câblable et affichant le même �
 - Implémenter `crates/oc-vcv-ffi` en `staticlib` exposant l'ABI C (`oc_engine_new`, `free`, `set_cv_in`, `set_trigger`, `encoder`, `button`, `tick`, `cv_out`, `framebuffer`), plus des accesseurs de comptage de canaux (`oc_engine_cv_channels`, etc.) pour que le C++ n'ait jamais à coder en dur le nombre de canaux.
 - Rendre chaque fonction défensive (pointeurs nuls, index hors borne) et empêcher tout déroulement de panique à travers la frontière (`catch_unwind` + `AssertUnwindSafe`, justifié en commentaire).
 - Générer l'en-tête C avec `cbindgen` depuis le build (`build.rs`, `cbindgen.toml`) ; l'ABI n'expose que des types C primitifs dans ses signatures pour que cbindgen n'ait jamais besoin de traverser vers `oc-core`.
-- Écrire `vcv/OrnamentCrimeRust/src/plugin.cpp` et `Diagnostic.cpp` réduits au strict minimum : déclaration du module, 4 entrées CV, 4 entrées trigger, 4 sorties CV, 2 encodeurs, 4 boutons, widget d'écran nanovg (rectangles NanoVG par pixel allumé) lisant le framebuffer, sans aucune logique métier.
+- Écrire `vcv/OrnamentCrimeAlambic/src/plugin.cpp` et `Diagnostic.cpp` réduits au strict minimum : déclaration du module, 4 entrées CV, 4 entrées trigger, 4 sorties CV, 2 encodeurs, 4 boutons, widget d'écran nanovg (rectangles NanoVG par pixel allumé) lisant le framebuffer, sans aucune logique métier.
 - Transmettre `isConnected()` de chaque port à `oc_engine_set_cv_in`, et décimer l'appel à `oc_engine_tick` à ~1 kHz via un accumulateur de microsecondes, quel que soit le taux d'échantillonnage.
 - Ajouter `plugin.json` et le panneau SVG dans `res/`.
 - Ajouter `xtask vcv build` (staticlib + en-tête + `make` du Rack SDK) et `xtask vcv install` (idem puis cible `install` du SDK, qui dépose déjà le `.vcvplugin` dans le bon dossier utilisateur par OS).
