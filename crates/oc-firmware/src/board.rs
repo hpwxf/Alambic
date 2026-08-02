@@ -55,7 +55,7 @@
 //!   (the reference firmware computes `offset - raw` for inputs and
 //!   `MAX_VALUE - value` for outputs), which is expressed here as a negative
 //!   slope, but the exact gain is a per-unit calibration.
-//! * which OLED controller the panel carries, SSD1306 or SSD1309.
+//! * which OLED controller the panel carries. Stock O&C is SH1106; SSD1306/SSD1309 are opt-in.
 
 use oc_core::calibration::{
     ADC_CODES, CV_IN_MAX_MV, CV_IN_MIN_MV, CV_OUT_MAX_MV, CV_OUT_MIN_MV, CvInputCalibration,
@@ -67,8 +67,8 @@ use oc_drivers::triggers::Polarity;
 
 /// SPI clock for the DAC8565 and the OLED, in hertz.
 ///
-/// The DAC8565 accepts up to 50 MHz and the SSD1306 up to about 10 MHz, and the
-/// two share the bus, so the slower part sets the rate.
+/// The DAC8565 accepts up to 50 MHz and the OLED controllers up to about 10 MHz,
+/// and the two share the bus, so the slower part sets the rate.
 pub(crate) const SPI_CLOCK_HZ: u32 = 8_000_000;
 
 /// Nominal period of the main loop, in microseconds.
@@ -83,12 +83,16 @@ pub(crate) const RENDER_INTERVAL_TICKS: u32 = 20;
 
 /// Which OLED controller the panel carries.
 ///
-/// Selectable with the `ssd1309` Cargo feature. Getting this wrong gives a
-/// blank screen and no other symptom.
+/// Stock Ornament & Crime (Phazerville / TLM `µO_C`) uses an SH1106-class panel.
+/// Override with the `ssd1306` or `ssd1309` Cargo features for third-party
+/// builds. Getting the controller wrong yields a blank or garbled screen
+/// without a panic.
 pub(crate) const OLED_CONTROLLER: Controller = if cfg!(feature = "ssd1309") {
     Controller::Ssd1309
-} else {
+} else if cfg!(feature = "ssd1306") {
     Controller::Ssd1306
+} else {
+    Controller::Sh1106
 };
 
 /// Trigger inputs are buffered through inverting transistors and pulled up, so
@@ -97,6 +101,13 @@ pub(crate) const TRIGGER_POLARITY: Polarity = Polarity::ActiveLow;
 
 /// Buttons and encoder switches short to ground against an internal pull-up.
 pub(crate) const BUTTON_POLARITY: Polarity = Polarity::ActiveLow;
+
+/// Bit offset of the onboard LED within GPIO2.
+///
+/// Teensy pin 13 is `GPIO_B0_03` = `GPIO2_IO03`, which is also LPSPI4 SCK.
+/// Boot breadcrumbs may drive this pad as GPIO **before** the SPI bus claims
+/// it; afterwards only a panic handler (register-level SOS) may touch it.
+pub(crate) const LED_GPIO2_OFFSET: u32 = 3;
 
 /// Provisional CV input calibration.
 ///

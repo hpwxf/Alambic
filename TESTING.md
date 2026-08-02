@@ -82,7 +82,7 @@ cargo test -p oc-drivers
 Each driver (`dac8565`, `ssd130x`, `triggers`, `panel`, `shared_bus`) is
 exercised against a recording `embedded-hal` 1.0 mock bus, asserting the exact
 bytes it would put on the wire — the DAC8565 command word layout, the
-SSD1306/SSD1309 initialisation sequences, chip-select timing around a shared
+SH1106/SSD1306/SSD1309 initialisation sequences, chip-select timing around a shared
 bus.
 
 **Proves:** the byte sequence sent to each peripheral is the one the datasheet
@@ -333,8 +333,8 @@ image cannot brick the module — see *Hardware safety* in `README.md`.
 This is the level that did not exist as a written procedure before this
 document. It is the only way to confirm the two facts flagged as provisional
 in `crates/oc-firmware/src/board.rs` and in `README.md`'s *Before the first
-flash* section: the calibration slopes, and whether the panel is SSD1306 or
-SSD1309. Follow it in order; each step assumes the previous one succeeded.
+flash* section: the calibration slopes, and whether the panel is SH1106 (stock),
+SSD1306, or SSD1309. Follow it in order; each step assumes the previous one succeeded.
 
 ### 9.0 — Before touching anything
 
@@ -349,11 +349,46 @@ SSD1309. Follow it in order; each step assumes the previous one succeeded.
   output.
 * Do not connect anything to the CV or trigger jacks yet.
 
-### 9.1 — First power-up and screen legibility
+### 9.1 — First power-up, LED breadcrumbs, USB log, screen legibility
 
 1. `cargo xtask flash --dry-run` first, read the printed facts, then
-   `cargo xtask flash` for real.
-2. Power the module (Eurorack rail or USB). Expect the OLED to first show the
+   `cargo xtask flash` for real. Keep the USB cable on the Teensy so the
+   CDC log is available immediately after reset.
+2. **Onboard LED (before SPI).** Count the flash groups on the Teensy LED
+   (pin 13) during the first second of boot:
+   - **1 flash** — `main` reached, USB log starting
+   - **2 flashes** — ADC inputs mapped
+   - **3 flashes** — triggers mapped; SPI is about to claim pin 13
+   - **9 flashes (Morse SOS), pause, repeat** — Rust panic (`teensy4-panic`),
+     not a boot stage. Open the USB serial port if it was already up, or
+     bisect which `expect`/`panic!` fires.
+   After stage 3 the LED pad becomes SPI SCK and must not be read as a
+   status light anymore.
+3. **USB CDC log.** On the host (macOS example):
+
+   ```sh
+   ls /dev/cu.usbmodem*
+   screen /dev/cu.usbmodem* 115200
+   ```
+
+   Baud is conventional only; CDC ACM ignores it. Expect, in order:
+
+   ```text
+   oc-firmware X.Y.Z starting (oled=SH1106|SSD1306|SSD1309)
+   usb cdc up
+   adc ok
+   triggers ok
+   spi ok
+   dac reset released
+   oled init ok (…)   # or: oled init failed: Bus|Pin
+   panel ok; entering 1 kHz loop
+   tick=1000 last_us=…
+   ```
+
+   A once-per-second `tick=` line proves the 1 kHz loop is alive even when
+   the OLED stays black. A panic after the logger is up also prints the
+   panic message (`teensy4-panic` feature `log`) before the SOS blink.
+4. Power the module (Eurorack rail or USB). Expect the OLED to first show the
    boot splash screen for about 1.5 seconds: the name and version
    (`O&C Rust vX.Y.Z`) centred on screen, with a one-pixel border tracing
    itself clockwise all the way around the edge. Once the border completes
@@ -361,30 +396,32 @@ SSD1309. Follow it in order; each step assumes the previous one succeeded.
    channel rows, a mode row, an output row, and a tick counter that
    increments continuously. No input is processed and the outputs stay at
    0 V for the duration of the splash screen (`oc_core::Engine::tick`).
-3. **If the screen stays blank**, this is the expected symptom of an OLED
-   controller mismatch (`README.md`, *Before the first flash*). The `ssd1309`
-   Cargo feature on `oc-firmware` selects the other controller, but note that
-   `cargo xtask` does not yet forward extra `--features` to its internal
+5. **If the screen stays blank** but USB shows `oled init ok` or
+   `oled init failed`, this is the expected symptom of an OLED controller
+   mismatch or a bus/wiring fault (`README.md`, *Before the first flash*).
+   Stock O&C is SH1106 (the firmware default). The `ssd1306` / `ssd1309`
+   Cargo features select the other controllers for third-party panels. Note
+   that `cargo xtask` does not yet forward extra `--features` to its internal
    build (`xtask/src/cargo.rs`, `build_firmware`) — build and package the HEX
-   by hand for this one case, then flash it directly:
+   by hand for an override, then flash it directly:
 
    ```sh
-   cargo build -p oc-firmware --target thumbv7em-none-eabihf --release --features ssd1309
-   # convert with the same llvm-objcopy xtask uses, or run the validated flow
-   # below once the feature is confirmed needed, adding `[features] default =
-   # ["ssd1309"]` (or similar) to board.rs / Cargo.toml so `cargo xtask flash`
-   # picks it up on subsequent runs.
+   cargo build -p oc-firmware --target thumbv7em-none-eabihf --release --features ssd1306
+   # or: --features ssd1309
+   # convert with the same llvm-objcopy xtask uses.
    ```
 
-   If the screen is now legible, the panel carries an SSD1309 and
-   `board.rs`'s `OLED_CONTROLLER` default should be revisited (make it the
-   default feature so the normal `cargo xtask flash` path stays authoritative
-   again); if still blank, suspect wiring (`OLED_CS`/`OLED_DC`/`OLED_RST` on
-   pins 8/6/7) before the controller choice.
-4. Confirm the tick counter (`TICKS` row) advances steadily and the reported
+   If a non-default controller makes the screen legible, update
+   `board.rs`'s `OLED_CONTROLLER` default (or the crate default features) so
+   the normal `cargo xtask flash` path stays authoritative again; if still blank with `oled init ok` on USB, suspect wiring
+   (`OLED_CS`/`OLED_DC`/`OLED_RST` on pins 8/6/7) or panel power before the
+   controller choice. If USB never appears and the LED never flashes, the
+   image is not running (wrong HEX, not reaching `main`).
+6. Confirm the tick counter (`TICKS` row) advances steadily and the reported
    tick duration is well under 1000 µs — a stalled or exploding value points
    at the main loop, not at the analog path, and everything below should
-   wait until it is fixed.
+   wait until it is fixed. The USB `tick=` heartbeat is the same signal when
+   the panel is unreadable.
 
 ### 9.2 — CV inputs
 

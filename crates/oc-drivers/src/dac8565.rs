@@ -151,7 +151,13 @@ where
         self.chip_select
             .set_low()
             .map_err(|_| Dac8565Error::ChipSelect)?;
-        let transfer = self.spi.write(&word).map_err(|_| Dac8565Error::Bus);
+        // `SpiBus::write` may return before the shift register is empty; hold
+        // CS until `flush` confirms the 24-bit word has fully left the bus.
+        let transfer = self
+            .spi
+            .write(&word)
+            .and_then(|()| self.spi.flush())
+            .map_err(|_| Dac8565Error::Bus);
         let release = self
             .chip_select
             .set_high()

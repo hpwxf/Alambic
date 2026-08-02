@@ -22,7 +22,7 @@ screen are explicitly out of scope for now.
 | Crate                | `no_std` | `unsafe` policy            | Role |
 |-----------------------|----------|-----------------------------|------|
 | `crates/oc-core`      | yes      | `forbid(unsafe_code)`       | **All** behaviour: platform traits, `Engine::tick`, `DiagnosticApp`, calibration, debouncing, quadrature decoding, framebuffer. Knows nothing about registers or an OS. |
-| `crates/oc-drivers`   | yes      | `forbid(unsafe_code)`       | Peripheral protocols (DAC8565, SSD1306/SSD1309, triggers, shared SPI bus) over `embedded-hal` 1.0 only; tested on the host against recording mock buses. |
+| `crates/oc-drivers`   | yes      | `forbid(unsafe_code)`       | Peripheral protocols (DAC8565, SH1106/SSD1306/SSD1309, triggers, shared SPI bus) over `embedded-hal` 1.0 only; tested on the host against recording mock buses. |
 | `crates/oc-firmware`  | yes (bin)| `deny(unsafe_code)`, currently zero `unsafe` of its own | Pure wiring: turns `teensy4-bsp`/`imxrt-hal` resources into the `oc-core` platform traits, runs the 1 kHz loop. The one crate that cannot be tested on the host. |
 | `crates/oc-sim`       | no       | ordinary                    | Host backend + ratatui TUI + deterministic virtual clock; runs the real `oc-core` engine. |
 | `crates/oc-vcv-ffi`   | no       | ordinary (defensive C ABI)  | `staticlib`/`rlib` exposing a defensive C ABI over `oc-core` (`oc_engine_*`), linked into the VCV Rack 2 module. Every function tolerates a null pointer or an out-of-range index and never lets a Rust panic unwind across the boundary (`catch_unwind`). |
@@ -104,9 +104,11 @@ lives in `oc-core` and is tested once, on the host.
   risk here).
 * **The firmware drives no UART.** Every LPUART exposed on pins 0–23
   collides with the panel wiring (see the module doc comment at the top of
-  `crates/oc-firmware/src/main.rs` for the exact conflicts). There is no
-  serial console; the OLED screen is the only diagnostic channel until a USB
-  CDC banner is implemented.
+  `crates/oc-firmware/src/main.rs` for the exact conflicts). Host-side
+  diagnostics use **USB CDC** (`imxrt-log` on the Teensy's native USB device),
+  polled from the 1 kHz loop; the OLED remains the on-panel channel. Early
+  boot also flashes the onboard LED (pin 13) in stage groups before SPI
+  claims that pad — see `crates/oc-firmware/src/boot_led.rs`.
 * `oc-core` and `oc-drivers` are `forbid(unsafe_code)`. `oc-firmware` is
   `deny(unsafe_code)` and currently contains none of its own; all register
   access is confined to `teensy4-bsp`/`imxrt-hal`. If that ever changes,
@@ -174,10 +176,11 @@ Full protocol, per level, with exact commands and what each proves: see
   requires a separately downloaded [Rack SDK](https://vcvrack.com/downloads)
   (`RACK_DIR`/`--rack-dir`), which is why CI does not build it.
 * **Renode smoke test** — dropped as originally specified (no UART to log
-  to); alternatives (USB CDC banner, semihosting, SPI-write observation) are
-  recorded in the plan file but none is implemented.
+  to). USB CDC logging is now wired in `oc-firmware` for real hardware; a
+  Renode observation path (semihosting, SPI-write watch) is still not
+  implemented.
 * **The firmware has never run on real hardware.** Calibration slopes and
-  the OLED controller choice (`SSD1306` vs `--features ssd1309`) are
+  the OLED controller choice (SH1106 default vs `--features ssd1306`/`ssd1309`) are
   unverified; see `TESTING.md` Level 9.
 * **`cargo xtask` does not forward extra Cargo `--features`** to its
   internal `build_firmware` call (`xtask/src/cargo.rs`); switching the OLED

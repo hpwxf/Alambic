@@ -278,13 +278,26 @@ being trusted:
 * **the calibration slopes.** Both the input and the output stage invert, which
   `crates/oc-firmware/src/board.rs` expresses as negative slopes, but the exact
   gain and offset are per-unit properties.
-* **the OLED controller.** SSD1306 is assumed; build with `--features ssd1309`
+* **the OLED controller.** SH1106 is assumed (stock O&C); build with `--features ssd1306` or `--features ssd1309`
   if the screen stays blank.
 
 The pinout itself is in one reviewed table in `crates/oc-firmware/src/board.rs`,
 which is the only file allowed to name a pin. Note that the firmware drives
-**no** UART: every LPUART available on pins 0-23 collides with the panel, so the
-boot banner belongs on USB and is not wired up yet.
+**no** UART: every LPUART available on pins 0-23 collides with the panel. Boot
+diagnostics go out over **USB CDC** instead (a virtual serial port on the
+Teensy's native USB). After flashing with the cable still plugged in:
+
+```sh
+# macOS — the device usually appears as cu.usbmodem*
+ls /dev/cu.usbmodem* 2>/dev/null
+screen /dev/cu.usbmodem* 115200
+```
+
+Expect lines such as `oc-firmware … starting (oled=…)`, `oled init ok|failed`,
+and a once-per-second `tick=…` heartbeat. Early boot also blinks the onboard
+LED (pin 13) in stage groups **before** SPI claims that pad: 1 = `main`
+reached, 2 = ADC mapped, 3 = triggers mapped / about to take SPI. A Morse SOS
+(9 flashes) is still the panic handler, not a boot stage.
 
 Before connecting the real module, follow the **Level 9 — Manual hardware
 validation** checklist in [`TESTING.md`](TESTING.md#level-9--manual-hardware-validation):

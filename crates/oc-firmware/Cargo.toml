@@ -16,13 +16,23 @@ oc-drivers.workspace = true
 # `rt` pulls in `imxrt-rt`, which generates `t4link.x` (memory map + FlexSPI
 # Configuration Block + Image Vector Table) and provides the reset handler.
 teensy4-bsp = { version = "0.6", features = ["rt"] }
-teensy4-panic = "0.2"
-cortex-m = "0.7"
+# `log` forwards the panic message through the `log` facade before the SOS
+# blink; useful once the USB CDC backend below is up.
+teensy4-panic = { version = "0.3", features = ["log"] }
+# `critical-section-single-core` provides the critical-section impl that
+# `imxrt-log` needs on a bare-metal single-core target.
+cortex-m = { version = "0.7", features = ["critical-section-single-core"] }
 embedded-hal.workspace = true
+# USB CDC serial logging (host sees a virtual COM port). Poll from the main
+# loop — we do not enable USB interrupts, so no RTIC dependency.
+imxrt-log = { version = "0.2", default-features = false, features = ["usbd", "log"] }
+log = { version = "0.4", default-features = false }
 
 [features]
-# The panel carries an SSD1309 instead of the default SSD1306. Getting this
-# wrong gives a blank screen and no other symptom.
+# Stock O&C panels are SH1106 (the default). These opt into the other
+# controllers used on some third-party builds. Getting the choice wrong gives
+# a blank or garbled screen with no other symptom.
+ssd1306 = []
 ssd1309 = []
 
 [lints]

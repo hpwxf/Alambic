@@ -125,6 +125,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "72b3254f16251a8381aa12e40e3c4d2f0199f8c6508fbecb9d91f575e0fbb8c6"
 
 [[package]]
+name = "bbqueue"
+version = "0.5.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "fd3baa8859d1a4c7411039a75c0599a4640ef1c9a8fc811e4325b00e6cfe0a55"
+
+[[package]]
 name = "bit-set"
 version = "0.5.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -640,6 +646,12 @@ checksum = "361a90feb7004eca4019fb28352a9465666b24f840f5c3cddf0ff13920590b89"
 
 [[package]]
 name = "embedded-io"
+version = "0.6.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "edd0f118536f44f5ccd48bcb8b111bdc3de888b58c74639dfb034a357d0f206d"
+
+[[package]]
+name = "embedded-io"
 version = "0.7.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9eb1aa714776b75c7e67e1da744b81a129b3ff919c8712b5e1b32252c1f07cc7"
@@ -938,7 +950,7 @@ dependencies = [
  "cortex-m",
  "embedded-hal 0.2.7",
  "embedded-hal 1.0.0",
- "embedded-io",
+ "embedded-io 0.7.1",
  "futures",
  "imxrt-dma",
  "imxrt-iomuxc",
@@ -952,6 +964,21 @@ name = "imxrt-iomuxc"
 version = "0.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e49e4e4a4f2c73284ec46cd459a9c4eb7d93b8876a8a6cf5cd379e36e677bc83"
+
+[[package]]
+name = "imxrt-log"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "07c9471c5cc440e0d83609aacb49b49d28f0511bc796c1b7c3ffd95a69c6c769"
+dependencies = [
+ "bbqueue",
+ "critical-section",
+ "imxrt-usbd",
+ "log",
+ "static_cell",
+ "usb-device",
+ "usbd-serial",
+]
 
 [[package]]
 name = "imxrt-ral"
@@ -1289,6 +1316,8 @@ version = "0.1.0"
 dependencies = [
  "cortex-m",
  "embedded-hal 1.0.0",
+ "imxrt-log",
+ "log",
  "oc-core",
  "oc-drivers",
  "teensy4-bsp",
@@ -2014,6 +2043,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a2eb9349b6444b326872e140eb1cf5e7c522154d69e7a0ffb0fb81c06b37543f"
 
 [[package]]
+name = "static_cell"
+version = "2.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0530892bb4fa575ee0da4b86f86c667132a94b74bb72160f58ee5a4afec74c23"
+dependencies = [
+ "portable-atomic",
+]
+
+[[package]]
 name = "strsim"
 version = "0.11.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2099,9 +2137,12 @@ dependencies = [
 
 [[package]]
 name = "teensy4-panic"
-version = "0.2.3"
+version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7c733a579f17557d093df6714a57d61841e9cbaa222384ca7ee1fbb334888c20"
+checksum = "3d503b918cd7db4e1c1261bc80b0c992e0065369fc08e11fa66e281079c82c57"
+dependencies = [
+ "log",
+]
 
 [[package]]
 name = "teensy4-pins"
@@ -2366,6 +2407,18 @@ checksum = "98816b1accafbb09085168b90f27e93d790b4bfa19d883466b5e53315b5f06a6"
 dependencies = [
  "heapless",
  "portable-atomic",
+]
+
+[[package]]
+name = "usbd-serial"
+version = "0.2.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "065e4eaf93db81d5adac82d9cef8f8da314cb640fa7f89534b972383f1cf80fc"
+dependencies = [
+ "embedded-hal 0.2.7",
+ "embedded-io 0.6.1",
+ "nb 1.1.0",
+ "usb-device",
 ]
 
 [[package]]
