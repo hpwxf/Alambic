@@ -257,10 +257,27 @@ impl Display for MockDisplay {
 pub type MockEngine =
     Engine<MockAnalogIn, MockAnalogOut, MockDigitalIn, MockControls, VirtualClock, MockDisplay>;
 
-/// Builds an engine over the mock platform, with a clock that charges `cost`
-/// microseconds per reading.
+/// Builds an engine over the mock platform, past its boot splash screen,
+/// with a clock that charges `cost` microseconds per reading.
+///
+/// A real [`Engine::new`] always starts with the boot animation, which is
+/// what [`mock_engine_at_boot`] gives a test that actually wants to exercise
+/// it. Every other test in this workspace is about the diagnostic applet's
+/// steady-state behaviour, not about the few seconds of start-up before it,
+/// so this convenience calls [`Engine::skip_splash`] before handing the
+/// engine back.
 #[must_use]
 pub fn mock_engine(clock_read_cost_micros: u64) -> MockEngine {
+    let mut engine = mock_engine_at_boot(clock_read_cost_micros);
+    engine.skip_splash();
+    engine
+}
+
+/// Builds a genuinely fresh engine over the mock platform, boot splash
+/// screen included, with a clock that charges `cost` microseconds per
+/// reading.
+#[must_use]
+pub fn mock_engine_at_boot(clock_read_cost_micros: u64) -> MockEngine {
     Engine::new(
         MockAnalogIn::new(),
         MockAnalogOut::new(),

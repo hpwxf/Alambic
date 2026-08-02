@@ -191,6 +191,7 @@ Full protocol, per level, with exact commands and what each proves: see
 | Platform traits (`AnalogIn`, `Clock`, `Display`…) | `crates/oc-core/src/platform.rs` |
 | The main control loop                             | `crates/oc-core/src/engine.rs` |
 | The diagnostic applet's logic and rendering       | `crates/oc-core/src/app.rs` |
+| The boot splash screen (name/version, progressive border) | `crates/oc-core/src/splash.rs` |
 | ADC/DAC unit conversion and calibration           | `crates/oc-core/src/calibration.rs` |
 | Deterministic mocks used by every `oc-core` test  | `crates/oc-core/src/testing.rs` |
 | The pinout (the only file allowed to name a pin)  | `crates/oc-firmware/src/board.rs` |

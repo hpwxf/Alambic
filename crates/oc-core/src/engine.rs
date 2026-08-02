@@ -12,6 +12,7 @@ use crate::platform::{
     AnalogIn, AnalogOut, CV_CHANNELS, Clock, Controls, DigitalIn, Display, MilliVolts,
     TRIGGER_CHANNELS, TriggerChannel,
 };
+use crate::splash::SplashScreen;
 
 /// Upper bound reported for a tick duration, in microseconds.
 ///
@@ -55,6 +56,7 @@ pub struct Engine<A, O, D, C, K, S> {
     clock: K,
     display: S,
     app: DiagnosticApp,
+    splash: SplashScreen,
     tick_count: u64,
     previous_micros: Option<u64>,
     last_duration_micros: u32,
@@ -88,6 +90,7 @@ where
             clock,
             display,
             app: DiagnosticApp::new(),
+            splash: SplashScreen::new(),
             tick_count: 0,
             previous_micros: None,
             last_duration_micros: 0,
@@ -112,10 +115,21 @@ where
     }
 
     /// Runs one complete cycle: acquire, update, output, render.
+    ///
+    /// While the boot splash screen has not yet finished tracing its border
+    /// around the screen, this instead runs [`Self::tick_splash`]: the
+    /// diagnostic applet does not see any input and the outputs stay at
+    /// rest, so nothing downstream can react to a signal before the module
+    /// has visibly finished starting up.
     pub fn tick(&mut self) -> TickReport {
         let started = self.clock.now_micros();
         let elapsed = self.elapsed_since_previous(started);
         self.previous_micros = Some(started);
+        self.tick_count = self.tick_count.wrapping_add(1);
+
+        if !self.splash.is_done() {
+            return self.tick_splash(started, elapsed);
+        }
 
         let snapshot = self.acquire(elapsed);
         let outputs = self.app.update(&snapshot);
@@ -126,8 +140,6 @@ where
             }
         }
         self.analog_out.flush();
-
-        self.tick_count = self.tick_count.wrapping_add(1);
 
         self.ticks_since_render += 1;
         let rendered = self.ticks_since_render >= self.render_interval;
@@ -152,6 +164,66 @@ where
             cv_out: outputs,
             rendered,
         }
+    }
+
+    /// Runs one tick of the boot animation.
+    ///
+    /// Control input is drained so it is not replayed in one lump once the
+    /// diagnostic applet takes over, but otherwise ignored; the outputs stay
+    /// at rest and the animation is rendered on every tick, regardless of
+    /// [`Self::render_interval`], so the border traces smoothly.
+    fn tick_splash(&mut self, started: u64, elapsed: u32) -> TickReport {
+        let _ = self.controls.poll();
+        self.splash.advance(elapsed);
+
+        let outputs = [0; CV_CHANNELS];
+        for (index, &level) in outputs.iter().enumerate() {
+            if let Some(channel) = crate::platform::CvChannel::from_index(index) {
+                self.analog_out.write_cv(channel, level);
+            }
+        }
+        self.analog_out.flush();
+
+        self.splash.render(self.display.frame_mut());
+        self.display.present();
+
+        let duration = clamp_duration(self.clock.now_micros().wrapping_sub(started));
+        self.last_duration_micros = duration;
+
+        TickReport {
+            timestamp_micros: started,
+            elapsed_micros: elapsed,
+            duration_micros: duration,
+            tick_count: self.tick_count,
+            cv_out: outputs,
+            rendered: true,
+        }
+    }
+
+    /// Restarts the engine as if freshly powered on: the diagnostic applet's
+    /// state is discarded and the boot splash screen plays again before
+    /// normal execution resumes.
+    ///
+    /// This is what a host should call for its own "Initialize" action (VCV
+    /// Rack's `Module::onReset`, for instance), so the module confirms its
+    /// identity on screen the same way after a manual reset as after a power
+    /// cycle.
+    pub fn reset(&mut self) {
+        self.app = DiagnosticApp::new();
+        self.splash.reset();
+        self.tick_count = 0;
+        self.previous_micros = None;
+        self.last_duration_micros = 0;
+        self.ticks_since_render = 0;
+    }
+
+    /// Skips straight past the boot splash screen, as if it had already run
+    /// its course.
+    ///
+    /// Meant for hosts and tests that have no use for the boot animation;
+    /// production backends should let it play out instead.
+    pub const fn skip_splash(&mut self) {
+        self.splash.finish();
     }
 
     /// Samples every input.
@@ -231,6 +303,10 @@ fn clamp_duration(raw: u64) -> u32 {
 #[cfg(test)]
 mod tests {
     use super::{MAX_REPORTED_DURATION_MICROS, clamp_duration};
+    use crate::app::OutputMode;
+    use crate::platform::{CV_CHANNELS, CvChannel};
+    use crate::splash;
+    use crate::testing::mock_engine_at_boot;
 
     #[test]
     fn durations_are_clamped_to_something_believable() {
@@ -246,5 +322,83 @@ mod tests {
             MAX_REPORTED_DURATION_MICROS,
             "a stalled tick is reported as the ceiling, not as-is"
         );
+    }
+
+    #[test]
+    fn a_freshly_built_engine_boots_into_the_splash_screen() {
+        let mut engine = mock_engine_at_boot(0);
+        {
+            let (analog_in, ..) = engine.parts_mut();
+            analog_in.patch(CvChannel::Two, 4_000);
+        }
+
+        let report = engine.tick();
+        assert_eq!(
+            report.cv_out, [0; CV_CHANNELS],
+            "outputs stay at rest during the boot animation"
+        );
+        assert!(report.rendered);
+        assert!(
+            engine.frame().lit_pixels() > 0,
+            "the banner must be visible on the very first frame"
+        );
+    }
+
+    #[test]
+    fn normal_execution_starts_once_the_splash_screen_is_done() {
+        let mut engine = mock_engine_at_boot(0);
+        {
+            let (analog_in, ..) = engine.parts_mut();
+            analog_in.patch(CvChannel::Two, 4_000);
+        }
+
+        // Run comfortably past the end of the boot animation.
+        let ticks = splash::DURATION_MICROS / 1_000 + 2;
+        for _ in 0..ticks {
+            engine.clock().advance(1_000);
+            engine.tick();
+        }
+
+        engine.clock().advance(1_000);
+        let report = engine.tick();
+
+        assert_eq!(
+            report.cv_out[1], 4_000,
+            "once booted, inputs must reach the matching output again"
+        );
+        assert_eq!(engine.app().mode(), OutputMode::Offset);
+    }
+
+    #[test]
+    fn resetting_the_engine_replays_the_splash_screen() {
+        let mut engine = mock_engine_at_boot(0);
+        let ticks = splash::DURATION_MICROS / 1_000 + 2;
+        for _ in 0..ticks {
+            engine.clock().advance(1_000);
+            engine.tick();
+        }
+        assert_eq!(engine.tick_count(), u64::from(ticks));
+
+        engine.reset();
+        assert_eq!(engine.tick_count(), 0);
+
+        let report = engine.tick();
+        assert_eq!(
+            report.cv_out, [0; CV_CHANNELS],
+            "a reset engine boots again before resuming normal execution"
+        );
+    }
+
+    #[test]
+    fn skip_splash_bypasses_the_boot_animation() {
+        let mut engine = mock_engine_at_boot(0);
+        engine.skip_splash();
+        {
+            let (analog_in, ..) = engine.parts_mut();
+            analog_in.patch(CvChannel::Two, 1_500);
+        }
+
+        let report = engine.tick();
+        assert_eq!(report.cv_out[1], 1_500);
     }
 }

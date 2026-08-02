@@ -14,7 +14,7 @@ use oc_core::framebuffer::FrameBuffer;
 use oc_core::platform::{
     BUTTONS, Button, CV_CHANNELS, CvChannel, MilliVolts, TRIGGER_CHANNELS, TriggerChannel,
 };
-use oc_core::testing::{MockEngine, mock_engine};
+use oc_core::testing::{MockEngine, mock_engine_at_boot};
 
 use crate::clock::TICK_MICROS;
 use crate::scenario::{Event, Scenario};
@@ -44,17 +44,42 @@ pub struct Simulator {
 }
 
 impl Simulator {
-    /// A module with every input at rest.
+    /// A module with every input at rest, freshly powered on: it boots into
+    /// the same splash screen (name, version and a border tracing itself
+    /// around the screen) as the firmware and the VCV Rack module, before
+    /// [`Self::step`] starts reaching the diagnostic applet.
     #[must_use]
     pub fn new() -> Self {
         Self {
-            engine: mock_engine(TICK_COST_MICROS),
+            engine: mock_engine_at_boot(TICK_COST_MICROS),
             tick: 0,
             button_hold: [0; BUTTONS],
             trigger_hold: [0; TRIGGER_CHANNELS],
             recording: None,
             last_report: None,
         }
+    }
+
+    /// Skips straight past the boot splash screen, as if it had already run
+    /// its course.
+    ///
+    /// Meant for tests that exercise the applet's steady-state behaviour
+    /// directly, without waiting out the animation the way a real module or
+    /// an interactive session would; production code should let it play.
+    pub fn skip_splash(&mut self) {
+        self.engine.skip_splash();
+    }
+
+    /// Restarts the module as if freshly powered on: the diagnostic applet's
+    /// state is discarded and the boot splash screen plays again before
+    /// normal execution resumes.
+    ///
+    /// This is the simulator's equivalent of a host's "Initialize" action
+    /// (VCV Rack's `Module::onReset`, wired to `oc_engine_reset`), so it
+    /// exercises exactly the same [`Engine::reset`](oc_core::Engine::reset)
+    /// path.
+    pub fn reset(&mut self) {
+        self.apply(Event::Reset);
     }
 
     /// Starts recording every applied event into a fresh scenario.
@@ -81,6 +106,14 @@ impl Simulator {
             scenario.push(self.tick, event);
         }
 
+        if matches!(event, Event::Reset) {
+            self.engine.reset();
+            // A power cycle leaves no momentary press half-completed.
+            self.button_hold = [0; BUTTONS];
+            self.trigger_hold = [0; TRIGGER_CHANNELS];
+            return;
+        }
+
         let (analog_in, _, digital_in, controls, _) = self.engine.parts_mut();
         match event {
             Event::Cv {
@@ -103,6 +136,7 @@ impl Simulator {
             }
             Event::Encoder { index, detents } => controls.turn(index, detents),
             Event::Button { button, down } => controls.hold(button, down),
+            Event::Reset => unreachable!("handled above, before borrowing the engine's parts"),
         }
     }
 
@@ -253,6 +287,7 @@ mod tests {
     #[test]
     fn a_pulse_is_counted_as_one_trigger_event() {
         let mut simulator = Simulator::new();
+        simulator.skip_splash();
         simulator.pulse(TriggerChannel::One);
         simulator.step_many(u64::from(PRESS_TICKS) + 4);
 
@@ -266,6 +301,7 @@ mod tests {
     #[test]
     fn two_pulses_are_counted_separately() {
         let mut simulator = Simulator::new();
+        simulator.skip_splash();
         for _ in 0..2 {
             simulator.pulse(TriggerChannel::Three);
             simulator.step_many(u64::from(PRESS_TICKS) + 4);
@@ -276,6 +312,7 @@ mod tests {
     #[test]
     fn a_press_survives_debouncing_and_is_released() {
         let mut simulator = Simulator::new();
+        simulator.skip_splash();
         simulator.apply(Event::Encoder {
             index: 1,
             detents: 5,
@@ -295,6 +332,7 @@ mod tests {
     #[test]
     fn a_cv_level_reaches_the_matching_output() {
         let mut simulator = Simulator::new();
+        simulator.skip_splash();
         simulator.apply(Event::Cv {
             channel: 1,
             millivolts: -1_500,
@@ -308,6 +346,7 @@ mod tests {
     #[test]
     fn out_of_range_indices_are_ignored() {
         let mut simulator = Simulator::new();
+        simulator.skip_splash();
         simulator.apply(Event::Cv {
             channel: 99,
             millivolts: 1_000,
@@ -342,6 +381,7 @@ ticks 40
 
         let run = || {
             let mut simulator = Simulator::new();
+            simulator.skip_splash();
             simulator.replay(&scenario);
             (simulator.frame().clone(), simulator.cv_out())
         };
@@ -352,6 +392,7 @@ ticks 40
     #[test]
     fn recording_captures_what_was_applied() {
         let mut simulator = Simulator::new();
+        simulator.skip_splash();
         simulator.start_recording();
         assert!(simulator.is_recording());
 
@@ -391,6 +432,7 @@ ticks 40
     #[test]
     fn a_recording_replays_to_the_same_state() {
         let mut original = Simulator::new();
+        original.skip_splash();
         original.start_recording();
         original.apply(Event::Cv {
             channel: 2,
@@ -402,6 +444,7 @@ ticks 40
         let scenario = original.stop_recording().unwrap();
 
         let mut replayed = Simulator::new();
+        replayed.skip_splash();
         replayed.replay(&scenario);
 
         assert_eq!(replayed.cv_out(), original.cv_out());
@@ -411,11 +454,57 @@ ticks 40
     #[test]
     fn the_reported_cycle_time_is_plausible() {
         let mut simulator = Simulator::new();
+        simulator.skip_splash();
         let report = simulator.step();
         assert!(
             report.duration_micros > 0 && report.duration_micros < 1_000,
             "a simulated tick must fit in the 1 kHz budget, got {}",
             report.duration_micros
+        );
+    }
+
+    #[test]
+    fn a_fresh_simulator_boots_into_the_splash_screen() {
+        let mut simulator = Simulator::new();
+        simulator.apply(Event::Cv {
+            channel: 1,
+            millivolts: 4_000,
+        });
+        simulator.step();
+
+        assert_eq!(
+            simulator.cv_out(),
+            [0; 4],
+            "outputs stay at rest during the boot animation"
+        );
+        assert!(
+            simulator.frame().lit_pixels() > 0,
+            "the banner must be visible on the very first frame"
+        );
+    }
+
+    #[test]
+    fn resetting_replays_the_splash_screen_and_clears_the_applet() {
+        let mut simulator = Simulator::new();
+        simulator.skip_splash();
+        simulator.apply(Event::Encoder {
+            index: 1,
+            detents: 5,
+        });
+        simulator.step();
+        assert_ne!(simulator.app().offset(), 0);
+
+        simulator.reset();
+        assert_eq!(
+            simulator.app().offset(),
+            0,
+            "reset restores the default applet state"
+        );
+
+        let report = simulator.step();
+        assert_eq!(
+            report.cv_out, [0; 4],
+            "a reset module boots again before resuming normal execution"
         );
     }
 }

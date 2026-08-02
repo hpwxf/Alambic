@@ -37,6 +37,9 @@ fn replay(name: &str) -> Simulator {
         .unwrap_or_else(|error| panic!("cannot parse {}: {error:#}", path.display()));
 
     let mut simulator = Simulator::new();
+    // These fixtures predate the boot splash screen and exercise the
+    // applet's steady-state behaviour directly, so start past it.
+    simulator.skip_splash();
     simulator.replay(&scenario);
     assert_eq!(
         simulator.tick_count(),

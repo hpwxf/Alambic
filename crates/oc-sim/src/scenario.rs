@@ -64,6 +64,9 @@ pub enum Event {
         /// Whether it is held down.
         down: bool,
     },
+    /// Restart the module as if freshly powered on: the applet's state is
+    /// discarded and the boot splash screen plays again.
+    Reset,
 }
 
 /// Name used for a button in the text format.
@@ -129,6 +132,9 @@ impl Event {
                 let state = if down { "down" } else { "up" };
                 let _ = write!(out, "button {} {state}", button_name(button));
             }
+            Self::Reset => {
+                let _ = write!(out, "reset");
+            }
         }
     }
 
@@ -161,6 +167,7 @@ impl Event {
                 button: parse_button(name)?,
                 down: parse_state(state)?,
             },
+            ("reset", []) => Self::Reset,
             (kind, arguments) => {
                 bail!(
                     "unknown event {kind:?} with {} argument(s)",
@@ -308,6 +315,7 @@ mod tests {
                 down: true,
             },
         );
+        scenario.push(30, Event::Reset);
 
         let text = scenario.to_string();
         let parsed: Scenario = text.parse().expect("the rendered scenario must parse");
@@ -373,6 +381,14 @@ mod tests {
     #[test]
     fn a_missing_argument_is_rejected() {
         assert!("0 cv 1".parse::<Scenario>().is_err());
+    }
+
+    #[test]
+    fn a_reset_event_takes_no_arguments() {
+        let scenario: Scenario = "3 reset".parse().unwrap();
+        assert_eq!(scenario.events, vec![(3, Event::Reset)]);
+
+        assert!("3 reset now".parse::<Scenario>().is_err());
     }
 
     #[test]

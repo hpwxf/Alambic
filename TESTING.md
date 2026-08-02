@@ -196,8 +196,11 @@ cargo run -p oc-sim
 
 Useful to explore behaviour interactively before committing it as a scenario,
 and to sanity-check the TUI itself, which the scenario tests do not exercise
-(they call the simulator's engine directly). Full key map in `README.md`
-("The simulator"); the essentials:
+(they call the simulator's engine directly). Like the firmware and the VCV
+Rack module, the simulator boots into the boot splash screen before the
+diagnostic applet takes over — confirm the name/version banner and the border
+tracing itself around the screen, the same thing 9.1 checks on real hardware.
+Full key map in `README.md` ("The simulator"); the essentials:
 
 | Key             | Action                                     |
 |-----------------|---------------------------------------------|
@@ -207,6 +210,7 @@ and to sanity-check the TUI itself, which the scenario tests do not exercise
 | `z x c v`       | pulse triggers 1–4                         |
 | `[` `]` `,` `.` | turn the left / right encoder              |
 | `1` `2` `3`     | paused / real time / 50× virtual clock     |
+| `r`             | reset the module (replays the boot splash) |
 | `?`             | show the key map                           |
 
 **Proves:** the module is usable and legible end to end from a human's
@@ -329,10 +333,14 @@ SSD1309. Follow it in order; each step assumes the previous one succeeded.
 
 1. `cargo xtask flash --dry-run` first, read the printed facts, then
    `cargo xtask flash` for real.
-2. Power the module (Eurorack rail or USB). Expect the OLED to show the
-   diagnostic screen within roughly one second: a banner row
-   (`O&C Rust vX.Y.Z`), four channel rows, a mode row, an output row, and a
-   tick counter that increments continuously.
+2. Power the module (Eurorack rail or USB). Expect the OLED to first show the
+   boot splash screen for about 1.5 seconds: the name and version
+   (`O&C Rust vX.Y.Z`) centred on screen, with a one-pixel border tracing
+   itself clockwise all the way around the edge. Once the border completes
+   its loop, the screen switches to the diagnostic screen: a banner row, four
+   channel rows, a mode row, an output row, and a tick counter that
+   increments continuously. No input is processed and the outputs stay at
+   0 V for the duration of the splash screen (`oc_core::Engine::tick`).
 3. **If the screen stays blank**, this is the expected symptom of an OLED
    controller mismatch (`README.md`, *Before the first flash*). The `ssd1309`
    Cargo feature on `oc-firmware` selects the other controller, but note that

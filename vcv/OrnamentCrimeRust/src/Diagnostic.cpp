@@ -126,6 +126,28 @@ struct Diagnostic : Module {
         oc_engine_free(engine);
     }
 
+    // Rack's "Initialize" action (right-click menu, or Ctrl+I). The default
+    // implementation resets every parameter to its configured default, which
+    // is still wanted here (it puts the encoders/buttons back at rest), so it
+    // is called before handing off to the engine, which replays its own boot
+    // splash screen (name, version, and the border tracing itself around the
+    // screen) before resuming normal execution -- exactly what a power cycle
+    // would show.
+    void onReset(const ResetEvent &e) override {
+        Module::onReset(e);
+        oc_engine_reset(engine);
+
+        // The knob-as-encoder tracking below is this widget's own state, not
+        // a Rack parameter, so `Module::onReset` above cannot touch it; left
+        // stale, the next process() call would see a jump from the old knob
+        // reading to its just-reset default and report a spurious detent
+        // burst.
+        for (int index = 0; index < kEncoders; ++index) {
+            encoderPrev[index] = 0.f;
+            encoderRemainder[index] = 0.f;
+        }
+    }
+
     // Converts a knob's movement since the last call into whole detents,
     // carrying the fractional remainder forward so it is never lost.
     int8_t encoderDelta(int index, float value) {

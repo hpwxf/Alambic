@@ -42,12 +42,14 @@ pub mod fmt;
 pub mod framebuffer;
 pub mod platform;
 pub mod signal;
+pub mod splash;
 pub mod testing;
 
 pub use app::{DiagnosticApp, InputSnapshot, OutputMode, TickContext};
 pub use engine::{Engine, TickReport};
 pub use framebuffer::FrameBuffer;
 pub use platform::MilliVolts;
+pub use splash::SplashScreen;
 
 /// Human-readable firmware identification, emitted on boot and shown on screen.
 pub const BANNER: &str = concat!("O&C Rust v", env!("CARGO_PKG_VERSION"));

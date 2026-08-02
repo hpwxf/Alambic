@@ -247,6 +247,36 @@ pub unsafe extern "C" fn oc_engine_button(engine: *mut OcEngine, index: u8, pres
     }));
 }
 
+/// Restarts the engine as if freshly powered on: the diagnostic applet's
+/// state is discarded and the module's boot splash screen (name, version and
+/// a border tracing itself around the screen) plays again before normal
+/// execution resumes.
+///
+/// This is the ABI entry point a plugin should call from its own
+/// "Initialize" action, e.g. VCV Rack's `Module::onReset`, so that manually
+/// resetting the module shows the same boot sequence as a fresh instance.
+/// The cached CV outputs and framebuffer are cleared immediately so a caller
+/// that reads them before the next [`oc_engine_tick`] sees a module at rest
+/// rather than stale, pre-reset values.
+///
+/// A null `engine` is a no-op.
+///
+/// # Safety
+///
+/// `engine`, if non-null, must point to a live [`OcEngine`].
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn oc_engine_reset(engine: *mut OcEngine) {
+    let _ = catch_unwind(AssertUnwindSafe(move || {
+        // SAFETY: see the function's own safety contract.
+        let Some(engine) = (unsafe { as_mut(engine) }) else {
+            return;
+        };
+        engine.engine.reset();
+        engine.cv_out = [0; CV_CHANNELS];
+        engine.framebuffer = [0; FRAMEBUFFER_LEN];
+    }));
+}
+
 /// Runs one complete tick at the given timestamp and caches its CV outputs
 /// and rendered framebuffer for [`oc_engine_cv_out`] and
 /// [`oc_engine_framebuffer`].
@@ -411,13 +441,25 @@ pub fn core_banner() -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::{
-        as_mut, oc_engine_button, oc_engine_buttons, oc_engine_cv_channels, oc_engine_cv_out,
-        oc_engine_encoder, oc_engine_encoders, oc_engine_framebuffer, oc_engine_framebuffer_len,
-        oc_engine_free, oc_engine_new, oc_engine_set_cv_in, oc_engine_set_trigger, oc_engine_tick,
-        oc_engine_trigger_channels,
+        OcEngine, as_mut, oc_engine_button, oc_engine_buttons, oc_engine_cv_channels,
+        oc_engine_cv_out, oc_engine_encoder, oc_engine_encoders, oc_engine_framebuffer,
+        oc_engine_framebuffer_len, oc_engine_free, oc_engine_new, oc_engine_reset,
+        oc_engine_set_cv_in, oc_engine_set_trigger, oc_engine_tick, oc_engine_trigger_channels,
     };
     use oc_core::framebuffer::LEN;
     use oc_core::platform::{BUTTONS, CV_CHANNELS, ENCODERS, TRIGGER_CHANNELS};
+    use oc_core::splash::DURATION_MICROS;
+
+    /// Ticks `engine` comfortably past the end of the boot splash screen, so
+    /// a test can exercise steady-state applet behaviour on the very next
+    /// tick instead of waiting out the real animation.
+    fn skip_boot(engine: *mut OcEngine) {
+        let ticks = DURATION_MICROS / 1_000 + 2;
+        for step in 0..u64::from(ticks) {
+            // SAFETY: `engine` is live for the duration of the calling test.
+            unsafe { oc_engine_tick(engine, (step + 1) * 1_000) };
+        }
+    }
 
     #[test]
     fn banner_matches_the_core() {
@@ -459,13 +501,52 @@ mod tests {
     #[test]
     fn cv_in_passes_through_to_cv_out_after_a_tick() {
         let engine = oc_engine_new();
+        skip_boot(engine);
         // SAFETY: `engine` is live for the duration of this test.
         unsafe {
             oc_engine_set_cv_in(engine, 1, 2_500, true);
-            oc_engine_tick(engine, 1_000);
+            oc_engine_tick(engine, u64::from(DURATION_MICROS) * 2);
             assert_eq!(oc_engine_cv_out(engine, 1), 2_500);
             oc_engine_free(engine);
         }
+    }
+
+    #[test]
+    fn resetting_the_engine_replays_the_boot_splash_screen() {
+        let engine = oc_engine_new();
+        skip_boot(engine);
+        // SAFETY: `engine` is live for the duration of this test.
+        unsafe {
+            oc_engine_set_cv_in(engine, 1, 2_500, true);
+            oc_engine_tick(engine, u64::from(DURATION_MICROS) * 2);
+            assert_eq!(
+                oc_engine_cv_out(engine, 1),
+                2_500,
+                "steady state before the reset"
+            );
+
+            oc_engine_reset(engine);
+            assert_eq!(
+                oc_engine_cv_out(engine, 1),
+                0,
+                "the cached outputs are cleared immediately by the reset"
+            );
+
+            oc_engine_tick(engine, u64::from(DURATION_MICROS) * 2 + 1_000);
+            assert_eq!(
+                oc_engine_cv_out(engine, 1),
+                0,
+                "a reset engine must boot again before resuming normal execution"
+            );
+
+            oc_engine_free(engine);
+        }
+    }
+
+    #[test]
+    fn a_null_engine_is_a_no_op_for_reset() {
+        // SAFETY: `oc_engine_reset`'s own contract allows a null pointer.
+        unsafe { oc_engine_reset(std::ptr::null_mut()) };
     }
 
     #[test]

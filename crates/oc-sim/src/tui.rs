@@ -46,7 +46,8 @@ const BAR_WIDTH: i32 = 20;
 /// The key map, shown in the status bar on demand.
 const KEY_MAP: &str = concat!(
     "TAB focus  <-/-> level  p patch  zxcv pulse  ZXCV gate  ",
-    "[ ] , . encoders  ENTER/b press  up/down mode  1/2/3 speed  SPACE step  q quit"
+    "[ ] , . encoders  ENTER/b press  up/down mode  1/2/3 speed  SPACE step  ",
+    "r reset  q quit"
 );
 
 /// The interactive simulator session.
@@ -190,9 +191,18 @@ impl Tui {
                 self.status = format!("stepped to tick {}", self.simulator.tick_count());
             }
 
+            KeyCode::Char('r') => self.reset(),
+
             KeyCode::Char('?') => KEY_MAP.clone_into(&mut self.status),
             _ => {}
         }
+    }
+
+    /// Restarts the module as if freshly powered on: the applet's state is
+    /// discarded and the boot splash screen plays again.
+    fn reset(&mut self) {
+        self.simulator.reset();
+        "module reset: booting again".clone_into(&mut self.status);
     }
 
     /// Changes the run speed.
@@ -276,11 +286,18 @@ impl Tui {
             Layout::vertical([Constraint::Min(0), Constraint::Length(3)]).areas(frame.area());
         let [inputs, module] =
             Layout::horizontal([Constraint::Length(34), Constraint::Min(0)]).areas(main);
-        let [screen, outputs] = Layout::vertical([
+        let [screen_row, outputs] = Layout::vertical([
             Constraint::Length(u16::try_from(braille::LINES).unwrap_or(16) + 2),
             Constraint::Min(0),
         ])
         .areas(module);
+        // The module screen is a fixed 128x64 OLED (64x16 braille characters):
+        // it never grows past that, however much room the terminal offers.
+        let [screen, _] = Layout::horizontal([
+            Constraint::Length(u16::try_from(braille::COLUMNS).unwrap_or(64) + 2),
+            Constraint::Min(0),
+        ])
+        .areas(screen_row);
 
         self.draw_inputs(frame, inputs);
         self.draw_screen(frame, screen);
@@ -474,9 +491,44 @@ pub fn replay_headless(path: &std::path::Path) -> Result<String> {
 
 #[cfg(test)]
 mod tests {
+    use ratatui::Terminal;
+    use ratatui::backend::TestBackend;
+
     use oc_core::calibration::{CV_IN_MAX_MV, CV_IN_MIN_MV};
 
-    use super::bar;
+    use super::{Tui, bar};
+    use crate::braille;
+
+    /// Renders `tui` into a terminal of the given size and returns the
+    /// width, in columns, of the module screen panel's border on its first
+    /// row: from where it starts (right of the fixed-width inputs column)
+    /// to its top-right corner (`'┐'`).
+    fn rendered_screen_panel_width(tui: &mut Tui, terminal_width: u16) -> u16 {
+        let mut terminal = Terminal::new(TestBackend::new(terminal_width, 40)).unwrap();
+        terminal.draw(|frame| tui.draw(frame)).unwrap();
+
+        let buffer = terminal.backend().buffer();
+        let inputs_width = 34;
+        let corner = (inputs_width..terminal_width)
+            .find(|&x| buffer.cell((x, 0)).is_some_and(|cell| cell.symbol() == "┐"))
+            .expect("the module screen panel must have a top-right corner");
+        corner + 1 - inputs_width
+    }
+
+    #[test]
+    fn the_module_screen_panel_keeps_its_128x64_size_however_wide_the_terminal_is() {
+        let expected_width = u16::try_from(braille::COLUMNS).unwrap_or(64) + 2;
+
+        for terminal_width in [100, 160, 220] {
+            let mut tui = Tui::new();
+            tui.simulator.skip_splash();
+            assert_eq!(
+                rendered_screen_panel_width(&mut tui, terminal_width),
+                expected_width,
+                "terminal width {terminal_width}"
+            );
+        }
+    }
 
     #[test]
     fn the_bar_is_empty_at_the_bottom_of_the_range() {

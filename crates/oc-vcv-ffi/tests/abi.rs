@@ -7,12 +7,24 @@
 
 use oc_core::framebuffer::LEN as FRAMEBUFFER_LEN;
 use oc_core::platform::{BUTTONS, CV_CHANNELS, ENCODERS, TRIGGER_CHANNELS};
+use oc_core::splash::DURATION_MICROS;
 use oc_vcv_ffi::{
-    oc_engine_button, oc_engine_buttons, oc_engine_cv_channels, oc_engine_cv_out,
+    OcEngine, oc_engine_button, oc_engine_buttons, oc_engine_cv_channels, oc_engine_cv_out,
     oc_engine_encoder, oc_engine_encoders, oc_engine_framebuffer, oc_engine_framebuffer_len,
     oc_engine_free, oc_engine_new, oc_engine_set_cv_in, oc_engine_set_trigger, oc_engine_tick,
     oc_engine_trigger_channels,
 };
+
+/// Ticks `engine` comfortably past the end of the boot splash screen, so a
+/// test can exercise steady-state applet behaviour on the very next tick
+/// instead of waiting out the real animation.
+fn skip_boot(engine: *mut OcEngine) {
+    let ticks = DURATION_MICROS / 1_000 + 2;
+    for step in 0..u64::from(ticks) {
+        // SAFETY: `engine` is live for the duration of the calling test.
+        unsafe { oc_engine_tick(engine, (step + 1) * 1_000) };
+    }
+}
 
 /// Every function that takes an `engine` pointer must survive a null one.
 ///
@@ -105,11 +117,14 @@ fn two_engines_are_independent() {
     // channel (0 by default) emits the dialled offset rather than mirroring
     // its input, so only the non-selected channels pass their CV straight
     // through (see `OutputMode::Offset` in `oc_core::app`).
+    skip_boot(first);
+    skip_boot(second);
+
     // SAFETY: both pointers are live for the duration of this test.
     unsafe {
         oc_engine_set_cv_in(first, 1, 4_000, true);
-        oc_engine_tick(first, 1_000);
-        oc_engine_tick(second, 1_000);
+        oc_engine_tick(first, u64::from(DURATION_MICROS) * 2);
+        oc_engine_tick(second, u64::from(DURATION_MICROS) * 2);
 
         assert_eq!(oc_engine_cv_out(first, 1), 4_000);
         assert_eq!(oc_engine_cv_out(second, 1), 0);

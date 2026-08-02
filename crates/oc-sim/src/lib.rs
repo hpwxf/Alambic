@@ -18,6 +18,7 @@
 //!
 //! let scenario: Scenario = "ticks 10\n0 cv 2 -1500\n".parse().unwrap();
 //! let mut simulator = Simulator::new();
+//! simulator.skip_splash(); // start past the boot splash screen
 //! simulator.replay(&scenario);
 //!
 //! // Channel two mirrors its input on the matching output.

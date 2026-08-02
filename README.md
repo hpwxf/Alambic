@@ -59,7 +59,13 @@ of trigger edges counted, plus the tick duration and count.
 
 `cargo run -p oc-sim` opens a terminal interface running the real `oc-core`
 engine against an in-memory platform. The module's 128x64 screen is drawn with
-braille characters, so every pixel stays individually visible.
+braille characters, so every pixel stays individually visible; the "module
+screen" panel keeps this fixed 128x64 size (64x16 characters) regardless of
+how wide the terminal is. Like the firmware and the VCV Rack module, the
+simulator boots into the boot splash screen (name, version and a border
+tracing itself around the screen) before the diagnostic applet takes over,
+and `r` replays that same boot sequence at any time, exactly like a host's
+"Initialize" action.
 
 | Key            | Action                                            |
 |----------------|---------------------------------------------------|
@@ -75,6 +81,7 @@ braille characters, so every pixel stays individually visible.
 | `↑` / `↓`      | the module's up / down buttons                    |
 | `1` `2` `3`    | paused, real time, 50x                            |
 | `Space`        | run a single tick while paused                    |
+| `r`            | reset the module (replays the boot splash screen) |
 | `?`            | show the key map                                  |
 | `q` / `Esc`    | quit                                              |
 
@@ -202,7 +209,12 @@ index, and no Rust panic is allowed to unwind across the boundary). The C++
 side, `vcv/OrnamentCrimeRust`, is a thin shim required by the Rack SDK: module
 declaration, port/param mapping, and a widget that reads the framebuffer —
 **no behaviour lives there**. The whole point is that the module inside VCV
-Rack runs the exact same `oc-core` engine as the firmware and the simulator.
+Rack runs the exact same `oc-core` engine as the firmware and the simulator,
+right down to the boot sequence: a freshly constructed engine (`Diagnostic()`)
+and Rack's own "Initialize" action (`Diagnostic::onReset`, wired to
+`oc_engine_reset`) both show the same splash screen — the module's name and
+version centred on the screen, with a one-pixel border tracing itself around
+the edge — before the diagnostic screen takes over.
 
 Building it needs a [Rack SDK](https://vcvrack.com/downloads) (not the full
 Rack source) matching your platform, extracted anywhere:
