@@ -70,6 +70,14 @@ pub(crate) struct BuildArgs {
     /// Cargo profile to build with.
     #[arg(long, value_enum, default_value_t = Profile::Release)]
     profile: Profile,
+
+    /// Comma-separated Cargo features to enable on `oc-firmware`
+    /// (e.g. `ssd1306` or `ssd1309` for non-stock OLED controllers).
+    ///
+    /// Accepts repeated flags or a single comma-separated list, matching
+    /// `cargo build --features`.
+    #[arg(long, short = 'F', value_delimiter = ',')]
+    features: Vec<String>,
 }
 
 /// Cargo profile used for firmware builds.
@@ -130,6 +138,6 @@ fn main() -> Result<()> {
 
 /// Cross-compiles the firmware and returns the resulting artifact paths.
 fn build_firmware(args: &BuildArgs) -> Result<FirmwareArtifact> {
-    cargo::build_firmware(args.profile)?;
+    cargo::build_firmware(args.profile, &args.features)?;
     FirmwareArtifact::locate(args.profile)
 }

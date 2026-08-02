@@ -31,7 +31,7 @@ pub(crate) struct FlashArgs {
 /// Builds, validates and (unless `--dry-run`) flashes the firmware.
 pub(crate) fn flash(args: &FlashArgs) -> Result<()> {
     let artifact = {
-        cargo::build_firmware(args.build.profile)?;
+        cargo::build_firmware(args.build.profile, &args.build.features)?;
         FirmwareArtifact::locate(args.build.profile)?
     };
 

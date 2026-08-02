@@ -181,11 +181,8 @@ Full protocol, per level, with exact commands and what each proves: see
   implemented.
 * **The firmware has never run on real hardware.** Calibration slopes and
   the OLED controller choice (SH1106 default vs `--features ssd1306`/`ssd1309`) are
-  unverified; see `TESTING.md` Level 9.
-* **`cargo xtask` does not forward extra Cargo `--features`** to its
-  internal `build_firmware` call (`xtask/src/cargo.rs`); switching the OLED
-  controller for a one-off test currently requires a manual `cargo build`
-  outside the `xtask` gate (see `TESTING.md`, Level 9.1).
+  unverified; see `TESTING.md` Level 9. OLED overrides go through the normal
+  gate: `cargo xtask build|size|hex|flash --features ssd1306` (or `ssd1309`).
 
 ## Where things live (quick index)
 

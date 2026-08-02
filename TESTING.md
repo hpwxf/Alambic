@@ -262,13 +262,19 @@ eventually, a Renode smoke test — see *Open items*) does that.
 cargo xtask build     # cross-compile for thumbv7em-none-eabihf
 cargo xtask size      # selective llvm-size table + layout checklist
 cargo xtask hex       # dist/oc-firmware.hex
+
+# Optional OLED controller override (stock O&C is SH1106, the default):
+cargo xtask build --features ssd1306
+cargo xtask hex -F ssd1309
 ```
 
 `oc-firmware` is excluded from `default-members`, so these are the only
 supported ways to produce and inspect it (see `AGENTS.md`); a bare `cargo
-build`/`cargo test`/`cargo clippy` never touches ARM code. There is
-deliberately no unit test *in* `oc-firmware` — its coverage comes entirely
-from `oc-core` and `oc-drivers`, which is why Levels 1 and 2 exist.
+build`/`cargo test`/`cargo clippy` never touches ARM code. `build`/`size`/
+`hex`/`flash` all accept `--features`/`-F` and forward it to the nested
+Cargo invocation (comma-separated or repeated). There is deliberately no
+unit test *in* `oc-firmware` — its coverage comes entirely from `oc-core`
+and `oc-drivers`, which is why Levels 1 and 2 exist.
 
 `cargo xtask size` no longer dumps a raw `llvm-size` total (that figure mixes
 in DWARF and RAM reservations and is not flash size). It runs
@@ -400,15 +406,13 @@ SSD1306, or SSD1309. Follow it in order; each step assumes the previous one succ
    `oled init failed`, this is the expected symptom of an OLED controller
    mismatch or a bus/wiring fault (`README.md`, *Before the first flash*).
    Stock O&C is SH1106 (the firmware default). The `ssd1306` / `ssd1309`
-   Cargo features select the other controllers for third-party panels. Note
-   that `cargo xtask` does not yet forward extra `--features` to its internal
-   build (`xtask/src/cargo.rs`, `build_firmware`) — build and package the HEX
-   by hand for an override, then flash it directly:
+   Cargo features select the other controllers for third-party panels.
+   Forward them through the normal xtask gate (build, hex, and flash all
+   accept `--features`/`-F`):
 
    ```sh
-   cargo build -p oc-firmware --target thumbv7em-none-eabihf --release --features ssd1306
-   # or: --features ssd1309
-   # convert with the same llvm-objcopy xtask uses.
+   cargo xtask flash --features ssd1306
+   # or: cargo xtask flash -F ssd1309
    ```
 
    If a non-default controller makes the screen legible, update

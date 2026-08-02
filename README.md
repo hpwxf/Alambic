@@ -167,6 +167,10 @@ cargo run -p oc-sim     # simulator
 cargo xtask build       # cross-compile the firmware (release)
 cargo xtask size        # selective section table + layout checklist
 cargo xtask hex         # dist/oc-firmware.hex
+
+# OLED controller override (stock O&C is SH1106):
+cargo xtask build --features ssd1306
+cargo xtask hex -F ssd1309
 ```
 
 ### Why the firmware is not in `default-members`
@@ -283,8 +287,8 @@ being trusted:
 * **the calibration slopes.** Both the input and the output stage invert, which
   `crates/oc-firmware/src/board.rs` expresses as negative slopes, but the exact
   gain and offset are per-unit properties.
-* **the OLED controller.** SH1106 is assumed (stock O&C); build with `--features ssd1306` or `--features ssd1309`
-  if the screen stays blank.
+* **the OLED controller.** SH1106 is assumed (stock O&C); build or flash with
+  `cargo xtask … --features ssd1306` or `--features ssd1309` if the screen stays blank.
 
 The pinout itself is in one reviewed table in `crates/oc-firmware/src/board.rs`,
 which is the only file allowed to name a pin. Note that the firmware drives
