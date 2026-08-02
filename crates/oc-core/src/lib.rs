@@ -52,7 +52,7 @@ pub use platform::MilliVolts;
 pub use splash::SplashScreen;
 
 /// Human-readable firmware identification, emitted on boot and shown on screen.
-pub const BANNER: &str = concat!("O&C Rust v", env!("CARGO_PKG_VERSION"));
+pub const BANNER: &str = concat!("O&C Alambic v", env!("CARGO_PKG_VERSION"));
 
 #[cfg(test)]
 mod tests {
@@ -60,6 +60,6 @@ mod tests {
 
     #[test]
     fn banner_is_identifiable() {
-        assert!(BANNER.starts_with("O&C Rust v"));
+        assert!(BANNER.starts_with("O&C Alambic v"));
     }
 }

@@ -310,7 +310,7 @@ impl DiagnosticApp {
             let _ = Text::with_baseline(line.as_str(), top_left, style, Baseline::Top).draw(frame);
         };
 
-        let _ = write!(line, "{} {:>5}us", crate::BANNER, context.duration_micros);
+        let _ = write!(line, "{}{:>5}us", crate::BANNER, context.duration_micros);
         draw(&line, 0);
 
         for channel in CvChannel::ALL {
