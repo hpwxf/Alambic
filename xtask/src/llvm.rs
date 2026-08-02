@@ -10,12 +10,57 @@ use std::process::Command;
 use anyhow::{Context, Result, bail};
 
 use crate::{cargo, paths};
+use xtask::size_check;
 
-/// Prints the section footprint of `elf` using `llvm-size`.
+/// Stable `llvm-size` flags: long option names, `SysV` table, hex radix.
+///
+/// Short aliases (`-A`, `-x`) exist today but have moved before; the long form
+/// is what `xtask::size_check` is written against.
+const LLVM_SIZE_ARGS: [&str; 2] = ["--format=sysv", "--radix=16"];
+
+/// Prints a selective section table and runs the layout checklist on `elf`.
 pub(crate) fn report_size(elf: &Path) -> Result<()> {
-    let mut command = Command::new(tool("llvm-size")?);
-    command.arg("-A").arg("-d").arg(elf);
-    cargo::run(command)
+    let output = Command::new(tool("llvm-size")?)
+        .args(LLVM_SIZE_ARGS)
+        .arg(elf)
+        .output()
+        .with_context(|| format!("cannot run llvm-size on {}", elf.display()))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        bail!("llvm-size failed with {}: {}", output.status, stderr.trim());
+    }
+
+    let stdout = String::from_utf8(output.stdout).context("llvm-size wrote non-UTF-8 output")?;
+    if !output.stderr.is_empty() {
+        eprint!("{}", String::from_utf8_lossy(&output.stderr));
+    }
+
+    println!("{}:", elf.display());
+    let sections = size_check::parse_sysv(&stdout).map_err(|message| anyhow::anyhow!(message))?;
+    println!("{}", size_check::format_section_table(&sections));
+    println!();
+    // Flash loadable size is validated by `cargo xtask flash --dry-run`; this
+    // command is about section placement, not the naive llvm-size Total line.
+    println!(
+        "note: debug sections omitted; flash loadable size is reported by `cargo xtask flash --dry-run`"
+    );
+    println!();
+
+    let report = size_check::check_layout(&sections);
+    println!("{}", size_check::format_checklist(&report));
+
+    if report.failed() {
+        let failed = report
+            .failures()
+            .iter()
+            .map(|item| item.id)
+            .collect::<Vec<_>>()
+            .join(", ");
+        bail!("firmware layout checklist failed ({failed})");
+    }
+
+    Ok(())
 }
 
 /// Converts `elf` into an Intel HEX image at `destination`.

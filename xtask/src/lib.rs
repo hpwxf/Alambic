@@ -1,10 +1,12 @@
 //! Library surface of the firmware build automation.
 //!
 //! The CLI binary is the user-facing entry point; this crate exists so that
-//! integration tests can exercise the pre-flash image gate without spawning
-//! the full command line. Keeping validation pure over bytes also makes the
+//! integration tests can exercise the pre-flash image gate and the
+//! `llvm-size` layout checklist without spawning the full command line.
+//! Keeping validation pure over bytes (or captured tool text) makes the
 //! rejection messages straightforward to assert on.
 
+pub mod size_check;
 pub mod validate;
 
 /// Compilation target of the firmware binary.

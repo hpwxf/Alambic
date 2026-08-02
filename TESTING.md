@@ -19,7 +19,7 @@ how to run it and how to read the result.
 | 3 | Performance guard rails | `cargo bench -p oc-core` | host |
 | 4 | Simulator scenarios | `cargo test -p oc-sim --test scenarios` | host |
 | 5 | Simulator, by hand | `cargo run -p oc-sim` | host |
-| 6 | Pre-flash image gate | `cargo test -p xtask` | host |
+| 6 | Pre-flash image gate + layout checklist unit tests | `cargo test -p xtask` | host |
 | 7 | Firmware build & footprint | `cargo xtask build`, `cargo xtask size`, `cargo xtask hex` | host, cross-compiles ARM |
 | 8 | Dry-run flash | `cargo xtask flash --dry-run` | host, needs a built ELF |
 | 9 | Hardware validation | see [checklist](#level-9--manual-hardware-validation) | real module |
@@ -244,9 +244,15 @@ release ELF at `target/thumbv7em-none-eabihf/release/oc-firmware` when it
 exists, and skips (does not fail) when it does not, so CI does not need to
 build the firmware first just to run this suite.
 
+The same `cargo test -p xtask` invocation also runs the unit tests for
+`xtask::size_check` (parser + layout checklist over fixture `llvm-size` text).
+Those do not need a firmware build either; the live checklist on a real ELF is
+Level 7 (`cargo xtask size`).
+
 **Proves:** the flashing tool correctly refuses the classes of corrupt or
 wrong-architecture images it is designed to catch, and reports every problem
-in one pass.
+in one pass; the size-report parser understands SysV `llvm-size` output and
+rejects broken layouts in fixtures.
 **Does not prove:** that a validated image actually boots — only Level 9 (or,
 eventually, a Renode smoke test — see *Open items*) does that.
 
@@ -254,7 +260,7 @@ eventually, a Renode smoke test — see *Open items*) does that.
 
 ```sh
 cargo xtask build     # cross-compile for thumbv7em-none-eabihf
-cargo xtask size      # llvm-size, section by section
+cargo xtask size      # selective llvm-size table + layout checklist
 cargo xtask hex       # dist/oc-firmware.hex
 ```
 
@@ -264,16 +270,27 @@ build`/`cargo test`/`cargo clippy` never touches ARM code. There is
 deliberately no unit test *in* `oc-firmware` — its coverage comes entirely
 from `oc-core` and `oc-drivers`, which is why Levels 1 and 2 exist.
 
-After `cargo xtask size`, check the one hard invariant documented in
-`crates/oc-firmware/MEMORY.md`: the address of `.stack` must stay lower than
-the address of `.vector_table`, which is what keeps a stack overflow faulting
-into unmapped memory instead of corrupting statics (the project uses this in
-place of `flip-link`, which is incompatible with the linker script
-`imxrt-rt` generates — see that file for why).
+`cargo xtask size` no longer dumps a raw `llvm-size` total (that figure mixes
+in DWARF and RAM reservations and is not flash size). It runs
+`llvm-size --format=sysv --radix=16`, prints only the runtime sections, and
+applies an automated layout checklist that **fails the command** if any hard
+invariant is broken. The checks include, among others:
 
-**Proves:** the firmware links, fits its memory regions, and the stack sits
-where it must.
-**Does not prove:** that it boots or does anything correct on silicon.
+* required sections present (`.boot`, `.stack`, `.vector_table`, `.text`);
+* `.boot` at FlexSPI base `0x6000_0000`;
+* `.stack` at DTCM base `0x2000_0000`, entirely in DTCM, and **strictly below**
+  `.vector_table` with no overlap (the anti-overflow property that replaces
+  `flip-link` — see `crates/oc-firmware/MEMORY.md`);
+* `.text` inside ITCM; `.data`/`.bss` in DTCM above the vector table;
+* `.rodata`/`.heap` in OCRAM when present.
+
+The pure parser/checklist logic lives in `xtask::size_check` and is covered by
+`cargo test -p xtask` with fixture text (no firmware build required).
+
+**Proves:** the firmware links, the linker script still places sections where
+`MEMORY.md` requires, and the stack overflow fault path is intact.
+**Does not prove:** that it boots or does anything correct on silicon, or the
+true flash loadable size (use Level 8 / `cargo xtask flash --dry-run` for that).
 
 ## Level 8 — Dry-run flash
 

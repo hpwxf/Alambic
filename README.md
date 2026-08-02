@@ -165,7 +165,7 @@ cargo clippy --all-targets -- -D warnings
 cargo run -p oc-sim     # simulator
 
 cargo xtask build       # cross-compile the firmware (release)
-cargo xtask size        # section-by-section footprint
+cargo xtask size        # selective section table + layout checklist
 cargo xtask hex         # dist/oc-firmware.hex
 ```
 

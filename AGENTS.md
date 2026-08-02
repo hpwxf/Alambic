@@ -58,8 +58,8 @@ lives in `oc-core` and is tested once, on the host.
   Stack-overflow protection instead relies on `imxrt-rt` placing `.stack` at
   the very bottom of DTCM (`0x2000_0000`) below `.vector_table`/`.data`/
   `.bss`: an overflow grows downward out of DTCM and faults immediately.
-  This is a checked invariant, not folklore — `MEMORY.md` explains how to
-  verify it with `cargo xtask size`.
+  This is a checked invariant, not folklore — `cargo xtask size` runs an
+  automated layout checklist (see `MEMORY.md`) and fails if it is broken.
 * **`CARGO_TARGET_DIR`/`RUSTFLAGS` caution:** CI deliberately does not set
   `RUSTFLAGS` as an environment variable, because that would *replace*
   `target.thumbv7em-none-eabihf.rustflags` from `.cargo/config.toml` and drop

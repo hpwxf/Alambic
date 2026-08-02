@@ -42,7 +42,7 @@ struct Cli {
 enum Command {
     /// Cross-compile the firmware for the Teensy 4.0.
     Build(BuildArgs),
-    /// Report the flash and RAM footprint of the firmware.
+    /// Report runtime section placement and run the layout checklist.
     Size(BuildArgs),
     /// Produce the Intel HEX image under `dist/`.
     Hex(BuildArgs),

@@ -21,6 +21,11 @@ rustflags = ["-C", "link-arg=-Tt4link.x"]
 
 ## Layout produced for the Teensy 4.0
 
+Board-level figures (flash, RAM totals, CPU) match the
+[PJRC Teensy technical specifications](https://www.pjrc.com/teensy/techspecs.html).
+FlexRAM bank split and section placement below come from `teensy4-bsp` /
+`imxrt-rt`, not from that page alone.
+
 FlexRAM on the i.MX RT1062 is 512 KiB of configurable banks. The BSP splits it
 as 6 banks ITCM / 10 banks DTCM / 0 banks OCRAM, and uses the dedicated 512 KiB
 OCRAM for the heap and uninitialised data.
@@ -39,7 +44,11 @@ OCRAM for the heap and uninitialised data.
 Total flash budget is **1984 KiB**, the size of the Teensy 4.0 application
 partition; `cargo xtask flash` refuses images that exceed it.
 
-Run `cargo xtask size` for the current figures.
+Run `cargo xtask size` for the current figures. That command prints a selective
+section table (runtime sections only — DWARF is omitted on purpose) and runs an
+automated layout checklist; it exits non-zero if any hard placement invariant
+fails. The flash *loadable* size is reported separately by
+`cargo xtask flash --dry-run`, not by the naive `llvm-size` total.
 
 ## Stack overflow protection
 
@@ -53,8 +62,9 @@ sits *below* static data so that an overflow hits unmapped memory instead of
 silently corrupting statics. `imxrt-rt` already places `.stack` at
 `0x2000_0000`, the very bottom of DTCM, with `.vector_table`, `.data` and
 `.bss` above it. The stack grows downwards out of DTCM and immediately faults.
-The property is verifiable at any time from `cargo xtask size`: the address of
-`.stack` must remain lower than the address of `.vector_table`.
+The property is checked automatically by `cargo xtask size` (checklist item
+`stack-below-vector-table`): `.stack` must remain at the DTCM base and end at or
+before `.vector_table`, with no overlap.
 
 Stack size is 16 KiB and can be overridden at build time through the
 `TEENSY4_STACK_SIZE` environment variable honoured by the BSP build script.

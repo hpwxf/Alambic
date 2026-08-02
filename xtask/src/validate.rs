@@ -5,6 +5,10 @@
 //! and a wrong image can still be electrically unsafe on the attached modular
 //! hardware. These checks are the guard rail in front of `teensy_loader_cli`.
 //!
+//! Official board figures (flash size, CPU, etc.) come from the PJRC Teensy
+//! technical specifications:
+//! <https://www.pjrc.com/teensy/techspecs.html>
+//!
 //! The core entry point is deliberately a pure function over bytes so that
 //! integration tests can build synthetic ELFs in memory and assert on every
 //! rejection without touching the filesystem or a device.
@@ -20,28 +24,75 @@ use std::ops::Range;
 
 use sha2::{Digest, Sha256};
 
-/// Application flash partition size on the Teensy 4.0, in bytes (1984 KiB).
+/// Application flash partition size on the Teensy 4.0, in bytes.
+///
+/// Hard upper bound for loadable `PT_LOAD` size: **1984 KiB** (`1984 * 1024`).
+/// The Teensy 4.0 exposes 2048 KiB of QSPI; 64 KiB is reserved, leaving this
+/// application partition for firmware images.
+///
+/// Source: [PJRC Teensy technical specifications](https://www.pjrc.com/teensy/techspecs.html)
+/// (2 MB flash on Teensy 4.0; application partition is 1984 KiB after the
+/// reserved bootloader region).
 pub const TEENSY40_FLASH_CAPACITY: u64 = 1984 * 1024;
 
 /// `FlexSPI` base address where the i.MX RT1062 boot ROM expects the image.
 pub const FLEXSPI_BASE: u32 = 0x6000_0000;
 
 /// Exclusive end of the `FlexSPI` / external flash window we accept.
+///
+/// Upper address bound for memory-mapped flash checks: **`0x6800_0000`**
+/// (128 MiB aperture from [`FLEXSPI_BASE`]). The usable image size is far
+/// smaller — see [`TEENSY40_FLASH_CAPACITY`] (1984 KiB on Teensy 4.0).
 pub const FLEXSPI_END: u32 = 0x6800_0000;
 
 /// Little-endian tag marking a `FlexSPI` Configuration Block (`FCFB` as ASCII).
 pub const FCB_TAG: [u8; 4] = *b"FCFB";
 
 /// Instruction Tightly Coupled Memory on the i.MX RT1062.
+///
+/// Address window: `0x0000_0000`..`0x0008_0000` — exclusive end **`0x0008_0000`**,
+/// i.e. a **512 KiB** maximum aperture. On the Teensy 4.0 BSP `FlexRAM` split
+/// only [`ITCM_USABLE`] is actually backed for `.text`; anything past the
+/// configured banks faults even if it still falls inside this window.
 pub const ITCM: Range<u32> = 0x0000_0000..0x0008_0000;
 
+/// Usable ITCM on the Teensy 4.0 BSP `FlexRAM` split (6 × 32 KiB banks).
+///
+/// Hard size budget for `.text`: **192 KiB**. The address aperture
+/// ([`ITCM`]) is larger (512 KiB) but unbacked banks fault on access.
+pub const ITCM_USABLE: u64 = 192 * 1024;
+
 /// Data Tightly Coupled Memory on the i.MX RT1062.
+///
+/// Address window: `0x2000_0000`..`0x2008_0000` — exclusive end **`0x2008_0000`**,
+/// i.e. a **512 KiB** maximum aperture. On the Teensy 4.0 BSP `FlexRAM` split
+/// only [`DTCM_USABLE`] is backed for `.stack`, `.vector_table`, `.data` and
+/// `.bss` combined.
 pub const DTCM: Range<u32> = 0x2000_0000..0x2008_0000;
 
+/// Usable DTCM on the Teensy 4.0 BSP `FlexRAM` split (10 × 32 KiB banks).
+///
+/// Hard combined size budget for `.stack` + `.vector_table` + `.data` +
+/// `.bss`: **320 KiB**. The address aperture ([`DTCM`]) is larger (512 KiB).
+pub const DTCM_USABLE: u64 = 320 * 1024;
+
 /// On-chip RAM window used for rodata / heap on this firmware.
+///
+/// Address window: `0x2020_0000`..`0x2028_0000` — exclusive end **`0x2028_0000`**.
+/// Size equals [`OCRAM_CAPACITY`] (**512 KiB** dedicated, not taken from
+/// `FlexRAM`). Upper bound for `.rodata`, `.uninit` and `.heap`.
 pub const OCRAM: Range<u32> = 0x2020_0000..0x2028_0000;
 
+/// Dedicated OCRAM capacity on the Teensy 4.0 / RT1062.
+///
+/// Hard size budget for OCRAM residents: **512 KiB** (matches the
+/// [`OCRAM`] address window end-start).
+pub const OCRAM_CAPACITY: u64 = 512 * 1024;
+
 /// `FlexSPI` memory-mapped flash window (alias of [`FLEXSPI_BASE`]..[`FLEXSPI_END`]).
+///
+/// Exclusive end **`0x6800_0000`**; image size must still stay within
+/// [`TEENSY40_FLASH_CAPACITY`] (1984 KiB on Teensy 4.0).
 pub const FLEXSPI: Range<u32> = FLEXSPI_BASE..FLEXSPI_END;
 
 const ELF_MAGIC: [u8; 4] = [0x7F, b'E', b'L', b'F'];
