@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="680" height="350" viewBox="0 0 680 350" role="img">
+<title>Periodisation du spectre par echantillonnage</title>
+<style>
+text{font-family:Helvetica,Arial,sans-serif;fill:#3d3d3a}
+.ts{font-size:12px}.th{font-size:14px;font-weight:500}
+</style>
+<text class="th" x="60" y="40">Bande &lt; fs/2 — copies disjointes</text>
+<line x1="60" y1="150" x2="640" y2="150" stroke="#B4B2A9" stroke-width="0.5"/>
+<line x1="235" y1="62" x2="235" y2="158" stroke="#888780" stroke-width="0.5" stroke-dasharray="4 4"/>
+<polygon points="70,150 140,72 210,150" fill="none" stroke="#1D9E75" stroke-width="1.5"/>
+<polygon points="260,150 330,72 400,150" fill="none" stroke="#1D9E75" stroke-width="1.5"/>
+<polygon points="450,150 520,72 590,150" fill="none" stroke="#1D9E75" stroke-width="1.5"/>
+<text class="ts" x="140" y="168" text-anchor="middle">0</text>
+<text class="ts" x="235" y="168" text-anchor="middle">fs/2</text>
+<text class="ts" x="330" y="168" text-anchor="middle">fs</text>
+<text class="ts" x="520" y="168" text-anchor="middle">2fs</text>
+<text class="th" x="60" y="205">Bande &gt; fs/2 — recouvrement</text>
+<g fill="#F0997B"><rect x="215" y="285" width="40" height="20" rx="2"/><rect x="405" y="285" width="40" height="20" rx="2"/></g>
+<line x1="60" y1="305" x2="640" y2="305" stroke="#B4B2A9" stroke-width="0.5"/>
+<line x1="235" y1="217" x2="235" y2="313" stroke="#888780" stroke-width="0.5" stroke-dasharray="4 4"/>
+<polygon points="25,305 140,227 255,305" fill="none" stroke="#1D9E75" stroke-width="1.5"/>
+<polygon points="215,305 330,227 445,305" fill="none" stroke="#1D9E75" stroke-width="1.5"/>
+<polygon points="405,305 520,227 635,305" fill="none" stroke="#1D9E75" stroke-width="1.5"/>
+<text class="ts" x="140" y="323" text-anchor="middle">0</text>
+<text class="ts" x="235" y="323" text-anchor="middle">fs/2</text>
+<text class="ts" x="330" y="323" text-anchor="middle">fs</text>
+<text class="ts" x="520" y="323" text-anchor="middle">2fs</text>
+</svg>

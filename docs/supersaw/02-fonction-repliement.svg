@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="680" height="330" viewBox="0 0 680 330" role="img">
+<title>Fonction de repliement</title>
+<style>
+text{font-family:Helvetica,Arial,sans-serif;fill:#3d3d3a}
+.ts{font-size:12px}.th{font-size:14px;font-weight:500}
+</style>
+<line x1="80" y1="250" x2="640" y2="250" stroke="#B4B2A9" stroke-width="0.5"/>
+<line x1="80" y1="60" x2="80" y2="250" stroke="#B4B2A9" stroke-width="0.5"/>
+<line x1="80" y1="70" x2="640" y2="70" stroke="#888780" stroke-width="0.5" stroke-dasharray="4 4"/>
+<line x1="215" y1="60" x2="215" y2="256" stroke="#888780" stroke-width="0.5" stroke-dasharray="4 4"/>
+<line x1="350" y1="60" x2="350" y2="256" stroke="#888780" stroke-width="0.5" stroke-dasharray="4 4"/>
+<line x1="485" y1="60" x2="485" y2="256" stroke="#888780" stroke-width="0.5" stroke-dasharray="4 4"/>
+<path d="M80 250 L215 70 L350 250 L485 70 L620 250" fill="none" stroke="#1D9E75" stroke-width="2" stroke-linejoin="round"/>
+<g fill="#D85A30"><circle cx="224" cy="83" r="5"/><circle cx="347" cy="246" r="5"/><circle cx="613" cy="241" r="5"/></g>
+<text class="ts" x="234" y="82">harmonique 13</text>
+<text class="ts" x="340" y="234" text-anchor="end">harmonique 24</text>
+<text class="ts" x="605" y="230" text-anchor="end">harmonique 48</text>
+<text class="ts" x="80" y="270" text-anchor="middle">0</text>
+<text class="ts" x="215" y="270" text-anchor="middle">24 kHz</text>
+<text class="ts" x="350" y="270" text-anchor="middle">48 kHz</text>
+<text class="ts" x="485" y="270" text-anchor="middle">72 kHz</text>
+<text class="ts" x="620" y="270" text-anchor="middle">96 kHz</text>
+<text class="th" x="360" y="296" text-anchor="middle">frequence reelle de l'harmonique</text>
+<text class="ts" x="72" y="74" text-anchor="end">24 kHz</text>
+<text class="ts" x="72" y="254" text-anchor="end">0</text>
+<text class="th" x="80" y="46">frequence percue</text>
+</svg>

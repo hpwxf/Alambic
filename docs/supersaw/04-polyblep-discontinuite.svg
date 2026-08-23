@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="680" height="280" viewBox="0 0 680 280" role="img">
+<title>La discontinuite tombe entre deux echantillons</title>
+<style>
+text{font-family:Helvetica,Arial,sans-serif;fill:#3d3d3a}
+.ts{font-size:12px}
+</style>
+<path d="M80 200 L300 80 L300 200 L520 80 L520 200 L600 156" fill="none" stroke="#888780" stroke-width="1.5" stroke-linejoin="round"/>
+<line x1="300" y1="60" x2="300" y2="220" stroke="#888780" stroke-width="0.5" stroke-dasharray="4 4"/>
+<g fill="#1D9E75">
+<circle cx="80" cy="200" r="3.5"/><circle cx="120" cy="178" r="3.5"/><circle cx="160" cy="156" r="3.5"/>
+<circle cx="200" cy="135" r="3.5"/><circle cx="240" cy="113" r="3.5"/><circle cx="360" cy="167" r="3.5"/>
+<circle cx="400" cy="146" r="3.5"/><circle cx="440" cy="124" r="3.5"/><circle cx="480" cy="102" r="3.5"/>
+<circle cx="520" cy="80" r="3.5"/><circle cx="560" cy="178" r="3.5"/>
+</g>
+<g fill="#D85A30"><circle cx="280" cy="91" r="5"/><circle cx="320" cy="189" r="5"/></g>
+<line x1="292" y1="70" x2="308" y2="70" stroke="#D85A30" stroke-width="1"/>
+<text class="ts" x="300" y="58" text-anchor="middle">saut a position fractionnaire</text>
+<line x1="272" y1="112" x2="252" y2="146" stroke="#B4B2A9" stroke-width="0.5" stroke-dasharray="3 3"/>
+<text class="ts" x="248" y="160" text-anchor="end">corrige</text>
+<line x1="330" y1="196" x2="352" y2="216" stroke="#B4B2A9" stroke-width="0.5" stroke-dasharray="3 3"/>
+<text class="ts" x="356" y="222">corrige</text>
+<text class="ts" x="80" y="248">temps</text>
+<rect fill="#1D9E75" x="380" y="240" width="10" height="10" rx="2"/><text class="ts" x="398" y="249">echantillons intacts</text>
+<rect fill="#D85A30" x="540" y="240" width="10" height="10" rx="2"/><text class="ts" x="558" y="249">corriges</text>
+</svg>
