@@ -90,23 +90,50 @@ Quick check in the terminal (should look like a solid 2×4 block, not `?`/`�`)
 echo -e '\U1cd00\U1cd01\U1cd02\U1cd03  \U1cd3f'
 ```
 
+The keyboard has two selectable layouts, **AZERTY** (default) and
+**QWERTY**, toggled with `l`; a permanent "help" panel below "outputs"
+always shows the key map, key and meaning aligned in columns, for whichever
+layout is active. They differ only on trigger 1 and the left encoder's
+turn: pressing the physical key that types `w` on QWERTY types `z` on
+AZERTY (and vice versa), so those bindings swap between the two:
+
+| Action                              | AZERTY | QWERTY |
+|---------------------------------------|:------:|:------:|
+| pulse / hold trigger 1                | `w` / `W` | `z` / `Z` |
+| turn the left encoder anticlockwise (`Shift` for ten detents) | `z` / `Z` | `w` / `W` |
+
+Everything else is the same on both layouts. Both encoders live on six
+consecutive keys of the top letter row, skipping only quit (`q`) and patch
+(`p`): press–turn–turn for the left encoder, turn–turn–press for the right
+one:
+
 | Key            | Action                                            |
 |----------------|---------------------------------------------------|
 | `Tab`          | select which CV input the arrows drive            |
 | `←` / `→`      | selected CV input by ±100 mV (`Shift` for ±1 V)   |
 | `Home`         | selected CV input to 0 V                          |
 | `p`            | toggle the cable on the selected CV input         |
-| `z` `x` `c` `v`| pulse triggers 1 to 4                             |
-| `Z` `X` `C` `V`| hold triggers 1 to 4 high or low                  |
-| `[` / `]`      | left encoder anticlockwise / clockwise            |
-| `,` / `.`      | right encoder (`<` / `>` for ten detents)         |
-| `Enter` / `b`  | press the left / right encoder                    |
+| `x` `c` `v`    | pulse triggers 2 to 4                             |
+| `X` `C` `V`    | hold triggers 2 to 4 high or low                  |
 | `↑` / `↓`      | the module's up / down buttons                    |
+| `Shift+↑` / `Shift+↓` | hold up / down until pressed again (see below) |
+| `a`            | press the left encoder                            |
+| `e`            | turn the left encoder clockwise (`Shift` for ten detents) |
+| `r` / `t`      | turn the right encoder anticlockwise / clockwise (`Shift` for ten detents) |
+| `y`            | press the right encoder                           |
 | `1` `2` `3`    | paused, real time, 50x                            |
 | `Space`        | run a single tick while paused                    |
-| `r`            | reset the module (replays the boot splash screen) |
-| `?`            | show the key map                                  |
+| `o` / `0`      | reset the module (replays the boot splash screen) |
+| `l`            | switch between AZERTY and QWERTY                  |
 | `q` / `Esc`    | quit                                              |
+
+A plain `↑`/`↓`/`z x c v` press is only held for a handful of ticks — long
+enough to register as a clean edge, too short for two separate keystrokes to
+reliably overlap. That is enough for the module's up/down and trigger
+reactions on their own, but the diagnostic applet also reacts to **up and
+down held together** (it resets the offset), which needs a real overlap:
+press `Shift+↑` then `Shift+↓` (in either order) to hold both down, and
+`Shift+↑`/`Shift+↓` again to release them.
 
 ### Scenarios
 

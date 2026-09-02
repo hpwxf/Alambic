@@ -214,6 +214,133 @@ fn pressing_the_right_encoder_returns_the_offset_to_zero() {
 }
 
 #[test]
+fn each_encoder_press_is_counted_independently_like_a_trigger_edge() {
+    let mut engine = mock_engine(0);
+    assert_eq!(engine.app().button_press_count(Button::LeftEncoder), 0);
+    assert_eq!(engine.app().button_press_count(Button::RightEncoder), 0);
+
+    for _ in 0..2 {
+        {
+            let (_, _, _, controls, _) = engine.parts_mut();
+            controls.hold(Button::LeftEncoder, true);
+        }
+        run_ticks(&mut engine, 5);
+        {
+            let (_, _, _, controls, _) = engine.parts_mut();
+            controls.hold(Button::LeftEncoder, false);
+        }
+        run_ticks(&mut engine, 5);
+    }
+    {
+        let (_, _, _, controls, _) = engine.parts_mut();
+        controls.hold(Button::RightEncoder, true);
+    }
+    run_ticks(&mut engine, 5);
+
+    assert_eq!(engine.app().button_press_count(Button::LeftEncoder), 2);
+    assert_eq!(engine.app().button_press_count(Button::RightEncoder), 1);
+}
+
+#[test]
+fn holding_up_and_down_together_resets_the_offset() {
+    let mut engine = mock_engine(0);
+    {
+        let (_, _, _, controls, _) = engine.parts_mut();
+        controls.turn(1, 10);
+    }
+    engine.tick();
+    assert_ne!(engine.app().offset(), 0);
+    let mode_before = engine.app().mode();
+
+    {
+        let (_, _, _, controls, _) = engine.parts_mut();
+        controls.hold(Button::Up, true);
+        controls.hold(Button::Down, true);
+    }
+    run_ticks(&mut engine, 5);
+
+    assert_eq!(
+        engine.app().offset(),
+        0,
+        "holding both buttons together resets the offset"
+    );
+    assert_eq!(
+        engine.app().mode(),
+        mode_before,
+        "Up and Down still fire their own next()/previous() too, cancelling out"
+    );
+}
+
+#[test]
+fn pressing_up_then_down_separately_does_not_reset_the_offset() {
+    let mut engine = mock_engine(0);
+    {
+        let (_, _, _, controls, _) = engine.parts_mut();
+        controls.turn(1, 10);
+    }
+    engine.tick();
+    assert_ne!(engine.app().offset(), 0);
+
+    {
+        let (_, _, _, controls, _) = engine.parts_mut();
+        controls.hold(Button::Up, true);
+    }
+    run_ticks(&mut engine, 5);
+    {
+        let (_, _, _, controls, _) = engine.parts_mut();
+        controls.hold(Button::Up, false);
+    }
+    run_ticks(&mut engine, 5);
+    {
+        let (_, _, _, controls, _) = engine.parts_mut();
+        controls.hold(Button::Down, true);
+    }
+    run_ticks(&mut engine, 5);
+
+    assert_ne!(
+        engine.app().offset(),
+        0,
+        "pressed one after the other, not together, so the combo must not fire"
+    );
+}
+
+#[test]
+fn pressing_both_encoders_at_once_fires_both_actions_in_the_same_tick() {
+    let mut engine = mock_engine(0);
+    for level in [true, true, true, true, false, false, false, false] {
+        let (_, _, digital_in, ..) = engine.parts_mut();
+        digital_in.set(TriggerChannel::One, level);
+        engine.clock().advance(1_000);
+        engine.tick();
+    }
+    {
+        let (_, _, _, controls, _) = engine.parts_mut();
+        controls.turn(1, 10);
+    }
+    engine.tick();
+    assert_eq!(engine.app().trigger_count(TriggerChannel::One), 1);
+    assert_ne!(engine.app().offset(), 0);
+
+    {
+        let (_, _, _, controls, _) = engine.parts_mut();
+        controls.hold(Button::LeftEncoder, true);
+        controls.hold(Button::RightEncoder, true);
+    }
+    run_ticks(&mut engine, 5);
+
+    assert_eq!(
+        engine.app().trigger_count(TriggerChannel::One),
+        0,
+        "left encoder still resets the trigger counters when held together with the right"
+    );
+    assert_eq!(
+        engine.app().offset(),
+        0,
+        "right encoder still zeroes the offset when held together with the left"
+    );
+}
+
+#[test]
 fn turning_the_left_encoder_selects_a_channel_and_wraps_around() {
     let mut engine = mock_engine(0);
     {
@@ -469,7 +596,7 @@ fn the_screen_shows_the_banner_and_the_measured_levels() {
     engine.tick();
 
     let frame = engine.frame().clone();
-    assert_row_reads(&frame, 0, &format!("{}     0us", oc_core::BANNER));
+    assert_row_reads(&frame, 0, &format!("{}    0us", oc_core::BANNER));
     assert_row_reads(&frame, 1, ">1 +1.234 P-l    0");
     // Channel two: unpatched, no signal detected, gate low, no edges counted.
     assert_row_reads(&frame, 2, " 2 +0.000 .-l    0");

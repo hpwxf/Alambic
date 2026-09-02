@@ -263,6 +263,13 @@ impl Simulator {
         digital_in.triggers[channel.index()]
     }
 
+    /// Whether a button is currently held down.
+    #[must_use]
+    pub fn button_held(&mut self, button: Button) -> bool {
+        let (_, _, _, controls, _) = self.engine.parts_mut();
+        controls.pending.button_down[button.index()]
+    }
+
     /// Levels currently driven on the CV outputs.
     #[must_use]
     pub fn cv_out(&mut self) -> [MilliVolts; CV_CHANNELS] {

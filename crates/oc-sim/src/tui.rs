@@ -33,6 +33,9 @@ const FINE_STEP_MV: MilliVolts = 1_000;
 /// Turbo speed factor.
 const TURBO_FACTOR: u32 = 50;
 
+/// Detents applied by a fast (shifted) encoder turn.
+const FAST_DETENTS: i8 = 10;
+
 /// Maximum number of ticks run between two redraws, so a turbo run cannot
 /// starve the input loop.
 const MAX_TICKS_PER_FRAME: u64 = 5_000;
@@ -43,12 +46,94 @@ const FRAME_INTERVAL: Duration = Duration::from_millis(33);
 /// Width of the bar used to visualise a CV input.
 const BAR_WIDTH: i32 = 20;
 
-/// The key map, shown in the status bar on demand.
-const KEY_MAP: &str = concat!(
-    "TAB focus  <-/-> level  p patch  zxcv pulse  ZXCV gate  ",
-    "[ ] , . encoders  ENTER/b press  up/down mode  1/2/3 speed  SPACE step  ",
-    "r reset  q quit"
-);
+/// A selectable keyboard layout: which physical keys reach the canonical
+/// (QWERTY) bindings matched in [`Tui::on_key`].
+///
+/// A French AZERTY keyboard differs from QWERTY at exactly one relevant key
+/// pair, W/Z (top-row-2nd swaps with bottom-row-leftmost) — every other
+/// letter used by this UI sits at the same physical spot on both layouts.
+/// [`Tui::canonicalize`] encodes only that swap.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+enum KeyLayout {
+    #[default]
+    Azerty,
+    Qwerty,
+}
+
+impl KeyLayout {
+    /// The other layout.
+    const fn toggled(self) -> Self {
+        match self {
+            Self::Azerty => Self::Qwerty,
+            Self::Qwerty => Self::Azerty,
+        }
+    }
+
+    /// The name shown in the status bar and the key map.
+    const fn label(self) -> &'static str {
+        match self {
+            Self::Azerty => "AZERTY",
+            Self::Qwerty => "QWERTY",
+        }
+    }
+}
+
+/// The key map, permanently shown in the help panel: a header naming the
+/// active layout, followed by one row per action with the key(s) to press
+/// under that layout (see [`Tui::canonicalize`]) and its meaning, the two
+/// aligned in columns.
+fn help_lines(layout: KeyLayout) -> Vec<String> {
+    let (pulse1, gate1, turn_left_ccw) = match layout {
+        KeyLayout::Azerty => ("w", "W", "z"),
+        KeyLayout::Qwerty => ("z", "Z", "w"),
+    };
+
+    let rows = [
+        ("Tab".to_owned(), "focus a CV input".to_owned()),
+        (
+            "<-/->".to_owned(),
+            "CV level +/-100mV (Shift: +/-1V)".to_owned(),
+        ),
+        ("Home".to_owned(), "CV level to 0V".to_owned()),
+        ("p".to_owned(), "toggle the patch cable".to_owned()),
+        (format!("{pulse1} x c v"), "pulse triggers 1-4".to_owned()),
+        (format!("{gate1} X C V"), "hold triggers 1-4".to_owned()),
+        ("up/down".to_owned(), "cycle the output mode".to_owned()),
+        (
+            "Shift+up/down".to_owned(),
+            "hold (combo resets the offset)".to_owned(),
+        ),
+        (
+            format!("a,{turn_left_ccw}/e"),
+            "press or turn the left encoder (Shift: x10)".to_owned(),
+        ),
+        (
+            "r/t,y".to_owned(),
+            "turn or press the right encoder (Shift: x10)".to_owned(),
+        ),
+        (
+            "1/2/3".to_owned(),
+            "speed: paused / real-time / 50x".to_owned(),
+        ),
+        ("Space".to_owned(), "single step while paused".to_owned()),
+        ("o/0".to_owned(), "reset the module".to_owned()),
+        ("l".to_owned(), "switch AZERTY / QWERTY".to_owned()),
+        ("q/Esc".to_owned(), "quit".to_owned()),
+    ];
+
+    let key_width = rows
+        .iter()
+        .map(|(key, _)| key.chars().count())
+        .max()
+        .unwrap_or(0);
+
+    let mut lines = Vec::with_capacity(rows.len() + 1);
+    lines.push(format!("keyboard: {}", layout.label()));
+    for (key, description) in &rows {
+        lines.push(format!("{key:<key_width$}  {description}"));
+    }
+    lines
+}
 
 /// The interactive simulator session.
 #[derive(Debug)]
@@ -56,6 +141,7 @@ pub struct Tui {
     simulator: Simulator,
     speed: Speed,
     focus: usize,
+    layout: KeyLayout,
     last_advance: Instant,
     status: String,
     recording_path: Option<PathBuf>,
@@ -70,8 +156,9 @@ impl Tui {
             simulator: Simulator::new(),
             speed: Speed::Realtime,
             focus: 0,
+            layout: KeyLayout::default(),
             last_advance: Instant::now(),
-            status: "press ? for the key map".to_owned(),
+            status: String::new(),
             recording_path: None,
             quit: false,
         }
@@ -147,10 +234,15 @@ impl Tui {
 
     /// Applies one keystroke.
     fn on_key(&mut self, key: KeyEvent) {
+        if key.code == KeyCode::Char('l') {
+            self.toggle_layout();
+            return;
+        }
+
         let shift = key.modifiers.contains(KeyModifiers::SHIFT);
         let step = if shift { FINE_STEP_MV } else { COARSE_STEP_MV };
 
-        match key.code {
+        match self.canonicalize(key.code) {
             KeyCode::Char('q') | KeyCode::Esc => self.quit = true,
 
             KeyCode::Tab => {
@@ -171,17 +263,31 @@ impl Tui {
             KeyCode::Char('C') => self.toggle_gate(TriggerChannel::Three),
             KeyCode::Char('V') => self.toggle_gate(TriggerChannel::Four),
 
-            KeyCode::Char('[') => self.turn(0, -1),
-            KeyCode::Char(']') => self.turn(0, 1),
-            KeyCode::Char(',') => self.turn(1, -1),
-            KeyCode::Char('.') => self.turn(1, 1),
-            KeyCode::Char('<') => self.turn(1, -10),
-            KeyCode::Char('>') => self.turn(1, 10),
-
-            KeyCode::Enter => self.press(Button::LeftEncoder),
-            KeyCode::Char('b') => self.press(Button::RightEncoder),
+            // A momentary press auto-releases after a few ticks (see
+            // `Simulator::press`), which is normally too short a window for
+            // two separate keystrokes to ever overlap. Shift+Up/Down instead
+            // holds the button until pressed again, the same way Shift+ZXCV
+            // holds a trigger — the only way to reliably test the up+down
+            // combo that resets the offset (see `DiagnosticApp::
+            // apply_controls`).
+            KeyCode::Up if shift => self.toggle_button_hold(Button::Up),
+            KeyCode::Down if shift => self.toggle_button_hold(Button::Down),
             KeyCode::Up => self.press(Button::Up),
             KeyCode::Down => self.press(Button::Down),
+
+            // Row 1 (top letter row), six keys in a row, skipping only quit
+            // (`q`) and patch (`p`): press-turn-turn for the left encoder,
+            // turn-turn-press for the right one.
+            KeyCode::Char('a') => self.press(Button::LeftEncoder),
+            KeyCode::Char('w') => self.turn(0, -1),
+            KeyCode::Char('W') => self.turn(0, -FAST_DETENTS),
+            KeyCode::Char('e') => self.turn(0, 1),
+            KeyCode::Char('E') => self.turn(0, FAST_DETENTS),
+            KeyCode::Char('r') => self.turn(1, -1),
+            KeyCode::Char('R') => self.turn(1, -FAST_DETENTS),
+            KeyCode::Char('t') => self.turn(1, 1),
+            KeyCode::Char('T') => self.turn(1, FAST_DETENTS),
+            KeyCode::Char('y') => self.press(Button::RightEncoder),
 
             KeyCode::Char('1') => self.set_speed(Speed::Paused),
             KeyCode::Char('2') => self.set_speed(Speed::Realtime),
@@ -191,11 +297,39 @@ impl Tui {
                 self.status = format!("stepped to tick {}", self.simulator.tick_count());
             }
 
-            KeyCode::Char('r') => self.reset(),
+            KeyCode::Char('o' | '0') => self.reset(),
 
-            KeyCode::Char('?') => KEY_MAP.clone_into(&mut self.status),
             _ => {}
         }
+    }
+
+    /// Rewrites the handful of keys that sit on different physical keys
+    /// under AZERTY than under QWERTY into their QWERTY-canonical
+    /// [`KeyCode`], the one matched in [`Tui::on_key`]. A no-op under
+    /// [`KeyLayout::Qwerty`].
+    ///
+    /// AZERTY differs from QWERTY at exactly one relevant key pair: A/Q and
+    /// W/Z swap position (top-row-leftmost ↔ home-row-leftmost, and
+    /// top-row-2nd ↔ bottom-row-leftmost, respectively). `q`/`a` are left
+    /// untouched — `q` is quit on both layouts, reached natively, and `a`
+    /// is unused — so only `w`/`z` need rewriting.
+    fn canonicalize(&self, code: KeyCode) -> KeyCode {
+        if self.layout == KeyLayout::Qwerty {
+            return code;
+        }
+        match code {
+            KeyCode::Char('w') => KeyCode::Char('z'),
+            KeyCode::Char('z') => KeyCode::Char('w'),
+            KeyCode::Char('W') => KeyCode::Char('Z'),
+            KeyCode::Char('Z') => KeyCode::Char('W'),
+            other => other,
+        }
+    }
+
+    /// Switches to the other keyboard layout.
+    fn toggle_layout(&mut self) {
+        self.layout = self.layout.toggled();
+        self.status = format!("keyboard: {} (l to switch)", self.layout.label());
     }
 
     /// Restarts the module as if freshly powered on: the applet's state is
@@ -280,14 +414,22 @@ impl Tui {
         self.simulator.press(button);
     }
 
+    /// Toggles a button between held down and released.
+    fn toggle_button_hold(&mut self, button: Button) {
+        let down = !self.simulator.button_held(button);
+        self.simulator.apply(Event::Button { button, down });
+        self.status = format!("{button:?} held {}", if down { "down" } else { "released" });
+    }
+
     /// Draws the whole interface.
     fn draw(&mut self, frame: &mut Frame<'_>) {
         let [main, status] =
             Layout::vertical([Constraint::Min(0), Constraint::Length(3)]).areas(frame.area());
         let [inputs, module] =
             Layout::horizontal([Constraint::Length(34), Constraint::Min(0)]).areas(main);
-        let [screen_row, outputs] = Layout::vertical([
+        let [screen_row, outputs, help] = Layout::vertical([
             Constraint::Length(u16::try_from(braille::LINES).unwrap_or(16) + 2),
+            Constraint::Length(5),
             Constraint::Min(0),
         ])
         .areas(module);
@@ -302,6 +444,7 @@ impl Tui {
         self.draw_inputs(frame, inputs);
         self.draw_screen(frame, screen);
         self.draw_outputs(frame, outputs);
+        self.draw_help(frame, help);
         self.draw_status(frame, status);
     }
 
@@ -352,6 +495,16 @@ impl Tui {
             .collect();
         lines.push(Line::raw(format!("  edges    {}", counts.join(" "))));
 
+        lines.push(Line::raw(format!(
+            "  presses  L{} R{} up{} dn{}",
+            self.simulator.app().button_press_count(Button::LeftEncoder),
+            self.simulator
+                .app()
+                .button_press_count(Button::RightEncoder),
+            self.simulator.app().button_press_count(Button::Up),
+            self.simulator.app().button_press_count(Button::Down),
+        )));
+
         frame.render_widget(
             Paragraph::new(lines).block(Block::default().borders(Borders::ALL).title(" inputs ")),
             area,
@@ -401,6 +554,18 @@ impl Tui {
 
         frame.render_widget(
             Paragraph::new(lines).block(Block::default().borders(Borders::ALL).title(" outputs ")),
+            area,
+        );
+    }
+
+    /// Draws the permanent key map for the active keyboard layout.
+    fn draw_help(&self, frame: &mut Frame<'_>, area: Rect) {
+        let lines: Vec<Line<'_>> = help_lines(self.layout)
+            .into_iter()
+            .map(|line| Line::raw(format!(" {line}")))
+            .collect();
+        frame.render_widget(
+            Paragraph::new(lines).block(Block::default().borders(Borders::ALL).title(" help ")),
             area,
         );
     }
@@ -480,6 +645,14 @@ pub fn replay_headless(path: &std::path::Path) -> Result<String> {
     let _ = writeln!(report, "ticks   {}", simulator.tick_count());
     let _ = writeln!(report, "mode    {}", simulator.app().mode().label());
     let _ = writeln!(report, "offset  {}mV", simulator.app().offset());
+    let _ = writeln!(
+        report,
+        "presses L{} R{} up{} dn{}",
+        simulator.app().button_press_count(Button::LeftEncoder),
+        simulator.app().button_press_count(Button::RightEncoder),
+        simulator.app().button_press_count(Button::Up),
+        simulator.app().button_press_count(Button::Down),
+    );
     let _ = writeln!(report, "cv out  {:?}", simulator.cv_out());
     let _ = writeln!(report, "edges   {counts:?}");
     report.push_str("screen\n");
@@ -493,11 +666,143 @@ pub fn replay_headless(path: &std::path::Path) -> Result<String> {
 mod tests {
     use ratatui::Terminal;
     use ratatui::backend::TestBackend;
+    use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
     use oc_core::calibration::{CV_IN_MAX_MV, CV_IN_MIN_MV};
+    use oc_core::platform::{Button, TriggerChannel};
 
-    use super::{Tui, bar};
+    use super::{KeyLayout, Tui, bar};
     use crate::braille;
+    use crate::simulator::PRESS_TICKS;
+
+    /// A plain, unmodified key press (no shift/ctrl/alt).
+    fn key(c: char) -> KeyEvent {
+        KeyEvent::new(KeyCode::Char(c), KeyModifiers::NONE)
+    }
+
+    fn press_and_settle(tui: &mut Tui, c: char) {
+        tui.on_key(key(c));
+        tui.simulator.step_many(u64::from(PRESS_TICKS) + 4);
+    }
+
+    #[test]
+    fn the_default_layout_is_azerty() {
+        let tui = Tui::new();
+        assert_eq!(tui.layout, KeyLayout::Azerty);
+    }
+
+    #[test]
+    fn under_azerty_w_pulses_trigger_one() {
+        let mut tui = Tui::new();
+        tui.simulator.skip_splash();
+
+        press_and_settle(&mut tui, 'w');
+        assert_eq!(
+            tui.simulator.app().trigger_count(TriggerChannel::One),
+            1,
+            "w is trigger 1's canonical key on AZERTY"
+        );
+    }
+
+    #[test]
+    fn a_plain_up_then_down_press_do_not_overlap_and_the_combo_does_not_fire() {
+        let mut tui = Tui::new();
+        tui.simulator.skip_splash();
+        tui.on_key(key('t')); // turn the right encoder, so the offset is non-zero
+        tui.simulator.step_many(2);
+        assert_ne!(tui.simulator.app().offset(), 0);
+
+        tui.on_key(KeyEvent::new(KeyCode::Up, KeyModifiers::NONE));
+        tui.simulator.step_many(u64::from(PRESS_TICKS) + 4); // Up fully auto-releases
+        tui.on_key(KeyEvent::new(KeyCode::Down, KeyModifiers::NONE));
+        tui.simulator.step_many(u64::from(PRESS_TICKS) + 4);
+
+        assert_ne!(
+            tui.simulator.app().offset(),
+            0,
+            "the two presses never overlapped, so the up+down combo must not fire"
+        );
+    }
+
+    #[test]
+    fn shift_up_then_shift_down_holds_both_and_fires_the_combo() {
+        let mut tui = Tui::new();
+        tui.simulator.skip_splash();
+        tui.on_key(key('t'));
+        tui.simulator.step_many(2);
+        assert_ne!(tui.simulator.app().offset(), 0);
+
+        tui.on_key(KeyEvent::new(KeyCode::Up, KeyModifiers::SHIFT));
+        tui.simulator.step_many(2);
+        assert!(tui.simulator.button_held(Button::Up));
+
+        tui.on_key(KeyEvent::new(KeyCode::Down, KeyModifiers::SHIFT));
+        tui.simulator.step_many(5);
+
+        assert_eq!(
+            tui.simulator.app().offset(),
+            0,
+            "holding both via Shift+Up/Shift+Down reliably overlaps and fires the combo"
+        );
+
+        tui.on_key(KeyEvent::new(KeyCode::Up, KeyModifiers::SHIFT));
+        tui.on_key(KeyEvent::new(KeyCode::Down, KeyModifiers::SHIFT));
+        assert!(!tui.simulator.button_held(Button::Up));
+        assert!(!tui.simulator.button_held(Button::Down));
+    }
+
+    #[test]
+    fn a_presses_the_left_encoder_and_resets_trigger_counters_on_either_layout() {
+        let mut tui = Tui::new();
+        tui.simulator.skip_splash();
+        press_and_settle(&mut tui, 'w');
+        assert_eq!(tui.simulator.app().trigger_count(TriggerChannel::One), 1);
+
+        press_and_settle(&mut tui, 'a');
+        assert_eq!(
+            tui.simulator.app().trigger_count(TriggerChannel::One),
+            0,
+            "a presses the left encoder on both layouts, which resets the trigger counters"
+        );
+    }
+
+    #[test]
+    fn q_always_quits_regardless_of_layout() {
+        let mut tui = Tui::new();
+        assert!(!tui.quit);
+        tui.on_key(key('q'));
+        assert!(tui.quit, "q quits under AZERTY");
+
+        let mut tui = Tui::new();
+        tui.on_key(key('l'));
+        assert!(!tui.quit);
+        tui.on_key(key('q'));
+        assert!(tui.quit, "q quits under QWERTY too");
+    }
+
+    #[test]
+    fn toggling_the_layout_swaps_which_key_pulses_trigger_one() {
+        let mut tui = Tui::new();
+        tui.simulator.skip_splash();
+        assert_eq!(tui.layout, KeyLayout::Azerty);
+
+        tui.on_key(key('l'));
+        assert_eq!(tui.layout, KeyLayout::Qwerty);
+
+        press_and_settle(&mut tui, 'z');
+        assert_eq!(
+            tui.simulator.app().trigger_count(TriggerChannel::One),
+            1,
+            "z is trigger 1's canonical key, reached natively under QWERTY"
+        );
+
+        press_and_settle(&mut tui, 'w');
+        assert_eq!(
+            tui.simulator.app().trigger_count(TriggerChannel::One),
+            1,
+            "w turns the left encoder under QWERTY (native), not trigger 1 nor its reset"
+        );
+    }
 
     /// Renders `tui` into a terminal of the given size and returns the
     /// width, in columns, of the module screen panel's border on its first
@@ -528,6 +833,45 @@ mod tests {
                 "terminal width {terminal_width}"
             );
         }
+    }
+
+    /// All the text currently in the rendered buffer, concatenated without
+    /// separators (good enough for a substring check, not for layout).
+    fn rendered_text(tui: &mut Tui, terminal_width: u16, terminal_height: u16) -> String {
+        let mut terminal =
+            Terminal::new(TestBackend::new(terminal_width, terminal_height)).unwrap();
+        terminal.draw(|frame| tui.draw(frame)).unwrap();
+        terminal
+            .backend()
+            .buffer()
+            .content()
+            .iter()
+            .map(ratatui::buffer::Cell::symbol)
+            .collect()
+    }
+
+    #[test]
+    fn the_help_panel_is_always_visible_and_reflects_the_active_layout() {
+        let mut tui = Tui::new();
+        tui.simulator.skip_splash();
+
+        let rendered = rendered_text(&mut tui, 120, 50);
+        assert!(rendered.contains("help"), "the help panel has a title");
+        assert!(
+            rendered.contains("keyboard: AZERTY"),
+            "the help panel shows the active layout without needing to press '?'"
+        );
+        assert!(
+            rendered.contains("quit"),
+            "the panel is tall enough to show the whole key map, key and meaning aligned"
+        );
+
+        tui.on_key(key('l'));
+        let rendered = rendered_text(&mut tui, 120, 50);
+        assert!(
+            rendered.contains("keyboard: QWERTY"),
+            "the help panel updates when the layout is toggled"
+        );
     }
 
     #[test]

@@ -14,6 +14,10 @@
 //! | right encoder, turn  | change the offset by 100 mV per detent    |
 //! | right encoder, press | set the offset back to 0 V                |
 //! | up / down            | next / previous output mode               |
+//! | up + down together   | reset the offset back to 0 V              |
+//!
+//! Every button press, either encoder's included, is counted (see
+//! [`DiagnosticApp::button_press_count`]), the same way trigger edges are.
 
 use core::fmt::Write as _;
 
@@ -143,7 +147,8 @@ pub struct DiagnosticApp {
     detectors: [SignalDetector; CV_CHANNELS],
     patched: [bool; CV_CHANNELS],
     triggers: [EdgeCounter; TRIGGER_CHANNELS],
-    buttons: [Debouncer; BUTTONS],
+    buttons: [EdgeCounter; BUTTONS],
+    up_down_combo: Debouncer,
     selected: usize,
     offset_mv: MilliVolts,
     mode: OutputMode,
@@ -159,7 +164,8 @@ impl DiagnosticApp {
             detectors: [SignalDetector::default(); CV_CHANNELS],
             patched: [false; CV_CHANNELS],
             triggers: [EdgeCounter::default(); TRIGGER_CHANNELS],
-            buttons: [Debouncer::default(); BUTTONS],
+            buttons: [EdgeCounter::default(); BUTTONS],
+            up_down_combo: Debouncer::default(),
             selected: 0,
             offset_mv: 0,
             mode: OutputMode::Offset,
@@ -201,11 +207,11 @@ impl DiagnosticApp {
                 (self.offset_mv + turns * OFFSET_STEP_MV).clamp(CV_OUT_MIN_MV, CV_OUT_MAX_MV);
         }
 
-        for (index, debouncer) in self.buttons.iter_mut().enumerate() {
+        for (index, counter) in self.buttons.iter_mut().enumerate() {
             let Some(button) = Button::from_index(index) else {
                 continue;
             };
-            if debouncer.update(controls.is_down(button)) != Some(Edge::Rising) {
+            if counter.update(controls.is_down(button)) != Some(Edge::Rising) {
                 continue;
             }
             match button {
@@ -218,6 +224,15 @@ impl DiagnosticApp {
                 }
                 Button::RightEncoder => self.offset_mv = 0,
             }
+        }
+
+        // Holding both Up and Down together is a deliberate combo, distinct
+        // from either button's own action above: it resets the offset,
+        // mirroring the right encoder's own press.
+        let up_down_held =
+            self.buttons[Button::Up.index()].state() && self.buttons[Button::Down.index()].state();
+        if self.up_down_combo.update(up_down_held) == Some(Edge::Rising) {
+            self.offset_mv = 0;
         }
     }
 
@@ -285,6 +300,13 @@ impl DiagnosticApp {
     #[must_use]
     pub fn trigger_count(&self, channel: TriggerChannel) -> u32 {
         self.triggers[channel.index()].rising_count()
+    }
+
+    /// Number of times one button (including either encoder) has been
+    /// pressed since boot.
+    #[must_use]
+    pub fn button_press_count(&self, button: Button) -> u32 {
+        self.buttons[button.index()].rising_count()
     }
 
     /// Debounced level of one trigger input.
