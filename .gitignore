@@ -18,6 +18,11 @@
 # Copied from crates/oc-vcv-ffi/include/ by `cargo xtask vcv build`.
 /vcv/**/src/oc_vcv_ffi.h
 
+# Downloaded separately by each contributor (see README, "VCV Rack 2 module");
+# `cargo xtask vcv --rack-dir` points at wherever it landed, and CI does not
+# build the plugin at all.
+/Rack-SDK/
+
 # IDE
 .idea
 
