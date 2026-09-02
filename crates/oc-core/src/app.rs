@@ -13,10 +13,12 @@
 //! | left encoder, press  | reset the trigger counters                |
 //! | right encoder, turn  | change the offset by 100 mV per detent    |
 //! | right encoder, press | set the offset back to 0 V                |
-//! | up / down            | next / previous output mode               |
-//! | up + down together   | reset the offset back to 0 V              |
+//! | up / down            | next / previous output mode, on release   |
 //!
-//! Every button press, either encoder's included, is counted (see
+//! `up` and `down` act on release rather than on press because holding both
+//! together is the global gesture that opens the app menu; see
+//! [`crate::buttons`] for why that has to be arbitrated before an applet sees
+//! anything. Every button press, either encoder's included, is counted (see
 //! [`DiagnosticApp::button_press_count`]), the same way trigger edges are.
 
 use core::fmt::Write as _;
@@ -28,12 +30,13 @@ use embedded_graphics::pixelcolor::BinaryColor;
 use embedded_graphics::prelude::Point;
 use embedded_graphics::text::{Baseline, Text};
 
+use crate::buttons::ButtonEvents;
 use crate::calibration::{CV_OUT_MAX_MV, CV_OUT_MIN_MV};
-use crate::debounce::{Debouncer, Edge, EdgeCounter};
+use crate::debounce::EdgeCounter;
 use crate::fmt::{TextBuf, write_volts};
 use crate::framebuffer::FrameBuffer;
 use crate::platform::{
-    BUTTONS, Button, CV_CHANNELS, ControlEvents, CvChannel, MilliVolts, TRIGGER_CHANNELS,
+    BUTTONS, Button, CV_CHANNELS, ControlEvents, CvChannel, ENCODERS, MilliVolts, TRIGGER_CHANNELS,
     TriggerChannel,
 };
 use crate::signal::{DEFAULT_ACTIVITY_THRESHOLD_MV, SignalDetector};
@@ -114,10 +117,27 @@ pub struct InputSnapshot {
     pub patched: [bool; CV_CHANNELS],
     /// Raw level of each trigger input.
     pub triggers: [bool; TRIGGER_CHANNELS],
-    /// Encoder and button activity.
+    /// Raw encoder and button activity.
     pub controls: ControlEvents,
+    /// Button actions, debounced and arbitrated against the menu chord.
+    pub buttons: ButtonEvents,
     /// Microseconds since the previous tick.
     pub elapsed_micros: u32,
+}
+
+impl InputSnapshot {
+    /// Drops every control, keeping the signal inputs and the elapsed time.
+    ///
+    /// The engine calls this while the app menu owns the front panel, so the
+    /// running applet keeps tracking its inputs and driving its outputs without
+    /// also reacting to the keys and detents aimed at the menu.
+    pub const fn silence_controls(&mut self) {
+        self.controls = ControlEvents {
+            encoder_delta: [0; ENCODERS],
+            button_down: [false; BUTTONS],
+        };
+        self.buttons.silence();
+    }
 }
 
 impl Default for InputSnapshot {
@@ -127,6 +147,7 @@ impl Default for InputSnapshot {
             patched: [false; CV_CHANNELS],
             triggers: [false; TRIGGER_CHANNELS],
             controls: ControlEvents::default(),
+            buttons: ButtonEvents::default(),
             elapsed_micros: 0,
         }
     }
@@ -147,8 +168,7 @@ pub struct DiagnosticApp {
     detectors: [SignalDetector; CV_CHANNELS],
     patched: [bool; CV_CHANNELS],
     triggers: [EdgeCounter; TRIGGER_CHANNELS],
-    buttons: [EdgeCounter; BUTTONS],
-    up_down_combo: Debouncer,
+    press_counts: [u32; BUTTONS],
     selected: usize,
     offset_mv: MilliVolts,
     mode: OutputMode,
@@ -164,8 +184,7 @@ impl DiagnosticApp {
             detectors: [SignalDetector::default(); CV_CHANNELS],
             patched: [false; CV_CHANNELS],
             triggers: [EdgeCounter::default(); TRIGGER_CHANNELS],
-            buttons: [EdgeCounter::default(); BUTTONS],
-            up_down_combo: Debouncer::default(),
+            press_counts: [0; BUTTONS],
             selected: 0,
             offset_mv: 0,
             mode: OutputMode::Offset,
@@ -185,14 +204,14 @@ impl DiagnosticApp {
             counter.update(raw);
         }
 
-        self.apply_controls(input.controls);
+        self.apply_controls(input.controls, &input.buttons);
         self.advance_ramp(input.elapsed_micros);
         self.outputs = self.compute_outputs(&input.cv);
         self.outputs
     }
 
     /// Applies encoder movement and button presses.
-    fn apply_controls(&mut self, controls: ControlEvents) {
+    fn apply_controls(&mut self, controls: ControlEvents, buttons: &ButtonEvents) {
         let selection = i32::from(controls.delta(0));
         if selection != 0 {
             let channels = i32::try_from(CV_CHANNELS).unwrap_or(1);
@@ -207,13 +226,11 @@ impl DiagnosticApp {
                 (self.offset_mv + turns * OFFSET_STEP_MV).clamp(CV_OUT_MIN_MV, CV_OUT_MAX_MV);
         }
 
-        for (index, counter) in self.buttons.iter_mut().enumerate() {
-            let Some(button) = Button::from_index(index) else {
-                continue;
-            };
-            if counter.update(controls.is_down(button)) != Some(Edge::Rising) {
+        for button in Button::ALL {
+            if !buttons.pressed(button) {
                 continue;
             }
+            self.press_counts[button.index()] = self.press_counts[button.index()].saturating_add(1);
             match button {
                 Button::Up => self.mode = self.mode.next(),
                 Button::Down => self.mode = self.mode.previous(),
@@ -224,15 +241,6 @@ impl DiagnosticApp {
                 }
                 Button::RightEncoder => self.offset_mv = 0,
             }
-        }
-
-        // Holding both Up and Down together is a deliberate combo, distinct
-        // from either button's own action above: it resets the offset,
-        // mirroring the right encoder's own press.
-        let up_down_held =
-            self.buttons[Button::Up.index()].state() && self.buttons[Button::Down.index()].state();
-        if self.up_down_combo.update(up_down_held) == Some(Edge::Rising) {
-            self.offset_mv = 0;
         }
     }
 
@@ -306,7 +314,7 @@ impl DiagnosticApp {
     /// pressed since boot.
     #[must_use]
     pub fn button_press_count(&self, button: Button) -> u32 {
-        self.buttons[button.index()].rising_count()
+        self.press_counts[button.index()]
     }
 
     /// Debounced level of one trigger input.

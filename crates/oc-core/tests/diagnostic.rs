@@ -25,6 +25,24 @@ fn run_ticks(engine: &mut MockEngine, count: usize) {
     }
 }
 
+/// Presses a button and releases it, running the engine long enough for the
+/// action to fire.
+///
+/// `up` and `down` act on release (see `oc_core::buttons`), so holding one is
+/// not enough to make anything happen.
+fn tap(engine: &mut MockEngine, button: Button) {
+    {
+        let (_, _, _, controls, _) = engine.parts_mut();
+        controls.hold(button, true);
+    }
+    run_ticks(engine, 5);
+    {
+        let (_, _, _, controls, _) = engine.parts_mut();
+        controls.hold(button, false);
+    }
+    run_ticks(engine, 5);
+}
+
 /// Renders `text` top-aligned on `row` into an otherwise empty framebuffer.
 fn reference_row(text: &str, row: i32) -> FrameBuffer {
     let mut frame = FrameBuffer::new();
@@ -58,8 +76,8 @@ fn a_fresh_engine_starts_in_offset_mode_at_zero_volts() {
         "the first tick has no predecessor"
     );
     assert_eq!(report.cv_out, [0; 4]);
-    assert_eq!(engine.app().mode(), OutputMode::Offset);
-    assert_eq!(engine.app().selected(), 0);
+    assert_eq!(engine.diagnostic().mode(), OutputMode::Offset);
+    assert_eq!(engine.diagnostic().selected(), 0);
 }
 
 #[test]
@@ -113,9 +131,9 @@ fn a_clean_trigger_edge_is_counted_exactly_once() {
     }
     run_ticks(&mut engine, 10);
 
-    assert_eq!(engine.app().trigger_count(TriggerChannel::One), 1);
-    assert!(engine.app().trigger_state(TriggerChannel::One));
-    assert_eq!(engine.app().trigger_count(TriggerChannel::Two), 0);
+    assert_eq!(engine.diagnostic().trigger_count(TriggerChannel::One), 1);
+    assert!(engine.diagnostic().trigger_state(TriggerChannel::One));
+    assert_eq!(engine.diagnostic().trigger_count(TriggerChannel::Two), 0);
 }
 
 #[test]
@@ -132,7 +150,7 @@ fn a_bouncing_trigger_edge_is_still_counted_once() {
     }
 
     assert_eq!(
-        engine.app().trigger_count(TriggerChannel::One),
+        engine.diagnostic().trigger_count(TriggerChannel::One),
         1,
         "debouncing must collapse the bounce into a single event"
     );
@@ -149,7 +167,7 @@ fn pressing_the_left_encoder_resets_the_trigger_counters() {
             engine.tick();
         }
     }
-    assert_eq!(engine.app().trigger_count(TriggerChannel::Two), 3);
+    assert_eq!(engine.diagnostic().trigger_count(TriggerChannel::Two), 3);
 
     {
         let (_, _, _, controls, _) = engine.parts_mut();
@@ -157,7 +175,7 @@ fn pressing_the_left_encoder_resets_the_trigger_counters() {
     }
     run_ticks(&mut engine, 5);
 
-    assert_eq!(engine.app().trigger_count(TriggerChannel::Two), 0);
+    assert_eq!(engine.diagnostic().trigger_count(TriggerChannel::Two), 0);
 }
 
 #[test]
@@ -169,8 +187,8 @@ fn turning_the_right_encoder_moves_the_offset_by_one_step_per_detent() {
     }
     engine.tick();
 
-    assert_eq!(engine.app().offset(), 3 * OFFSET_STEP_MV);
-    assert_eq!(engine.app().outputs()[0], 3 * OFFSET_STEP_MV);
+    assert_eq!(engine.diagnostic().offset(), 3 * OFFSET_STEP_MV);
+    assert_eq!(engine.diagnostic().outputs()[0], 3 * OFFSET_STEP_MV);
 }
 
 #[test]
@@ -183,7 +201,7 @@ fn the_offset_saturates_at_the_output_limits() {
         }
         engine.tick();
     }
-    assert_eq!(engine.app().offset(), CV_OUT_MAX_MV);
+    assert_eq!(engine.diagnostic().offset(), CV_OUT_MAX_MV);
 
     for _ in 0..200 {
         {
@@ -192,7 +210,7 @@ fn the_offset_saturates_at_the_output_limits() {
         }
         engine.tick();
     }
-    assert_eq!(engine.app().offset(), CV_OUT_MIN_MV);
+    assert_eq!(engine.diagnostic().offset(), CV_OUT_MIN_MV);
 }
 
 #[test]
@@ -203,21 +221,27 @@ fn pressing_the_right_encoder_returns_the_offset_to_zero() {
         controls.turn(1, 10);
     }
     engine.tick();
-    assert_ne!(engine.app().offset(), 0);
+    assert_ne!(engine.diagnostic().offset(), 0);
 
     {
         let (_, _, _, controls, _) = engine.parts_mut();
         controls.hold(Button::RightEncoder, true);
     }
     run_ticks(&mut engine, 5);
-    assert_eq!(engine.app().offset(), 0);
+    assert_eq!(engine.diagnostic().offset(), 0);
 }
 
 #[test]
 fn each_encoder_press_is_counted_independently_like_a_trigger_edge() {
     let mut engine = mock_engine(0);
-    assert_eq!(engine.app().button_press_count(Button::LeftEncoder), 0);
-    assert_eq!(engine.app().button_press_count(Button::RightEncoder), 0);
+    assert_eq!(
+        engine.diagnostic().button_press_count(Button::LeftEncoder),
+        0
+    );
+    assert_eq!(
+        engine.diagnostic().button_press_count(Button::RightEncoder),
+        0
+    );
 
     for _ in 0..2 {
         {
@@ -237,70 +261,13 @@ fn each_encoder_press_is_counted_independently_like_a_trigger_edge() {
     }
     run_ticks(&mut engine, 5);
 
-    assert_eq!(engine.app().button_press_count(Button::LeftEncoder), 2);
-    assert_eq!(engine.app().button_press_count(Button::RightEncoder), 1);
-}
-
-#[test]
-fn holding_up_and_down_together_resets_the_offset() {
-    let mut engine = mock_engine(0);
-    {
-        let (_, _, _, controls, _) = engine.parts_mut();
-        controls.turn(1, 10);
-    }
-    engine.tick();
-    assert_ne!(engine.app().offset(), 0);
-    let mode_before = engine.app().mode();
-
-    {
-        let (_, _, _, controls, _) = engine.parts_mut();
-        controls.hold(Button::Up, true);
-        controls.hold(Button::Down, true);
-    }
-    run_ticks(&mut engine, 5);
-
     assert_eq!(
-        engine.app().offset(),
-        0,
-        "holding both buttons together resets the offset"
+        engine.diagnostic().button_press_count(Button::LeftEncoder),
+        2
     );
     assert_eq!(
-        engine.app().mode(),
-        mode_before,
-        "Up and Down still fire their own next()/previous() too, cancelling out"
-    );
-}
-
-#[test]
-fn pressing_up_then_down_separately_does_not_reset_the_offset() {
-    let mut engine = mock_engine(0);
-    {
-        let (_, _, _, controls, _) = engine.parts_mut();
-        controls.turn(1, 10);
-    }
-    engine.tick();
-    assert_ne!(engine.app().offset(), 0);
-
-    {
-        let (_, _, _, controls, _) = engine.parts_mut();
-        controls.hold(Button::Up, true);
-    }
-    run_ticks(&mut engine, 5);
-    {
-        let (_, _, _, controls, _) = engine.parts_mut();
-        controls.hold(Button::Up, false);
-    }
-    run_ticks(&mut engine, 5);
-    {
-        let (_, _, _, controls, _) = engine.parts_mut();
-        controls.hold(Button::Down, true);
-    }
-    run_ticks(&mut engine, 5);
-
-    assert_ne!(
-        engine.app().offset(),
-        0,
-        "pressed one after the other, not together, so the combo must not fire"
+        engine.diagnostic().button_press_count(Button::RightEncoder),
+        1
     );
 }
 
@@ -318,8 +285,8 @@ fn pressing_both_encoders_at_once_fires_both_actions_in_the_same_tick() {
         controls.turn(1, 10);
     }
     engine.tick();
-    assert_eq!(engine.app().trigger_count(TriggerChannel::One), 1);
-    assert_ne!(engine.app().offset(), 0);
+    assert_eq!(engine.diagnostic().trigger_count(TriggerChannel::One), 1);
+    assert_ne!(engine.diagnostic().offset(), 0);
 
     {
         let (_, _, _, controls, _) = engine.parts_mut();
@@ -329,12 +296,12 @@ fn pressing_both_encoders_at_once_fires_both_actions_in_the_same_tick() {
     run_ticks(&mut engine, 5);
 
     assert_eq!(
-        engine.app().trigger_count(TriggerChannel::One),
+        engine.diagnostic().trigger_count(TriggerChannel::One),
         0,
         "left encoder still resets the trigger counters when held together with the right"
     );
     assert_eq!(
-        engine.app().offset(),
+        engine.diagnostic().offset(),
         0,
         "right encoder still zeroes the offset when held together with the left"
     );
@@ -348,48 +315,39 @@ fn turning_the_left_encoder_selects_a_channel_and_wraps_around() {
         controls.turn(0, 2);
     }
     engine.tick();
-    assert_eq!(engine.app().selected(), 2);
+    assert_eq!(engine.diagnostic().selected(), 2);
 
     {
         let (_, _, _, controls, _) = engine.parts_mut();
         controls.turn(0, 3);
     }
     engine.tick();
-    assert_eq!(engine.app().selected(), 1, "selection wraps, never panics");
+    assert_eq!(
+        engine.diagnostic().selected(),
+        1,
+        "selection wraps, never panics"
+    );
 
     {
         let (_, _, _, controls, _) = engine.parts_mut();
         controls.turn(0, -3);
     }
     engine.tick();
-    assert_eq!(engine.app().selected(), 2, "and wraps downwards too");
+    assert_eq!(engine.diagnostic().selected(), 2, "and wraps downwards too");
 }
 
 #[test]
 fn the_up_and_down_buttons_cycle_the_output_mode() {
     let mut engine = mock_engine(0);
-    assert_eq!(engine.app().mode(), OutputMode::Offset);
+    assert_eq!(engine.diagnostic().mode(), OutputMode::Offset);
 
     for expected in [OutputMode::Ramp, OutputMode::Zero, OutputMode::Offset] {
-        {
-            let (_, _, _, controls, _) = engine.parts_mut();
-            controls.hold(Button::Up, true);
-        }
-        run_ticks(&mut engine, 4);
-        {
-            let (_, _, _, controls, _) = engine.parts_mut();
-            controls.hold(Button::Up, false);
-        }
-        run_ticks(&mut engine, 4);
-        assert_eq!(engine.app().mode(), expected);
+        tap(&mut engine, Button::Up);
+        assert_eq!(engine.diagnostic().mode(), expected);
     }
 
-    {
-        let (_, _, _, controls, _) = engine.parts_mut();
-        controls.hold(Button::Down, true);
-    }
-    run_ticks(&mut engine, 4);
-    assert_eq!(engine.app().mode(), OutputMode::Zero);
+    tap(&mut engine, Button::Down);
+    assert_eq!(engine.diagnostic().mode(), OutputMode::Zero);
 }
 
 #[test]
@@ -399,23 +357,18 @@ fn zero_mode_pins_every_output_regardless_of_the_inputs() {
         let (analog_in, _, _, controls, _) = engine.parts_mut();
         analog_in.patch(CvChannel::Two, 4_000);
         controls.turn(1, 10);
-        controls.hold(Button::Down, true);
     }
-    run_ticks(&mut engine, 4);
+    tap(&mut engine, Button::Down);
 
-    assert_eq!(engine.app().mode(), OutputMode::Zero);
-    assert_eq!(engine.app().outputs(), &[0; 4]);
+    assert_eq!(engine.diagnostic().mode(), OutputMode::Zero);
+    assert_eq!(engine.diagnostic().outputs(), &[0; 4]);
 }
 
 #[test]
 fn the_ramp_sweeps_the_whole_output_range_and_stays_in_bounds() {
     let mut engine = mock_engine(0);
-    {
-        let (_, _, _, controls, _) = engine.parts_mut();
-        controls.hold(Button::Up, true);
-    }
-    run_ticks(&mut engine, 4);
-    assert_eq!(engine.app().mode(), OutputMode::Ramp);
+    tap(&mut engine, Button::Up);
+    assert_eq!(engine.diagnostic().mode(), OutputMode::Ramp);
 
     let mut lowest = CV_OUT_MAX_MV;
     let mut highest = CV_OUT_MIN_MV;
@@ -443,11 +396,7 @@ fn the_ramp_sweeps_the_whole_output_range_and_stays_in_bounds() {
 #[test]
 fn the_four_ramp_channels_are_a_quarter_period_apart() {
     let mut engine = mock_engine(0);
-    {
-        let (_, _, _, controls, _) = engine.parts_mut();
-        controls.hold(Button::Up, true);
-    }
-    run_ticks(&mut engine, 4);
+    tap(&mut engine, Button::Up);
 
     engine.clock().advance(1_000);
     let report = engine.tick();
@@ -472,7 +421,7 @@ fn unpatching_an_input_does_not_disturb_the_outputs() {
         analog_in.patch(CvChannel::Three, 1_500);
     }
     run_ticks(&mut engine, 4);
-    let before = *engine.app().outputs();
+    let before = *engine.diagnostic().outputs();
 
     {
         let (analog_in, ..) = engine.parts_mut();
@@ -481,7 +430,7 @@ fn unpatching_an_input_does_not_disturb_the_outputs() {
     run_ticks(&mut engine, 1);
 
     assert_eq!(
-        *engine.app().outputs(),
+        *engine.diagnostic().outputs(),
         before,
         "cable presence is informational; it must not glitch the outputs"
     );
@@ -496,7 +445,7 @@ fn a_static_input_reads_as_inactive_and_a_moving_one_as_active() {
     }
     // Two full detection windows of a perfectly steady level.
     run_ticks(&mut engine, 600);
-    assert!(!engine.app().is_signal_active(CvChannel::One));
+    assert!(!engine.diagnostic().is_signal_active(CvChannel::One));
 
     for step in 0..600 {
         {
@@ -506,7 +455,7 @@ fn a_static_input_reads_as_inactive_and_a_moving_one_as_active() {
         engine.clock().advance(1_000);
         engine.tick();
     }
-    assert!(engine.app().is_signal_active(CvChannel::One));
+    assert!(engine.diagnostic().is_signal_active(CvChannel::One));
 }
 
 #[test]

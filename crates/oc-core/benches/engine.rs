@@ -10,21 +10,26 @@ use criterion::{Criterion, criterion_group, criterion_main};
 use std::hint::black_box;
 
 use oc_core::app::{DiagnosticApp, InputSnapshot, TickContext};
+use oc_core::apps::AppId;
+use oc_core::buttons::ButtonReader;
 use oc_core::calibration::{CvInputCalibration, CvOutputCalibration};
 use oc_core::framebuffer::FrameBuffer;
+use oc_core::menu::Menu;
 use oc_core::platform::{Button, ControlEvents, CvChannel, TriggerChannel};
 use oc_core::testing::mock_engine;
 
 /// A snapshot with all four inputs and all four triggers busy.
 fn busy_snapshot() -> InputSnapshot {
+    let controls = ControlEvents {
+        encoder_delta: [1, -1],
+        button_down: [false, false, true, false],
+    };
     InputSnapshot {
         cv: [-2_500, 0, 1_234, 4_800],
         patched: [true, true, false, true],
         triggers: [true, false, true, false],
-        controls: ControlEvents {
-            encoder_delta: [1, -1],
-            button_down: [false, false, true, false],
-        },
+        buttons: ButtonReader::new().update(&controls),
+        controls,
         elapsed_micros: 1_000,
     }
 }
@@ -90,6 +95,25 @@ fn applet(criterion: &mut Criterion) {
     group.finish();
 }
 
+fn menu(criterion: &mut Criterion) {
+    let mut group = criterion.benchmark_group("menu");
+
+    // The menu takes the panel over from the applet, so it is drawn instead of
+    // the applet's screen, never on top of it: what matters is that it stays in
+    // the same order of magnitude as `applet/render`.
+    group.bench_function("render", |bencher| {
+        let mut menu = Menu::new();
+        menu.open(AppId::Scope);
+        let mut frame = FrameBuffer::new();
+        bencher.iter(|| {
+            menu.render(&mut frame);
+            black_box(frame.lit_pixels())
+        });
+    });
+
+    group.finish();
+}
+
 fn conversions(criterion: &mut Criterion) {
     let mut group = criterion.benchmark_group("conversions");
     let input = CvInputCalibration::NOMINAL;
@@ -118,5 +142,5 @@ fn conversions(criterion: &mut Criterion) {
     group.finish();
 }
 
-criterion_group!(benches, engine_tick, applet, conversions);
+criterion_group!(benches, engine_tick, applet, menu, conversions);
 criterion_main!(benches);

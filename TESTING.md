@@ -67,6 +67,17 @@ Covers, from `crates/oc-core/tests/`:
   counter rollover, render-interval decoupling from the signal path, and
   byte-for-byte reproducibility of the rendered screen for a fixed input
   sequence.
+* `menu.rs` — behavioural tests of the app menu, likewise through
+  `Engine::tick`: the `up`+`down` chord opens and closes it without either
+  button firing its own action, navigation with the buttons and with the left
+  encoder, launching from either encoder press, the running applet keeping its
+  outputs live while the menu is up, menu input never reaching that applet, and
+  app state surviving a switch away and back.
+* `splash.rs` — the boot animation and the gate that holds the outputs at rest
+  until it finishes.
+
+Plus the in-file unit tests of every module, notably `buttons.rs` (debouncing
+and chord arbitration), `menu.rs`, `apps.rs` and `scope.rs`.
 
 **Proves:** the behaviour that all three backends (firmware, simulator, VCV)
 share is correct, independently of any register or OS.
@@ -151,9 +162,9 @@ cargo test -p oc-sim --test scenarios
 ```
 
 `crates/oc-sim/tests/scenarios/*.scn` are committed, hand-editable input
-sequences (four today: `cv_passthrough`, `trigger_burst`, `encoder_offset`,
-`mode_cycle`). Each is replayed against the real `oc_core::Engine` and
-checked two ways:
+sequences (five today: `cv_passthrough`, `trigger_burst`, `encoder_offset`,
+`mode_cycle`, `app_menu`). Each is replayed against the real `oc_core::Engine`
+and checked two ways:
 
 1. **Behavioural assertions** in `scenarios.rs` — expected CV outputs, cable
    presence, trigger counts, offset and mode after the sequence.
@@ -203,18 +214,26 @@ and to sanity-check the TUI itself, which the scenario tests do not exercise
 Rack module, the simulator boots into the boot splash screen before the
 diagnostic applet takes over — confirm the name/version banner and the border
 tracing itself around the screen, the same thing 9.1 checks on real hardware.
-Full key map in `README.md` ("The simulator"); the essentials:
+Then press `m` to open the app menu, launch `SCOPE`, and confirm the outputs
+panel follows. The key map is permanently on screen; it is also in
+`README.md` ("The simulator"). The essentials:
 
-| Key             | Action                                     |
-|-----------------|---------------------------------------------|
-| `Tab`           | select which CV input the arrows drive     |
-| `←`/`→`, `Home` | move / zero the selected CV input          |
-| `p`             | toggle the cable on the selected CV input  |
-| `z x c v`       | pulse triggers 1–4                         |
-| `[` `]` `,` `.` | turn the left / right encoder              |
-| `1` `2` `3`     | paused / real time / 50× virtual clock     |
-| `r`             | reset the module (replays the boot splash) |
-| `?`             | show the key map                           |
+| Key             | Action                                       |
+|-----------------|-----------------------------------------------|
+| `Tab`           | select which CV input the arrows drive       |
+| `←`/`→`, `Home` | move / zero the selected CV input            |
+| `p`             | toggle the cable on the selected CV input    |
+| `z x c v`       | pulse triggers 1–4 (`w x c v` on AZERTY)     |
+| `↑`/`↓`         | the module's up / down buttons               |
+| `m`             | up + down together: the app menu             |
+| `w`/`e`, `a`    | turn / press the left encoder (`z`/`e` AZERTY) |
+| `r`/`t`, `y`    | turn / press the right encoder               |
+| `1` `2` `3`     | paused / real time / 50× virtual clock       |
+| `o` / `0`       | reset the module (replays the boot splash)   |
+| `l`             | switch between AZERTY and QWERTY             |
+
+In VCV Rack the same chord is unreachable with a mouse (two momentary buttons,
+one pointer): right-click the module and choose *Open/close app menu*.
 
 **Proves:** the module is usable and legible end to end from a human's
 perspective.

@@ -14,6 +14,7 @@
 use std::path::{Path, PathBuf};
 
 use oc_core::app::OutputMode;
+use oc_core::apps::AppId;
 use oc_core::calibration::CV_OUT_MIN_MV;
 use oc_core::platform::{CvChannel, TriggerChannel};
 use oc_sim::braille;
@@ -107,7 +108,7 @@ fn a_steady_input_is_not_mistaken_for_a_signal() {
     let simulator = replay("cv_passthrough");
     for channel in CvChannel::ALL {
         assert!(
-            !simulator.app().is_signal_active(channel),
+            !simulator.diagnostic().is_signal_active(channel),
             "a constant level must not read as an active signal on {channel:?}"
         );
     }
@@ -118,17 +119,20 @@ fn clean_gates_are_counted_and_bounce_is_not() {
     let mut simulator = replay("trigger_burst");
 
     assert_eq!(
-        simulator.app().trigger_count(TriggerChannel::One),
+        simulator.diagnostic().trigger_count(TriggerChannel::One),
         4,
         "four clean gates, four edges"
     );
     assert_eq!(
-        simulator.app().trigger_count(TriggerChannel::Two),
+        simulator.diagnostic().trigger_count(TriggerChannel::Two),
         1,
         "a bouncing contact must count once"
     );
-    assert_eq!(simulator.app().trigger_count(TriggerChannel::Three), 0);
-    assert!(simulator.app().trigger_state(TriggerChannel::Two));
+    assert_eq!(
+        simulator.diagnostic().trigger_count(TriggerChannel::Three),
+        0
+    );
+    assert!(simulator.diagnostic().trigger_state(TriggerChannel::Two));
 
     assert_screen_matches(&mut simulator, "trigger_burst");
 }
@@ -138,12 +142,12 @@ fn the_encoders_select_a_channel_and_dial_an_offset() {
     let mut simulator = replay("encoder_offset");
 
     assert_eq!(
-        simulator.app().selected(),
+        simulator.diagnostic().selected(),
         2,
         "left encoder moved two steps"
     );
     assert_eq!(
-        simulator.app().offset(),
+        simulator.diagnostic().offset(),
         1_500,
         "fifteen detents of 100 mV each"
     );
@@ -160,7 +164,7 @@ fn the_up_button_walks_through_the_output_modes() {
     let mut simulator = replay("mode_cycle");
 
     assert_eq!(
-        simulator.app().mode(),
+        simulator.diagnostic().mode(),
         OutputMode::Zero,
         "two presses from OFFS land on ZERO"
     );
@@ -174,12 +178,36 @@ fn the_up_button_walks_through_the_output_modes() {
 }
 
 #[test]
+fn the_app_menu_switches_to_the_scope() {
+    let mut simulator = replay("app_menu");
+
+    assert!(
+        !simulator.menu_is_open(),
+        "launching an app closes the menu"
+    );
+    assert_eq!(simulator.current_app(), AppId::Scope);
+    assert_eq!(
+        simulator.diagnostic().mode(),
+        OutputMode::Offset,
+        "neither up nor down fired its own action on the way into the menu"
+    );
+    assert_eq!(
+        simulator.cv_out(),
+        [1_500; 4],
+        "the scope buffers CV1 to every output, which no output mode can do"
+    );
+
+    assert_screen_matches(&mut simulator, "app_menu");
+}
+
+#[test]
 fn every_scenario_replays_identically_twice() {
     for name in [
         "cv_passthrough",
         "trigger_burst",
         "encoder_offset",
         "mode_cycle",
+        "app_menu",
     ] {
         let mut first = replay(name);
         let mut second = replay(name);
@@ -203,6 +231,7 @@ fn every_scenario_file_has_a_test_and_a_snapshot() {
         "trigger_burst",
         "encoder_offset",
         "mode_cycle",
+        "app_menu",
     ];
 
     let mut found: Vec<String> = std::fs::read_dir(scenario_dir())

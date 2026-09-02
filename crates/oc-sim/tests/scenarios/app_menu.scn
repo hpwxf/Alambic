@@ -1,0 +1,26 @@
+# oc-sim scenario v1
+# Open the app menu by holding up and down together, move the highlight down
+# one entry, and launch with the left encoder. The two buttons go down forty
+# ticks apart, the way a hand actually presses them: neither may fire its own
+# action on the way in. CV1 and CV2 carry different levels throughout, so the
+# scope's buffered mult proves the switch on the jacks as well as on screen.
+ticks 600
+0   cv 1 1500
+0   patch 1 on
+0   cv 2 4000
+0   patch 2 on
+20  button up down
+60  button down down
+70  button up up
+70  button down up
+90  button down down
+100 button down up
+120 button left down
+126 button left up
+# Once the scope is running, walk CV1 up and down so the golden snapshot shows
+# a real trace rather than a flat line.
+200 cv 1 -2000
+280 cv 1 5000
+360 cv 1 0
+440 cv 1 3000
+520 cv 1 1500

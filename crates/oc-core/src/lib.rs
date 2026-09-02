@@ -34,21 +34,29 @@
 #![warn(missing_docs)]
 
 pub mod app;
+pub mod apps;
+pub mod buttons;
 pub mod calibration;
 pub mod debounce;
 pub mod encoder;
 pub mod engine;
 pub mod fmt;
 pub mod framebuffer;
+pub mod menu;
 pub mod platform;
+pub mod scope;
 pub mod signal;
 pub mod splash;
 pub mod testing;
 
 pub use app::{DiagnosticApp, InputSnapshot, OutputMode, TickContext};
+pub use apps::{AppHost, AppId};
+pub use buttons::{ButtonEvents, ButtonReader};
 pub use engine::{Engine, TickReport};
 pub use framebuffer::FrameBuffer;
+pub use menu::Menu;
 pub use platform::MilliVolts;
+pub use scope::ScopeApp;
 pub use splash::SplashScreen;
 
 /// Human-readable firmware identification, emitted on boot and shown on screen.

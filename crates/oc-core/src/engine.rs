@@ -7,7 +7,10 @@
 //! hardware.
 
 use crate::app::{DiagnosticApp, InputSnapshot, TickContext};
+use crate::apps::{AppHost, AppId};
+use crate::buttons::ButtonReader;
 use crate::framebuffer::FrameBuffer;
+use crate::menu::{Menu, MenuOutcome};
 use crate::platform::{
     AnalogIn, AnalogOut, CV_CHANNELS, Clock, Controls, DigitalIn, Display, MilliVolts,
     TRIGGER_CHANNELS, TriggerChannel,
@@ -46,7 +49,23 @@ pub struct TickReport {
     pub rendered: bool,
 }
 
-/// Drives the diagnostic applet against a platform.
+/// Which screen currently owns the display.
+///
+/// The boot animation and the app menu both take the panel away from the
+/// running applet, but for different reasons and at different costs: the splash
+/// screen also holds the outputs at rest, while the menu lets the applet keep
+/// running underneath.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Screen {
+    /// The boot animation, before any applet runs.
+    Splash,
+    /// The running applet.
+    App,
+    /// The app picker.
+    Menu,
+}
+
+/// Drives the applets against a platform.
 #[derive(Debug)]
 pub struct Engine<A, O, D, C, K, S> {
     analog_in: A,
@@ -55,8 +74,11 @@ pub struct Engine<A, O, D, C, K, S> {
     controls: C,
     clock: K,
     display: S,
-    app: DiagnosticApp,
+    apps: AppHost,
     splash: SplashScreen,
+    menu: Menu,
+    buttons: ButtonReader,
+    screen: Screen,
     tick_count: u64,
     previous_micros: Option<u64>,
     last_duration_micros: u32,
@@ -89,8 +111,11 @@ where
             controls,
             clock,
             display,
-            app: DiagnosticApp::new(),
+            apps: AppHost::new(),
             splash: SplashScreen::new(),
+            menu: Menu::new(),
+            buttons: ButtonReader::new(),
+            screen: Screen::Splash,
             tick_count: 0,
             previous_micros: None,
             last_duration_micros: 0,
@@ -127,12 +152,25 @@ where
         self.previous_micros = Some(started);
         self.tick_count = self.tick_count.wrapping_add(1);
 
-        if !self.splash.is_done() {
-            return self.tick_splash(started, elapsed);
+        if self.screen == Screen::Splash {
+            let report = self.tick_splash(started, elapsed);
+            if self.splash.is_done() {
+                self.screen = Screen::App;
+            }
+            return report;
         }
 
-        let snapshot = self.acquire(elapsed);
-        let outputs = self.app.update(&snapshot);
+        let mut snapshot = self.acquire(elapsed);
+        self.route_panel(&snapshot);
+
+        // The applet keeps running while the menu is up: time advances, the
+        // inputs still reach it and its outputs stay live. Only the panel
+        // changes hands, so picking an app cannot also move the applet's own
+        // selection behind the menu.
+        if self.screen == Screen::Menu {
+            snapshot.silence_controls();
+        }
+        let outputs = self.apps.update(&snapshot);
 
         for (index, &level) in outputs.iter().enumerate() {
             if let Some(channel) = crate::platform::CvChannel::from_index(index) {
@@ -149,7 +187,11 @@ where
                 tick_count: self.tick_count,
                 duration_micros: self.last_duration_micros,
             };
-            self.app.render(self.display.frame_mut(), &context);
+            if self.screen == Screen::Menu {
+                self.menu.render(self.display.frame_mut());
+            } else {
+                self.apps.render(self.display.frame_mut(), &context);
+            }
             self.display.present();
         }
 
@@ -173,7 +215,8 @@ where
     /// at rest and the animation is rendered on every tick, regardless of
     /// [`Self::render_interval`], so the border traces smoothly.
     fn tick_splash(&mut self, started: u64, elapsed: u32) -> TickReport {
-        let _ = self.controls.poll();
+        let controls = self.controls.poll();
+        let _ = self.buttons.update(&controls);
         self.splash.advance(elapsed);
 
         let outputs = [0; CV_CHANNELS];
@@ -209,8 +252,11 @@ where
     /// identity on screen the same way after a manual reset as after a power
     /// cycle.
     pub fn reset(&mut self) {
-        self.app = DiagnosticApp::new();
+        self.apps = AppHost::new();
         self.splash.reset();
+        self.menu.reset();
+        self.buttons = ButtonReader::new();
+        self.screen = Screen::Splash;
         self.tick_count = 0;
         self.previous_micros = None;
         self.last_duration_micros = 0;
@@ -224,6 +270,35 @@ where
     /// production backends should let it play out instead.
     pub const fn skip_splash(&mut self) {
         self.splash.finish();
+        self.screen = Screen::App;
+    }
+
+    /// Opens, closes and drives the app menu from this tick's panel input.
+    ///
+    /// The chord is handled before navigation, and never both in one tick: the
+    /// tick that opens the menu must not also move its highlight or close it
+    /// again.
+    fn route_panel(&mut self, snapshot: &InputSnapshot) {
+        if snapshot.buttons.menu_chord() {
+            if self.screen == Screen::Menu {
+                self.screen = Screen::App;
+            } else {
+                self.menu.open(self.apps.current());
+                self.screen = Screen::Menu;
+            }
+            return;
+        }
+
+        if self.screen != Screen::Menu {
+            return;
+        }
+        if let Some(MenuOutcome::Launch(chosen)) = self
+            .menu
+            .update(&snapshot.buttons, snapshot.controls.delta(0))
+        {
+            self.apps.select(chosen);
+            self.screen = Screen::App;
+        }
     }
 
     /// Samples every input.
@@ -233,6 +308,7 @@ where
             controls: self.controls.poll(),
             ..InputSnapshot::default()
         };
+        snapshot.buttons = self.buttons.update(&snapshot.controls);
 
         for channel in crate::platform::CvChannel::ALL {
             let index = channel.index();
@@ -257,10 +333,34 @@ where
         clamp_duration(now.wrapping_sub(previous))
     }
 
-    /// The applet, for inspection by tests and by the host UIs.
+    /// Every applet, for inspection by tests and by the host UIs.
     #[must_use]
-    pub const fn app(&self) -> &DiagnosticApp {
-        &self.app
+    pub const fn apps(&self) -> &AppHost {
+        &self.apps
+    }
+
+    /// The diagnostic applet specifically, running or not.
+    #[must_use]
+    pub const fn diagnostic(&self) -> &DiagnosticApp {
+        self.apps.diagnostic()
+    }
+
+    /// The applet currently driving the outputs.
+    #[must_use]
+    pub const fn current_app(&self) -> AppId {
+        self.apps.current()
+    }
+
+    /// Whether the app menu currently owns the screen.
+    #[must_use]
+    pub const fn menu_is_open(&self) -> bool {
+        matches!(self.screen, Screen::Menu)
+    }
+
+    /// The app the menu is highlighting, meaningful only while it is open.
+    #[must_use]
+    pub const fn menu_selection(&self) -> AppId {
+        self.menu.selected()
     }
 
     /// The framebuffer as last rendered.
@@ -366,7 +466,7 @@ mod tests {
             report.cv_out[1], 4_000,
             "once booted, inputs must reach the matching output again"
         );
-        assert_eq!(engine.app().mode(), OutputMode::Offset);
+        assert_eq!(engine.diagnostic().mode(), OutputMode::Offset);
     }
 
     #[test]

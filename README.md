@@ -29,6 +29,27 @@ behaviour runs on hardware, in a native simulator, and inside VCV Rack 2.
 read and write signals, which is what makes the simulator a meaningful proxy
 for the hardware.
 
+## Apps and the app menu
+
+The module runs one app at a time and picks between them from the front panel.
+**Holding `up` and `down` together** opens the app menu; `up`/`down` or the left
+encoder move the highlight, either encoder press launches the highlighted app,
+and holding both again closes the menu without changing anything. The running
+app keeps tracking its inputs and driving its outputs while the menu is up, so
+opening it never interrupts a patch. In the simulator press `m`; in VCV Rack
+the chord is unreachable with a mouse, so right-click the module and choose
+*Open/close app menu*.
+
+| App          | What it does                                             |
+|--------------|----------------------------------------------------------|
+| `DIAGNOSTIC` | the I/O diagnostic screen the module boots into          |
+| `SCOPE`      | a scrolling view of `CV1`, buffered to all four outputs  |
+
+Because holding both buttons is a deliberate gesture, `up` and `down` fire
+their own action on **release**, and not at all when the chord formed while they
+were down. That is the only way the first of the two presses cannot act before
+the chord is even detectable.
+
 ## The diagnostic applet
 
 The first milestone's application is deliberately trivial musically: it makes
@@ -41,7 +62,8 @@ validated from the front panel alone.
 | left encoder, press  | reset the trigger counters                 |
 | right encoder, turn  | change the offset by 100 mV per detent     |
 | right encoder, press | set the offset back to 0 V                 |
-| up / down            | next / previous output mode                |
+| up / down            | next / previous output mode, on release     |
+| up + down together   | open the app menu                          |
 
 Output modes:
 
@@ -116,6 +138,7 @@ one:
 | `x` `c` `v`    | pulse triggers 2 to 4                             |
 | `X` `C` `V`    | hold triggers 2 to 4 high or low                  |
 | `↑` / `↓`      | the module's up / down buttons                    |
+| `m`            | press up and down together: the app menu          |
 | `Shift+↑` / `Shift+↓` | hold up / down until pressed again (see below) |
 | `a`            | press the left encoder                            |
 | `e`            | turn the left encoder clockwise (`Shift` for ten detents) |
@@ -130,10 +153,10 @@ one:
 A plain `↑`/`↓`/`z x c v` press is only held for a handful of ticks — long
 enough to register as a clean edge, too short for two separate keystrokes to
 reliably overlap. That is enough for the module's up/down and trigger
-reactions on their own, but the diagnostic applet also reacts to **up and
-down held together** (it resets the offset), which needs a real overlap:
-press `Shift+↑` then `Shift+↓` (in either order) to hold both down, and
-`Shift+↑`/`Shift+↓` again to release them.
+reactions on their own, but **up and down held together** opens the app menu,
+which needs a real overlap. `m` presses both in the same tick, which is the
+one-keystroke way to do it; to hold them by hand instead, press `Shift+↑` then
+`Shift+↓` (in either order), and `Shift+↑`/`Shift+↓` again to release them.
 
 ### Scenarios
 
@@ -289,6 +312,13 @@ older objects or a previously linked `plugin.*`, run `vcv clean` first: it
 removes the plugin's `build`/`dep`/`dist` trees, the linked binary, the
 copied header, and Cargo's host artefacts for `oc-vcv-ffi`, without needing
 a Rack SDK path.
+
+**Opening the app menu in Rack.** The module's buttons are Rack's momentary
+push buttons, and a mouse has one pointer, so the hardware's up + down chord
+cannot be played on the panel. Right-click the module and choose
+**Open/close app menu** instead; it holds both buttons down for ten engine
+ticks, which is the same gesture the engine sees from two thumbs. Everything
+after that — moving the highlight, launching — works from the panel as usual.
 
 The plugin has been built and linked successfully against a real Rack SDK
 (2.6.x) during development, producing a loadable `.vcvplugin`; it has not yet

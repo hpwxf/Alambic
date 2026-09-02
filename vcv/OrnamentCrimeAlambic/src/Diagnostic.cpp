@@ -86,6 +86,20 @@ struct Diagnostic : Module {
     // rounding to zero.
     float encoderRemainder[kEncoders] = {};
 
+    // Ticks left to hold UP and DOWN down together, so the app menu's chord
+    // can be triggered from the context menu.
+    //
+    // The hardware gesture is two thumbs on two buttons; a mouse has only one
+    // pointer, and Rack's momentary buttons cannot be latched, so there is no
+    // way to press both from the panel. This counter is the module's stand-in
+    // for that gesture. It must outlast the core's debounce window (three
+    // ticks) with room to spare, hence ten.
+    int chordTicks = 0;
+    static constexpr int kChordHoldTicks = 10;
+
+    // Requests the app-menu chord on the next few ticks.
+    void requestAppMenu() { chordTicks = kChordHoldTicks; }
+
     Diagnostic() {
         // A mismatch here would mean this widget's port/param layout no
         // longer matches the ABI it was written against; fail immediately
@@ -182,14 +196,23 @@ struct Diagnostic : Module {
                            params[LEFT_BUTTON_PARAM].getValue() > 0.5f);
         oc_engine_encoder(engine, 1, encoderDelta(1, params[RIGHT_ENCODER_PARAM].getValue()),
                            params[RIGHT_BUTTON_PARAM].getValue() > 0.5f);
-        oc_engine_button(engine, 2, params[UP_PARAM].getValue() > 0.5f);
-        oc_engine_button(engine, 3, params[DOWN_PARAM].getValue() > 0.5f);
+        // A pending chord holds both buttons down on top of whatever the panel
+        // says, which is exactly what two thumbs would do on the hardware. It
+        // is counted down in the tick loop below, not here: process() runs at
+        // the host's sample rate, tens of times faster than the engine's 1 kHz,
+        // so counting here would expire the hold before a single tick saw it.
+        const bool chord = chordTicks > 0;
+        oc_engine_button(engine, 2, params[UP_PARAM].getValue() > 0.5f || chord);
+        oc_engine_button(engine, 3, params[DOWN_PARAM].getValue() > 0.5f || chord);
 
         microsAccumulator += static_cast<double>(args.sampleTime) * 1e6;
         while (microsAccumulator >= kTickIntervalMicros) {
             microsAccumulator -= kTickIntervalMicros;
             totalMicros += static_cast<uint64_t>(kTickIntervalMicros);
             oc_engine_tick(engine, totalMicros);
+            if (chordTicks > 0) {
+                --chordTicks;
+            }
         }
 
         for (int channel = 0; channel < kCvChannels; ++channel) {
@@ -296,6 +319,19 @@ struct DiagnosticWidget : ModuleWidget {
         screen->module = module;
         screen->box.size = mm2px(Vec(46.f, 23.f));
         addChild(screen);
+    }
+
+    // The app menu opens on UP and DOWN held together, which a single mouse
+    // pointer cannot do on two momentary buttons. This entry performs the
+    // gesture for the user; it toggles, exactly as the hardware chord does.
+    void appendContextMenu(Menu *menu) override {
+        auto *diagnostic = dynamic_cast<Diagnostic *>(module);
+        if (diagnostic == nullptr) {
+            return;
+        }
+        menu->addChild(new MenuSeparator);
+        menu->addChild(createMenuItem("Open/close app menu", "up + down",
+                                       [diagnostic]() { diagnostic->requestAppMenu(); }));
     }
 };
 

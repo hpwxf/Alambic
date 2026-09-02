@@ -10,10 +10,13 @@
 
 use oc_core::TickReport;
 use oc_core::app::DiagnosticApp;
+use oc_core::apps::AppId;
+use oc_core::debounce::DEFAULT_STABLE_SAMPLES;
 use oc_core::framebuffer::FrameBuffer;
 use oc_core::platform::{
     BUTTONS, Button, CV_CHANNELS, CvChannel, MilliVolts, TRIGGER_CHANNELS, TriggerChannel,
 };
+use oc_core::scope::ScopeApp;
 use oc_core::testing::{MockEngine, mock_engine_at_boot};
 
 use crate::clock::TICK_MICROS;
@@ -24,6 +27,13 @@ use crate::scenario::{Event, Scenario};
 /// It must exceed the core's debounce depth, otherwise a keystroke would be
 /// filtered out as contact bounce.
 pub const PRESS_TICKS: u32 = 6;
+
+/// Ticks to run after a momentary press before its action has certainly fired.
+///
+/// `up` and `down` act on release (see [`oc_core::buttons`]), so a press is only
+/// resolved once the hold has expired *and* the release has debounced. Tests
+/// should step this many ticks rather than guess.
+pub const SETTLE_TICKS: u32 = PRESS_TICKS + (DEFAULT_STABLE_SAMPLES as u32) + 1;
 
 /// Microseconds of virtual time the module is assumed to spend per tick.
 ///
@@ -146,6 +156,15 @@ impl Simulator {
         self.button_hold[button.index()] = PRESS_TICKS;
     }
 
+    /// Presses `up` and `down` in the same tick: the app-menu chord.
+    ///
+    /// Two separate momentary presses never overlap, so this is the only way to
+    /// form the chord from a single keystroke.
+    pub fn chord(&mut self) {
+        self.press(Button::Up);
+        self.press(Button::Down);
+    }
+
     /// Raises a trigger for [`PRESS_TICKS`] ticks, then lowers it.
     pub fn pulse(&mut self, channel: TriggerChannel) {
         self.apply(Event::Trigger {
@@ -231,10 +250,28 @@ impl Simulator {
         self.last_report.as_ref()
     }
 
-    /// The applet's observable state.
+    /// The diagnostic applet's observable state, running or not.
     #[must_use]
-    pub const fn app(&self) -> &DiagnosticApp {
-        self.engine.app()
+    pub const fn diagnostic(&self) -> &DiagnosticApp {
+        self.engine.diagnostic()
+    }
+
+    /// The scope applet's observable state, running or not.
+    #[must_use]
+    pub const fn scope(&self) -> &ScopeApp {
+        self.engine.apps().scope()
+    }
+
+    /// The applet currently driving the outputs and the screen.
+    #[must_use]
+    pub const fn current_app(&self) -> AppId {
+        self.engine.current_app()
+    }
+
+    /// Whether the app menu currently owns the screen.
+    #[must_use]
+    pub const fn menu_is_open(&self) -> bool {
+        self.engine.menu_is_open()
     }
 
     /// The module's screen.
@@ -298,7 +335,7 @@ mod tests {
         simulator.pulse(TriggerChannel::One);
         simulator.step_many(u64::from(PRESS_TICKS) + 4);
 
-        assert_eq!(simulator.app().trigger_count(TriggerChannel::One), 1);
+        assert_eq!(simulator.diagnostic().trigger_count(TriggerChannel::One), 1);
         assert!(
             !simulator.trigger_in(TriggerChannel::One),
             "the pulse must be released again"
@@ -313,7 +350,10 @@ mod tests {
             simulator.pulse(TriggerChannel::Three);
             simulator.step_many(u64::from(PRESS_TICKS) + 4);
         }
-        assert_eq!(simulator.app().trigger_count(TriggerChannel::Three), 2);
+        assert_eq!(
+            simulator.diagnostic().trigger_count(TriggerChannel::Three),
+            2
+        );
     }
 
     #[test]
@@ -325,12 +365,12 @@ mod tests {
             detents: 5,
         });
         simulator.step();
-        assert_ne!(simulator.app().offset(), 0);
+        assert_ne!(simulator.diagnostic().offset(), 0);
 
         simulator.press(Button::RightEncoder);
         simulator.step_many(u64::from(PRESS_TICKS) + 2);
         assert_eq!(
-            simulator.app().offset(),
+            simulator.diagnostic().offset(),
             0,
             "the press must have registered"
         );
@@ -369,7 +409,7 @@ mod tests {
         simulator.step();
 
         assert_eq!(simulator.cv_out(), [0; 4]);
-        assert_eq!(simulator.app().offset(), 0);
+        assert_eq!(simulator.diagnostic().offset(), 0);
     }
 
     #[test]
@@ -455,7 +495,7 @@ ticks 40
         replayed.replay(&scenario);
 
         assert_eq!(replayed.cv_out(), original.cv_out());
-        assert_eq!(replayed.app().mode(), original.app().mode());
+        assert_eq!(replayed.diagnostic().mode(), original.diagnostic().mode());
     }
 
     #[test]
@@ -499,11 +539,11 @@ ticks 40
             detents: 5,
         });
         simulator.step();
-        assert_ne!(simulator.app().offset(), 0);
+        assert_ne!(simulator.diagnostic().offset(), 0);
 
         simulator.reset();
         assert_eq!(
-            simulator.app().offset(),
+            simulator.diagnostic().offset(),
             0,
             "reset restores the default applet state"
         );

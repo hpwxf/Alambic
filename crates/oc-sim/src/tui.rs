@@ -16,6 +16,7 @@ use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Paragraph};
 
+use oc_core::apps::AppId;
 use oc_core::calibration::{CV_IN_MAX_MV, CV_IN_MIN_MV};
 use oc_core::platform::{Button, CV_CHANNELS, CvChannel, MilliVolts, TriggerChannel};
 
@@ -98,10 +99,14 @@ fn help_lines(layout: KeyLayout) -> Vec<String> {
         ("p".to_owned(), "toggle the patch cable".to_owned()),
         (format!("{pulse1} x c v"), "pulse triggers 1-4".to_owned()),
         (format!("{gate1} X C V"), "hold triggers 1-4".to_owned()),
-        ("up/down".to_owned(), "cycle the output mode".to_owned()),
+        (
+            "up/down".to_owned(),
+            "cycle the output mode (on release)".to_owned(),
+        ),
+        ("m".to_owned(), "up+down together: the app menu".to_owned()),
         (
             "Shift+up/down".to_owned(),
-            "hold (combo resets the offset)".to_owned(),
+            "hold (both held = the app menu)".to_owned(),
         ),
         (
             format!("a,{turn_left_ccw}/e"),
@@ -267,13 +272,14 @@ impl Tui {
             // `Simulator::press`), which is normally too short a window for
             // two separate keystrokes to ever overlap. Shift+Up/Down instead
             // holds the button until pressed again, the same way Shift+ZXCV
-            // holds a trigger — the only way to reliably test the up+down
-            // combo that resets the offset (see `DiagnosticApp::
-            // apply_controls`).
+            // holds a trigger — that is how the up+down chord that opens the
+            // app menu is formed by hand. `m` presses both in one tick, which
+            // is the same gesture in a single keystroke.
             KeyCode::Up if shift => self.toggle_button_hold(Button::Up),
             KeyCode::Down if shift => self.toggle_button_hold(Button::Down),
             KeyCode::Up => self.press(Button::Up),
             KeyCode::Down => self.press(Button::Down),
+            KeyCode::Char('m') => self.chord(),
 
             // Row 1 (top letter row), six keys in a row, skipping only quit
             // (`q`) and patch (`p`): press-turn-turn for the left encoder,
@@ -414,6 +420,12 @@ impl Tui {
         self.simulator.press(button);
     }
 
+    /// Presses up and down in the same tick: the app-menu chord.
+    fn chord(&mut self) {
+        self.simulator.chord();
+        "up+down: app menu".clone_into(&mut self.status);
+    }
+
     /// Toggles a button between held down and released.
     fn toggle_button_hold(&mut self, button: Button) {
         let down = !self.simulator.button_held(button);
@@ -491,18 +503,25 @@ impl Tui {
 
         let counts: Vec<String> = TriggerChannel::ALL
             .into_iter()
-            .map(|channel| self.simulator.app().trigger_count(channel).to_string())
+            .map(|channel| {
+                self.simulator
+                    .diagnostic()
+                    .trigger_count(channel)
+                    .to_string()
+            })
             .collect();
         lines.push(Line::raw(format!("  edges    {}", counts.join(" "))));
 
         lines.push(Line::raw(format!(
             "  presses  L{} R{} up{} dn{}",
-            self.simulator.app().button_press_count(Button::LeftEncoder),
             self.simulator
-                .app()
+                .diagnostic()
+                .button_press_count(Button::LeftEncoder),
+            self.simulator
+                .diagnostic()
                 .button_press_count(Button::RightEncoder),
-            self.simulator.app().button_press_count(Button::Up),
-            self.simulator.app().button_press_count(Button::Down),
+            self.simulator.diagnostic().button_press_count(Button::Up),
+            self.simulator.diagnostic().button_press_count(Button::Down),
         )));
 
         frame.render_widget(
@@ -541,14 +560,27 @@ impl Tui {
             .last_report()
             .map_or((0, 0), |report| (report.duration_micros, report.tick_count));
 
+        // The second line describes whichever applet is running, so it stays
+        // meaningful once the app menu has handed the panel to another one.
+        let detail = match self.simulator.current_app() {
+            AppId::Diagnostic => format!(
+                "mode {}   offset {}mV   channel {}",
+                self.simulator.diagnostic().mode().label(),
+                self.simulator.diagnostic().offset(),
+                self.simulator.diagnostic().selected() + 1
+            ),
+            AppId::Scope => format!("cv1 {}mV", self.simulator.scope().level()),
+        };
+        let menu = if self.simulator.menu_is_open() {
+            "   [MENU]"
+        } else {
+            ""
+        };
+
         let lines = vec![
             Line::raw(format!("  {}", rendered.join("  "))),
-            Line::raw(format!(
-                "  mode {}   offset {}mV   channel {}",
-                self.simulator.app().mode().label(),
-                self.simulator.app().offset(),
-                self.simulator.app().selected() + 1
-            )),
+            Line::raw(format!("  {}{menu}", self.simulator.current_app().name())),
+            Line::raw(format!("  {detail}")),
             Line::raw(format!("  tick {ticks}   cycle {duration}us")),
         ];
 
@@ -638,21 +670,36 @@ pub fn replay_headless(path: &std::path::Path) -> Result<String> {
 
     let counts: Vec<u32> = TriggerChannel::ALL
         .into_iter()
-        .map(|channel| simulator.app().trigger_count(channel))
+        .map(|channel| simulator.diagnostic().trigger_count(channel))
         .collect();
 
     let mut report = String::new();
     let _ = writeln!(report, "ticks   {}", simulator.tick_count());
-    let _ = writeln!(report, "mode    {}", simulator.app().mode().label());
-    let _ = writeln!(report, "offset  {}mV", simulator.app().offset());
+    let _ = writeln!(report, "app     {}", simulator.current_app().name());
+    let _ = writeln!(
+        report,
+        "menu    {}",
+        if simulator.menu_is_open() {
+            "open"
+        } else {
+            "closed"
+        }
+    );
+    let _ = writeln!(report, "mode    {}", simulator.diagnostic().mode().label());
+    let _ = writeln!(report, "offset  {}mV", simulator.diagnostic().offset());
     let _ = writeln!(
         report,
         "presses L{} R{} up{} dn{}",
-        simulator.app().button_press_count(Button::LeftEncoder),
-        simulator.app().button_press_count(Button::RightEncoder),
-        simulator.app().button_press_count(Button::Up),
-        simulator.app().button_press_count(Button::Down),
+        simulator
+            .diagnostic()
+            .button_press_count(Button::LeftEncoder),
+        simulator
+            .diagnostic()
+            .button_press_count(Button::RightEncoder),
+        simulator.diagnostic().button_press_count(Button::Up),
+        simulator.diagnostic().button_press_count(Button::Down),
     );
+    let _ = writeln!(report, "scope   {}mV", simulator.scope().level());
     let _ = writeln!(report, "cv out  {:?}", simulator.cv_out());
     let _ = writeln!(report, "edges   {counts:?}");
     report.push_str("screen\n");
@@ -668,12 +715,13 @@ mod tests {
     use ratatui::backend::TestBackend;
     use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
+    use oc_core::apps::AppId;
     use oc_core::calibration::{CV_IN_MAX_MV, CV_IN_MIN_MV};
     use oc_core::platform::{Button, TriggerChannel};
 
     use super::{KeyLayout, Tui, bar};
     use crate::braille;
-    use crate::simulator::PRESS_TICKS;
+    use crate::simulator::{PRESS_TICKS, SETTLE_TICKS};
 
     /// A plain, unmodified key press (no shift/ctrl/alt).
     fn key(c: char) -> KeyEvent {
@@ -698,39 +746,34 @@ mod tests {
 
         press_and_settle(&mut tui, 'w');
         assert_eq!(
-            tui.simulator.app().trigger_count(TriggerChannel::One),
+            tui.simulator
+                .diagnostic()
+                .trigger_count(TriggerChannel::One),
             1,
             "w is trigger 1's canonical key on AZERTY"
         );
     }
 
     #[test]
-    fn a_plain_up_then_down_press_do_not_overlap_and_the_combo_does_not_fire() {
+    fn a_plain_up_then_down_press_do_not_overlap_and_the_menu_stays_shut() {
         let mut tui = Tui::new();
         tui.simulator.skip_splash();
-        tui.on_key(key('t')); // turn the right encoder, so the offset is non-zero
-        tui.simulator.step_many(2);
-        assert_ne!(tui.simulator.app().offset(), 0);
 
         tui.on_key(KeyEvent::new(KeyCode::Up, KeyModifiers::NONE));
-        tui.simulator.step_many(u64::from(PRESS_TICKS) + 4); // Up fully auto-releases
+        tui.simulator.step_many(u64::from(SETTLE_TICKS)); // Up fully auto-releases
         tui.on_key(KeyEvent::new(KeyCode::Down, KeyModifiers::NONE));
-        tui.simulator.step_many(u64::from(PRESS_TICKS) + 4);
+        tui.simulator.step_many(u64::from(SETTLE_TICKS));
 
-        assert_ne!(
-            tui.simulator.app().offset(),
-            0,
-            "the two presses never overlapped, so the up+down combo must not fire"
+        assert!(
+            !tui.simulator.menu_is_open(),
+            "the two presses never overlapped, so the chord must not fire"
         );
     }
 
     #[test]
-    fn shift_up_then_shift_down_holds_both_and_fires_the_combo() {
+    fn shift_up_then_shift_down_holds_both_and_opens_the_app_menu() {
         let mut tui = Tui::new();
         tui.simulator.skip_splash();
-        tui.on_key(key('t'));
-        tui.simulator.step_many(2);
-        assert_ne!(tui.simulator.app().offset(), 0);
 
         tui.on_key(KeyEvent::new(KeyCode::Up, KeyModifiers::SHIFT));
         tui.simulator.step_many(2);
@@ -739,10 +782,9 @@ mod tests {
         tui.on_key(KeyEvent::new(KeyCode::Down, KeyModifiers::SHIFT));
         tui.simulator.step_many(5);
 
-        assert_eq!(
-            tui.simulator.app().offset(),
-            0,
-            "holding both via Shift+Up/Shift+Down reliably overlaps and fires the combo"
+        assert!(
+            tui.simulator.menu_is_open(),
+            "holding both via Shift+Up/Shift+Down reliably overlaps and opens the menu"
         );
 
         tui.on_key(KeyEvent::new(KeyCode::Up, KeyModifiers::SHIFT));
@@ -752,15 +794,51 @@ mod tests {
     }
 
     #[test]
+    fn m_opens_and_closes_the_app_menu() {
+        let mut tui = Tui::new();
+        tui.simulator.skip_splash();
+
+        press_and_settle(&mut tui, 'm');
+        assert!(
+            tui.simulator.menu_is_open(),
+            "m forms the chord in one keystroke"
+        );
+
+        press_and_settle(&mut tui, 'm');
+        assert!(!tui.simulator.menu_is_open(), "the chord toggles the menu");
+    }
+
+    #[test]
+    fn the_menu_launches_the_scope_from_the_keyboard() {
+        let mut tui = Tui::new();
+        tui.simulator.skip_splash();
+
+        press_and_settle(&mut tui, 'm');
+        tui.on_key(KeyEvent::new(KeyCode::Down, KeyModifiers::NONE));
+        tui.simulator.step_many(u64::from(SETTLE_TICKS));
+        press_and_settle(&mut tui, 'a');
+
+        assert!(!tui.simulator.menu_is_open());
+        assert_eq!(tui.simulator.current_app(), AppId::Scope);
+    }
+
+    #[test]
     fn a_presses_the_left_encoder_and_resets_trigger_counters_on_either_layout() {
         let mut tui = Tui::new();
         tui.simulator.skip_splash();
         press_and_settle(&mut tui, 'w');
-        assert_eq!(tui.simulator.app().trigger_count(TriggerChannel::One), 1);
+        assert_eq!(
+            tui.simulator
+                .diagnostic()
+                .trigger_count(TriggerChannel::One),
+            1
+        );
 
         press_and_settle(&mut tui, 'a');
         assert_eq!(
-            tui.simulator.app().trigger_count(TriggerChannel::One),
+            tui.simulator
+                .diagnostic()
+                .trigger_count(TriggerChannel::One),
             0,
             "a presses the left encoder on both layouts, which resets the trigger counters"
         );
@@ -791,14 +869,18 @@ mod tests {
 
         press_and_settle(&mut tui, 'z');
         assert_eq!(
-            tui.simulator.app().trigger_count(TriggerChannel::One),
+            tui.simulator
+                .diagnostic()
+                .trigger_count(TriggerChannel::One),
             1,
             "z is trigger 1's canonical key, reached natively under QWERTY"
         );
 
         press_and_settle(&mut tui, 'w');
         assert_eq!(
-            tui.simulator.app().trigger_count(TriggerChannel::One),
+            tui.simulator
+                .diagnostic()
+                .trigger_count(TriggerChannel::One),
             1,
             "w turns the left encoder under QWERTY (native), not trigger 1 nor its reset"
         );

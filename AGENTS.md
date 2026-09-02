@@ -14,14 +14,15 @@ A Rust firmware for the **Ornament & Crime** Eurorack module (TLM Audio
 build, **Teensy 4.0 / NXP i.MX RT1062**, Cortex-M7 @ 600 MHz), built as an
 engineering foundation rather than a musically rich firmware: cross-compiled
 firmware, a native simulator, a VCV Rack 2 module, and a safe flashing tool,
-all sharing one behavioural core. Musical applets beyond a diagnostic I/O
-screen are explicitly out of scope for now.
+all sharing one behavioural core. Several applets can be hosted and picked
+from a front-panel menu, but *musically rich* applets are explicitly out of
+scope for now: the two shipped are a diagnostic I/O screen and a scope.
 
 ## Workspace layout
 
 | Crate                | `no_std` | `unsafe` policy            | Role |
 |-----------------------|----------|-----------------------------|------|
-| `crates/oc-core`      | yes      | `forbid(unsafe_code)`       | **All** behaviour: platform traits, `Engine::tick`, `DiagnosticApp`, calibration, debouncing, quadrature decoding, framebuffer. Knows nothing about registers or an OS. |
+| `crates/oc-core`      | yes      | `forbid(unsafe_code)`       | **All** behaviour: platform traits, `Engine::tick`, the applets (`DiagnosticApp`, `ScopeApp`) and the app menu, button debouncing and chord arbitration, calibration, quadrature decoding, framebuffer. Knows nothing about registers or an OS. |
 | `crates/oc-drivers`   | yes      | `forbid(unsafe_code)`       | Peripheral protocols (DAC8565, SH1106/SSD1306/SSD1309, triggers, shared SPI bus) over `embedded-hal` 1.0 only; tested on the host against recording mock buses. |
 | `crates/oc-firmware`  | yes (bin)| `deny(unsafe_code)`, currently zero `unsafe` of its own | Pure wiring: turns `teensy4-bsp`/`imxrt-hal` resources into the `oc-core` platform traits, runs the 1 kHz loop. The one crate that cannot be tested on the host. |
 | `crates/oc-sim`       | no       | ordinary                    | Host backend + ratatui TUI + deterministic virtual clock; runs the real `oc-core` engine. |
@@ -149,7 +150,7 @@ Full protocol, per level, with exact commands and what each proves: see
   any there, add them to `oc-core`/`oc-drivers` and wire the firmware to use
   the tested abstraction instead.
 * `Engine::tick` is the one function every backend calls; a new behaviour
-  belongs there (or in `DiagnosticApp`), tested once via
+  belongs there (or in an applet reached through `AppHost`), tested once via
   `oc_core::testing::mock_engine`, not duplicated per backend.
 * `crates/oc-sim/tests/scenarios/*.scn` are golden, hand-editable regression
   tests with matching `*.screen` snapshots. Never hand-edit a `.screen` file;
@@ -191,6 +192,11 @@ Full protocol, per level, with exact commands and what each proves: see
 | Platform traits (`AnalogIn`, `Clock`, `Display`…) | `crates/oc-core/src/platform.rs` |
 | The main control loop                             | `crates/oc-core/src/engine.rs` |
 | The diagnostic applet's logic and rendering       | `crates/oc-core/src/app.rs` |
+| The scope applet                                  | `crates/oc-core/src/scope.rs` |
+| The app registry and dispatch (`AppId`, `AppHost`) | `crates/oc-core/src/apps.rs` |
+| The app menu (`up`+`down`) and its rendering      | `crates/oc-core/src/menu.rs` |
+| The Rack stand-in for the `up`+`down` chord       | `vcv/OrnamentCrimeAlambic/src/Diagnostic.cpp` (`appendContextMenu`) |
+| Button debouncing and the `up`+`down` chord       | `crates/oc-core/src/buttons.rs` |
 | The boot splash screen (name/version, progressive border) | `crates/oc-core/src/splash.rs` |
 | ADC/DAC unit conversion and calibration           | `crates/oc-core/src/calibration.rs` |
 | Deterministic mocks used by every `oc-core` test  | `crates/oc-core/src/testing.rs` |
