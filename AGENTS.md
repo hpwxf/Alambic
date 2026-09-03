@@ -75,7 +75,7 @@ lives in `oc-core` and is tested once, on the host.
 
 * **Internal unit: millivolts, `i32`** (`oc_core::platform::MilliVolts`).
   No floating point in the firmware's signal path; `f32` appears only at the
-  VCV Rack boundary (`Diagnostic::process()` converting to/from Rack's
+  VCV Rack boundary (`Alambic::process()` converting to/from Rack's
   volt-scaled `float`, never inside `oc-core` or `oc-vcv-ffi`'s own ABI,
   which stays `int32_t` millivolts). This keeps conversions exact and avoids
   FPU dependence in the critical loop.
@@ -173,7 +173,7 @@ Full protocol, per level, with exact commands and what each proves: see
   instance.** `crates/oc-vcv-ffi` and `vcv/OrnamentCrimeAlambic` are implemented
   and `vcv/OrnamentCrimeAlambic` has been built and linked against a real Rack
   SDK, but the panel layout and the knob-as-encoder interaction in
-  `Diagnostic.cpp` have not been exercised inside Rack itself. Building it
+  `Alambic.cpp` have not been exercised inside Rack itself. Building it
   requires a separately downloaded [Rack SDK](https://vcvrack.com/downloads)
   (`RACK_DIR`/`--rack-dir`), which is why CI does not build it.
 * **Renode smoke test** — dropped as originally specified (no UART to log
@@ -195,7 +195,7 @@ Full protocol, per level, with exact commands and what each proves: see
 | The scope applet                                  | `crates/oc-core/src/scope.rs` |
 | The app registry and dispatch (`AppId`, `AppHost`) | `crates/oc-core/src/apps.rs` |
 | The app menu (`up`+`down`) and its rendering      | `crates/oc-core/src/menu.rs` |
-| The Rack stand-in for the `up`+`down` chord       | `vcv/OrnamentCrimeAlambic/src/Diagnostic.cpp` (`appendContextMenu`) |
+| The Rack stand-in for the `up`+`down` chord       | `vcv/OrnamentCrimeAlambic/src/Alambic.cpp` (`appendContextMenu`) |
 | Button debouncing and the `up`+`down` chord       | `crates/oc-core/src/buttons.rs` |
 | The boot splash screen (name/version, progressive border) | `crates/oc-core/src/splash.rs` |
 | ADC/DAC unit conversion and calibration           | `crates/oc-core/src/calibration.rs` |
@@ -206,6 +206,6 @@ Full protocol, per level, with exact commands and what each proves: see
 | Flash orchestration (confirm, invoke loader)       | `xtask/src/flash.rs` |
 | The C ABI linked into VCV Rack                    | `crates/oc-vcv-ffi/src/lib.rs` |
 | VCV plugin build/install orchestration            | `xtask/src/vcv.rs` |
-| The VCV Rack plugin shim (module, widget)         | `vcv/OrnamentCrimeAlambic/src/Diagnostic.cpp` |
+| The VCV Rack plugin shim (module, widget)         | `vcv/OrnamentCrimeAlambic/src/Alambic.cpp` |
 | Full test protocol                                | `TESTING.md` |
 | Full requirements, decisions, delivery status     | `.junie/plans/oc-rust-firmware-foundation.md` |

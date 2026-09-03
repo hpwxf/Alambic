@@ -200,7 +200,7 @@ fn resolve_rack_dir(args: &VcvArgs) -> Result<PathBuf> {
 
 /// Cross-compiles nothing (this is a host build): builds `oc-vcv-ffi` for
 /// the host, then copies its generated header next to the plugin sources so
-/// `#include "oc_vcv_ffi.h"` in `Diagnostic.cpp` resolves. Returns the
+/// `#include "oc_vcv_ffi.h"` in `Alambic.cpp` resolves. Returns the
 /// staticlib's absolute path.
 fn build_ffi_and_copy_header(profile: Profile) -> Result<PathBuf> {
     build_vcv_ffi(profile)?;

@@ -287,8 +287,8 @@ side, `vcv/OrnamentCrimeAlambic`, is a thin shim required by the Rack SDK: modul
 declaration, port/param mapping, and a widget that reads the framebuffer —
 **no behaviour lives there**. The whole point is that the module inside VCV
 Rack runs the exact same `oc-core` engine as the firmware and the simulator,
-right down to the boot sequence: a freshly constructed engine (`Diagnostic()`)
-and Rack's own "Initialize" action (`Diagnostic::onReset`, wired to
+right down to the boot sequence: a freshly constructed engine (`Alambic()`)
+and Rack's own "Initialize" action (`Alambic::onReset`, wired to
 `oc_engine_reset`) both show the same splash screen — the module's name and
 version centred on the screen, with a one-pixel border tracing itself around
 the edge — before the diagnostic screen takes over.

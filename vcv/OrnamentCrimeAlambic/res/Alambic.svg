@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<!-- Panel background for the Diagnostic module. Component graphics (screen,
+<!-- Panel background for the Alambic module. Component graphics (screen,
      knobs, buttons, jacks) are drawn by VCV Rack itself from the widget
-     positions in Diagnostic.cpp; this file only supplies the silkscreen
+     positions in Alambic.cpp; this file only supplies the silkscreen
      art behind/around them, so it must stay in sync with those mm2px()
      offsets by eye. Layout mirrors the real O&C hardware: screen up top,
      UP/DOWN + two push-encoders in the middle, then three 4-wide jack rows
@@ -15,7 +15,7 @@
 
   <!-- Title -->
   <text x="35.56" y="5.6" font-size="3.6" fill="#d8d8d8" text-anchor="middle" font-weight="bold">O&amp;C &#183; ALAMBIC</text>
-  <text x="35.56" y="126.5" font-size="2.6" fill="#5a5a5a" text-anchor="middle">Diagnostic</text>
+  <text x="35.56" y="126.5" font-size="2.6" fill="#5a5a5a" text-anchor="middle">Alambic</text>
 
   <!-- Screen bezel. Widget sits at (12.56,9) size (46,23); this frame is
        1mm larger on every side so a thin rim stays visible around it. -->

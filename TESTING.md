@@ -542,7 +542,7 @@ under Eurorack power-supply noise; none of that is in scope for this plan.
   against a real Rack SDK, but nobody has yet loaded the resulting plugin
   into VCV Rack and patched cables to it. There is no automated way to do
   that; treat the panel layout and the knob-as-encoder interaction in
-  `Diagnostic.cpp` as unverified until someone has.
+  `Alambic.cpp` as unverified until someone has.
 * **Renode boot smoke test** — dropped as originally specified because the
   firmware drives no UART (every LPUART on pins 0–23 collides with the
   panel, as documented in `crates/oc-firmware/src/main.rs`). The plan file

@@ -14,9 +14,9 @@
   "changelogUrl": "",
   "modules": [
     {
-      "slug": "Diagnostic",
-      "name": "Diagnostic",
-      "description": "I/O diagnostic applet for the Ornament & Crime Alambic firmware core",
+      "slug": "Alambic",
+      "name": "Alambic",
+      "description": "Ornament & Crime firmware core (Alambic) as a Rack module: app menu, diagnostic and scope applets",
       "tags": [
         "Utility",
         "Dual/Multi"

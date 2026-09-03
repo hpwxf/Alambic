@@ -8,7 +8,7 @@
 namespace {
 
 // Panel layout constants. These mirror the panel counts baked into the ABI
-// (`oc_engine_cv_channels()` and friends); `Diagnostic`'s constructor asserts
+// (`oc_engine_cv_channels()` and friends); `Alambic`'s constructor asserts
 // they still agree, so a future change to `oc-core`'s panel shape fails loudly
 // here instead of silently misrouting a jack.
 constexpr int kCvChannels = 4;
@@ -43,7 +43,7 @@ constexpr int kScreenHeight = 64;
 
 } // namespace
 
-struct Diagnostic : Module {
+struct Alambic : Module {
     enum ParamId {
         LEFT_ENCODER_PARAM,
         RIGHT_ENCODER_PARAM,
@@ -100,7 +100,7 @@ struct Diagnostic : Module {
     // Requests the app-menu chord on the next few ticks.
     void requestAppMenu() { chordTicks = kChordHoldTicks; }
 
-    Diagnostic() {
+    Alambic() {
         // A mismatch here would mean this widget's port/param layout no
         // longer matches the ABI it was written against; fail immediately
         // rather than silently reading or writing the wrong channel.
@@ -134,7 +134,7 @@ struct Diagnostic : Module {
         engine = oc_engine_new();
     }
 
-    ~Diagnostic() override {
+    ~Alambic() override {
         // A null `engine` (construction panicked, see oc_engine_new's own
         // documentation) is a defined no-op on the Rust side.
         oc_engine_free(engine);
@@ -224,8 +224,8 @@ struct Diagnostic : Module {
 
 // Renders the module's 128x64 monochrome screen by reading the framebuffer
 // exposed through the ABI; it decides nothing about what is on it.
-struct DiagnosticScreen : TransparentWidget {
-    Diagnostic *module = nullptr;
+struct AlambicScreen : TransparentWidget {
+    Alambic *module = nullptr;
     // Size, in pixels, of one framebuffer pixel once drawn on the panel.
     // Chosen so that 128 x 64 framebuffer pixels exactly fill the widget's
     // 46mm x 23mm box (46 * MM2PX / 128 == 23 * MM2PX / 64, since 46:23
@@ -265,10 +265,10 @@ struct DiagnosticScreen : TransparentWidget {
     }
 };
 
-struct DiagnosticWidget : ModuleWidget {
-    explicit DiagnosticWidget(Diagnostic *module) {
+struct AlambicWidget : ModuleWidget {
+    explicit AlambicWidget(Alambic *module) {
         setModule(module);
-        setPanel(createPanel(asset::plugin(pluginInstance, "res/Diagnostic.svg")));
+        setPanel(createPanel(asset::plugin(pluginInstance, "res/Alambic.svg")));
 
         addChild(createWidget<ScrewSilver>(Vec(RACK_GRID_WIDTH, 0)));
         addChild(createWidget<ScrewSilver>(Vec(box.size.x - 2 * RACK_GRID_WIDTH, 0)));
@@ -281,21 +281,21 @@ struct DiagnosticWidget : ModuleWidget {
         constexpr float kRightColumn = 50.02f;
 
         // UP/DOWN sit just under the screen, one per column.
-        addParam(createParamCentered<TL1105>(mm2px(Vec(kLeftColumn, 38.f)), module, Diagnostic::UP_PARAM));
-        addParam(createParamCentered<TL1105>(mm2px(Vec(kRightColumn, 38.f)), module, Diagnostic::DOWN_PARAM));
+        addParam(createParamCentered<TL1105>(mm2px(Vec(kLeftColumn, 38.f)), module, Alambic::UP_PARAM));
+        addParam(createParamCentered<TL1105>(mm2px(Vec(kRightColumn, 38.f)), module, Alambic::DOWN_PARAM));
 
         // The two rotary encoders themselves.
         addParam(createParamCentered<RoundBlackKnob>(mm2px(Vec(kLeftColumn, 50.f)), module,
-                                                       Diagnostic::LEFT_ENCODER_PARAM));
+                                                       Alambic::LEFT_ENCODER_PARAM));
         addParam(createParamCentered<RoundBlackKnob>(mm2px(Vec(kRightColumn, 50.f)), module,
-                                                       Diagnostic::RIGHT_ENCODER_PARAM));
+                                                       Alambic::RIGHT_ENCODER_PARAM));
 
         // Each encoder's push-to-click, directly beneath its knob so the
         // pairing reads visually even though Rack models them as two
         // separate widgets (a knob can't both drag and click in this API).
-        addParam(createParamCentered<TL1105>(mm2px(Vec(kLeftColumn, 60.f)), module, Diagnostic::LEFT_BUTTON_PARAM));
+        addParam(createParamCentered<TL1105>(mm2px(Vec(kLeftColumn, 60.f)), module, Alambic::LEFT_BUTTON_PARAM));
         addParam(
-            createParamCentered<TL1105>(mm2px(Vec(kRightColumn, 60.f)), module, Diagnostic::RIGHT_BUTTON_PARAM));
+            createParamCentered<TL1105>(mm2px(Vec(kRightColumn, 60.f)), module, Alambic::RIGHT_BUTTON_PARAM));
 
         // 3x4 I/O block: TRIG IN, then CV IN, then OUT, matching the
         // silkscreen order on the panel (and on the real hardware) instead
@@ -306,16 +306,16 @@ struct DiagnosticWidget : ModuleWidget {
         constexpr float kOutRowY = 118.f;
         for (int channel = 0; channel < kCvChannels; ++channel) {
             addInput(createInputCentered<PJ301MPort>(mm2px(Vec(kColumnX[channel], kTrigRowY)), module,
-                                                       Diagnostic::TR1_INPUT + channel));
+                                                       Alambic::TR1_INPUT + channel));
             addInput(createInputCentered<PJ301MPort>(mm2px(Vec(kColumnX[channel], kCvRowY)), module,
-                                                       Diagnostic::CV1_INPUT + channel));
+                                                       Alambic::CV1_INPUT + channel));
             addOutput(createOutputCentered<PJ301MPort>(mm2px(Vec(kColumnX[channel], kOutRowY)), module,
-                                                         Diagnostic::A_OUTPUT + channel));
+                                                         Alambic::A_OUTPUT + channel));
         }
 
         // Screen: centered horizontally on the 71.12mm-wide panel; the
         // panel art draws a 1mm bezel frame around this exact box.
-        auto *screen = createWidget<DiagnosticScreen>(mm2px(Vec(12.56f, 9.f)));
+        auto *screen = createWidget<AlambicScreen>(mm2px(Vec(12.56f, 9.f)));
         screen->module = module;
         screen->box.size = mm2px(Vec(46.f, 23.f));
         addChild(screen);
@@ -325,14 +325,14 @@ struct DiagnosticWidget : ModuleWidget {
     // pointer cannot do on two momentary buttons. This entry performs the
     // gesture for the user; it toggles, exactly as the hardware chord does.
     void appendContextMenu(Menu *menu) override {
-        auto *diagnostic = dynamic_cast<Diagnostic *>(module);
-        if (diagnostic == nullptr) {
+        auto *alambic = dynamic_cast<Alambic *>(module);
+        if (alambic == nullptr) {
             return;
         }
         menu->addChild(new MenuSeparator);
         menu->addChild(createMenuItem("Open/close app menu", "up + down",
-                                       [diagnostic]() { diagnostic->requestAppMenu(); }));
+                                       [alambic]() { alambic->requestAppMenu(); }));
     }
 };
 
-Model *modelDiagnostic = createModel<Diagnostic, DiagnosticWidget>("Diagnostic");
+Model *modelAlambic = createModel<Alambic, AlambicWidget>("Alambic");

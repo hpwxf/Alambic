@@ -5,5 +5,5 @@ Plugin *pluginInstance;
 void init(Plugin *p) {
     pluginInstance = p;
 
-    p->addModel(modelDiagnostic);
+    p->addModel(modelAlambic);
 }

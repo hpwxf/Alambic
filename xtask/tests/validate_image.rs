@@ -315,7 +315,7 @@ fn arm_elf_with_load(
     write_u16(&mut elf, 50, shstrndx);
 
     // Program header
-    let filesz = claimed_filesz.map_or(u64::try_from(load_content_len).expect("len"), |v| v);
+    let filesz = claimed_filesz.unwrap_or(u64::try_from(load_content_len).expect("len"));
     let filesz_u32 = u32::try_from(filesz.min(u64::from(u32::MAX))).expect("filesz");
     write_u32(&mut elf, phoff, PT_LOAD);
     write_u32(&mut elf, phoff + 4, u32::try_from(load_off).expect("off"));
