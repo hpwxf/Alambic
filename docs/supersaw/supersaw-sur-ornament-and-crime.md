@@ -331,6 +331,12 @@ L'O.R.N.8 (O&C sur Teensy 4.1) gère huit entrées CV, huit sorties, MIDI, USB h
 
 Note au passage : le Teensy 4.1 utilise **le même IMXRT1062** que le 4.0, donc les mêmes ADC. Ses apports réels sont 8 Mo de flash au lieu de 2, un socket microSD en SDIO natif, un PHY Ethernet, un port USB host, plus de broches, et deux emplacements SOIC-8 pour ajouter de la PSRAM. C'est cette PSRAM qui change ce qu'on peut écrire : avec 1 Mo interne, pas de réverbe ni de granulaire ; avec 8 ou 16 Mo, si.
 
+### Validation empirique sur le matériel cible
+
+Test effectué avec le firmware **Squares-and-Circles** installé sur le Teensy 4.0 du module : le moteur M-OSC/Waveforms, formes CSAW et consorts, sonne proprement — aucun tic lié au rafraîchissement de l'écran. Le DAC8565 et l'OLED y partagent pourtant le même bus SPI (mêmes broches 11/13 que dans `board.rs`). Ce résultat écarte l'hypothèse d'un défaut de câblage propre à cet exemplaire de carte : le partage de bus est gérable en logiciel sur le matériel O&C stock, sans modification matérielle. Reste à savoir *comment* S&C s'y prend (DMA + priorité NVIC, vraisemblablement, cf. §12) — son loader étant fermé, seule l'inspection des symptômes est possible, pas la lecture du code.
+
+À noter : le firmware Alambic actuel (cette codebase) tourne encore en boucle cooperative à 1 kHz, sans interruption ni DMA (`main.rs`) — le problème du tic ne s'y pose pas encore puisqu'il n'y a pas de chemin audio temps réel. Il se posera au moment d'implémenter le moteur supersaw, et il faudra alors construire nous-mêmes la séparation DMA/NVIC plutôt que la trouver déjà en place.
+
 ---
 
 ## 14. Prochaines étapes
