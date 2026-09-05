@@ -6,8 +6,9 @@
 //! which is what makes a test written against the simulator meaningful for the
 //! hardware.
 
-use crate::app::{DiagnosticApp, InputSnapshot, TickContext};
+use crate::apps::diagnostic::DiagnosticApp;
 use crate::apps::{AppHost, AppId};
+use crate::apps::{InputSnapshot, TickContext};
 use crate::buttons::ButtonReader;
 use crate::framebuffer::FrameBuffer;
 use crate::menu::{Menu, MenuOutcome};
@@ -403,7 +404,7 @@ fn clamp_duration(raw: u64) -> u32 {
 #[cfg(test)]
 mod tests {
     use super::{MAX_REPORTED_DURATION_MICROS, clamp_duration};
-    use crate::app::OutputMode;
+    use crate::apps::diagnostic::OutputMode;
     use crate::platform::{CV_CHANNELS, CvChannel};
     use crate::splash;
     use crate::testing::mock_engine_at_boot;

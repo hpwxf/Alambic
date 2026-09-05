@@ -9,8 +9,9 @@
 use criterion::{Criterion, criterion_group, criterion_main};
 use std::hint::black_box;
 
-use oc_core::app::{DiagnosticApp, InputSnapshot, TickContext};
 use oc_core::apps::AppId;
+use oc_core::apps::diagnostic::DiagnosticApp;
+use oc_core::apps::{InputSnapshot, TickContext};
 use oc_core::buttons::ButtonReader;
 use oc_core::calibration::{CvInputCalibration, CvOutputCalibration};
 use oc_core::framebuffer::FrameBuffer;

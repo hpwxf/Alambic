@@ -9,14 +9,14 @@
 //! momentary presses that survive debouncing, a tick counter, and replay.
 
 use oc_core::TickReport;
-use oc_core::app::DiagnosticApp;
 use oc_core::apps::AppId;
+use oc_core::apps::diagnostic::DiagnosticApp;
+use oc_core::apps::scope::ScopeApp;
 use oc_core::debounce::DEFAULT_STABLE_SAMPLES;
 use oc_core::framebuffer::FrameBuffer;
 use oc_core::platform::{
     BUTTONS, Button, CV_CHANNELS, CvChannel, MilliVolts, TRIGGER_CHANNELS, TriggerChannel,
 };
-use oc_core::scope::ScopeApp;
 use oc_core::testing::{MockEngine, mock_engine_at_boot};
 
 use crate::clock::TICK_MICROS;

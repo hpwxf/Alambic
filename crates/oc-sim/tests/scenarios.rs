@@ -13,8 +13,8 @@
 
 use std::path::{Path, PathBuf};
 
-use oc_core::app::OutputMode;
 use oc_core::apps::AppId;
+use oc_core::apps::diagnostic::OutputMode;
 use oc_core::calibration::CV_OUT_MIN_MV;
 use oc_core::platform::{CvChannel, TriggerChannel};
 use oc_sim::braille;

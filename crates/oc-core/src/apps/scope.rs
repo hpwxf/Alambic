@@ -6,7 +6,7 @@
 //!
 //! * on screen, a scrolling trace of `CV1` instead of the diagnostic table;
 //! * on the jacks, `CV1` copied to all four outputs, an output signature no
-//!   [`OutputMode`](crate::app::OutputMode) can produce (`Offset` mirrors channel
+//!   [`OutputMode`](crate::apps::diagnostic::OutputMode) can produce (`Offset` mirrors channel
 //!   by channel, `Ramp` shifts each channel by a quarter period, `Zero` is flat).
 //!
 //! It reads no control at all, which is the point: an applet owes the engine
@@ -21,7 +21,7 @@ use embedded_graphics::pixelcolor::BinaryColor;
 use embedded_graphics::prelude::Point;
 use embedded_graphics::text::{Baseline, Text};
 
-use crate::app::{InputSnapshot, TickContext};
+use crate::apps::{InputSnapshot, TickContext};
 use crate::calibration::{CV_OUT_MAX_MV, CV_OUT_MIN_MV};
 use crate::fmt::{TextBuf, write_volts};
 use crate::framebuffer::{FrameBuffer, WIDTH};
@@ -167,7 +167,7 @@ fn row_for(level: MilliVolts) -> u8 {
 #[cfg(test)]
 mod tests {
     use super::{PLOT_HEIGHT, SAMPLE_INTERVAL_MICROS, ScopeApp, TRACE_LEN, row_for};
-    use crate::app::{InputSnapshot, TickContext};
+    use crate::apps::{InputSnapshot, TickContext};
     use crate::calibration::{CV_OUT_MAX_MV, CV_OUT_MIN_MV};
     use crate::framebuffer::FrameBuffer;
     use crate::platform::{CV_CHANNELS, MilliVolts};

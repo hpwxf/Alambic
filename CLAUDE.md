@@ -74,7 +74,7 @@ differ only in how they read/write signals:
 | `xtask` | The only supported build/flash/VCV entry point |
 
 A new behaviour belongs in `Engine::tick` or in an applet reached through
-`AppHost` (`crates/oc-core/src/apps.rs`), tested once via
+`AppHost` (`crates/oc-core/src/apps/mod.rs`), tested once via
 `oc_core::testing::mock_engine` — never duplicated per backend, and never
 added as an `oc-firmware` unit test. Holding `up`+`down` opens the app menu;
 because of that, `up` and `down` fire their own action on release, arbitrated

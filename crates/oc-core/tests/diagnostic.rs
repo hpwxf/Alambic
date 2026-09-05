@@ -10,8 +10,9 @@ use embedded_graphics::pixelcolor::BinaryColor;
 use embedded_graphics::prelude::Point;
 use embedded_graphics::text::{Baseline, Text};
 
-use oc_core::app::{OFFSET_STEP_MV, OutputMode, ROW_HEIGHT};
+use oc_core::apps::diagnostic::{OFFSET_STEP_MV, OutputMode};
 use oc_core::calibration::{CV_OUT_MAX_MV, CV_OUT_MIN_MV};
+use oc_core::framebuffer::ROW_HEIGHT;
 use oc_core::framebuffer::{FrameBuffer, WIDTH};
 use oc_core::platform::{Button, CvChannel, TriggerChannel};
 use oc_core::testing::{MockEngine, mock_engine};

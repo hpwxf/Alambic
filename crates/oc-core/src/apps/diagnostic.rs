@@ -30,13 +30,14 @@ use embedded_graphics::pixelcolor::BinaryColor;
 use embedded_graphics::prelude::Point;
 use embedded_graphics::text::{Baseline, Text};
 
+use crate::apps::{InputSnapshot, TickContext};
 use crate::buttons::ButtonEvents;
 use crate::calibration::{CV_OUT_MAX_MV, CV_OUT_MIN_MV};
 use crate::debounce::EdgeCounter;
 use crate::fmt::{TextBuf, write_volts};
-use crate::framebuffer::FrameBuffer;
+use crate::framebuffer::{FrameBuffer, ROW_HEIGHT};
 use crate::platform::{
-    BUTTONS, Button, CV_CHANNELS, ControlEvents, CvChannel, ENCODERS, MilliVolts, TRIGGER_CHANNELS,
+    BUTTONS, Button, CV_CHANNELS, ControlEvents, CvChannel, MilliVolts, TRIGGER_CHANNELS,
     TriggerChannel,
 };
 use crate::signal::{DEFAULT_ACTIVITY_THRESHOLD_MV, SignalDetector};
@@ -46,17 +47,6 @@ pub const OFFSET_STEP_MV: MilliVolts = 100;
 
 /// Period of the ramp output, in microseconds.
 pub const RAMP_PERIOD_MICROS: u32 = 2_000_000;
-
-/// Height of one text row, in pixels.
-///
-/// The font is exactly eight pixels tall and rows are top-aligned, so every row
-/// occupies exactly one framebuffer page. That keeps the screen layout aligned
-/// with the OLED controller's own addressing and makes a row easy to compare
-/// against a reference rendering in tests.
-pub const ROW_HEIGHT: i32 = 8;
-
-/// Number of text rows on the screen.
-pub const ROWS: i32 = 8;
 
 /// How the CV outputs are driven.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -106,60 +96,6 @@ impl OutputMode {
             Self::Zero => Self::Ramp,
         }
     }
-}
-
-/// Everything the applet observes during one tick.
-#[derive(Debug, Clone, Copy)]
-pub struct InputSnapshot {
-    /// Calibrated level of each CV input.
-    pub cv: [MilliVolts; CV_CHANNELS],
-    /// Whether the host reports a cable on each CV input.
-    pub patched: [bool; CV_CHANNELS],
-    /// Raw level of each trigger input.
-    pub triggers: [bool; TRIGGER_CHANNELS],
-    /// Raw encoder and button activity.
-    pub controls: ControlEvents,
-    /// Button actions, debounced and arbitrated against the menu chord.
-    pub buttons: ButtonEvents,
-    /// Microseconds since the previous tick.
-    pub elapsed_micros: u32,
-}
-
-impl InputSnapshot {
-    /// Drops every control, keeping the signal inputs and the elapsed time.
-    ///
-    /// The engine calls this while the app menu owns the front panel, so the
-    /// running applet keeps tracking its inputs and driving its outputs without
-    /// also reacting to the keys and detents aimed at the menu.
-    pub const fn silence_controls(&mut self) {
-        self.controls = ControlEvents {
-            encoder_delta: [0; ENCODERS],
-            button_down: [false; BUTTONS],
-        };
-        self.buttons.silence();
-    }
-}
-
-impl Default for InputSnapshot {
-    fn default() -> Self {
-        Self {
-            cv: [0; CV_CHANNELS],
-            patched: [false; CV_CHANNELS],
-            triggers: [false; TRIGGER_CHANNELS],
-            controls: ControlEvents::default(),
-            buttons: ButtonEvents::default(),
-            elapsed_micros: 0,
-        }
-    }
-}
-
-/// Timing information the applet displays but does not compute itself.
-#[derive(Debug, Clone, Copy, Default)]
-pub struct TickContext {
-    /// Number of ticks executed since boot.
-    pub tick_count: u64,
-    /// Duration of the previous tick, in microseconds.
-    pub duration_micros: u32,
 }
 
 /// The I/O diagnostic applet.

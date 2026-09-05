@@ -11,11 +11,76 @@
 //! with the number of apps, at the cost of a frozen applet's
 //! [`SignalDetector`](crate::signal::SignalDetector) history being stale when it
 //! comes back — deliberate, and cheaper than the alternative.
+//!
+//! This module also carries the contract every applet is written against —
+//! [`InputSnapshot`] and [`TickContext`] — so that one applet never has to
+//! import another just to describe what it is fed. Each applet itself lives in
+//! its own submodule ([`diagnostic`], [`scope`]).
 
-use crate::app::{DiagnosticApp, InputSnapshot, TickContext};
+pub mod diagnostic;
+pub mod scope;
+
+use crate::apps::diagnostic::DiagnosticApp;
+use crate::apps::scope::ScopeApp;
+use crate::buttons::ButtonEvents;
 use crate::framebuffer::FrameBuffer;
-use crate::platform::{CV_CHANNELS, MilliVolts};
-use crate::scope::ScopeApp;
+use crate::platform::{
+    BUTTONS, CV_CHANNELS, ControlEvents, ENCODERS, MilliVolts, TRIGGER_CHANNELS,
+};
+
+/// Everything the applet observes during one tick.
+#[derive(Debug, Clone, Copy)]
+pub struct InputSnapshot {
+    /// Calibrated level of each CV input.
+    pub cv: [MilliVolts; CV_CHANNELS],
+    /// Whether the host reports a cable on each CV input.
+    pub patched: [bool; CV_CHANNELS],
+    /// Raw level of each trigger input.
+    pub triggers: [bool; TRIGGER_CHANNELS],
+    /// Raw encoder and button activity.
+    pub controls: ControlEvents,
+    /// Button actions, debounced and arbitrated against the menu chord.
+    pub buttons: ButtonEvents,
+    /// Microseconds since the previous tick.
+    pub elapsed_micros: u32,
+}
+
+impl InputSnapshot {
+    /// Drops every control, keeping the signal inputs and the elapsed time.
+    ///
+    /// The engine calls this while the app menu owns the front panel, so the
+    /// running applet keeps tracking its inputs and driving its outputs without
+    /// also reacting to the keys and detents aimed at the menu.
+    pub const fn silence_controls(&mut self) {
+        self.controls = ControlEvents {
+            encoder_delta: [0; ENCODERS],
+            button_down: [false; BUTTONS],
+        };
+        self.buttons.silence();
+    }
+}
+
+impl Default for InputSnapshot {
+    fn default() -> Self {
+        Self {
+            cv: [0; CV_CHANNELS],
+            patched: [false; CV_CHANNELS],
+            triggers: [false; TRIGGER_CHANNELS],
+            controls: ControlEvents::default(),
+            buttons: ButtonEvents::default(),
+            elapsed_micros: 0,
+        }
+    }
+}
+
+/// Timing information the applet displays but does not compute itself.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct TickContext {
+    /// Number of ticks executed since boot.
+    pub tick_count: u64,
+    /// Duration of the previous tick, in microseconds.
+    pub duration_micros: u32,
+}
 
 /// One of the applets the module can run.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
@@ -127,8 +192,8 @@ impl Default for AppHost {
 
 #[cfg(test)]
 mod tests {
+    use super::InputSnapshot;
     use super::{AppHost, AppId};
-    use crate::app::InputSnapshot;
     use crate::platform::{CV_CHANNELS, MilliVolts};
 
     fn snapshot(cv1: MilliVolts, cv2: MilliVolts) -> InputSnapshot {

@@ -41,6 +41,17 @@ pub const WIDTH_I32: i32 = WIDTH as i32;
 /// Screen height as `i32`, matching `embedded-graphics` coordinates.
 pub const HEIGHT_I32: i32 = HEIGHT as i32;
 
+/// Height of one text row, in pixels.
+///
+/// The font is exactly eight pixels tall and rows are top-aligned, so every row
+/// occupies exactly one framebuffer page. That keeps the screen layout aligned
+/// with the OLED controller's own addressing and makes a row easy to compare
+/// against a reference rendering in tests.
+pub const ROW_HEIGHT: i32 = 8;
+
+/// Number of text rows on the screen.
+pub const ROWS: i32 = 8;
+
 /// A 128x64 one-bit-per-pixel framebuffer.
 #[derive(Clone, PartialEq, Eq)]
 pub struct FrameBuffer {

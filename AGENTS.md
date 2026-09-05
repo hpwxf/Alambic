@@ -191,9 +191,9 @@ Full protocol, per level, with exact commands and what each proves: see
 |--------------------------------------------------|------|
 | Platform traits (`AnalogIn`, `Clock`, `Display`…) | `crates/oc-core/src/platform.rs` |
 | The main control loop                             | `crates/oc-core/src/engine.rs` |
-| The diagnostic applet's logic and rendering       | `crates/oc-core/src/app.rs` |
-| The scope applet                                  | `crates/oc-core/src/scope.rs` |
-| The app registry and dispatch (`AppId`, `AppHost`) | `crates/oc-core/src/apps.rs` |
+| The diagnostic applet's logic and rendering       | `crates/oc-core/src/apps/diagnostic.rs` |
+| The scope applet                                  | `crates/oc-core/src/apps/scope.rs` |
+| The app registry and dispatch (`AppId`, `AppHost`) | `crates/oc-core/src/apps/mod.rs` |
 | The app menu (`up`+`down`) and its rendering      | `crates/oc-core/src/menu.rs` |
 | The Rack stand-in for the `up`+`down` chord       | `vcv/OrnamentCrimeAlambic/src/Alambic.cpp` (`appendContextMenu`) |
 | Button debouncing and the `up`+`down` chord       | `crates/oc-core/src/buttons.rs` |

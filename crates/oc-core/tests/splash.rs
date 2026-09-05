@@ -4,7 +4,7 @@
 //! [`mock_engine_at_boot`] is used here instead of [`mock_engine`], since the
 //! latter starts past the animation on purpose (see its own documentation).
 
-use oc_core::app::OutputMode;
+use oc_core::apps::diagnostic::OutputMode;
 use oc_core::platform::CvChannel;
 use oc_core::splash::DURATION_MICROS;
 use oc_core::testing::{MockEngine, mock_engine_at_boot};

@@ -15,10 +15,10 @@ use embedded_graphics::prelude::{Point, Primitive as _, Size};
 use embedded_graphics::primitives::{PrimitiveStyle, Rectangle};
 use embedded_graphics::text::{Baseline, Text};
 
-use crate::app::{ROW_HEIGHT, ROWS};
 use crate::apps::AppId;
 use crate::buttons::ButtonEvents;
 use crate::framebuffer::{FrameBuffer, WIDTH_I32};
+use crate::framebuffer::{ROW_HEIGHT, ROWS};
 use crate::platform::Button;
 
 /// Title shown above the list.
@@ -147,9 +147,9 @@ impl Menu {
 #[cfg(test)]
 mod tests {
     use super::{FIRST_ROW, Menu, MenuOutcome};
-    use crate::app::ROW_HEIGHT;
     use crate::apps::AppId;
     use crate::buttons::{ButtonEvents, ButtonReader};
+    use crate::framebuffer::ROW_HEIGHT;
     use crate::framebuffer::{FrameBuffer, WIDTH};
     use crate::platform::{BUTTONS, Button, ControlEvents, ENCODERS};
 
