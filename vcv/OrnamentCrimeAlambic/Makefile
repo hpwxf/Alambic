@@ -8,6 +8,17 @@ RACK_DIR ?= ../..
 # afterwards is harmless: it only inspects the compiler's target triple.
 include $(RACK_DIR)/arch.mk
 
+# The Rack SDK pins `-mmacosx-version-min=10.9`, but the libc++ shipped with
+# current macOS SDKs only supports 11.0 and later and warns "The selected
+# platform is no longer supported by libc++" on every translation unit. 11.0
+# is also the floor of every Apple Silicon Mac and the default deployment
+# target of the Rust staticlib linked below. The SDK appends `EXTRA_*` after
+# its own flags, and the last `-mmacosx-version-min` wins.
+ifdef ARCH_MAC
+EXTRA_FLAGS += -mmacosx-version-min=11.0
+EXTRA_LDFLAGS += -mmacosx-version-min=11.0
+endif
+
 # FLAGS will be passed to both the C and C++ compiler.
 FLAGS +=
 CFLAGS +=

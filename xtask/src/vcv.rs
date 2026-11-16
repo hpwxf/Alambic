@@ -306,11 +306,17 @@ fn run_make(rack_dir: &Path, staticlib: &Path, target: &str) -> Result<()> {
         );
     }
 
+    // `make` runs inside the plugin directory, so a relative `--rack-dir`
+    // (as typed from the workspace root) must be anchored to the caller's
+    // working directory first, or every `include $(RACK_DIR)/...` misses.
+    let rack_dir = std::path::absolute(rack_dir)
+        .with_context(|| format!("cannot resolve {}", rack_dir.display()))?;
+
     let mut command = Command::new("make");
     command
         .current_dir(paths::workspace_root().join(VCV_PLUGIN_DIR))
         .arg(target)
-        .env("RACK_DIR", rack_dir)
+        .env("RACK_DIR", &rack_dir)
         .env("OC_VCV_FFI_LIB", staticlib);
 
     cargo::run(command)
