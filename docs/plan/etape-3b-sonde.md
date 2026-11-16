@@ -61,3 +61,7 @@ plus de 1 ms (les ticks de rendu). Reste un retard fixe : l'échéance repartait
 vue passer (pas de 1 µs du GPT, plus un `poll` USB jusqu'à 10,6 µs), et ce retard s'ajoutait à chaque période
 (≈ 997,5 Hz). Corrigé à la suite : calendrier fixe (échéance précédente + période, recalé seulement après un
 dépassement, donc toujours sans dette), et plus de `poll` USB quand le plus long `poll` observé depuis le démarrage ne tient plus avant l'échéance.
+
+Après le calendrier fixe (`6f475d4`) : `last_us=1000` ; hors ticks de rendu, toutes les périodes à moins de 4 µs de
+la cible (≈ 48 % sous 1 µs, 40 % à 1–2 µs, 7 % à 2–4 µs) ; minimum 997,6 µs, la compensation attendue d'une
+période sortie tard ; les ticks de rendu (≈ 5 %) restent au-delà de 1 ms, sujet du lot 3c. Valeurs indicatives.
