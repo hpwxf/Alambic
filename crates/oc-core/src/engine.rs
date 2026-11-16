@@ -14,8 +14,8 @@ use crate::calibration::Calibration;
 use crate::framebuffer::FrameBuffer;
 use crate::menu::{Menu, MenuEntry, MenuOutcome};
 use crate::platform::{
-    AnalogIn, AnalogOut, Button, CV_CHANNELS, Clock, Controls, DigitalIn, Display, MilliVolts,
-    TRIGGER_CHANNELS, TriggerChannel,
+    AnalogIn, AnalogOut, Button, CV_CHANNELS, Clock, Controls, CvChannel, DigitalIn, Display,
+    MilliVolts, TRIGGER_CHANNELS, TriggerChannel,
 };
 use crate::profile::{Profile, Stage};
 use crate::settings::Settings;
@@ -108,6 +108,8 @@ pub struct Engine<A, O, D, C, K, S> {
     profile: Profile,
     /// Fine counter at the start of the previous tick, for the period.
     previous_fine: Option<u32>,
+    /// Levels a host probe holds on the outputs (journal/D-029).
+    forced_outputs: [Option<MilliVolts>; CV_CHANNELS],
     screen: Screen,
     tick_count: u64,
     previous_micros: Option<u64>,
@@ -156,6 +158,7 @@ where
             toast: None,
             profile,
             previous_fine: None,
+            forced_outputs: [None; CV_CHANNELS],
             screen: Screen::Splash,
             tick_count: 0,
             previous_micros: None,
@@ -235,11 +238,20 @@ where
             snapshot.silence_controls();
         }
         let mark = self.clock.fine_count();
-        let outputs = match self.screen {
+        let mut outputs = match self.screen {
             Screen::System => [0; CV_CHANNELS],
             Screen::Calibration => [self.wizard.output_level(); CV_CHANNELS],
             Screen::App | Screen::Menu | Screen::Splash => self.apps.update(&snapshot),
         };
+        // The wizard measures the outputs it drives: a forced level would
+        // calibrate against the wrong voltage.
+        if self.screen != Screen::Calibration {
+            for (output, forced) in outputs.iter_mut().zip(self.forced_outputs) {
+                if let Some(level) = forced {
+                    *output = level;
+                }
+            }
+        }
         self.record_since(Stage::Update, mark);
 
         let mark = self.clock.fine_count();
@@ -334,6 +346,7 @@ where
         self.tick_count = 0;
         self.previous_micros = None;
         self.previous_fine = None;
+        self.forced_outputs = [None; CV_CHANNELS];
         self.last_duration_micros = 0;
         self.ticks_since_render = 0;
     }
@@ -350,6 +363,27 @@ where
     /// expected period or clear it.
     pub const fn profile_mut(&mut self) -> &mut Profile {
         &mut self.profile
+    }
+
+    /// Holds `channel` at `level` from the next tick, whatever drives it, or
+    /// releases it (`None`); for a host probe testing the outputs
+    /// (journal/D-029). Ignored by the boot splash, which keeps the outputs
+    /// at rest, and by the calibration wizard, which must measure the levels
+    /// it sets itself. [`Self::reset`] releases every output.
+    pub const fn force_output(&mut self, channel: CvChannel, level: Option<MilliVolts>) {
+        self.forced_outputs[channel.index()] = level;
+    }
+
+    /// The levels held by [`Self::force_output`].
+    #[must_use]
+    pub const fn forced_outputs(&self) -> &[Option<MilliVolts>; CV_CHANNELS] {
+        &self.forced_outputs
+    }
+
+    /// The raw ADC code of each input on the last tick.
+    #[must_use]
+    pub const fn raw_codes(&self) -> &[u16; CV_CHANNELS] {
+        &self.raw_codes
     }
 
     /// Records the time since `mark`, a fine count read earlier, as one

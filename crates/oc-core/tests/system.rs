@@ -358,3 +358,37 @@ fn a_reported_save_shows_a_message_that_goes_away() {
     assert_eq!(engine.toast(), None, "gone after its duration");
     assert_ne!(engine.frame().lit_pixels(), shown, "and off the screen");
 }
+
+#[test]
+fn a_forced_output_overrides_the_applet_until_released() {
+    let mut engine = mock_engine(0);
+    run_ticks(&mut engine, 2);
+    let free = engine.tick().cv_out;
+
+    engine.force_output(CvChannel::Two, Some(2_500));
+    let report = engine.tick();
+    assert_eq!(report.cv_out[1], 2_500);
+    assert_eq!(engine.parts_mut().1.committed[1], 2_500);
+    assert_eq!(report.cv_out[0], free[0], "other outputs untouched");
+
+    engine.force_output(CvChannel::Two, None);
+    assert_eq!(engine.tick().cv_out, free);
+}
+
+#[test]
+fn a_reset_releases_every_forced_output() {
+    let mut engine = mock_engine(0);
+    engine.force_output(CvChannel::Four, Some(-1_000));
+    engine.reset();
+    assert_eq!(engine.forced_outputs(), &[None; CV_CHANNELS]);
+}
+
+#[test]
+fn the_wizard_ignores_forced_outputs() {
+    let mut engine = mock_engine_at_boot(0);
+    boot_holding(&mut engine, &[Button::LeftEncoder]);
+    assert!(engine.calibration_is_open());
+    engine.force_output(CvChannel::One, Some(4_000));
+    let report = engine.tick();
+    assert_eq!(report.cv_out, [engine.wizard().output_level(); CV_CHANNELS]);
+}

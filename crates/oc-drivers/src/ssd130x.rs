@@ -281,25 +281,49 @@ where
     /// Matches `SH1106_128x64_Driver::SendPage` in the reference firmware: three
     /// page-mode commands, then 128 data bytes, repeated for every page.
     fn flush_frame_paged(&mut self) -> Result<(), Ssd130xError> {
-        let offset = self.controller.column_offset();
-        let high = command::SET_HIGH_COLUMN | (offset >> 4);
-        let low = command::SET_LOW_COLUMN | (offset & 0x0F);
+        (0..PAGES).try_for_each(|page| self.flush_page(page))
+    }
 
-        let frame = core::mem::replace(&mut self.frame, FrameBuffer::new());
-        let outcome = (|| {
-            for page in 0..PAGES {
-                let page_u8 = u8::try_from(page).unwrap_or(0);
-                self.commands(&[high, low, command::SET_PAGE_START | page_u8])?;
-                self.data_command
-                    .set_high()
-                    .map_err(|_| Ssd130xError::Pin)?;
-                let start = page * WIDTH;
-                self.transfer(&frame.as_bytes()[start..start + WIDTH])?;
-            }
-            Ok(())
-        })();
-        self.frame = frame;
-        outcome
+    /// Sends one page (eight pixel rows) of the framebuffer: on its own, a
+    /// transfer short enough to fit between two deadlines of a faster loop,
+    /// and the unit the firmware's profile times (journal/D-023, D-029).
+    /// Pages past the last are ignored.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if a control pin or the SPI bus fails.
+    pub fn flush_page(&mut self, page: usize) -> Result<(), Ssd130xError> {
+        if page >= PAGES {
+            return Ok(());
+        }
+        let page_u8 = u8::try_from(page).unwrap_or(0);
+        if self.controller.page_addressed() {
+            let offset = self.controller.column_offset();
+            self.commands(&[
+                command::SET_HIGH_COLUMN | (offset >> 4),
+                command::SET_LOW_COLUMN | (offset & 0x0F),
+                command::SET_PAGE_START | page_u8,
+            ])?;
+        } else {
+            let last_column = u8::try_from(WIDTH - 1).unwrap_or(127);
+            self.commands(&[
+                command::SET_COLUMN_ADDRESS,
+                0,
+                last_column,
+                command::SET_PAGE_ADDRESS,
+                page_u8,
+                page_u8,
+            ])?;
+        }
+        self.data_command
+            .set_high()
+            .map_err(|_| Ssd130xError::Pin)?;
+        // The page is copied out because the bus is borrowed mutably while
+        // it is sent; 128 bytes cost less than moving the whole frame.
+        let start = page * WIDTH;
+        let mut bytes = [0; WIDTH];
+        bytes.copy_from_slice(&self.frame.as_bytes()[start..start + WIDTH]);
+        self.transfer(&bytes)
     }
 
     /// Sends a command sequence.
@@ -473,6 +497,47 @@ mod tests {
             RecordingPin::default(),
             controller,
         )
+    }
+
+    #[test]
+    fn a_frame_page_by_page_sends_the_same_bytes_on_a_sh1106() {
+        let mut whole = panel(Controller::Sh1106);
+        let mut paged = panel(Controller::Sh1106);
+        for panel in [&mut whole, &mut paged] {
+            panel.frame_mut().as_mut_bytes()[300] = 0x5A;
+        }
+        whole.flush_frame().unwrap();
+        for page in 0..PAGES {
+            paged.flush_page(page).unwrap();
+        }
+        assert_eq!(whole.spi.written, paged.spi.written);
+    }
+
+    #[test]
+    fn one_page_on_a_ssd1306_opens_a_one_page_window() {
+        let mut panel = panel(Controller::Ssd1306);
+        panel.frame_mut().as_mut_bytes()[3 * WIDTH] = 0x81;
+        panel.flush_page(3).unwrap();
+        assert_eq!(
+            panel.spi.written[..6],
+            [
+                command::SET_COLUMN_ADDRESS,
+                0,
+                127,
+                command::SET_PAGE_ADDRESS,
+                3,
+                3
+            ]
+        );
+        assert_eq!(panel.spi.written.len(), 6 + WIDTH);
+        assert_eq!(panel.spi.written[6], 0x81);
+    }
+
+    #[test]
+    fn a_page_past_the_last_sends_nothing() {
+        let mut panel = panel(Controller::Sh1106);
+        panel.flush_page(PAGES).unwrap();
+        assert!(panel.spi.written.is_empty());
     }
 
     #[test]
