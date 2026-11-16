@@ -537,7 +537,7 @@ mod tests {
     fn a_page_past_the_last_sends_nothing() {
         let mut panel = panel(Controller::Sh1106);
         panel.flush_page(PAGES).unwrap();
-        assert!(panel.spi.written.is_empty());
+        assert_eq!(panel.spi.written, Vec::<u8>::new());
     }
 
     #[test]
