@@ -94,7 +94,12 @@ fn new_host_engine() -> HostEngine {
 #[unsafe(no_mangle)]
 pub extern "C" fn oc_engine_new() -> *mut OcEngine {
     let built = catch_unwind(move || OcEngine {
-        engine: new_host_engine(),
+        engine: {
+            let mut engine = new_host_engine();
+            // Shown under the version on the splash (journal/D-025).
+            engine.set_build_id(env!("OC_BUILD_ID"));
+            engine
+        },
         cv_out: [0; CV_CHANNELS],
         framebuffer: [0; FRAMEBUFFER_LEN],
     });

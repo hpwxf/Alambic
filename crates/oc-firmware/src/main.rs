@@ -107,8 +107,9 @@ fn main() -> ! {
         .unwrap_or_else(|_| panic!("USB log already initialised"));
 
     log::info!(
-        "oc-firmware {} starting (oled={})",
+        "oc-firmware {} ({}) starting (oled={})",
         env!("CARGO_PKG_VERSION"),
+        env!("OC_BUILD_ID"),
         board::OLED_CONTROLLER.name()
     );
     // Drain / keep the device alive while the host enumerates.
@@ -202,6 +203,7 @@ fn main() -> ! {
         display,
     );
     engine.set_render_interval(board::RENDER_INTERVAL_TICKS);
+    engine.set_build_id(env!("OC_BUILD_ID"));
 
     let mut ticks: u32 = 0;
     loop {

@@ -70,6 +70,14 @@ impl Simulator {
         }
     }
 
+    /// Shows the build identifier under the version on the splash screen.
+    ///
+    /// The interactive session sets it from `OC_BUILD_ID` (journal/D-025);
+    /// [`Self::new`] does not, so golden scenarios never depend on the commit.
+    pub const fn set_build_id(&mut self, build_id: &'static str) {
+        self.engine.set_build_id(build_id);
+    }
+
     /// Skips straight past the boot splash screen, as if it had already run
     /// its course.
     ///

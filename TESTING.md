@@ -420,7 +420,9 @@ SSD1306, or SSD1309. Follow it in order; each step assumes the previous one succ
    panic message (`teensy4-panic` feature `log`) before the SOS blink.
 4. Power the module (Eurorack rail or USB). Expect the OLED to first show the
    boot splash screen for about 1.5 seconds: the name and version
-   (`O&C Rust vX.Y.Z`) centred on screen, with a one-pixel border tracing
+   (`O&C Alambic vX.Y.Z`) centred on screen and, under it, the build
+   identifier (short commit hash, `-dirty` if the tree differed; it must match
+   `git rev-parse --short HEAD` of the flashed build), with a one-pixel border tracing
    itself clockwise all the way around the edge. Once the border completes
    its loop, the screen switches to the diagnostic screen: a banner row, four
    channel rows, a mode row, an output row, and a tick counter that

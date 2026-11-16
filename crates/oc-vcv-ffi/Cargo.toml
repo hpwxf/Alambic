@@ -18,6 +18,8 @@ oc-core.workspace = true
 
 [build-dependencies]
 cbindgen.workspace = true
+# Computes the build identifier shown on the splash screen (journal/D-025).
+oc-buildinfo.workspace = true
 
 [lints]
 workspace = true

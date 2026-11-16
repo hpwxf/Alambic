@@ -85,6 +85,15 @@ than 100 mV away from 0 V within the last 300 ms, identically on the module,
 in the simulator and in Rack (journal/D-024). A cable carrying a steady 0 V
 therefore reads as absent.
 
+### Build identifier
+
+Under the version, every backend's splash screen shows which build is
+running: the short commit hash, suffixed `-dirty` when a tracked file differed
+from that commit at build time (untracked files do not count). It is computed
+by `crates/oc-buildinfo` from each backend's build script, and is empty when
+building outside a git checkout. Set `OC_BUILD_ID` in the environment to
+impose a value instead (journal/D-025).
+
 ## The simulator
 
 `cargo run -p oc-sim` opens a terminal interface running the real `oc-core`
@@ -97,8 +106,8 @@ horizontal banding between braille rows, rebuild with
 `cargo run -p oc-sim --features octant` to use denser Unicode octant glyphs
 instead (same resolution; needs a font that covers the Symbols for Legacy
 Computing Supplement — see below). Like the firmware and the VCV Rack module,
-the simulator boots into the boot splash screen (name, version and a border
-tracing itself around the screen) before the diagnostic applet takes over,
+the simulator boots into the boot splash screen (name, version, build
+identifier and a border tracing itself around the screen) before the diagnostic applet takes over,
 and `r` replays that same boot sequence at any time, exactly like a host's
 "Initialize" action.
 
@@ -296,7 +305,7 @@ Rack runs the exact same `oc-core` engine as the firmware and the simulator,
 right down to the boot sequence: a freshly constructed engine (`Alambic()`)
 and Rack's own "Initialize" action (`Alambic::onReset`, wired to
 `oc_engine_reset`) both show the same splash screen — the module's name and
-version centred on the screen, with a one-pixel border tracing itself around
+version centred on the screen, the build identifier under it, with a one-pixel border tracing itself around
 the edge — before the diagnostic screen takes over.
 
 Building it needs a [Rack SDK](https://vcvrack.com/downloads) (not the full
@@ -371,7 +380,7 @@ ls /dev/cu.usbmodem* 2>/dev/null
 screen /dev/cu.usbmodem* 115200
 ```
 
-Expect lines such as `oc-firmware … starting (oled=…)`, `oled init ok|failed`,
+Expect lines such as `oc-firmware 0.2.0 (a1b2c3d) starting (oled=…)`, `oled init ok|failed`,
 and a once-per-second `tick=…` heartbeat. Early boot also blinks the onboard
 LED (pin 13) in stage groups **before** SPI claims that pad: 1 = `main`
 reached, 2 = ADC mapped, 3 = triggers mapped / about to take SPI. A Morse SOS

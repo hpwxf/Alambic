@@ -264,6 +264,14 @@ where
         self.ticks_since_render = 0;
     }
 
+    /// Sets the build identifier drawn under the version on the splash screen
+    /// (short commit hash, `-dirty` if the tree differed). Each backend passes
+    /// the `OC_BUILD_ID` its build script computed (journal/D-025); it
+    /// survives [`Self::reset`].
+    pub const fn set_build_id(&mut self, build_id: &'static str) {
+        self.splash.set_build_id(build_id);
+    }
+
     /// Skips straight past the boot splash screen, as if it had already run
     /// its course.
     ///

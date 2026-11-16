@@ -28,6 +28,10 @@ embedded-hal.workspace = true
 imxrt-log = { version = "0.2", default-features = false, features = ["usbd", "log"] }
 log = { version = "0.4", default-features = false }
 
+# Computes the build identifier shown on the splash screen (journal/D-025).
+[build-dependencies]
+oc-buildinfo.workspace = true
+
 [features]
 # Stock O&C panels are SH1106 (the default). These opt into the other
 # controllers used on some third-party builds. Getting the choice wrong gives

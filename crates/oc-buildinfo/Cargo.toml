@@ -1,0 +1,13 @@
+[package]
+name = "oc-buildinfo"
+description = "Build-script helper computing the build identifier (short commit hash, -dirty) shown by every backend"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+publish = false
+
+[lints]
+workspace = true

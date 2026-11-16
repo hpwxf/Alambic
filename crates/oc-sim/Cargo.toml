@@ -23,5 +23,9 @@ clap = { workspace = true, features = ["derive"] }
 oc-core.workspace = true
 ratatui.workspace = true
 
+# Computes the build identifier shown on the splash screen (journal/D-025).
+[build-dependencies]
+oc-buildinfo.workspace = true
+
 [lints]
 workspace = true

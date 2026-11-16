@@ -1294,6 +1294,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "oc-buildinfo"
+version = "0.2.0"
+
+[[package]]
 name = "oc-core"
 version = "0.2.0"
 dependencies = [
@@ -1318,6 +1322,7 @@ dependencies = [
  "embedded-hal 1.0.0",
  "imxrt-log",
  "log",
+ "oc-buildinfo",
  "oc-core",
  "oc-drivers",
  "teensy4-bsp",
@@ -1330,6 +1335,7 @@ version = "0.2.0"
 dependencies = [
  "anyhow",
  "clap",
+ "oc-buildinfo",
  "oc-core",
  "ratatui",
 ]
@@ -1339,6 +1345,7 @@ name = "oc-vcv-ffi"
 version = "0.2.0"
 dependencies = [
  "cbindgen",
+ "oc-buildinfo",
  "oc-core",
 ]
 

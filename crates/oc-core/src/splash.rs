@@ -30,6 +30,10 @@ use crate::framebuffer::{FrameBuffer, HEIGHT_I32, WIDTH_I32};
 /// module starts or is reset.
 pub const DURATION_MICROS: u32 = 1_500_000;
 
+/// Vertical distance between the banner and the build identifier, in pixels:
+/// one 8-pixel text line plus a 2-pixel gap.
+const BUILD_ID_GAP: i32 = 10;
+
 /// Number of pixels in the one-pixel-wide border traced around the screen:
 /// the perimeter of the `WIDTH_I32 x HEIGHT_I32` rectangle.
 const PERIMETER_PIXELS: u32 = (2 * WIDTH_I32 + 2 * HEIGHT_I32 - 4) as u32;
@@ -40,13 +44,31 @@ const PERIMETER_PIXELS: u32 = (2 * WIDTH_I32 + 2 * HEIGHT_I32 - 4) as u32;
 #[derive(Debug, Clone, Copy, Default)]
 pub struct SplashScreen {
     elapsed_micros: u32,
+    build_id: &'static str,
 }
 
 impl SplashScreen {
     /// A freshly started animation, at its very first frame.
     #[must_use]
     pub const fn new() -> Self {
-        Self { elapsed_micros: 0 }
+        Self {
+            elapsed_micros: 0,
+            build_id: "",
+        }
+    }
+
+    /// Sets the build identifier drawn under the banner (short commit hash,
+    /// `-dirty` if the tree differed). Empty, the default, draws nothing:
+    /// the backends compute it (journal/D-025), the core only shows it, so
+    /// its tests never depend on the commit being built.
+    pub const fn set_build_id(&mut self, build_id: &'static str) {
+        self.build_id = build_id;
+    }
+
+    /// The build identifier drawn under the banner, empty if none.
+    #[must_use]
+    pub const fn build_id(&self) -> &'static str {
+        self.build_id
     }
 
     /// Restarts the animation from its first frame.
@@ -81,13 +103,29 @@ impl SplashScreen {
             .alignment(Alignment::Center)
             .baseline(Baseline::Middle)
             .build();
+        // With a build identifier, the two lines straddle the centre; without
+        // one, the banner sits on it as before.
+        let banner_y = if self.build_id.is_empty() {
+            HEIGHT_I32 / 2
+        } else {
+            HEIGHT_I32 / 2 - BUILD_ID_GAP / 2
+        };
         let _ = Text::with_text_style(
             crate::BANNER,
-            Point::new(WIDTH_I32 / 2, HEIGHT_I32 / 2),
+            Point::new(WIDTH_I32 / 2, banner_y),
             style,
             text_style,
         )
         .draw(frame);
+        if !self.build_id.is_empty() {
+            let _ = Text::with_text_style(
+                self.build_id,
+                Point::new(WIDTH_I32 / 2, banner_y + BUILD_ID_GAP),
+                style,
+                text_style,
+            )
+            .draw(frame);
+        }
 
         draw_border(frame, self.lit_border_pixels());
     }
@@ -225,5 +263,30 @@ mod tests {
             render(DURATION_MICROS / 3),
             "the same elapsed time must always draw the same frame"
         );
+    }
+
+    #[test]
+    fn the_build_id_adds_a_line_and_survives_a_reset() {
+        let mut without = FrameBuffer::new();
+        let mut with = FrameBuffer::new();
+        let mut splash = SplashScreen::new();
+        splash.render(&mut without);
+        splash.set_build_id("a1b2c3d-dirty");
+        splash.render(&mut with);
+        assert_ne!(without, with, "the identifier must be drawn");
+
+        splash.reset();
+        assert_eq!(splash.build_id(), "a1b2c3d-dirty");
+    }
+
+    #[test]
+    fn an_empty_build_id_draws_exactly_the_plain_banner() {
+        let mut plain = FrameBuffer::new();
+        let mut empty = FrameBuffer::new();
+        SplashScreen::new().render(&mut plain);
+        let mut splash = SplashScreen::new();
+        splash.set_build_id("");
+        splash.render(&mut empty);
+        assert_eq!(plain, empty);
     }
 }

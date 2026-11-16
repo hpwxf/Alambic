@@ -1,6 +1,7 @@
 [workspace]
 resolver = "3"
 members = [
+    "crates/oc-buildinfo",
     "crates/oc-core",
     "crates/oc-drivers",
     "crates/oc-firmware",
@@ -14,6 +15,7 @@ members = [
 # `cargo clippy` then operate on host crates only. The firmware is built
 # explicitly with `cargo xtask build` (or `cargo fw`).
 default-members = [
+    "crates/oc-buildinfo",
     "crates/oc-core",
     "crates/oc-drivers",
     "crates/oc-sim",
@@ -32,6 +34,8 @@ authors = ["Pascal Havé"]
 [workspace.dependencies]
 oc-core = { path = "crates/oc-core", version = "0.2.0" }
 oc-drivers = { path = "crates/oc-drivers", version = "0.2.0" }
+# Build-script helper only: computes the build identifier (journal/D-025).
+oc-buildinfo = { path = "crates/oc-buildinfo" }
 
 # Host tooling
 anyhow = "1.0"

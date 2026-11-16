@@ -156,8 +156,11 @@ impl Tui {
     /// A session paused at tick zero.
     #[must_use]
     pub fn new() -> Self {
+        let mut simulator = Simulator::new();
+        // Shown under the version on the splash, as on the module (D-025).
+        simulator.set_build_id(env!("OC_BUILD_ID"));
         Self {
-            simulator: Simulator::new(),
+            simulator,
             speed: Speed::Realtime,
             focus: 0,
             layout: KeyLayout::default(),

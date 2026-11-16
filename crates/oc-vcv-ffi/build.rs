@@ -10,6 +10,10 @@ use std::env;
 use std::path::PathBuf;
 
 fn main() {
+    // The build identifier shown under the version on the splash screen
+    // (journal/D-025).
+    oc_buildinfo::emit();
+
     println!("cargo:rerun-if-changed=src/lib.rs");
     println!("cargo:rerun-if-changed=cbindgen.toml");
 
