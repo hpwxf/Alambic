@@ -17,6 +17,9 @@ Architectural decisions behind each change are in `journal/` (French).
 
 ### Fixed
 
+- **The firmware loop ran at about 775 Hz, not 1 kHz.** The deadline was
+  taken after the 288 us of input sampling, which stretched every period;
+  the period now starts before it.
 - The USB heartbeat line printed the settings detail after `last_us=` and
   the tick period at the end of the line.
 
