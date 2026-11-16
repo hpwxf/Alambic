@@ -15,6 +15,7 @@ ne recharge que ce dont elle a besoin (journal/D-001).
 | `journal/` | **ADR** — un fichier par décision d'architecture ; `README.md` donne le périmètre, le format et l'index |
 | `docs/plan/roadmap.md` | étapes passées et à venir, questions ouvertes |
 | `docs/plan/revue-decisions-2026-11-16.md` | revue des décisions reconstruites : à vérifier / à réviser |
+| `docs/plan/etape-3-plan-a-isr-16khz.md` | plan A de D-023 (ISR 16 666 Hz), proposé par Junie, non adopté ; bandeau des points caducs |
 | `docs/plan/avancement/etape-*.md` | journal d'une étape terminée : fait, mesuré, corrigé |
 | `.junie/plans/oc-rust-firmware-foundation.md` | plan détaillé de l'étape 0 (fondation), rédigé par l'assistant Junie, terminé |
 | `docs/supersaw/` | étude : supersaw, repliement, PolyBLEP, architecture audio et partage du bus SPI (base de D-023) |
@@ -45,9 +46,9 @@ D-023 (double cadence) est **proposée** ; elle ne s'adopte qu'après 3a et la m
 
 | Lot | Contenu | État |
 |---|---|---|
-| **3a** — dette de revue | ✅ CI verte avec `--all-features` (R1, D-013) ; ✅ triggers sans anti-rebond mécanique (R2, D-019) ; ✅ règle du brochage rendue vraie et testée (R3, D-007) ; ✅ docs « jamais sur matériel » / « jamais dans Rack » corrigées (R4, D-011, D-015) ; ✅ `flash --dry-run` en CI (V5, D-016) ; ✅ plus de présence de câble, backends alignés (R5, D-019) ; ☐ plan de cadence suivi par git, objectif avant cadence (R6, D-023) | en cours |
+| **3a** — dette de revue | ✅ CI verte avec `--all-features` (R1, D-013) ; ✅ triggers sans anti-rebond mécanique (R2, D-019) ; ✅ règle du brochage rendue vraie et testée (R3, D-007) ; ✅ docs « jamais sur matériel » / « jamais dans Rack » corrigées (R4, D-011, D-015) ; ✅ `flash --dry-run` en CI (V5, D-016) ; ✅ plus de présence de câble, backends alignés (R5, D-019) ; ✅ plan de cadence suivi par git, conflit avec l'étude audio consigné, OLED par pages proposé (R6, D-023) | fait |
 | **3b** — mesure sur module | niveau 9 complet (calibration, CV, triggers) ; coût réel d'une trame OLED et gigue de la boucle (GPIO + oscilloscope, `docs/supersaw/` § 13) | à faire |
-| **3c** — cadence | trancher D-023 (A, B ou C) ; scinder `Engine::tick` en `signal_tick` / `ui_tick` dans `oc-core` | à faire |
+| **3c** — cadence | trancher D-023 (A, B ou C ; plan A : [etape-3-plan-a-isr-16khz.md](docs/plan/etape-3-plan-a-isr-16khz.md)) ; scinder `Engine::tick` en `signal_tick` / `ui_tick` dans `oc-core` | à faire |
 
 ## Décisions actées
 

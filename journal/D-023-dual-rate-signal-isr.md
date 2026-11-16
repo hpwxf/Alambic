@@ -6,14 +6,14 @@
 | **Date** | 2026-11-16 (consigne un plan du 2026-08-02 et une étude du 2026-08-23 / 2026-09-03) |
 | **Auteur** | Pascal Havé |
 | **Statut** | proposée |
-| **Commits** | aucun pour l'implémentation ; étude : `83be36f`, `c8b3039` (`docs/supersaw/`) ; plan : `.junie/plans/isr-16khz-dual-rate.md` (**non suivi par git**, exclu par `.git/info/exclude`) |
+| **Commits** | aucun pour l'implémentation ; étude : `83be36f`, `c8b3039` (`docs/supersaw/`) ; plan A : [`docs/plan/etape-3-plan-a-isr-16khz.md`](../docs/plan/etape-3-plan-a-isr-16khz.md) (suivi par git depuis le lot 3a ; auparavant `.junie/plans/isr-16khz-dual-rate.md`, exclu par `.git/info/exclude`) |
 
 ## 1. Contexte
 
 D-008 a fait tourner tout le firmware dans une boucle coopérative à 1 kHz. Deux documents veulent en sortir, pour
 deux raisons différentes :
 
-* le plan local `isr-16khz-dual-rate.md` (assistant Junie, 2026-08-02) vise la **cadence de contrôle** du firmware
+* le plan `docs/plan/etape-3-plan-a-isr-16khz.md` (assistant Junie, 2026-08-02, longtemps hors git) vise la **cadence de contrôle** du firmware
   de référence : chemin signal en ISR à 16 666 Hz (60 µs : ADC → applet → DAC), UI dans la boucle principale à
   ≈ 1 kHz (panneau, rendu OLED ≈ 50 Hz, USB) ;
 * l'étude `docs/supersaw/supersaw-sur-ornament-and-crime.md` (§ 12–13) vise l'**audio** : sortie à 48 kHz,
@@ -62,10 +62,17 @@ Rien encore. Reste à trancher, dans cet ordre :
 
 ## Points ouverts (revue du 2026-11-16)
 
-* Le plan A vit dans un fichier **exclu de git** : il doit être suivi (déplacé sous `docs/plan/`) avant de servir
-  de base à une décision.
+* **Traité au lot 3a (2026-11-16)** : le plan A est suivi par git sous `docs/plan/etape-3-plan-a-isr-16khz.md`,
+  avec un bandeau qui liste ce que les révisions postérieures rendent caduc (anti-rebond des triggers, `patched`)
+  et le conflit avec l'étude audio. Constat d'origine : le plan vivait dans un fichier exclu de git.
 * A et B ne sont pas compatibles en l'état ; adopter A tel qu'écrit, c'est accepter des trous de ≈ 1 ms toutes les
   20 ms dans le chemin signal, ce que l'étude supersaw qualifie d'inacceptable pour l'audio.
+  **Proposition de l'assistant (2026-11-16, lot 3a), à trancher au lot 3c** : quelle que soit l'option, aucune
+  transaction OLED ne masque le chemin signal plus d'une période ; la trame est poussée **page par page** (≈ 131 µs,
+  voire demi-page) entre deux échéances, comme le fait le firmware de référence (« Flush OLED DMA → DAC → start
+  OLED DMA » dans son ISR). C'est la seule variante de A qui reste une étape vers B. L'essai Squares-and-Circles
+  (`docs/supersaw/` § 13 : audio sans tic sur le même bus) indique que ce découpage tient sur ce matériel ; la mesure
+  du lot 3b (coût réel d'une page et d'une trame, GPIO + oscilloscope) doit le confirmer avant l'adoption.
 * Les effets de bord de A sur D-010 (`RefCell` à deux contextes), D-018 (panique en ISR), D-019 (anti-rebond des
   triggers à 60 µs ≈ 180 µs) et D-020 (splash rendu à cadence signal) sont listés dans le plan local ; ils devront
   être révisés dans les entrées concernées le jour où A ou B est adoptée.

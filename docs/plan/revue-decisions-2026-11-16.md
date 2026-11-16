@@ -23,7 +23,7 @@ section « Révision » ou « Points ouverts » de chaque ADR.
 | R3 ✅ | D-007 | **Règle de sécurité « seul `board.rs` nomme une broche » fausse dans le code** : `main.rs` réserve les 27 broches ; la broche 12 (SDI) est absente de la table ; rien ne vérifie la concordance | `grep pins.p crates/oc-firmware/src` | déplacer la réservation dans `board.rs` (fonction qui consomme `Pins`) |
 | R4 ✅ | D-011, D-015 | **Documentation périmée** : « never run on real hardware » (`README.md`, `AGENTS.md`, `board.rs`) alors que `3f50a42` / `a8f3560` corrigent des défauts vus sur le module ; « never loaded into Rack » contredit par `8bdd9bc` | messages de commit, `docs/supersaw/` § 13 | écrire ce qui est vérifié (écran, panneau) et ce qui ne l'est pas (calibration, CV, triggers) |
 | R5 ✅ | D-019, D-002 | **`is_patched` diverge entre backends** : `true` sur le module (pas de détection de jack), vrai `isConnected()` dans Rack → écrans de diagnostic différents | `cv_in.rs`, `Alambic.cpp` | retirer du trait, ou forcer `true` hors matériel |
-| R6 | D-023 | **Plan A (ISR 16 666 Hz) incompatible avec l'étude audio** : OLED sous masque d'IRQ = ≈ 16 échéances manquées par trame, que `docs/supersaw/` § 13 juge inacceptable ; et le plan est **hors git** | `.git/info/exclude`, plan local § Budget | suivre le plan sous `docs/plan/`, mesurer (3b), choisir l'objectif avant la cadence |
+| R6 ✅ | D-023 | **Plan A (ISR 16 666 Hz) incompatible avec l'étude audio** : OLED sous masque d'IRQ = ≈ 16 échéances manquées par trame, que `docs/supersaw/` § 13 juge inacceptable ; et le plan est **hors git** | `.git/info/exclude`, plan local § Budget | suivre le plan sous `docs/plan/`, mesurer (3b), choisir l'objectif avant la cadence |
 
 ## À revoir (vérifier)
 
@@ -44,7 +44,8 @@ section « Révision » ou « Points ouverts » de chaque ADR.
 
 ## Hors périmètre ADR mais signalé
 
-* `HARDWARE.md`, `TODO.md` et `.junie/plans/isr-16khz-dual-rate.md` sont exclus par `.git/info/exclude` : documents
+* `HARDWARE.md` et `TODO.md` sont exclus par `.git/info/exclude` (le plan ISR l'était aussi ; il est suivi sous
+  `docs/plan/` depuis le lot 3a) : documents
   de travail invisibles en revue. `TODO.md` contient un brochage O.R.N.8 non sourcé, à ne pas réutiliser tel quel.
 * `test_nvidia_nim.py`, `real.png`, `venv/` à la racine : non suivis, sans rapport avec le firmware.
 * Dates d'auteur non monotones (`baf70c7` daté avant son parent `83be36f`) : historique réécrit.

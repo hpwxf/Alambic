@@ -20,7 +20,8 @@ partagent aucun contexte. La continuité reposait sur quatre supports hétérog�
   jour sur certains points et périmée sur d'autres (voir D-011, D-015) ;
 * les messages de commit, très argumentés pour certains (`a839a03`, `8bdd9bc`), d'une ligne pour d'autres ;
 * des fichiers **exclus de git** par `.git/info/exclude` : `HARDWARE.md`, `TODO.md` et un second plan,
-  `.junie/plans/isr-16khz-dual-rate.md`, qui contient la prochaine décision d'architecture (D-023).
+  `.junie/plans/isr-16khz-dual-rate.md`, qui contient la prochaine décision d'architecture (D-023) — déplacé sous
+  `docs/plan/etape-3-plan-a-isr-16khz.md` au lot 3a.
 
 Aucun de ces supports ne répond à « pourquoi ce choix, contre quoi, et qu'est-ce qui le remettrait en cause ».
 Les dépôts frères `make_sound` (D-001) et `slidekit` (D-002, D-016) ont déjà payé cette question.
