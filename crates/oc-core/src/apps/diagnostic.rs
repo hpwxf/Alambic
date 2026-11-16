@@ -323,8 +323,14 @@ impl DiagnosticApp {
         draw(&line, 5);
 
         line.clear();
-        let _ = write!(line, "OUT");
-        for level in &self.outputs {
+        // What the jacks carry; starred when a probe holds an output.
+        let label = if context.outputs_forced {
+            "OUT*"
+        } else {
+            "OUT"
+        };
+        let _ = write!(line, "{label}");
+        for level in &context.cv_out {
             let _ = write!(line, " ");
             let _ = write_volts(&mut line, *level, 1);
         }

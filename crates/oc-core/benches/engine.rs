@@ -85,6 +85,8 @@ fn applet(criterion: &mut Criterion) {
         let context = TickContext {
             tick_count: 123_456,
             duration_micros: 987,
+            cv_out: *app.outputs(),
+            outputs_forced: false,
         };
         bencher.iter(|| {
             app.render(&mut frame, &context);

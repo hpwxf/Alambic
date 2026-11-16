@@ -392,3 +392,28 @@ fn the_wizard_ignores_forced_outputs() {
     let report = engine.tick();
     assert_eq!(report.cv_out, [engine.wizard().output_level(); CV_CHANNELS]);
 }
+
+#[test]
+fn the_screen_shows_a_forced_output_as_the_jack_carries_it() {
+    use oc_core::platform::Display as _;
+
+    let mut free = mock_engine(0);
+    let mut forced = mock_engine(0);
+    forced.force_output(CvChannel::One, Some(1_000));
+    for engine in [&mut free, &mut forced] {
+        engine.tick();
+    }
+    let free_frame = free.parts_mut().4.frame_mut().clone();
+    let forced_frame = forced.parts_mut().4.frame_mut().clone();
+    assert_ne!(free_frame, forced_frame, "the OUT row must change");
+
+    // Released, the two screens agree again.
+    forced.force_output(CvChannel::One, None);
+    for engine in [&mut free, &mut forced] {
+        engine.tick();
+    }
+    assert_eq!(
+        free.parts_mut().4.frame_mut().clone(),
+        forced.parts_mut().4.frame_mut().clone()
+    );
+}

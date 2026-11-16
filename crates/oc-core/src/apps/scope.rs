@@ -276,6 +276,8 @@ mod tests {
         TickContext {
             tick_count: 0,
             duration_micros: 0,
+            cv_out: [0; crate::platform::CV_CHANNELS],
+            outputs_forced: false,
         }
     }
 }

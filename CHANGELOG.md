@@ -23,6 +23,9 @@ Architectural decisions behind each change are in `journal/` (French).
   frame is sent and timed page by page. Setting either port to 134 baud
   restarts into the bootloader (journal/D-029).
 - `Engine::force_output`, `Engine::raw_codes`, `Ssd130x::flush_page`.
+- `TickContext` carries the levels actually written (`cv_out`) and whether a
+  probe holds an output; the diagnostic screen's `OUT` row shows them, as
+  `OUT*` while an output is held.
 - **`oc-probe`**, the host tool over the probe port (`cargo probe`):
   `stats` (the profile as a table), `stream` (inputs, codes, outputs,
   triggers), `out` (hold an output, watch the inputs), `screen` (text or

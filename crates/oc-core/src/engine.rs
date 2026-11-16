@@ -265,6 +265,9 @@ where
             let context = TickContext {
                 tick_count: self.tick_count,
                 duration_micros: self.last_duration_micros,
+                cv_out: outputs,
+                outputs_forced: self.screen != Screen::Calibration
+                    && self.forced_outputs.iter().any(Option::is_some),
             };
             let mark = self.clock.fine_count();
             match self.screen {

@@ -72,13 +72,19 @@ impl Default for InputSnapshot {
     }
 }
 
-/// Timing information the applet displays but does not compute itself.
+/// What the applet displays but does not decide itself.
 #[derive(Debug, Clone, Copy, Default)]
 pub struct TickContext {
     /// Number of ticks executed since boot.
     pub tick_count: u64,
     /// Duration of the previous tick, in microseconds.
     pub duration_micros: u32,
+    /// The levels actually written to the outputs on this tick: the
+    /// applet's own, unless something else holds an output.
+    pub cv_out: [MilliVolts; CV_CHANNELS],
+    /// Whether a host probe holds any output (journal/D-029), so the screen
+    /// can say its levels are not the applet's.
+    pub outputs_forced: bool,
 }
 
 /// One of the applets the module can run.

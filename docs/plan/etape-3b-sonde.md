@@ -74,3 +74,12 @@ sonde (service du second port dans l'attente, marge de `poll` en µs entières).
 
 Essai du redémarrage (`22fb58a`) : `stty -f <port> 134` (le `stty` de macOS ; GNU : `-F`) fait passer le module en
 mode chargement, et `cargo xtask flash` passe ensuite sans appui sur PROGRAM.
+
+Premier `cargo probe stats` (`d5365bb`, ≈ 94 s après le démarrage) : tick 111,6 µs en moyenne (max 1 822,5),
+`render` ≈ 639 µs, `present` ≈ 1 157 µs, `page` ≈ 144,5 µs (8 par trame), `sample` ≈ 287 µs, `usb` ≈ 1,8 µs
+(max 7,3) ; période moyenne 1 055,6 µs, tirée par les 4,9 % de ticks de rendu au-delà de 1 ms ; hors rendu,
+≈ 93 % des périodes à moins de 4 µs de la cible. Valeurs indicatives.
+
+Essai de `cargo probe out A 1000` : 1 V au multimètre, mais l'écran Diagnostic affichait encore `0.0` (sa propre
+sortie, pas celle du jack) ; corrigé : la ligne `OUT` affiche ce qui est écrit, `OUT*` quand la sonde tient une
+sortie.
