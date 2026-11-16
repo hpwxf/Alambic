@@ -56,6 +56,8 @@ permanent qui renvoie au bouton PROGRAM.
 
 ## Points ouverts (revue du 2026-11-16)
 
-* La validation de l'**image réelle** (`validate_image` sur l'ELF produit) ne tourne qu'au flash : la CI construit,
+* **Traité au lot 3a (2026-11-16)** : le job `firmware` lance `cargo xtask flash --dry-run` après `hex` ; l'empreinte
+  SHA-256 du `.hex` apparaît dans le journal de CI et peut être comparée à celle qu'affiche un flash local (même
+  chemin `dist/oc-firmware.hex`). Constat d'origine : la validation de l'**image réelle** (`validate_image` sur l'ELF produit) ne tourne qu'au flash : la CI construit,
   mesure et empaquette, mais ne lance pas `cargo xtask flash --dry-run`, qui ne demande pourtant ni module ni
   chargeur. Une régression du FCB ou de la table des vecteurs ne serait vue qu'au moment de flasher.

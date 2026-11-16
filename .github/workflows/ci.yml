@@ -59,6 +59,14 @@ jobs:
           cargo xtask build
           cargo xtask size
           cargo xtask hex
+      # The pre-flash gate (`validate_image` on the real ELF: architecture,
+      # FCB, vector table, flash size) needs neither a module nor the loader,
+      # so it runs here instead of only at flash time. It rewrites the same
+      # `dist/oc-firmware.hex` and logs its SHA-256, so the uploaded artefact
+      # can be compared with what a local `cargo xtask flash` prints
+      # (journal/D-016).
+      - name: Pre-flash validation (dry run)
+        run: cargo xtask flash --dry-run
       - name: Upload firmware image
         uses: actions/upload-artifact@v4
         with:

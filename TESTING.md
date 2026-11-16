@@ -568,11 +568,13 @@ under Eurorack power-supply noise; none of that is in scope for this plan.
 `.github/workflows/ci.yml` runs, on every push and pull request: `rustfmt`
 check, `clippy` on host crates and separately on `oc-firmware` for
 `thumbv7em-none-eabihf`, `cargo test --all-features` on Ubuntu and macOS,
-`cargo xtask build && cargo xtask size && cargo xtask hex` with the resulting
-`.hex` uploaded as a build artefact, and `cargo bench --no-run` to catch
+`cargo xtask build && cargo xtask size && cargo xtask hex`, then
+`cargo xtask flash --dry-run` (Level 8: the pre-flash gate on the real ELF,
+plus the `.hex` SHA-256 in the log), with the resulting `.hex` uploaded as a
+build artefact, and `cargo bench --no-run` to catch
 benchmark compilation rot without paying for timing runs on shared runners.
-CI covers Levels 0, 1, 2, 4, 6 and 7, plus the VCV Rack ABI robustness tests
-(`oc-vcv-ffi` is a default workspace member); Levels 3 (bench timings), 5, 8
+CI covers Levels 0, 1, 2, 4, 6, 7 and 8, plus the VCV Rack ABI robustness tests
+(`oc-vcv-ffi` is a default workspace member); Levels 3 (bench timings), 5
 and 9, and the C++ plugin build against a real Rack SDK, are manual by
 nature — the last needs a downloaded SDK CI does not provision — and are
 not, and should not be, run unattended.
