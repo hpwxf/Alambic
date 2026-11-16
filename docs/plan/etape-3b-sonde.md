@@ -31,6 +31,9 @@ Ordre : 3b1 → 3b2 → 3b3 → 3b4 → 3b5 ; 3b1 et 3b2 sont indépendants l'un
 
 ## Premières mesures (2026-11-16, module TLM, firmware `1a7d0c6`, profil des lignes USB)
 
+Un seul exemplaire, un seul hôte : ces chiffres situent des ordres de grandeur, ils ne fixent aucune constante du
+code. Ce qui en dépend (marge d'attente sans `poll` USB) est mesuré par le firmware lui-même à l'exécution.
+
 | Étape | Moyenne | Max | Lecture |
 |---|---|---|---|
 | `sample` (4 conversions ADC bloquantes, 4 moyennes) | 288,1 µs | 288,5 µs | ≈ 72 µs par voie ; le commentaire de `cv_in.rs` disait « quelques µs » |
@@ -57,4 +60,4 @@ Après correction (`94133c5`) : période **1 002,5 à 2 110,7 µs** ; 88 % à 2�
 plus de 1 ms (les ticks de rendu). Reste un retard fixe : l'échéance repartait de l'instant où l'attente l'avait
 vue passer (pas de 1 µs du GPT, plus un `poll` USB jusqu'à 10,6 µs), et ce retard s'ajoutait à chaque période
 (≈ 997,5 Hz). Corrigé à la suite : calendrier fixe (échéance précédente + période, recalé seulement après un
-dépassement, donc toujours sans dette), et plus de `poll` USB dans les 20 dernières µs.
+dépassement, donc toujours sans dette), et plus de `poll` USB quand le plus long `poll` observé depuis le démarrage ne tient plus avant l'échéance.

@@ -82,10 +82,6 @@ use crate::flash_store::SettingsFlash;
 /// and Linux; messages logged later in `main` still go out during the loop.
 const USB_ENUMERATION_WAIT_MS: u32 = 1_000;
 
-/// The last microseconds of a period are spun without polling USB, so the
-/// next one starts on time: a poll measured up to 10.6 us (lot 3b1).
-const USB_QUIET_MICROS: u64 = 20;
-
 /// Heartbeat log period in engine ticks (1 kHz → once per second).
 const HEARTBEAT_TICKS: u32 = 1_000;
 
@@ -287,8 +283,12 @@ fn main() -> ! {
     let mut ticks: u32 = 0;
     // The start of the current period, sampling included: pacing from the
     // tick's own start left the sampling outside it and stretched every
-    // period by its cost (288 us measured, lot 3b1).
+    // period by its cost.
     let mut deadline = engine.clock().now_micros();
+    // The longest USB poll seen in the idle spin, in microseconds: no poll
+    // starts closer than that to a deadline. Learnt at run time rather than
+    // assumed, since it depends on the host and the traffic.
+    let mut longest_poll_micros: u64 = 0;
     loop {
         let mark = engine.clock().fine_count();
         {
@@ -379,7 +379,7 @@ fn main() -> ! {
         // Cooperative pacing against the microsecond clock, on a fixed
         // schedule: each period ends one period after the previous deadline,
         // not after the moment the spin noticed it, so the spin's own
-        // lateness never adds up (it cost 2.5 us a period, lot 3b1). There is
+        // lateness never adds up. There is
         // no scheduler and no interrupt in the signal path, which keeps the
         // timing easy to reason about; an overrunning tick re-anchors the
         // schedule and the next one starts at once, rather than accumulating
@@ -392,10 +392,17 @@ fn main() -> ! {
             deadline = now;
         } else {
             // Poll USB inside the idle spin so bulk log traffic still drains
-            // when a tick finishes early, but not close to the deadline: one
-            // poll can take 10 us.
-            while engine.clock().now_micros() + USB_QUIET_MICROS < deadline {
+            // when a tick finishes early, but only while the longest poll so
+            // far still fits before the deadline (one more microsecond for
+            // the clock's resolution).
+            loop {
+                let before = engine.clock().now_micros();
+                if before + longest_poll_micros + 1 >= deadline {
+                    break;
+                }
                 usb_log.poll();
+                let took = engine.clock().now_micros() - before;
+                longest_poll_micros = longest_poll_micros.max(took);
             }
             while engine.clock().now_micros() < deadline {
                 cortex_m::asm::nop();
