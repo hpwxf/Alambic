@@ -102,7 +102,6 @@ impl OutputMode {
 #[derive(Debug, Clone)]
 pub struct DiagnosticApp {
     detectors: [SignalDetector; CV_CHANNELS],
-    patched: [bool; CV_CHANNELS],
     triggers: [EdgeCounter; TRIGGER_CHANNELS],
     press_counts: [u32; BUTTONS],
     selected: usize,
@@ -118,7 +117,6 @@ impl DiagnosticApp {
     pub fn new() -> Self {
         Self {
             detectors: [SignalDetector::default(); CV_CHANNELS],
-            patched: [false; CV_CHANNELS],
             triggers: [EdgeCounter::new(TRIGGER_STABLE_SAMPLES); TRIGGER_CHANNELS],
             press_counts: [0; BUTTONS],
             selected: 0,
@@ -131,8 +129,6 @@ impl DiagnosticApp {
 
     /// Consumes one snapshot and returns the levels the outputs should take.
     pub fn update(&mut self, input: &InputSnapshot) -> [MilliVolts; CV_CHANNELS] {
-        self.patched = input.patched;
-
         for (detector, &level) in self.detectors.iter_mut().zip(input.cv.iter()) {
             detector.update(level);
         }
@@ -286,7 +282,6 @@ impl DiagnosticApp {
             let marker = if index == self.selected { '>' } else { ' ' };
             let _ = write!(line, "{marker}{} ", index + 1);
             let _ = write_volts(&mut line, detector.level(), 3);
-            let patched = if self.patched[index] { 'P' } else { '.' };
             let active = if detector.is_active(DEFAULT_ACTIVITY_THRESHOLD_MV) {
                 '~'
             } else {
@@ -294,11 +289,7 @@ impl DiagnosticApp {
             };
             let trigger = &self.triggers[index];
             let gate = if trigger.state() { 'H' } else { 'l' };
-            let _ = write!(
-                line,
-                " {patched}{active}{gate}{:>5}",
-                trigger.rising_count()
-            );
+            let _ = write!(line, " {active}{gate}{:>6}", trigger.rising_count());
             draw(&line, 1 + i32::try_from(index).unwrap_or(0));
         }
 

@@ -45,7 +45,7 @@ D-023 (double cadence) est **proposée** ; elle ne s'adopte qu'après 3a et la m
 
 | Lot | Contenu | État |
 |---|---|---|
-| **3a** — dette de revue | ✅ CI verte avec `--all-features` (R1, D-013) ; ✅ triggers sans anti-rebond mécanique (R2, D-019) ; ✅ règle du brochage rendue vraie et testée (R3, D-007) ; ✅ docs « jamais sur matériel » / « jamais dans Rack » corrigées (R4, D-011, D-015) ; ✅ `flash --dry-run` en CI (V5, D-016) | fait |
+| **3a** — dette de revue | ✅ CI verte avec `--all-features` (R1, D-013) ; ✅ triggers sans anti-rebond mécanique (R2, D-019) ; ✅ règle du brochage rendue vraie et testée (R3, D-007) ; ✅ docs « jamais sur matériel » / « jamais dans Rack » corrigées (R4, D-011, D-015) ; ✅ `flash --dry-run` en CI (V5, D-016) ; ✅ plus de présence de câble, backends alignés (R5, D-019) ; ☐ plan de cadence suivi par git, objectif avant cadence (R6, D-023) | en cours |
 | **3b** — mesure sur module | niveau 9 complet (calibration, CV, triggers) ; coût réel d'une trame OLED et gigue de la boucle (GPIO + oscilloscope, `docs/supersaw/` § 13) | à faire |
 | **3c** — cadence | trancher D-023 (A, B ou C) ; scinder `Engine::tick` en `signal_tick` / `ui_tick` dans `oc-core` | à faire |
 
@@ -73,7 +73,7 @@ Valeurs seules ; le raisonnement est dans `journal/`.
 | flash | `cargo xtask` seul point d'entrée ; validations ELF puis `teensy_loader_cli`, sans sonde USB | D-016 |
 | CI | GitHub Actions ; fmt, clippy pedantic hôte + ARM, tests Linux + macOS, image firmware, bancs compilés ; canal `stable` | D-017 |
 | profil | release LTO fat, `overflow-checks = true` ; panique → journal USB + SOS | D-018 |
-| entrées | anti-rebond 3 échantillons (boutons), front sur 1 échantillon (triggers) ; activité CV par crête-à-crête (256 éch., 40 mV) | D-019 |
+| entrées | anti-rebond 3 échantillons (boutons), front sur 1 échantillon (triggers) ; activité CV par crête-à-crête (256 éch., 40 mV), aucune présence de câble sur aucun backend | D-019 |
 | démarrage | écran 1,5 s, sorties à 0 V, rendu à chaque tick | D-020 |
 | applets | `AppHost` (tous résidents), menu par accord haut + bas, haut / bas au relâchement ; `DiagnosticApp`, `ScopeApp` | D-021 |
 | licence | `MIT OR Apache-2.0` (workspace) | D-022 |

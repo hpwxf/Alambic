@@ -58,14 +58,6 @@ impl AnalogIn for CvInputs {
         let index = channel.index();
         self.calibration[index].to_millivolts(self.raw[index])
     }
-
-    fn is_patched(&self, _channel: CvChannel) -> bool {
-        // The module's jacks have no cable-detection switch, so the honest
-        // answer is "always connected"; the applet relies on
-        // `oc_core::signal::SignalDetector` to tell a live input from a dead
-        // one.
-        true
-    }
 }
 
 impl core::fmt::Debug for CvInputs {

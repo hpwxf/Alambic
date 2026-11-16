@@ -76,9 +76,10 @@ Output modes:
   shifted by a quarter period;
 * **ZERO** — all outputs pinned at 0 V, to measure the output offset error.
 
-The screen shows, per channel, the measured level in volts, whether a cable is
-reported (`P`), whether a signal is moving (`~`), the gate level and the number
-of trigger edges counted, plus the tick duration and count.
+The screen shows, per channel, the measured level in volts, whether a signal is
+moving (`~`), the gate level and the number of trigger edges counted, plus the
+tick duration and count. There is no "cable plugged" indicator: the module's
+jacks cannot detect a cable, so no backend shows one.
 
 ## The simulator
 
@@ -128,8 +129,8 @@ AZERTY (and vice versa), so those bindings swap between the two:
 | turn the left encoder anticlockwise (`Shift` for ten detents) | `z` / `Z` | `w` / `W` |
 
 Everything else is the same on both layouts. Both encoders live on six
-consecutive keys of the top letter row, skipping only quit (`q`) and patch
-(`p`): press–turn–turn for the left encoder, turn–turn–press for the right
+consecutive keys of the top letter row, skipping quit (`q`) and `p`:
+press–turn–turn for the left encoder, turn–turn–press for the right
 one:
 
 | Key            | Action                                            |
@@ -137,7 +138,6 @@ one:
 | `Tab`          | select which CV input the arrows drive            |
 | `←` / `→`      | selected CV input by ±100 mV (`Shift` for ±1 V)   |
 | `Home`         | selected CV input to 0 V                          |
-| `p`            | toggle the cable on the selected CV input         |
 | `x` `c` `v`    | pulse triggers 2 to 4                             |
 | `X` `C` `V`    | hold triggers 2 to 4 high or low                  |
 | `↑` / `↓`      | the module's up / down buttons                    |
@@ -176,7 +176,6 @@ The format is plain text and meant to be edited and reviewed:
 ```text
 ticks 40
 0  cv 2 -2500
-0  patch 2 on
 10 trigger 1 high
 20 encoder 2 +15
 ```

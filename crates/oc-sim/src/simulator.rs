@@ -134,11 +134,6 @@ impl Simulator {
                     analog_in.levels[channel.index()] = millivolts;
                 }
             }
-            Event::Patch { channel, patched } => {
-                if let Some(channel) = CvChannel::from_index(channel) {
-                    analog_in.patched[channel.index()] = patched;
-                }
-            }
             Event::Trigger { channel, high } => {
                 if let Some(channel) = TriggerChannel::from_index(channel) {
                     digital_in.set(channel, high);
@@ -286,13 +281,6 @@ impl Simulator {
         analog_in.levels[channel.index()]
     }
 
-    /// Whether a cable is reported on a CV input.
-    #[must_use]
-    pub fn is_patched(&mut self, channel: CvChannel) -> bool {
-        let (analog_in, ..) = self.engine.parts_mut();
-        analog_in.patched[channel.index()]
-    }
-
     /// Raw level currently applied to a trigger input.
     #[must_use]
     pub fn trigger_in(&mut self, channel: TriggerChannel) -> bool {
@@ -417,7 +405,6 @@ mod tests {
         let text = "\
 ticks 40
 0 cv 1 2500
-0 patch 1 on
 5 trigger 2 high
 9 trigger 2 low
 12 encoder 2 +4

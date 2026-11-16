@@ -6,7 +6,7 @@
 | **Date** | 2026-11-16 (rétrospective ; décision prise le 2026-08-01, révisée le 2026-09-03) |
 | **Auteur** | Pascal Havé |
 | **Statut** | adoptée (rétrospective), révisée |
-| **Commits** | `40e8c3f` (ABI, plugin, `xtask vcv`), `350ee90` (façade alignée sur le module), `0c2cc90` (écran de démarrage via l'ABI), `f12fd71` (`OrnamentCrimeRust` → `OrnamentCrimeAlambic`, `vcv clean`), `a839a03` (entrée de menu contextuel pour l'accord), `190fb3f` (SDK ignoré), `8bdd9bc` (module `Diagnostic` → `Alambic`) |
+| **Commits** | `40e8c3f` (ABI, plugin, `xtask vcv`), `350ee90` (façade alignée sur le module), `0c2cc90` (écran de démarrage via l'ABI), `f12fd71` (`OrnamentCrimeRust` → `OrnamentCrimeAlambic`, `vcv clean`), `a839a03` (entrée de menu contextuel pour l'accord), `190fb3f` (SDK ignoré), `8bdd9bc` (module `Diagnostic` → `Alambic`), lot 3a (`oc_engine_set_cv_in` sans état de câble, D-019) |
 
 ## 1. Contexte
 
@@ -57,7 +57,8 @@ l'ancien slug ne retrouvent plus le module, coût jugé nul puisque rien n'est d
 
 ## Points ouverts (revue du 2026-11-16)
 
-* **Divergence de comportement entre backends** : Rack transmet un vrai `isConnected()`, le firmware répond toujours
+* **Traité au lot 3a (2026-11-16)** : `oc_engine_set_cv_in` ne prend plus d'état de câble, le module ne transmet
+  plus `isConnected()` (D-019, révision). Constat d'origine — **divergence de comportement entre backends** : Rack transmet un vrai `isConnected()`, le firmware répond toujours
   `true` (pas de détection de jack, D-019). L'écran de diagnostic affiche donc des `P` différents dans Rack et sur
   le module, contrairement à la promesse de D-002.
 * **Traité au lot 3a (2026-11-16)** : `README.md`, `AGENTS.md` et `TESTING.md` disent que le plugin se charge dans

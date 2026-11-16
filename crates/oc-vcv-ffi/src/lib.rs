@@ -127,7 +127,7 @@ pub unsafe extern "C" fn oc_engine_free(engine: *mut OcEngine) {
     }));
 }
 
-/// Sets one CV input's level and cable state for the next call to
+/// Sets one CV input's level for the next call to
 /// [`oc_engine_tick`].
 ///
 /// A null `engine` or a channel index outside `0..4` is a no-op.
@@ -136,12 +136,7 @@ pub unsafe extern "C" fn oc_engine_free(engine: *mut OcEngine) {
 ///
 /// `engine`, if non-null, must point to a live [`OcEngine`].
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn oc_engine_set_cv_in(
-    engine: *mut OcEngine,
-    channel: u8,
-    millivolts: i32,
-    patched: bool,
-) {
+pub unsafe extern "C" fn oc_engine_set_cv_in(engine: *mut OcEngine, channel: u8, millivolts: i32) {
     let _ = catch_unwind(AssertUnwindSafe(move || {
         // SAFETY: see the function's own safety contract.
         let Some(engine) = (unsafe { as_mut(engine) }) else {
@@ -152,7 +147,6 @@ pub unsafe extern "C" fn oc_engine_set_cv_in(
         };
         let (analog_in, ..) = engine.engine.parts_mut();
         analog_in.levels[channel.index()] = millivolts;
-        analog_in.patched[channel.index()] = patched;
     }));
 }
 
@@ -504,7 +498,7 @@ mod tests {
         skip_boot(engine);
         // SAFETY: `engine` is live for the duration of this test.
         unsafe {
-            oc_engine_set_cv_in(engine, 1, 2_500, true);
+            oc_engine_set_cv_in(engine, 1, 2_500);
             oc_engine_tick(engine, u64::from(DURATION_MICROS) * 2);
             assert_eq!(oc_engine_cv_out(engine, 1), 2_500);
             oc_engine_free(engine);
@@ -517,7 +511,7 @@ mod tests {
         skip_boot(engine);
         // SAFETY: `engine` is live for the duration of this test.
         unsafe {
-            oc_engine_set_cv_in(engine, 1, 2_500, true);
+            oc_engine_set_cv_in(engine, 1, 2_500);
             oc_engine_tick(engine, u64::from(DURATION_MICROS) * 2);
             assert_eq!(
                 oc_engine_cv_out(engine, 1),

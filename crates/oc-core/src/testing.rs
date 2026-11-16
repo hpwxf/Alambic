@@ -22,39 +22,26 @@ use crate::platform::{
 pub struct MockAnalogIn {
     /// Level reported for each channel.
     pub levels: [MilliVolts; CV_CHANNELS],
-    /// Cable presence reported for each channel.
-    pub patched: [bool; CV_CHANNELS],
 }
 
 impl MockAnalogIn {
-    /// All channels at 0 V and unpatched.
+    /// All channels at 0 V, as unpatched jacks read.
     #[must_use]
     pub const fn new() -> Self {
         Self {
             levels: [0; CV_CHANNELS],
-            patched: [false; CV_CHANNELS],
         }
     }
 
-    /// Sets one channel's level and marks it as patched.
+    /// Drives one channel to a level, as a patched cable would.
     pub const fn patch(&mut self, channel: CvChannel, millivolts: MilliVolts) {
         self.levels[channel.index()] = millivolts;
-        self.patched[channel.index()] = true;
-    }
-
-    /// Marks one channel as unpatched, leaving its level alone.
-    pub const fn unpatch(&mut self, channel: CvChannel) {
-        self.patched[channel.index()] = false;
     }
 }
 
 impl AnalogIn for MockAnalogIn {
     fn read_cv(&mut self, channel: CvChannel) -> MilliVolts {
         self.levels[channel.index()]
-    }
-
-    fn is_patched(&self, channel: CvChannel) -> bool {
-        self.patched[channel.index()]
     }
 }
 

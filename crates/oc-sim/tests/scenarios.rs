@@ -98,17 +98,6 @@ fn cv_inputs_reach_their_matching_outputs() {
 }
 
 #[test]
-fn cable_presence_is_reported_per_channel() {
-    let mut simulator = replay("cv_passthrough");
-    assert!(simulator.is_patched(CvChannel::One));
-    assert!(simulator.is_patched(CvChannel::Three));
-    assert!(
-        !simulator.is_patched(CvChannel::Four),
-        "channel four is driven but not declared patched"
-    );
-}
-
-#[test]
 fn a_steady_input_is_not_mistaken_for_a_signal() {
     let simulator = replay("cv_passthrough");
     for channel in CvChannel::ALL {

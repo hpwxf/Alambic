@@ -6,9 +6,7 @@
 # scope's buffered mult proves the switch on the jacks as well as on screen.
 ticks 600
 0   cv 1 1500
-0   patch 1 on
 0   cv 2 4000
-0   patch 2 on
 20  button up down
 60  button down down
 70  button up up

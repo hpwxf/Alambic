@@ -96,7 +96,6 @@ fn help_lines(layout: KeyLayout) -> Vec<String> {
             "CV level +/-100mV (Shift: +/-1V)".to_owned(),
         ),
         ("Home".to_owned(), "CV level to 0V".to_owned()),
-        ("p".to_owned(), "toggle the patch cable".to_owned()),
         (format!("{pulse1} x c v"), "pulse triggers 1-4".to_owned()),
         (format!("{gate1} X C V"), "hold triggers 1-4".to_owned()),
         (
@@ -257,7 +256,6 @@ impl Tui {
             KeyCode::Left => self.nudge_focused(-step),
             KeyCode::Right => self.nudge_focused(step),
             KeyCode::Home => self.set_focused(0),
-            KeyCode::Char('p') => self.toggle_patch(),
 
             KeyCode::Char('z') => self.pulse(TriggerChannel::One),
             KeyCode::Char('x') => self.pulse(TriggerChannel::Two),
@@ -281,8 +279,8 @@ impl Tui {
             KeyCode::Down => self.press(Button::Down),
             KeyCode::Char('m') => self.chord(),
 
-            // Row 1 (top letter row), six keys in a row, skipping only quit
-            // (`q`) and patch (`p`): press-turn-turn for the left encoder,
+            // Row 1 (top letter row), six keys in a row, skipping quit (`q`)
+            // and `p` (left free): press-turn-turn for the left encoder,
             // turn-turn-press for the right one.
             KeyCode::Char('a') => self.press(Button::LeftEncoder),
             KeyCode::Char('w') => self.turn(0, -1),
@@ -373,23 +371,6 @@ impl Tui {
         });
     }
 
-    /// Toggles the cable on the focused CV input.
-    fn toggle_patch(&mut self) {
-        let Some(channel) = CvChannel::from_index(self.focus) else {
-            return;
-        };
-        let patched = !self.simulator.is_patched(channel);
-        self.simulator.apply(Event::Patch {
-            channel: self.focus,
-            patched,
-        });
-        self.status = format!(
-            "CV {} {}",
-            self.focus + 1,
-            if patched { "patched" } else { "unpatched" }
-        );
-    }
-
     /// Fires a momentary pulse on a trigger input.
     fn pulse(&mut self, channel: TriggerChannel) {
         self.simulator.pulse(channel);
@@ -466,7 +447,6 @@ impl Tui {
 
         for channel in CvChannel::ALL {
             let level = self.simulator.cv_in(channel);
-            let patched = self.simulator.is_patched(channel);
             let focused = channel.index() == self.focus;
             let style = if focused {
                 Style::default()
@@ -477,11 +457,10 @@ impl Tui {
             };
             lines.push(Line::styled(
                 format!(
-                    "{} CV{} {:>6}mV {}",
+                    "{} CV{} {:>6}mV",
                     if focused { '>' } else { ' ' },
                     channel.index() + 1,
                     level,
-                    if patched { "[cable]" } else { "       " }
                 ),
                 style,
             ));

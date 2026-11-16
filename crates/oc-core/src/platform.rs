@@ -133,15 +133,13 @@ impl ControlEvents {
 /// Reads the CV inputs.
 pub trait AnalogIn {
     /// Samples one CV input and returns its calibrated level.
-    fn read_cv(&mut self, channel: CvChannel) -> MilliVolts;
-
-    /// Whether a cable is known to be plugged into this input.
     ///
-    /// The real module has no cable detection, so the firmware reports `true`
-    /// unconditionally and the core relies on
-    /// [`crate::signal::SignalDetector`] instead. Hosts that do know, such as
-    /// VCV Rack, report the truth.
-    fn is_patched(&self, channel: CvChannel) -> bool;
+    /// There is deliberately no "is a cable plugged in" query: the module's
+    /// jacks have no detection switch, so only the level is observable, and a
+    /// host that could tell (VCV Rack) would make the same applet behave
+    /// differently on the module. Signal presence comes from
+    /// [`crate::signal::SignalDetector`] on every backend (journal/D-019).
+    fn read_cv(&mut self, channel: CvChannel) -> MilliVolts;
 }
 
 /// Writes the CV outputs.

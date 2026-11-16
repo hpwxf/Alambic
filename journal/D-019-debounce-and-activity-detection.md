@@ -6,7 +6,7 @@
 | **Date** | 2026-11-16 (rétrospective ; décision prise le 2026-08-01) |
 | **Auteur** | Pascal Havé |
 | **Statut** | adoptée (rétrospective), révisée |
-| **Commits** | `555f492` (`debounce.rs`, `signal.rs`), `ec140ed` (`is_patched` toujours vrai sur le firmware), `a839a03` (`ButtonReader` centralise l'anti-rebond des boutons), lot 3a (triggers sans filtre temporel) |
+| **Commits** | `555f492` (`debounce.rs`, `signal.rs`), `ec140ed` (`is_patched` toujours vrai sur le firmware), `a839a03` (`ButtonReader` centralise l'anti-rebond des boutons), lot 3a (triggers sans filtre temporel ; `is_patched` retiré) |
 
 ## 1. Contexte
 
@@ -66,6 +66,23 @@ interruption GPIO ou à la cadence de l'ISR signal (D-023) la rattrape. Prix acc
 compte comme un trigger, et un bouton-poussoir branché sur une entrée trigger compte ses rebonds (`TESTING.md`
 niveau 9.3 mis à jour).
 
+## Révision (2026-11-16, lot 3a) — plus de présence de câble
+
+**D seul** remplace **C + D**. `AnalogIn::is_patched` disparaît du trait de plateforme, avec tout ce qui le portait :
+`InputSnapshot::patched`, la colonne `P`/`.` de l'écran de diagnostic (le compteur de fronts prend la place, la ligne
+garde sa largeur), `MockAnalogIn::patched` et `unpatch`, l'événement `patch` des scénarios (le parseur le refuse avec
+un message qui renvoie ici), la touche `p` et l'indicateur `[cable]` du simulateur, et le dernier paramètre de
+`oc_engine_set_cv_in` (le module Rack ne transmet plus `isConnected()`). La présence d'un signal vient uniquement de
+`SignalDetector`, identique sur les trois backends.
+
+Pourquoi : le matériel ne peut pas répondre (jacks sans contact de détection), donc toute valeur est soit un mensonge
+constant (`true` sur le module), soit une information que seul un backend possède (Rack). Les deux trahissent D-002 :
+le même applet affichait des écrans différents selon le backend, et `TESTING.md` § 9.2 attendait sur le module un `.`
+que le firmware ne pouvait jamais afficher. Un futur applet qui voudrait la présence d'un câble devra la déduire du
+signal, comme sur le module. Prix accepté : dans Rack, on perd une information exacte ; une entrée branchée mais
+statique et une entrée débranchée sont indiscernables, comme sur le module. L'ABI C change sans compatibilité :
+rien n'est distribué.
+
 ## Points ouverts (revue du 2026-11-16)
 
 * ~~**Les triggers courts sont perdus par construction.**~~ **Traité** pour les impulsions d'au moins un tick
@@ -77,7 +94,7 @@ niveau 9.3 mis à jour).
   de modèle. Correctif proposé : `required = 1` (ou détection de front sur deux échantillons) pour les triggers dès
   maintenant, et, avec D-023, capture des fronts par interruption GPIO ou à la cadence de l'ISR signal. Le scénario
   `trigger_burst` est à réécrire en conséquence.
-* `is_patched` est un champ du trait que le matériel **ne peut pas** honorer ; seul Rack fournit une vraie valeur, le
+* ~~`is_patched` est un champ du trait~~ **Traité** (révision ci-dessus) : `is_patched` était un champ du trait que le matériel **ne peut pas** honorer ; seul Rack fournit une vraie valeur, le
   simulateur une valeur scriptée. L'affichage `P` diffère donc entre backends (D-002, D-015). Options : retirer
   `is_patched` du trait et ne garder que l'activité (D), ou forcer `true` dans Rack et le simulateur pour coller au
   matériel.

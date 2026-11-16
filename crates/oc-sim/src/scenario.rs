@@ -8,7 +8,6 @@
 //! # oc-sim scenario v1
 //! ticks 50
 //! 0  cv 1 2500
-//! 0  patch 1 on
 //! 10 trigger 2 high
 //! 12 trigger 2 low
 //! 20 encoder 2 +3
@@ -35,13 +34,6 @@ pub enum Event {
         channel: usize,
         /// Level in millivolts.
         millivolts: i32,
-    },
-    /// Report a cable as present or absent on a CV input.
-    Patch {
-        /// Zero-based channel index.
-        channel: usize,
-        /// Whether a cable is present.
-        patched: bool,
     },
     /// Set the level of a trigger input.
     Trigger {
@@ -117,10 +109,6 @@ impl Event {
             } => {
                 let _ = write!(out, "cv {} {millivolts}", channel + 1);
             }
-            Self::Patch { channel, patched } => {
-                let state = if patched { "on" } else { "off" };
-                let _ = write!(out, "patch {} {state}", channel + 1);
-            }
             Self::Trigger { channel, high } => {
                 let state = if high { "high" } else { "low" };
                 let _ = write!(out, "trigger {} {state}", channel + 1);
@@ -149,10 +137,10 @@ impl Event {
                     .parse()
                     .with_context(|| format!("{millivolts:?} is not a level in millivolts"))?,
             },
-            ("patch", [channel, state]) => Self::Patch {
-                channel: parse_channel(channel, CV_CHANNELS)?,
-                patched: parse_state(state)?,
-            },
+            ("patch", _) => bail!(
+                "`patch` events were removed: the module cannot detect cables, so no \
+                 backend reports them any more (journal/D-019); delete the line"
+            ),
             ("trigger", [channel, state]) => Self::Trigger {
                 channel: parse_channel(channel, TRIGGER_CHANNELS)?,
                 high: parse_state(state)?,
@@ -288,13 +276,6 @@ mod tests {
             },
         );
         scenario.push(
-            0,
-            Event::Patch {
-                channel: 0,
-                patched: true,
-            },
-        );
-        scenario.push(
             10,
             Event::Trigger {
                 channel: 1,
@@ -349,9 +330,20 @@ mod tests {
 
     #[test]
     fn events_can_be_selected_by_tick() {
-        let scenario: Scenario = "2 cv 1 100\n2 patch 1 on\n3 cv 1 300\n".parse().unwrap();
+        let scenario: Scenario = "2 cv 1 100\n2 trigger 1 high\n3 cv 1 300\n"
+            .parse()
+            .unwrap();
         assert_eq!(scenario.events_at(2).count(), 2);
         assert_eq!(scenario.events_at(7).count(), 0);
+    }
+
+    #[test]
+    fn a_removed_patch_event_is_rejected_with_its_reason() {
+        let error = "0 patch 1 on".parse::<Scenario>().unwrap_err();
+        assert!(
+            format!("{error:#}").contains("D-019"),
+            "the message must say why `patch` is gone: {error:#}"
+        );
     }
 
     #[test]
@@ -375,7 +367,7 @@ mod tests {
 
     #[test]
     fn a_malformed_state_is_rejected() {
-        assert!("0 patch 1 maybe".parse::<Scenario>().is_err());
+        assert!("0 trigger 1 maybe".parse::<Scenario>().is_err());
     }
 
     #[test]

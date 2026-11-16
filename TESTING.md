@@ -167,8 +167,8 @@ sequences (five today: `cv_passthrough`, `trigger_burst`, `encoder_offset`,
 `mode_cycle`, `app_menu`). Each is replayed against the real `oc_core::Engine`
 and checked two ways:
 
-1. **Behavioural assertions** in `scenarios.rs` — expected CV outputs, cable
-   presence, trigger counts, offset and mode after the sequence.
+1. **Behavioural assertions** in `scenarios.rs` — expected CV outputs,
+   trigger counts, offset and mode after the sequence.
 2. **Golden screen snapshot** — the rendered framebuffer is compared
    byte-for-byte, as dense terminal glyphs (classic braille by default;
    Unicode octants with `--features octant`), against the matching
@@ -223,7 +223,6 @@ panel follows. The key map is permanently on screen; it is also in
 |-----------------|-----------------------------------------------|
 | `Tab`           | select which CV input the arrows drive       |
 | `←`/`→`, `Home` | move / zero the selected CV input            |
-| `p`             | toggle the cable on the selected CV input    |
 | `z x c v`       | pulse triggers 1–4 (`w x c v` on AZERTY)     |
 | `↑`/`↓`         | the module's up / down buttons               |
 | `m`             | up + down together: the app menu             |
@@ -456,13 +455,13 @@ SSD1306, or SSD1309. Follow it in order; each step assumes the previous one succ
 
 For each of the four front-panel CV jacks in turn:
 
-1. Leave it unpatched. The channel row must show `.` (no cable) and a
-   reading near 0 V (exact value depends on the still-unmeasured calibration
-   offset, see 9.4).
+1. Leave it unpatched. The channel row must show a reading near 0 V (exact
+   value depends on the still-unmeasured calibration offset, see 9.4).
 2. Patch in a known, static DC voltage from a calibrated source (a battery
    or bench supply through a suitable divider — **never exceed the module's
    input range**, nominally -6 V to +9 V before scaling; when unsure, start
-   with ±1 V). The row must switch to `P` (patched) immediately.
+   with ±1 V). The reading must follow it immediately. (There is no cable
+   indicator: the jacks cannot detect one, journal/D-019.)
 3. After roughly one second of a steady level, the "active signal" indicator
    (`~`) must turn **off** — Level 1's tests already prove a static input is
    never mistaken for an active one; this step confirms the same on real

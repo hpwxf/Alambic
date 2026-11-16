@@ -38,7 +38,7 @@ fn null_engine_pointers_are_safe_everywhere() {
 
     // SAFETY: every function's contract explicitly allows a null pointer.
     unsafe {
-        oc_engine_set_cv_in(null_mut, 0, 2_500, true);
+        oc_engine_set_cv_in(null_mut, 0, 2_500);
         oc_engine_set_trigger(null_mut, 0, true);
         oc_engine_encoder(null_mut, 0, 1, true);
         oc_engine_button(null_mut, 0, true);
@@ -60,7 +60,7 @@ fn out_of_range_indices_are_ignored_not_clamped() {
     // SAFETY: `engine` is live for the duration of this test and never
     // shared across threads.
     unsafe {
-        oc_engine_set_cv_in(engine, u8::MAX, 2_500, true);
+        oc_engine_set_cv_in(engine, u8::MAX, 2_500);
         oc_engine_set_trigger(engine, u8::MAX, true);
         oc_engine_encoder(engine, u8::MAX, 1, true);
         oc_engine_button(engine, u8::MAX, true);
@@ -122,7 +122,7 @@ fn two_engines_are_independent() {
 
     // SAFETY: both pointers are live for the duration of this test.
     unsafe {
-        oc_engine_set_cv_in(first, 1, 4_000, true);
+        oc_engine_set_cv_in(first, 1, 4_000);
         oc_engine_tick(first, u64::from(DURATION_MICROS) * 2);
         oc_engine_tick(second, u64::from(DURATION_MICROS) * 2);
 

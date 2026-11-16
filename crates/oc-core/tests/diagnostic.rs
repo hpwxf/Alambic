@@ -418,29 +418,6 @@ fn the_four_ramp_channels_are_a_quarter_period_apart() {
 }
 
 #[test]
-fn unpatching_an_input_does_not_disturb_the_outputs() {
-    let mut engine = mock_engine(0);
-    {
-        let (analog_in, ..) = engine.parts_mut();
-        analog_in.patch(CvChannel::Three, 1_500);
-    }
-    run_ticks(&mut engine, 4);
-    let before = *engine.diagnostic().outputs();
-
-    {
-        let (analog_in, ..) = engine.parts_mut();
-        analog_in.unpatch(CvChannel::Three);
-    }
-    run_ticks(&mut engine, 1);
-
-    assert_eq!(
-        *engine.diagnostic().outputs(),
-        before,
-        "cable presence is informational; it must not glitch the outputs"
-    );
-}
-
-#[test]
 fn a_static_input_reads_as_inactive_and_a_moving_one_as_active() {
     let mut engine = mock_engine(0);
     {
@@ -550,9 +527,9 @@ fn the_screen_shows_the_banner_and_the_measured_levels() {
 
     let frame = engine.frame().clone();
     assert_row_reads(&frame, 0, &format!("{}    0us", oc_core::BANNER));
-    assert_row_reads(&frame, 1, ">1 +1.234 P-l    0");
-    // Channel two: unpatched, no signal detected, gate low, no edges counted.
-    assert_row_reads(&frame, 2, " 2 +0.000 .-l    0");
+    assert_row_reads(&frame, 1, ">1 +1.234 -l     0");
+    // Channel two: no signal detected, gate low, no edges counted.
+    assert_row_reads(&frame, 2, " 2 +0.000 -l     0");
     assert_row_reads(&frame, 5, "MODE OFFS OFS +0.000");
     assert_row_reads(&frame, 6, "OUT +0.0 +0.0 +0.0 +0.0");
     assert_row_reads(&frame, 7, "TICKS 1");

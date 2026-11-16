@@ -27,7 +27,6 @@ fn busy_snapshot() -> InputSnapshot {
     };
     InputSnapshot {
         cv: [-2_500, 0, 1_234, 4_800],
-        patched: [true, true, false, true],
         triggers: [true, false, true, false],
         buttons: ButtonReader::new().update(&controls),
         controls,

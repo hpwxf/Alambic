@@ -314,7 +314,6 @@ where
         for channel in crate::platform::CvChannel::ALL {
             let index = channel.index();
             snapshot.cv[index] = self.analog_in.read_cv(channel);
-            snapshot.patched[index] = self.analog_in.is_patched(channel);
         }
 
         for channel in TriggerChannel::ALL {

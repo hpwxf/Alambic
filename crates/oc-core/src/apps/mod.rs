@@ -33,8 +33,6 @@ use crate::platform::{
 pub struct InputSnapshot {
     /// Calibrated level of each CV input.
     pub cv: [MilliVolts; CV_CHANNELS],
-    /// Whether the host reports a cable on each CV input.
-    pub patched: [bool; CV_CHANNELS],
     /// Raw level of each trigger input.
     pub triggers: [bool; TRIGGER_CHANNELS],
     /// Raw encoder and button activity.
@@ -64,7 +62,6 @@ impl Default for InputSnapshot {
     fn default() -> Self {
         Self {
             cv: [0; CV_CHANNELS],
-            patched: [false; CV_CHANNELS],
             triggers: [false; TRIGGER_CHANNELS],
             controls: ControlEvents::default(),
             buttons: ButtonEvents::default(),

@@ -184,7 +184,9 @@ struct Alambic : Module {
         for (int channel = 0; channel < kCvChannels; ++channel) {
             Input &input = inputs[CV1_INPUT + channel];
             const int32_t millivolts = static_cast<int32_t>(std::lround(input.getVoltage() * 1000.f));
-            oc_engine_set_cv_in(engine, static_cast<uint8_t>(channel), millivolts, input.isConnected());
+            // No cable state: the module cannot detect cables, so Rack must
+            // not report one either (journal/D-019).
+            oc_engine_set_cv_in(engine, static_cast<uint8_t>(channel), millivolts);
         }
 
         for (int channel = 0; channel < kTriggerChannels; ++channel) {
