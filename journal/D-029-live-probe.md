@@ -78,6 +78,13 @@ Statut `proposée` : adoptée lot par lot, comme D-026 à D-028.
 
 * Si la pile USB à deux ports coûtait plus que quelques pour cent d'une période de 1 ms en sondage, ou si macOS
   ne voyait pas les deux ports, T2 sur un seul port.
+* **Point de bascule vers T2 (un seul port encadré), noté le 2026-11-17 à la demande de l'utilisateur** : le second
+  port ne sert qu'à lire le journal sans outil. On passe à un seul port (journal comme type de message du
+  protocole, affiché par `oc-probe log` ; `screen` ne suffit plus) dès que l'une de ces raisons apparaît :
+  l'arrivée de l'USB MIDI (ou d'une autre fonction USB) qui veut ses points de terminaison ; une gêne à l'usage
+  (deux ports à distinguer). Coûts constatés de T1 : un descripteur de configuration de 141 octets (énumération
+  impossible sans `control-buffer-256`), la recherche du bon port par `oc-probe`. Le message de panique n'est pas
+  un argument pour T1 : après une panique, plus rien ne sonde l'USB, il ne part sur aucun des deux ports.
 * Si le redémarrage logiciel en mode chargement exigeait plus qu'un appel documenté, il resterait hors de la
   sonde (le bouton PROGRAM suffit, D-016).
 * Si l'audio (D-023 option B) passe en DMA et en interruptions, le profilage devra mesurer l'ISR elle-même ; les
