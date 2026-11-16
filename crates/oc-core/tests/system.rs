@@ -335,3 +335,26 @@ fn a_complete_wizard_run_with_a_loopback_patch_calibrates_the_inputs() {
     assert!(engine.take_save_request());
     assert_eq!(engine.settings().calibration.inputs, inputs);
 }
+
+#[test]
+fn a_reported_save_shows_a_message_that_goes_away() {
+    use oc_core::toast::{DURATION_MICROS, SaveOutcome};
+
+    let mut engine = mock_engine(0);
+    open_setup(&mut engine);
+    go_to(&mut engine, Line::Save);
+    tap(&mut engine, Button::RightEncoder);
+    assert!(engine.take_save_request());
+
+    engine.report_save(SaveOutcome::Stored);
+    run_ticks(&mut engine, 1);
+    assert_eq!(engine.toast(), Some(SaveOutcome::Stored));
+    let shown = engine.frame().lit_pixels();
+
+    run_ticks(
+        &mut engine,
+        usize::try_from(DURATION_MICROS / 1_000).unwrap() + 1,
+    );
+    assert_eq!(engine.toast(), None, "gone after its duration");
+    assert_ne!(engine.frame().lit_pixels(), shown, "and off the screen");
+}

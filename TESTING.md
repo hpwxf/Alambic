@@ -550,7 +550,7 @@ its sleeve, so the sign reads directly.
    gain. Repeat points 1 to 3: the errors must now be within a few millivolts.
    Never edit `Calibration::FACTORY` for one module: it is the reference
    firmware's default for every module. Power-cycle: the calibration must
-   still be in force (the USB log prints `settings: Loaded`).
+   still be in force (the USB heartbeat lines end with `settings=loaded`).
 
 ### 9.5 — Encoders and buttons
 
@@ -575,8 +575,10 @@ its sleeve, so the sign reads directly.
    `SHIFT`, the picture moves sideways one column per detent.
 3. On `ENC LEFT`, reverse the left encoder, choose `EXIT`: nothing is kept.
    Do it again and choose `SAVE`: in the diagnostic applet the left encoder
-   now moves the channel selection the other way, and the USB log prints
-   `settings saved`. Power-cycle: the setting is still there.
+   now moves the channel selection the other way, the screen shows
+   `SETTINGS SAVED` for a second and a half, and the USB log prints
+   `settings saved`. Power-cycle: the setting is still there, and every
+   heartbeat line ends with `settings=loaded`.
 5. Wear and power cuts: save a hundred times (any setting back and forth),
    then power-cycle; the last value must be the one in force and the log must
    never print `settings NOT saved`. Cut the power right after a `SAVE`: the

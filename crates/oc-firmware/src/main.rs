@@ -58,8 +58,9 @@ use bsp::board as bsp_board;
 use oc_core::Engine;
 use oc_core::calibration::CvOutputCalibration;
 use oc_core::platform::{AnalogIn as _, CV_CHANNELS, Clock as _, CvChannel};
-use oc_core::settings::SettingsStore;
+use oc_core::settings::{LoadOutcome, SettingsStore};
 use oc_core::signal::Extent;
+use oc_core::toast::SaveOutcome;
 use oc_drivers::dac8565::Dac8565;
 use oc_drivers::panel::Panel;
 use oc_drivers::shared_bus::SharedBus;
@@ -214,11 +215,19 @@ fn main() -> ! {
     // Loaded before the first tick, so the splash already uses the stored
     // screen preferences and the outputs the stored calibration. A module
     // whose flash cannot be used still starts, on the defaults.
+    // The boot lines are gone by the time a serial monitor connects, so the
+    // last settings event is repeated on every heartbeat line.
+    let mut settings_event = "no flash";
     let mut settings_store = match SettingsFlash::new() {
         Ok(flash) => {
             let mut store = SettingsStore::new(flash);
             let (settings, outcome) = store.load_or_default();
             log::info!("settings: {outcome:?}");
+            settings_event = match outcome {
+                LoadOutcome::Loaded => "loaded",
+                LoadOutcome::Empty => "defaults (none stored)",
+                LoadOutcome::Failed(_) => "defaults (load failed)",
+            };
             engine.apply_settings(settings);
             Some(store)
         }
@@ -247,14 +256,26 @@ fn main() -> ! {
         if engine.take_save_request() {
             // Blocks for an erase now and then (tens of milliseconds); only
             // ever after an explicit SAVE on the settings screen.
-            match settings_store
+            let saved = settings_store
                 .as_mut()
-                .map(|store| store.save(engine.settings()))
-            {
-                Some(Ok(())) => log::info!("settings saved"),
-                Some(Err(error)) => log::warn!("settings NOT saved: {error:?}"),
-                None => log::warn!("settings NOT saved: no flash store"),
-            }
+                .map(|store| store.save(engine.settings()));
+            let outcome = match saved {
+                Some(Ok(())) => {
+                    log::info!("settings saved");
+                    settings_event = "saved";
+                    SaveOutcome::Stored
+                }
+                Some(Err(error)) => {
+                    log::warn!("settings NOT saved: {error:?}");
+                    settings_event = "save FAILED";
+                    SaveOutcome::Failed
+                }
+                None => {
+                    log::warn!("settings NOT saved: no flash store");
+                    SaveOutcome::SessionOnly
+                }
+            };
+            engine.report_save(outcome);
             usb_log.poll();
         }
         {
@@ -276,7 +297,10 @@ fn main() -> ! {
         // loop is running even when the OLED is blank.
         ticks = ticks.wrapping_add(1);
         if ticks.is_multiple_of(HEARTBEAT_TICKS) {
-            log::info!("tick={ticks} last_us={}", report.elapsed_micros);
+            log::info!(
+                "tick={ticks} last_us={} settings={settings_event}",
+                report.elapsed_micros
+            );
             usb_log.poll();
             for channel in CvChannel::ALL {
                 let index = channel.index();

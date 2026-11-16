@@ -20,6 +20,7 @@ use crate::platform::{
 use crate::settings::Settings;
 use crate::splash::SplashScreen;
 use crate::system::{Line, SystemOutcome, SystemScreen};
+use crate::toast::{SaveOutcome, Toast};
 use crate::wizard::{CalibrationWizard, WizardOutcome};
 
 /// Upper bound reported for a tick duration, in microseconds.
@@ -100,6 +101,8 @@ pub struct Engine<A, O, D, C, K, S> {
     applied_contrast: Option<u8>,
     /// Set when the settings screen saved; taken by the backend.
     save_requested: bool,
+    /// The message drawn over the screen, such as a save's outcome.
+    toast: Option<Toast>,
     screen: Screen,
     tick_count: u64,
     previous_micros: Option<u64>,
@@ -144,6 +147,7 @@ where
             boot_buttons: ButtonEvents::default(),
             applied_contrast: None,
             save_requested: false,
+            toast: None,
             screen: Screen::Splash,
             tick_count: 0,
             previous_micros: None,
@@ -178,6 +182,11 @@ where
     pub fn tick(&mut self) -> TickReport {
         let started = self.clock.now_micros();
         let elapsed = self.elapsed_since_previous(started);
+        if let Some(toast) = &mut self.toast
+            && !toast.advance(elapsed)
+        {
+            self.toast = None;
+        }
         self.previous_micros = Some(started);
         self.tick_count = self.tick_count.wrapping_add(1);
 
@@ -462,6 +471,9 @@ where
             self.applied_contrast = Some(display.contrast);
         }
         let frame = self.display.frame_mut();
+        if let Some(toast) = &self.toast {
+            toast.draw(frame);
+        }
         if display.rotated {
             frame.rotate_half_turn();
         }
@@ -595,6 +607,22 @@ where
     #[must_use]
     pub const fn system(&self) -> &SystemScreen {
         &self.system
+    }
+
+    /// Shows how the save asked by [`Self::take_save_request`] went, over
+    /// whatever is on screen, for [`crate::toast::DURATION_MICROS`]: the
+    /// backend saved, so only it can tell.
+    pub const fn report_save(&mut self, outcome: SaveOutcome) {
+        self.toast = Some(Toast::new(outcome));
+    }
+
+    /// The message currently drawn over the screen, if any.
+    #[must_use]
+    pub const fn toast(&self) -> Option<SaveOutcome> {
+        match &self.toast {
+            Some(toast) => Some(toast.outcome()),
+            None => None,
+        }
     }
 
     /// Whether the settings screen asked for the settings to be stored since

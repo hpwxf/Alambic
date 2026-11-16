@@ -44,6 +44,13 @@ Architectural decisions behind each change are in `journal/` (French).
   saved); the splash recalls both gestures. Rotation and shift are applied to
   the pixels in the core, contrast through the new `Display::set_contrast`
   (journal/D-026).
+- **Save confirmation.** After a `SAVE` (settings screen or wizard) a box
+  over the screen says how it went for 1.5 s: `SETTINGS SAVED`,
+  `SAVE FAILED!`, `KEPT UNTIL RESTART` (simulator without `--settings`) or
+  `SAVED WITH THE PATCH` (Rack). The backend reports the outcome
+  (`Engine::report_save`). The firmware's USB heartbeat line now ends with
+  the last settings event (`settings=loaded`, `saved`, …), since the boot
+  lines are gone by the time a serial monitor connects.
 - **Calibration wizard**, with the Phazerville firmware's steps: start
   fresh, DAC A to D at −3 V and +5 V with a multimeter (the table is redrawn
   through the two points), ADC zero with the inputs unplugged, ADC gain on

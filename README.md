@@ -61,8 +61,9 @@ mounted upside down, a horizontal picture shift, the direction of each
 encoder, and the calibration wizard (`CALIBRATE`, below). `up`/`down` or
 the left encoder move between lines, the right encoder changes the
 highlighted value, and pressing the right encoder runs `SAVE` or `EXIT`.
-Changes show at once; `SAVE` keeps and stores them, `EXIT` or `up` + `down`
-leaves and puts back what was in force. The app is paused and the outputs sit
+Changes show at once; `SAVE` keeps and stores them (the screen confirms with
+`SETTINGS SAVED`, or `SAVE FAILED!`), `EXIT` or `up` + `down` leaves and puts
+back what was in force. The app is paused and the outputs sit
 at 0 V while the screen is open. The screen always reads the encoders as
 wired, whatever their direction setting.
 

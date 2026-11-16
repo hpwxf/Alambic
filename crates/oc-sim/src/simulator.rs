@@ -22,6 +22,7 @@ use oc_core::platform::{
 };
 use oc_core::settings::{LoadOutcome, SettingsStore};
 use oc_core::testing::{MEMORY_FLASH_BYTES, MemoryFlash, MockEngine, mock_engine_at_boot};
+use oc_core::toast::SaveOutcome;
 
 use crate::clock::TICK_MICROS;
 use crate::scenario::{Event, Scenario};
@@ -286,11 +287,18 @@ impl Simulator {
                 .settings
                 .as_ref()
                 .map(|file| file.path.display().to_string());
-            self.settings_note = Some(match (path, saved) {
-                (None, _) => "settings kept for this session (no --settings file)".to_owned(),
-                (Some(path), Ok(())) => format!("settings saved to {path}"),
-                (Some(_), Err(error)) => format!("settings NOT saved: {error}"),
-            });
+            let (outcome, note) = match (path, saved) {
+                (None, _) => (
+                    SaveOutcome::SessionOnly,
+                    "settings kept for this session (no --settings file)".to_owned(),
+                ),
+                (Some(path), Ok(())) => (SaveOutcome::Stored, format!("settings saved to {path}")),
+                (Some(_), Err(error)) => {
+                    (SaveOutcome::Failed, format!("settings NOT saved: {error}"))
+                }
+            };
+            self.engine.report_save(outcome);
+            self.settings_note = Some(note);
         }
         self.tick = self.tick.wrapping_add(1);
         self.last_report = Some(report);
