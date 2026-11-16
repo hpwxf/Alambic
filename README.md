@@ -384,7 +384,9 @@ screen /dev/cu.usbmodem* 115200
 ```
 
 Expect lines such as `oc-firmware 0.2.0 (a1b2c3d) starting (oled=…)`, `oled init ok|failed`,
-and a once-per-second `tick=…` heartbeat. Early boot also blinks the onboard
+and a once-per-second `tick=…` heartbeat, followed by one line per CV input
+with its lowest and highest reading over that second, in calibrated
+millivolts and raw ADC codes (`cv1 mv=-3..4 (pp 7) code=2046..2051`). Early boot also blinks the onboard
 LED (pin 13) in stage groups **before** SPI claims that pad: 1 = `main`
 reached, 2 = ADC mapped, 3 = triggers mapped / about to take SPI. A Morse SOS
 (9 flashes) is still the panic handler, not a boot stage.

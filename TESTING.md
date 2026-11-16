@@ -459,7 +459,11 @@ For each of the four front-panel CV jacks in turn:
 
 1. Leave it unpatched. The channel row must show `.` (absent) and a reading
    near 0 V (exact value depends on the still-unmeasured calibration offset,
-   see 9.4). If an unpatched input reads `P`, its offset exceeds the 100 mV
+   see 9.4). Read the exact figures from the USB log, which prints once a
+   second, per input, the lowest and highest reading of that second in
+   millivolts and raw ADC codes (`cv1 mv=-3..4 (pp 7) code=2046..2051`).
+   Record the worst channel over 10 to 20 s: its offset and peak-to-peak
+   noise size the presence threshold (journal/D-024). If an unpatched input reads `P`, its offset exceeds the 100 mV
    presence threshold of journal/D-024: note the reading, it decides whether
    the threshold or the calibration has to move.
 2. Patch in a known, static DC voltage from a calibrated source (a battery

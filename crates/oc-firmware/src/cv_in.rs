@@ -45,6 +45,13 @@ impl CvInputs {
         }
     }
 
+    /// The raw 12-bit ADC code of one channel from the last [`Self::sample`],
+    /// before calibration: logged alongside the millivolts so that a noise or
+    /// offset measurement also feeds the calibration (`TESTING.md` 9.4).
+    pub(crate) fn raw(&self, channel: CvChannel) -> u16 {
+        self.raw[channel.index()]
+    }
+
     /// Converts all four channels, so the tick sees one coherent snapshot.
     pub(crate) fn sample(&mut self) {
         for (index, input) in self.inputs.iter_mut().enumerate() {

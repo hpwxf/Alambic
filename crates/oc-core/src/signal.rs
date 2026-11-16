@@ -101,6 +101,60 @@ impl Default for SignalDetector {
     }
 }
 
+/// Lowest and highest value seen since the last [`Extent::reset`].
+///
+/// A measurement aid rather than a detector: the firmware logs one per CV
+/// input every second over USB, so the noise of an unpatched input can be
+/// read as numbers instead of off a 50 Hz screen (journal/D-024 sizes its
+/// presence threshold from that measurement).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Extent {
+    min: i32,
+    max: i32,
+}
+
+impl Extent {
+    /// An extent that has seen nothing yet.
+    #[must_use]
+    pub const fn new() -> Self {
+        Self {
+            min: i32::MAX,
+            max: i32::MIN,
+        }
+    }
+
+    /// Widens the extent to include `value`.
+    pub const fn update(&mut self, value: i32) {
+        if value < self.min {
+            self.min = value;
+        }
+        if value > self.max {
+            self.max = value;
+        }
+    }
+
+    /// `(min, max)`, or `None` if nothing was seen since the last reset.
+    #[must_use]
+    pub const fn range(&self) -> Option<(i32, i32)> {
+        if self.min > self.max {
+            None
+        } else {
+            Some((self.min, self.max))
+        }
+    }
+
+    /// Forgets everything seen so far.
+    pub const fn reset(&mut self) {
+        *self = Self::new();
+    }
+}
+
+impl Default for Extent {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::{DEFAULT_ACTIVITY_THRESHOLD_MV, SignalDetector};
@@ -168,5 +222,19 @@ mod tests {
         assert_eq!(detector.span(), 2_000);
         detector.reset();
         assert_eq!(detector.span(), 0);
+    }
+
+    #[test]
+    fn an_extent_tracks_the_lowest_and_highest_values() {
+        let mut extent = super::Extent::new();
+        assert_eq!(extent.range(), None, "nothing seen yet");
+        for value in [3, -7, 12, 0] {
+            extent.update(value);
+        }
+        assert_eq!(extent.range(), Some((-7, 12)));
+        extent.reset();
+        assert_eq!(extent.range(), None);
+        extent.update(5);
+        assert_eq!(extent.range(), Some((5, 5)));
     }
 }

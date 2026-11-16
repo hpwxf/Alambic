@@ -55,7 +55,8 @@ use teensy4_panic as _;
 use bsp::board as bsp_board;
 
 use oc_core::Engine;
-use oc_core::platform::{CV_CHANNELS, Clock as _, CvChannel};
+use oc_core::platform::{AnalogIn as _, CV_CHANNELS, Clock as _, CvChannel};
+use oc_core::signal::Extent;
 use oc_drivers::dac8565::Dac8565;
 use oc_drivers::panel::Panel;
 use oc_drivers::shared_bus::SharedBus;
@@ -205,6 +206,12 @@ fn main() -> ! {
     engine.set_render_interval(board::RENDER_INTERVAL_TICKS);
     engine.set_build_id(env!("OC_BUILD_ID"));
 
+    // Per-CV-input extent over the current heartbeat second, in calibrated
+    // millivolts and in raw ADC codes: logged once a second so the noise and
+    // offset of an input can be measured as numbers over USB (TESTING.md 9.2).
+    let mut cv_millivolts = [Extent::new(); CV_CHANNELS];
+    let mut cv_codes = [Extent::new(); CV_CHANNELS];
+
     let mut ticks: u32 = 0;
     loop {
         {
@@ -214,6 +221,14 @@ fn main() -> ! {
             panel.sample();
         }
         let report = engine.tick();
+        {
+            let (cv_inputs, ..) = engine.parts_mut();
+            for channel in CvChannel::ALL {
+                let index = channel.index();
+                cv_millivolts[index].update(cv_inputs.read_cv(channel));
+                cv_codes[index].update(i32::from(cv_inputs.raw(channel)));
+            }
+        }
 
         // Keep the CDC pipe alive. Cheap when the host is absent: the backend
         // either has nothing queued or drops into a full ring buffer.
@@ -224,6 +239,24 @@ fn main() -> ! {
         ticks = ticks.wrapping_add(1);
         if ticks.is_multiple_of(HEARTBEAT_TICKS) {
             log::info!("tick={ticks} last_us={}", report.elapsed_micros);
+            usb_log.poll();
+            for channel in CvChannel::ALL {
+                let index = channel.index();
+                if let (Some((low_mv, high_mv)), Some((low_code, high_code))) =
+                    (cv_millivolts[index].range(), cv_codes[index].range())
+                {
+                    log::info!(
+                        "cv{} mv={low_mv}..{high_mv} (pp {}) code={low_code}..{high_code}",
+                        index + 1,
+                        // Saturating: overflow checks are on in release
+                        // (journal/D-018), and a log line must never freeze
+                        // the module.
+                        high_mv.saturating_sub(low_mv)
+                    );
+                }
+                cv_millivolts[index].reset();
+                cv_codes[index].reset();
+            }
             usb_log.poll();
         }
 
