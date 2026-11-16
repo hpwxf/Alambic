@@ -90,3 +90,4 @@ une section datée en fin de fichier) au lieu d'en ouvrir une nouvelle. Les num�
 | [D-022](D-022-license.md) | licence `MIT OR Apache-2.0`, jamais écrite comme décision | adoptée (rétrospective) |
 | [D-023](D-023-dual-rate-signal-isr.md) | double cadence : ISR signal (GPT2, 16 666 Hz) et boucle UI 1 kHz — ou audio 48 kHz + DMA | proposée |
 | [D-024](D-024-derived-input-presence.md) | présence d'une entrée déduite du signal : activité récente avec maintien, réglages CV / trigger (verrou, horloge) | adoptée |
+| [D-025](D-025-build-identifier.md) | identifiant de build (hash court + `-dirty`) sur l'écran de démarrage des trois backends, crate `oc-buildinfo` | adoptée |

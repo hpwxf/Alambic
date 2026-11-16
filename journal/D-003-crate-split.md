@@ -6,7 +6,7 @@
 | **Date** | 2026-11-16 (rétrospective ; décision prise le 2026-08-01) |
 | **Auteur** | Pascal Havé |
 | **Statut** | adoptée (rétrospective), révisée |
-| **Commits** | `1524760` (workspace à cinq membres), `ec140ed` (ajout de `oc-drivers`) |
+| **Commits** | `1524760` (workspace à cinq membres), `ec140ed` (ajout de `oc-drivers`), D-025 (ajout de `oc-buildinfo`) |
 
 ## 1. Contexte
 
@@ -63,3 +63,9 @@ doit être linté **à part** (`cargo clippy -p oc-firmware --target …`), ce q
 ## Révision (2026-08-01, `ec140ed`)
 
 Ajout de `oc-drivers` (sixième crate), absent du plan de fondation. Consigné ici a posteriori.
+## Révision (2026-11-16, D-025) — `oc-buildinfo`
+
+Un septième crate, `crates/oc-buildinfo` : bibliothèque hôte, utilisée seulement comme `[build-dependencies]` par
+`oc-firmware`, `oc-sim` et `oc-vcv-ffi`, pour calculer l'identifiant de build (hash court + `-dirty`). `oc-core`
+n'en dépend pas et reste sans `build.rs`. Raisons et détails dans D-025.
+

@@ -58,7 +58,7 @@ Valeurs seules ; le raisonnement est dans `journal/`.
 |---|---|---|
 | conventions | `PLAN.md` index, `docs/plan/`, journal d'ADR, docs de travail en français, code et commits en anglais | D-001 |
 | cœur | `oc-core` `no_std`, `forbid(unsafe_code)`, six traits de plateforme, `Engine::tick` seul point d'appel | D-002 |
-| crates | `oc-core`, `oc-drivers`, `oc-firmware` (hors `default-members`), `oc-sim`, `oc-vcv-ffi`, `xtask` | D-003 |
+| crates | `oc-core`, `oc-drivers`, `oc-firmware` (hors `default-members`), `oc-sim`, `oc-vcv-ffi`, `oc-buildinfo` (dépendance de build), `xtask` | D-003, D-025 |
 | chaîne croisée | `thumbv7em-none-eabihf`, `t4link.x` généré par `imxrt-rt`, pas de `memory.x` ni `flip-link`, outils LLVM du sysroot, jamais `RUSTFLAGS` | D-004 |
 | signal | millivolts `i32` ; `f32` seulement dans le C++ du module Rack | D-005 |
 | calibration | affine, pente signée (négative : étages inverseurs), constantes provisoires non persistées | D-006 |
@@ -79,3 +79,4 @@ Valeurs seules ; le raisonnement est dans `journal/`.
 | applets | `AppHost` (tous résidents), menu par accord haut + bas, haut / bas au relâchement ; `DiagnosticApp`, `ScopeApp` | D-021 |
 | licence | `MIT OR Apache-2.0` (workspace) | D-022 |
 | présence d'entrée | déduite dans `oc-core` (activité récente + maintien) : CV 100 mV / 300 ms, trigger verrou ou horloge 2 s ; jamais fournie par un backend | D-024 |
+| identifiant de build | hash court + `-dirty` sous la version, écran de démarrage des trois backends ; calculé par `oc-buildinfo`, jamais dans `oc-core` | D-025 |
