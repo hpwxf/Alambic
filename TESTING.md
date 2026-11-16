@@ -264,6 +264,11 @@ release ELF at `target/thumbv7em-none-eabihf/release/oc-firmware` when it
 exists, and skips (does not fail) when it does not, so CI does not need to
 build the firmware first just to run this suite.
 
+`xtask/tests/pin_rule.rs` also runs here: it scans every source of
+`crates/oc-firmware/src/` except `board.rs` and fails if one names a BSP pin
+token (`P13`, `p13`) outside a comment, which keeps the pin-naming safety rule
+of `AGENTS.md` true (journal/D-007).
+
 The same `cargo test -p xtask` invocation also runs the unit tests for
 `xtask::size_check` (parser + layout checklist over fixture `llvm-size` text).
 Those do not need a firmware build either; the live checklist on a real ELF is

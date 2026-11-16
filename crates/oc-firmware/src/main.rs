@@ -53,14 +53,11 @@ use teensy4_bsp as bsp;
 use teensy4_panic as _;
 
 use bsp::board as bsp_board;
-use bsp::hal::iomuxc;
-// `Iomuxc` is not re-exported through the HAL prelude; the pin crate is.
-use bsp::pins::imxrt_iomuxc::Iomuxc;
 
 use oc_core::Engine;
 use oc_core::platform::{CV_CHANNELS, Clock as _, CvChannel};
 use oc_drivers::dac8565::Dac8565;
-use oc_drivers::panel::{EncoderPins, Panel};
+use oc_drivers::panel::Panel;
 use oc_drivers::shared_bus::SharedBus;
 use oc_drivers::ssd130x::Ssd130x;
 use oc_drivers::triggers::Triggers;
@@ -68,16 +65,6 @@ use oc_drivers::triggers::Triggers;
 use crate::clock::SystemClock;
 use crate::cv_in::CvInputs;
 use crate::delay::CycleDelay;
-
-/// Enables the internal pull-up (and hysteresis) required by every panel
-/// digital input, then returns the pad so it can be claimed as a GPIO.
-///
-/// `Port::input` only muxes the pad to GPIO; the electrical configuration is
-/// a separate step. Forgetting it leaves buttons and encoders floating.
-fn with_pullup<P: Iomuxc>(mut pin: P) -> P {
-    iomuxc::configure(&mut pin, board::DIGITAL_INPUT_CONFIG);
-    pin
-}
 
 /// How long to spin-poll USB after bringing the CDC backend up, so a host that
 /// is already watching has a chance to finish enumeration before the first
@@ -95,7 +82,7 @@ const HEARTBEAT_TICKS: u32 = 1_000;
 #[bsp::rt::entry]
 fn main() -> ! {
     let bsp_board::Resources {
-        mut pins,
+        pins,
         mut gpio1,
         mut gpio2,
         mut gpio4,
@@ -105,11 +92,13 @@ fn main() -> ! {
         usb,
         ..
     } = bsp_board::t40(bsp_board::instances());
+    // From here on, pins are only reachable by signal (journal/D-007).
+    let mut pins = board::split(pins);
 
     let mut delay = CycleDelay;
 
-    // 1 flash: we reached `main`. Pin 13 is still free for GPIO here.
-    boot_led::signal(&mut gpio2, &mut pins.p13, &mut delay, 1);
+    // 1 flash: we reached `main`. The LED pad is still free for GPIO here.
+    boot_led::signal(&mut gpio2, &mut pins.led_sck, &mut delay, 1);
 
     // USB CDC logger. Interrupts stay off: the 1 kHz loop polls the backend.
     // A failure here means the logger was already installed, which cannot
@@ -130,84 +119,56 @@ fn main() -> ! {
     log::info!("usb cdc up");
     usb_log.poll();
 
-    // ---- CV inputs ----------------------------------------------------------
-    // Pins 19, 18, 20 and 17 are analog inputs and are never driven. The ADC
-    // channel of each pad is resolved from its type, so the mapping cannot
-    // silently drift.
-    let (Ok(cv1), Ok(cv2), Ok(cv3), Ok(cv4)) = (
-        adc1.input::<_, 1>(pins.p19),
-        adc1.input::<_, 1>(pins.p18),
-        adc1.input::<_, 1>(pins.p20),
-        adc1.input::<_, 1>(pins.p17),
-    ) else {
-        panic!("pins 19, 18, 20 and 17 are all ADC1 pads")
-    };
-    let cv_inputs = CvInputs::new(adc1, [cv1, cv2, cv3, cv4], board::CV_INPUT_CALIBRATION);
+    // ---- CV inputs: analog pads, never driven --------------------------------
+    let cv_pads = pins.cv.claim(&adc1);
+    let cv_inputs = CvInputs::new(adc1, cv_pads, board::CV_INPUT_CALIBRATION);
     log::info!("adc ok");
     usb_log.poll();
-    boot_led::signal(&mut gpio2, &mut pins.p13, &mut delay, 2);
+    boot_led::signal(&mut gpio2, &mut pins.led_sck, &mut delay, 2);
 
-    // ---- trigger inputs: pins 0 and 1 on GPIO1, 2 and 3 on GPIO4 ------------
-    // `Port::input` is fallible only when a pin does not belong to the port, so
-    // each `expect` documents a fact the pinout table already states. The
-    // pull-up is applied first: the front-end buffers are open-collector /
-    // active-low against the MCU pad.
+    // ---- trigger inputs -----------------------------------------------------
+    // Pulled up: the front-end buffers are open-collector / active-low against
+    // the MCU pad.
     let triggers = Triggers::new(
-        [
-            gpio1
-                .input(with_pullup(pins.p0))
-                .expect("P0 is a GPIO1 pin"),
-            gpio1
-                .input(with_pullup(pins.p1))
-                .expect("P1 is a GPIO1 pin"),
-            gpio4
-                .input(with_pullup(pins.p2))
-                .expect("P2 is a GPIO4 pin"),
-            gpio4
-                .input(with_pullup(pins.p3))
-                .expect("P3 is a GPIO4 pin"),
-        ],
+        pins.triggers.claim(&mut gpio1, &mut gpio4),
         board::TRIGGER_POLARITY,
     );
     log::info!("triggers ok");
     usb_log.poll();
-    // Last LED use: after this, pin 13 becomes SPI SCK.
-    boot_led::signal(&mut gpio2, &mut pins.p13, &mut delay, 3);
+    // Last LED use: after this, the LED pad becomes SPI SCK.
+    boot_led::signal(&mut gpio2, &mut pins.led_sck, &mut delay, 3);
 
     // ---- shared SPI bus -----------------------------------------------------
-    // The DAC and the OLED share pins 11 and 13 and are told apart by their
+    // The DAC and the OLED share data and clock and are told apart by their
     // chip selects, which the drivers own; hence a shared bus rather than two
-    // `SpiDevice`s. Pin 10 is used as a plain GPIO chip select, not as the
-    // LPSPI hardware PCS, so that the DAC's 24-bit framing stays in software.
+    // `SpiDevice`s.
     let bus = RefCell::new(bsp_board::lpspi(
         lpspi4,
-        bsp_board::LpspiPins {
-            sdo: pins.p11,
-            sdi: pins.p12,
-            sck: pins.p13,
-        },
+        pins.spi.with_clock(pins.led_sck),
         board::SPI_CLOCK_HZ,
     ));
     log::info!("spi ok");
     usb_log.poll();
 
+    let dac_lines = pins.dac.claim(&mut gpio2);
     let dac = Dac8565::new(
         SharedBus::new(&bus),
-        gpio2.output(pins.p10).expect("P10 is a GPIO2 pin"),
+        dac_lines.cs,
         board::CV_OUTPUT_CALIBRATIONS,
     );
+    let oled_lines = pins.oled.claim(&mut gpio2);
     let mut display = Ssd130x::new(
         SharedBus::new(&bus),
-        gpio2.output(pins.p8).expect("P8 is a GPIO2 pin"),
-        gpio2.output(pins.p6).expect("P6 is a GPIO2 pin"),
-        gpio2.output(pins.p7).expect("P7 is a GPIO2 pin"),
+        oled_lines.cs,
+        oled_lines.dc,
+        oled_lines.reset,
         board::OLED_CONTROLLER,
     );
 
     // The DAC's reset line is released before the first write. Leaving it
     // asserted would hold the outputs at zero scale, which on an inverting
     // output stage means +6 V on every jack.
-    let mut dac_reset = gpio2.output(pins.p9).expect("P9 is a GPIO2 pin");
+    let mut dac_reset = dac_lines.reset;
     let _ = dac_reset.set_high();
     log::info!("dac reset released");
     usb_log.poll();
@@ -221,41 +182,12 @@ fn main() -> ! {
     usb_log.poll();
 
     // ---- panel controls -----------------------------------------------------
-    // Encoders and buttons short to ground; without the internal pull-up the
-    // lines float and neither detents nor presses ever reach the engine.
+    // Encoders and buttons short to ground; `claim` applies the pull-up without
+    // which neither detents nor presses ever reach the engine.
+    let panel_lines = pins.panel.claim(&mut gpio1, &mut gpio4);
     let panel = Panel::new(
-        [
-            EncoderPins {
-                line_a: gpio1
-                    .input(with_pullup(pins.p22))
-                    .expect("P22 is a GPIO1 pin"),
-                line_b: gpio1
-                    .input(with_pullup(pins.p21))
-                    .expect("P21 is a GPIO1 pin"),
-            },
-            EncoderPins {
-                line_a: gpio1
-                    .input(with_pullup(pins.p16))
-                    .expect("P16 is a GPIO1 pin"),
-                line_b: gpio1
-                    .input(with_pullup(pins.p15))
-                    .expect("P15 is a GPIO1 pin"),
-            },
-        ],
-        [
-            gpio1
-                .input(with_pullup(pins.p23))
-                .expect("P23 is a GPIO1 pin"),
-            gpio1
-                .input(with_pullup(pins.p14))
-                .expect("P14 is a GPIO1 pin"),
-            gpio4
-                .input(with_pullup(pins.p5))
-                .expect("P5 is a GPIO4 pin"),
-            gpio4
-                .input(with_pullup(pins.p4))
-                .expect("P4 is a GPIO4 pin"),
-        ],
+        panel_lines.encoders,
+        panel_lines.buttons,
         board::BUTTON_POLARITY,
     );
     log::info!("panel ok; entering 1 kHz loop");

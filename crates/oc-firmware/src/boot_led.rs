@@ -17,7 +17,6 @@
 
 use embedded_hal::delay::DelayNs;
 use teensy4_bsp::hal::{gpio, iomuxc};
-use teensy4_bsp::pins::common::P13;
 
 use crate::board;
 
@@ -32,7 +31,12 @@ const STAGE_GAP_MS: u32 = 250;
 ///
 /// `pin` is borrowed, not consumed: the caller keeps the token for the later
 /// SPI setup, which will switch the mux away from GPIO.
-pub(crate) fn signal(gpio2: &mut gpio::Port, pin: &mut P13, delay: &mut impl DelayNs, flashes: u8) {
+pub(crate) fn signal(
+    gpio2: &mut gpio::Port,
+    pin: &mut board::LedSckPin,
+    delay: &mut impl DelayNs,
+    flashes: u8,
+) {
     // Route the pad to GPIO2 before poking the data register. SPI init later
     // calls `lpspi::prepare` on the same pad and overrides this alternate.
     iomuxc::gpio::prepare(pin);

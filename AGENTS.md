@@ -169,7 +169,12 @@ lives in `oc-core` and is tested once, on the host.
   `oc-core` types (`CvChannel`, `TriggerChannel`, `Button`, …). This is a
   hard rule, not a preference: a wrong pin direction (configuring an
   input-only analog pad as a GPIO output) is the one way this firmware could
-  cause real electrical damage.
+  cause real electrical damage. `board::split` consumes the BSP pin set and
+  hands out signal groups (`cv`, `triggers`, `spi`, `dac`, `oled`, `panel`,
+  `led_sck`) whose `claim` methods apply the direction and pad configuration;
+  a new pin goes in the table *and* in a group there. Enforced by
+  `xtask/tests/pin_rule.rs`, which fails if any other firmware source names a
+  BSP pin token (`P13`, `p13`) outside a comment.
 * The Teensy 4.0's **HalfKay** bootloader lives in ROM on a separate chip and
   cannot be erased by application firmware — pressing PROGRAM always
   restores it. A bad firmware cannot brick the module or block a future
@@ -275,7 +280,7 @@ Full protocol, per level, with exact commands and what each proves: see
 | The boot splash screen (name/version, progressive border) | `crates/oc-core/src/splash.rs` |
 | ADC/DAC unit conversion and calibration           | `crates/oc-core/src/calibration.rs` |
 | Deterministic mocks used by every `oc-core` test  | `crates/oc-core/src/testing.rs` |
-| The pinout (the only file allowed to name a pin)  | `crates/oc-firmware/src/board.rs` |
+| The pinout (the only file allowed to name a pin)  | `crates/oc-firmware/src/board.rs` (rule test: `xtask/tests/pin_rule.rs`) |
 | Memory map / boot sections rationale              | `crates/oc-firmware/MEMORY.md` |
 | Pre-flash validation logic                        | `xtask/src/validate.rs` |
 | Flash orchestration (confirm, invoke loader)       | `xtask/src/flash.rs` |
