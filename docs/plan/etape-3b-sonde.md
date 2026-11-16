@@ -52,3 +52,9 @@ Constats :
    ce qui confirme l'ordre de grandeur de la proposition « page par page » (≈ 131 µs).
 3. **L'ADC coûte 29 % de la période** en conversions bloquantes : à revoir avant toute cadence plus rapide (D-023),
    moins de moyennes, conversion pendant le tick ou ADC2 en parallèle.
+
+Après correction (`94133c5`) : période **1 002,5 à 2 110,7 µs** ; 88 % à 2–4 µs de la cible, 7 % à 4–8 µs, 5 % à
+plus de 1 ms (les ticks de rendu). Reste un retard fixe : l'échéance repartait de l'instant où l'attente l'avait
+vue passer (pas de 1 µs du GPT, plus un `poll` USB jusqu'à 10,6 µs), et ce retard s'ajoutait à chaque période
+(≈ 997,5 Hz). Corrigé à la suite : calendrier fixe (échéance précédente + période, recalé seulement après un
+dépassement, donc toujours sans dette), et plus de `poll` USB dans les 20 dernières µs.

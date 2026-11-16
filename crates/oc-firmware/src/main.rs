@@ -82,6 +82,10 @@ use crate::flash_store::SettingsFlash;
 /// and Linux; messages logged later in `main` still go out during the loop.
 const USB_ENUMERATION_WAIT_MS: u32 = 1_000;
 
+/// The last microseconds of a period are spun without polling USB, so the
+/// next one starts on time: a poll measured up to 10.6 us (lot 3b1).
+const USB_QUIET_MICROS: u64 = 20;
+
 /// Heartbeat log period in engine ticks (1 kHz → once per second).
 const HEARTBEAT_TICKS: u32 = 1_000;
 
@@ -281,11 +285,11 @@ fn main() -> ! {
     let mut cv_codes = [Extent::new(); CV_CHANNELS];
 
     let mut ticks: u32 = 0;
+    // The start of the current period, sampling included: pacing from the
+    // tick's own start left the sampling outside it and stretched every
+    // period by its cost (288 us measured, lot 3b1).
+    let mut deadline = engine.clock().now_micros();
     loop {
-        // The period runs from here, sampling included: pacing from the
-        // tick's own start left the sampling outside it and stretched every
-        // period by its cost (288 us measured, lot 3b1).
-        let period_start = engine.clock().now_micros();
         let mark = engine.clock().fine_count();
         {
             let (cv_inputs, _, triggers, panel, _) = engine.parts_mut();
@@ -372,19 +376,30 @@ fn main() -> ! {
             usb_log.poll();
         }
 
-        // Cooperative pacing against the microsecond clock: spin until the next
-        // period boundary. There is no scheduler and no interrupt in the signal
-        // path, which keeps the timing easy to reason about; an overrunning tick
-        // simply starts the next one immediately rather than accumulating debt.
-        // A 64-bit microsecond counter takes 584 000 years to wrap, so a plain
-        // comparison is safe here; the clock folds the 32-bit hardware rollover
-        // away for us.
-        let deadline = period_start + u64::from(board::TICK_PERIOD_MICROS);
-        while engine.clock().now_micros() < deadline {
+        // Cooperative pacing against the microsecond clock, on a fixed
+        // schedule: each period ends one period after the previous deadline,
+        // not after the moment the spin noticed it, so the spin's own
+        // lateness never adds up (it cost 2.5 us a period, lot 3b1). There is
+        // no scheduler and no interrupt in the signal path, which keeps the
+        // timing easy to reason about; an overrunning tick re-anchors the
+        // schedule and the next one starts at once, rather than accumulating
+        // debt. A 64-bit microsecond counter takes 584 000 years to wrap, so
+        // a plain comparison is safe here; the clock folds the 32-bit
+        // hardware rollover away for us.
+        deadline += u64::from(board::TICK_PERIOD_MICROS);
+        let now = engine.clock().now_micros();
+        if now >= deadline {
+            deadline = now;
+        } else {
             // Poll USB inside the idle spin so bulk log traffic still drains
-            // when a tick finishes early.
-            usb_log.poll();
-            cortex_m::asm::nop();
+            // when a tick finishes early, but not close to the deadline: one
+            // poll can take 10 us.
+            while engine.clock().now_micros() + USB_QUIET_MICROS < deadline {
+                usb_log.poll();
+            }
+            while engine.clock().now_micros() < deadline {
+                cortex_m::asm::nop();
+            }
         }
     }
 }
