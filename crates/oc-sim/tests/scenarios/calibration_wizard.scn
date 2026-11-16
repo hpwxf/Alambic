@@ -1,0 +1,20 @@
+# oc-sim scenario v1
+# From the app menu, open SETUP, walk the left encoder down to CALIBRATE and
+# start the wizard; step past "start fresh?" to the low point of output A
+# and turn the right encoder up three detents: every output sits at -3 V and
+# the screen shows the DAC code being trimmed (journal/D-026, D-027).
+ticks 260
+20  button up down
+20  button down down
+40  button up up
+40  button down up
+60  button up down
+66  button up up
+90  button right down
+96  button right up
+120 encoder 1 +6
+140 button right down
+146 button right up
+170 button down down
+176 button down up
+220 encoder 2 +3

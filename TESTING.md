@@ -530,10 +530,10 @@ journal/D-019 before changing the code.
 
 ### 9.4 — Calibration
 
-This step measures how far the module is from the factory calibration. Once
-the calibration wizard exists (step 4 of `PLAN.md`, journal/D-026, D-027), it
-replaces points 4 and 5 below: the measured values are then stored on the
-module instead of being edited into the source.
+This step measures how far the module is from the factory calibration, then
+calibrates it with the wizard (`README.md`, *Calibration wizard*;
+journal/D-026, D-027). Measure with the red lead on the jack's tip and COM on
+its sleeve, so the sign reads directly.
 
 1. In **ZERO** mode (press `up`/`down` on the module until the mode row
    reads `ZERO`), measure all four CV outputs with a voltmeter. They should
@@ -544,10 +544,13 @@ module instead of being edited into the source.
    +3 V, +6 V) to derive the real gain, not just the offset.
 3. Compare against the values already fed into the module for the inputs
    (9.2, step 5) the same way, at a few known input voltages.
-4. Record the offset and gain error of each channel. Until the wizard
-   exists, do not edit `Calibration::FACTORY` for one module: it is the
-   reference firmware's default for every module, and the per-module values
-   belong in the stored calibration.
+4. Record the offset and gain error of each channel, then run the wizard
+   (hold the left encoder switch at power-up): each output at −3 V and +5 V,
+   the inputs unplugged for the zero, an output patched into `CV1` for the
+   gain. Repeat points 1 to 3: the errors must now be within a few millivolts.
+   Never edit `Calibration::FACTORY` for one module: it is the reference
+   firmware's default for every module. Until the flash store exists (step 4,
+   lot 4e) the calibration lasts until power-off.
 
 ### 9.5 — Encoders and buttons
 
@@ -576,7 +579,7 @@ module instead of being edited into the source.
    exists (step 4, lot 4e) the USB log reports the save request and the
    setting lasts until power-off.
 4. Power-cycle holding the left encoder switch until the splash screen ends:
-   the settings open on `CALIBRATE`. Power-cycle holding `up` + `down`: they
+   the calibration wizard opens. Power-cycle holding `up` + `down`: they
    open in `SAFE MODE`, upright and with the encoders as wired, and the app
    menu does not open.
 

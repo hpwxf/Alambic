@@ -100,3 +100,9 @@ applet, parce qu'il pilote les sorties pendant la calibration et ne doit jamais 
   `Display::set_contrast` (méthode à corps vide par défaut, commande `0x81` sur SSD130x), envoyé seulement quand il
   change.
 * **Calibration** : la ligne `CALIBRATE` existe mais reste inerte jusqu'au lot 4d.
+
+## Révision (2026-11-16, lot 4d) — le geste « encodeur gauche » ouvre l'assistant
+
+Au lot 4c, faute d'assistant, le geste ouvrait l'écran système sur la ligne `CALIBRATE`. Depuis 4d il ouvre
+directement l'assistant de calibration, comme le `[L] => Calibrate` de Phazerville et comme proposé au § 3 ; la ligne
+`CALIBRATE` de `SETUP` l'ouvre aussi (détails dans D-027).

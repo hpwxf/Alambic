@@ -240,6 +240,18 @@ fn the_setup_screen_previews_a_rotation_before_any_save() {
 }
 
 #[test]
+fn the_wizard_drives_every_output_to_the_point_being_trimmed() {
+    let mut simulator = replay("calibration_wizard");
+    assert!(simulator.calibration_is_open());
+    let levels = simulator.cv_out();
+    assert_eq!(levels[1..], [-3_000; 3], "every output at the -3 V point");
+    // Three detents up on A's code: the simulated jack, a factory converter,
+    // now reads a few millivolts higher, as a meter would.
+    assert!(levels[0] > -3_000 && levels[0] < -2_990, "{levels:?}");
+    assert_screen_matches(&mut simulator, "calibration_wizard");
+}
+
+#[test]
 fn every_scenario_file_has_a_test_and_a_snapshot() {
     let known = [
         "cv_passthrough",
@@ -248,6 +260,7 @@ fn every_scenario_file_has_a_test_and_a_snapshot() {
         "mode_cycle",
         "app_menu",
         "setup_menu",
+        "calibration_wizard",
     ];
 
     let mut found: Vec<String> = std::fs::read_dir(scenario_dir())

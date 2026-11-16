@@ -333,7 +333,7 @@ const _: () = {
 };
 
 /// Divides rounding to nearest, ties away from zero.
-const fn div_round_nearest(numerator: i64, denominator: i64) -> i64 {
+pub(crate) const fn div_round_nearest(numerator: i64, denominator: i64) -> i64 {
     debug_assert!(denominator != 0);
     let half = denominator.abs() / 2;
     if (numerator < 0) == (denominator < 0) {

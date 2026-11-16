@@ -1,8 +1,9 @@
 //! The system settings screen (journal/D-026).
 //!
 //! Reached from the `SETUP` entry of the app menu, or at power-up by holding
-//! the left encoder switch (calibration) or `up` + `down` (safe mode) through
-//! the splash screen. It edits a *draft* of the [`Settings`]: the engine runs
+//! `up` + `down` (safe mode) through the splash screen; holding the left
+//! encoder switch instead goes straight to the calibration wizard
+//! ([`crate::wizard`]), which the `CALIBRATE` line also opens. It edits a *draft* of the [`Settings`]: the engine runs
 //! with the draft while the screen is open, so a contrast, rotation or shift
 //! change shows at once, and either keeps it (`SAVE`, which also asks the
 //! backend to store it) or goes back to what was in force on entry (`EXIT`,
@@ -60,7 +61,7 @@ pub enum Line {
     LeftEncoder,
     /// Direction of the right encoder.
     RightEncoder,
-    /// The calibration wizard.
+    /// Opens the calibration wizard (`crate::wizard`).
     Calibrate,
     /// Keep the draft and store it.
     Save,

@@ -88,3 +88,25 @@ Conséquences mesurées : les entrées du simulateur et de Rack sont quantifiée
 1,001 V), la plage d'entrée devient −3,333 V…+6,665 V (au lieu de ±5 V), et le 0 V de sortie sur le module passe du
 code 43 690 au code 40 984 (≈ 0,4 V d'écart à demande égale, jusqu'à la calibration). Deux écrans dorés régénérés
 (`cv_passthrough`, `app_menu`), diff expliqué par ces deux effets seuls.
+
+## Révision (2026-11-16, lot 4d) — l'assistant tel qu'implémenté
+
+`oc_core::wizard::CalibrationWizard`, 13 étapes dans l'ordre de Phazerville : « Start fresh? », DAC A–D (point bas
+−3 V = point 0 de la table, point haut +5 V = point 8), zéro ADC, gain ADC à +1 V puis +3 V sur CV1, « Save
+values? ». `up` / `down` = étape précédente / suivante, encodeur droit = réglage ou choix, appui = pas grossier
+(128 codes ≈ 20 mV, sinon 8 codes ≈ 1,2 mV) sur un point DAC, capture sur une étape ADC ; l'accord `up` + `down`
+abandonne. Le geste « encodeur gauche au démarrage » ouvre directement l'assistant (D-026). Écarts et précisions :
+
+* **pas d'affinage octave par octave** : la table est redessinée en droite par les deux points quand on quitte le
+  point haut — mais seulement si l'un des deux a été réglé, sinon traverser les étapes réécrirait une table d'usine
+  qui n'est pas exactement linéaire. L'affinage par octave (Phazerville, hors « fresh ») reste possible plus tard :
+  la table le permet ;
+* **copie de A** vers B, C, D en quittant le point haut de A, en mode « fresh » seulement, comme la référence ;
+* **moyenne** des codes ADC sur 256 ticks, après 32 ticks ignorés à chaque changement d'étape : les sorties ne
+  prennent leur nouveau niveau qu'au tick suivant, et le test de bout en bout (rebouclage OUT A → CV1) mesurait sans
+  cela 816 codes au lieu de 819 entre 1 V et 3 V ;
+* **fenêtres d'acceptation** : zéro à ±200 codes du code d'usine (sinon « REFUSED: UNPLUG CV IN ») ; gain à ±10 %
+  de la pente d'usine (sinon « REFUSED: CHECK PATCH ») ; une seule lecture de gain ne change rien ;
+* **gain commun** aux quatre entrées, chacune gardant son zéro (référence) ;
+* depuis `SETUP`, l'assistant part du brouillon de l'écran système ; abandonner revient aux réglages en vigueur avant
+  `SETUP`.

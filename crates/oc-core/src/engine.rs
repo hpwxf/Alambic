@@ -20,6 +20,7 @@ use crate::platform::{
 use crate::settings::Settings;
 use crate::splash::SplashScreen;
 use crate::system::{Line, SystemOutcome, SystemScreen};
+use crate::wizard::{CalibrationWizard, WizardOutcome};
 
 /// Upper bound reported for a tick duration, in microseconds.
 ///
@@ -69,6 +70,9 @@ enum Screen {
     Menu,
     /// The system settings; the applet is paused and the outputs rest.
     System,
+    /// The calibration wizard; the applet is paused and the wizard drives
+    /// the outputs.
+    Calibration,
 }
 
 /// Drives the applets against a platform.
@@ -85,6 +89,9 @@ pub struct Engine<A, O, D, C, K, S> {
     splash: SplashScreen,
     menu: Menu,
     system: SystemScreen,
+    wizard: CalibrationWizard,
+    /// Raw ADC code of each input on the last tick, for the wizard.
+    raw_codes: [u16; CV_CHANNELS],
     buttons: ButtonReader,
     /// The buttons as last seen during the splash screen: what is still held
     /// when it ends picks the boot gesture.
@@ -131,6 +138,8 @@ where
             splash: SplashScreen::new(),
             menu: Menu::new(),
             system: SystemScreen::new(),
+            wizard: CalibrationWizard::new(),
+            raw_codes: [0; CV_CHANNELS],
             buttons: ButtonReader::new(),
             boot_buttons: ButtonEvents::default(),
             applied_contrast: None,
@@ -181,10 +190,10 @@ where
         }
 
         let mut snapshot = self.acquire(elapsed);
-        // The settings screen reads the encoders as wired (see
+        // The settings screen and the wizard read the encoders as wired (see
         // `crate::system`); everything else follows the reversal setting.
         let wired = snapshot.controls.encoder_delta;
-        if self.screen != Screen::System {
+        if !self.owns_outputs() {
             self.reverse_encoders(&mut snapshot);
         }
         self.route_panel(&snapshot, wired);
@@ -197,10 +206,10 @@ where
         if self.screen == Screen::Menu {
             snapshot.silence_controls();
         }
-        let outputs = if self.screen == Screen::System {
-            [0; CV_CHANNELS]
-        } else {
-            self.apps.update(&snapshot)
+        let outputs = match self.screen {
+            Screen::System => [0; CV_CHANNELS],
+            Screen::Calibration => [self.wizard.output_level(); CV_CHANNELS],
+            Screen::App | Screen::Menu | Screen::Splash => self.apps.update(&snapshot),
         };
 
         self.write_outputs(&outputs);
@@ -216,6 +225,7 @@ where
             match self.screen {
                 Screen::Menu => self.menu.render(self.display.frame_mut()),
                 Screen::System => self.system.render(self.display.frame_mut()),
+                Screen::Calibration => self.wizard.render(self.display.frame_mut()),
                 Screen::App | Screen::Splash => {
                     self.apps.render(self.display.frame_mut(), &context);
                 }
@@ -280,6 +290,7 @@ where
         self.splash.reset();
         self.menu.reset();
         self.system = SystemScreen::new();
+        self.wizard = CalibrationWizard::new();
         self.buttons = ButtonReader::new();
         self.boot_buttons = ButtonEvents::default();
         self.screen = Screen::Splash;
@@ -323,6 +334,12 @@ where
                     self.settings = *self.system.original();
                     self.screen = Screen::App;
                 }
+                Screen::Calibration => {
+                    if let WizardOutcome::Discard(settings) = self.wizard.discard() {
+                        self.settings = settings;
+                    }
+                    self.screen = Screen::App;
+                }
                 Screen::App | Screen::Splash => {
                     self.menu.open(self.apps.current());
                     self.screen = Screen::Menu;
@@ -349,6 +366,7 @@ where
                 }
             }
             Screen::System => self.route_system(&snapshot.buttons, wired),
+            Screen::Calibration => self.route_wizard(&snapshot.buttons, wired),
             Screen::App | Screen::Splash => {}
         }
     }
@@ -365,9 +383,38 @@ where
                 self.settings = settings;
                 self.screen = Screen::App;
             }
-            // The wizard arrives with lot 4d; until then the line is inert.
-            Some(SystemOutcome::Calibrate) | None => self.settings = *self.system.draft(),
+            Some(SystemOutcome::Calibrate) => {
+                // Calibrating from the settings keeps their edits in the
+                // draft; discarding goes back to what was in force before.
+                self.wizard
+                    .open(*self.system.original(), *self.system.draft());
+                self.settings = *self.wizard.draft();
+                self.screen = Screen::Calibration;
+            }
+            None => self.settings = *self.system.draft(),
         }
+    }
+
+    /// Drives the calibration wizard; the engine runs with its draft, so a
+    /// DAC code reaches the jack on the same tick.
+    fn route_wizard(&mut self, buttons: &ButtonEvents, wired: [i8; 2]) {
+        match self.wizard.update(buttons, wired, self.raw_codes) {
+            Some(WizardOutcome::Save(settings)) => {
+                self.settings = settings;
+                self.save_requested = true;
+                self.screen = Screen::App;
+            }
+            Some(WizardOutcome::Discard(settings)) => {
+                self.settings = settings;
+                self.screen = Screen::App;
+            }
+            None => self.settings = *self.wizard.draft(),
+        }
+    }
+
+    /// Whether a screen that drives the outputs itself owns the panel.
+    const fn owns_outputs(&self) -> bool {
+        matches!(self.screen, Screen::System | Screen::Calibration)
     }
 
     /// Where the module goes once the splash screen has played: the settings
@@ -376,7 +423,7 @@ where
     ///
     /// * `up` + `down`: safe mode, the screen and encoder preferences at their
     ///   defaults until saved;
-    /// * the left encoder switch: the settings, on the calibration line.
+    /// * the left encoder switch: the calibration wizard.
     fn after_boot(&mut self) -> Screen {
         let held = self.boot_buttons;
         if held.held(Button::Up) && held.held(Button::Down) {
@@ -384,8 +431,8 @@ where
             self.settings = *self.system.draft();
             Screen::System
         } else if held.held(Button::LeftEncoder) {
-            self.system.open(self.settings, Line::Calibrate);
-            Screen::System
+            self.wizard.open(self.settings, self.settings);
+            Screen::Calibration
         } else {
             Screen::App
         }
@@ -434,6 +481,7 @@ where
         for channel in crate::platform::CvChannel::ALL {
             let index = channel.index();
             let code = self.analog_in.read_code(channel);
+            self.raw_codes[index] = code;
             snapshot.cv[index] = self.settings.calibration.inputs[index].to_millivolts(code);
         }
 
@@ -529,6 +577,18 @@ where
     #[must_use]
     pub const fn system_is_open(&self) -> bool {
         matches!(self.screen, Screen::System)
+    }
+
+    /// Whether the calibration wizard currently owns the panel.
+    #[must_use]
+    pub const fn calibration_is_open(&self) -> bool {
+        matches!(self.screen, Screen::Calibration)
+    }
+
+    /// The calibration wizard, for inspection by tests and host UIs.
+    #[must_use]
+    pub const fn wizard(&self) -> &CalibrationWizard {
+        &self.wizard
     }
 
     /// The system settings screen, for inspection by tests and host UIs.

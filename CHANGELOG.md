@@ -39,6 +39,13 @@ Architectural decisions behind each change are in `journal/` (French).
   saved); the splash recalls both gestures. Rotation and shift are applied to
   the pixels in the core, contrast through the new `Display::set_contrast`
   (journal/D-026).
+- **Calibration wizard**, with the Phazerville firmware's steps: start
+  fresh, DAC A to D at −3 V and +5 V with a multimeter (the table is redrawn
+  through the two points), ADC zero with the inputs unplugged, ADC gain on
+  `CV1` at +1 V and +3 V through a patched output, save. Reached from
+  `CALIBRATE` in `SETUP`, or by holding the left encoder switch at power-up.
+  Captures are averaged over a quarter of a second after the outputs settle,
+  and refused when far from the factory values (journal/D-027).
 - **Simulator and VCV Rack quantise CV inputs like the module's 12-bit ADC**
   (about 2.44 mV per step): an input of 1.000 V now reads 1.001 V there, as
   it would on the hardware.

@@ -128,6 +128,12 @@ impl Simulator {
         Ok(outcome)
     }
 
+    /// Whether the calibration wizard currently owns the panel.
+    #[must_use]
+    pub const fn calibration_is_open(&self) -> bool {
+        self.engine.calibration_is_open()
+    }
+
     /// Whether the system settings screen currently owns the panel.
     #[must_use]
     pub const fn system_is_open(&self) -> bool {

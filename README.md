@@ -58,7 +58,7 @@ the chord is even detectable.
 The last entry of the app menu, `SETUP`, opens the system settings: the app
 the module starts in, the screen contrast, a 180° rotation for a module
 mounted upside down, a horizontal picture shift, the direction of each
-encoder, and (from the next release) the calibration wizard. `up`/`down` or
+encoder, and the calibration wizard (`CALIBRATE`, below). `up`/`down` or
 the left encoder move between lines, the right encoder changes the
 highlighted value, and pressing the right encoder runs `SAVE` or `EXIT`.
 Changes show at once; `SAVE` keeps and stores them, `EXIT` or `up` + `down`
@@ -71,8 +71,30 @@ them at the bottom):
 
 | Held through the splash | Opens                                                         |
 |-------------------------|---------------------------------------------------------------|
-| left encoder switch     | the settings, on the calibration line                         |
+| left encoder switch     | the calibration wizard                                        |
 | `up` + `down`           | the settings in **safe mode**: screen and encoders at their defaults until saved, to recover from a setting that made the module hard to use |
+
+### Calibration wizard
+
+The steps are those of the Phazerville firmware, so they will be familiar.
+`up`/`down` go to the previous/next step, the right encoder adjusts or
+chooses, pressing it toggles coarse steps on a DAC point or captures on an ADC
+step; `up` + `down` abandons the wizard.
+
+1. **Start fresh?** `YES` starts from the factory calibration.
+2. **DAC A to D**, two points each: every output is driven to −3 V, then to
+   +5 V; with a multimeter on the output being calibrated (red lead on the
+   tip, COM on the sleeve), turn the right encoder until it reads the target.
+   Leaving the +5 V point redraws that output's table through the two points.
+   Starting fresh, A's table is copied to B, C and D as a starting point.
+3. **ADC zero**: unplug every CV input and press the right encoder.
+4. **ADC gain**: patch any output into `CV1`; the outputs go to +1 V, then
+   +3 V, press at each. The gain applies to all four inputs.
+5. **Save values?** `YES` keeps and stores the calibration, `NO` restores the
+   previous one.
+
+A capture far from the factory values (an input left patched, nothing in
+`CV1`) is refused with a message instead of stored.
 
 The simulator keeps the settings in a file (`--settings`, see below), VCV
 Rack in the patch. The firmware does not store them yet: a `SAVE` lasts until

@@ -49,6 +49,7 @@ pub mod signal;
 pub mod splash;
 pub mod system;
 pub mod testing;
+pub mod wizard;
 
 pub use apps::diagnostic::{DiagnosticApp, OutputMode};
 pub use apps::scope::ScopeApp;

@@ -15,6 +15,9 @@ mesures ; il sera complété à la fin de l'étape.
   (révision de D-026). À vérifier sur le module : contraste visible, rotation et décalage, gestes au démarrage, sens
   des encodeurs ; le firmware ne sauvegarde pas encore (4e).
 
+* **4d** : assistant de calibration (révision de D-027). À faire sur le module : calibrer les 4 sorties et les
+  entrées (TESTING.md 9.4) ; la calibration ne survit pas encore à une coupure (4e).
+
 ## Mesures sur le module TLM
 
 ### 2026-11-16 — sorties en mode ZERO, calibration d'usine (`e73d873`)

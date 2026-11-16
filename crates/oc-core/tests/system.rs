@@ -8,6 +8,7 @@ use oc_core::settings::{DisplaySettings, Settings};
 use oc_core::splash::DURATION_MICROS;
 use oc_core::system::Line;
 use oc_core::testing::{MockEngine, mock_engine, mock_engine_at_boot};
+use oc_core::wizard::Step;
 
 /// Runs `count` ticks of one millisecond each.
 fn run_ticks(engine: &mut MockEngine, count: usize) {
@@ -181,12 +182,71 @@ fn holding_up_and_down_through_the_splash_opens_safe_mode() {
 }
 
 #[test]
-fn holding_the_left_encoder_through_the_splash_opens_calibration() {
+fn holding_the_left_encoder_through_the_splash_opens_the_wizard() {
     let mut engine = mock_engine_at_boot(0);
     boot_holding(&mut engine, &[Button::LeftEncoder]);
-    assert!(engine.system_is_open());
-    assert!(!engine.system().is_safe_mode());
-    assert_eq!(engine.system().line(), Line::Calibrate);
+    assert!(engine.calibration_is_open());
+    assert_eq!(engine.wizard().step(), Step::StartFresh);
+}
+
+#[test]
+fn the_wizard_drives_the_outputs_and_a_saved_dac_point_reaches_the_jack() {
+    let mut engine = mock_engine(0);
+    open_setup(&mut engine);
+    go_to(&mut engine, Line::Calibrate);
+    tap(&mut engine, Button::RightEncoder);
+    assert!(engine.calibration_is_open());
+
+    tap(&mut engine, Button::Down);
+    assert_eq!(engine.wizard().step(), Step::DacLow(0));
+    run_ticks(&mut engine, 1);
+    {
+        let (_, analog_out, ..) = engine.parts_mut();
+        assert_eq!(
+            analog_out.level(CvChannel::One),
+            -3_000,
+            "every output at -3 V"
+        );
+        assert_eq!(analog_out.level(CvChannel::Four), -3_000);
+    }
+
+    // The meter reads low: turn up until it reads -3.000 V.
+    let before = engine.settings().calibration.outputs[0].codes[0];
+    turn(&mut engine, 1, 4);
+    let after = engine.settings().calibration.outputs[0].codes[0];
+    assert!(
+        after < before,
+        "a higher voltage is a lower code on this stage"
+    );
+    {
+        let (_, analog_out, ..) = engine.parts_mut();
+        assert_eq!(
+            analog_out.codes[0], after,
+            "the new code is on the jack at once"
+        );
+    }
+
+    while engine.wizard().step() != Step::Finish {
+        tap(&mut engine, Button::Down);
+    }
+    tap(&mut engine, Button::RightEncoder);
+    assert!(!engine.calibration_is_open());
+    assert!(engine.take_save_request());
+    assert_eq!(engine.settings().calibration.outputs[0].codes[0], after);
+}
+
+#[test]
+fn the_chord_abandons_the_wizard() {
+    let mut engine = mock_engine(0);
+    open_setup(&mut engine);
+    go_to(&mut engine, Line::Calibrate);
+    tap(&mut engine, Button::RightEncoder);
+    tap(&mut engine, Button::Down);
+    turn(&mut engine, 1, 10);
+    chord(&mut engine);
+    assert!(!engine.calibration_is_open());
+    assert_eq!(engine.settings(), &Settings::DEFAULT);
+    assert!(!engine.take_save_request());
 }
 
 #[test]
@@ -198,4 +258,80 @@ fn a_plain_boot_goes_to_the_startup_applet() {
     boot_holding(&mut engine, &[]);
     assert!(!engine.system_is_open());
     assert_eq!(engine.current_app(), AppId::Scope);
+}
+
+/// One tick with output A patched back into `CV1`, as the gain steps ask.
+fn tick_with_loopback(engine: &mut MockEngine) {
+    let (analog_in, analog_out, ..) = engine.parts_mut();
+    let level = analog_out.level(CvChannel::One);
+    analog_in.patch(CvChannel::One, level);
+    run_ticks(engine, 1);
+}
+
+/// Captures on the current ADC step once a full average has settled.
+fn capture_with_loopback(engine: &mut MockEngine) {
+    for _ in 0..oc_core::wizard::SETTLE_TICKS + oc_core::wizard::AVERAGE_TICKS + 4 {
+        tick_with_loopback(engine);
+    }
+    hold(engine, Button::RightEncoder, true);
+    for _ in 0..5 {
+        tick_with_loopback(engine);
+    }
+    hold(engine, Button::RightEncoder, false);
+    for _ in 0..5 {
+        tick_with_loopback(engine);
+    }
+}
+
+#[test]
+fn a_complete_wizard_run_with_a_loopback_patch_calibrates_the_inputs() {
+    use oc_core::calibration::CvInputCalibration;
+
+    let mut engine = mock_engine(0);
+    open_setup(&mut engine);
+    go_to(&mut engine, Line::Calibrate);
+    tap(&mut engine, Button::RightEncoder);
+    while engine.wizard().step() != Step::AdcZero {
+        tap(&mut engine, Button::Down);
+    }
+
+    // Inputs unplugged: the mock jacks sit at 0 V.
+    capture_with_loopback(&mut engine);
+    tap(&mut engine, Button::Down);
+    assert_eq!(engine.wizard().step(), Step::AdcLow);
+    capture_with_loopback(&mut engine);
+    tap(&mut engine, Button::Down);
+    capture_with_loopback(&mut engine);
+
+    let inputs = engine.wizard().draft().calibration.inputs;
+    let factory = CvInputCalibration::FACTORY;
+    // CV1 carried the loopback during the zero capture as well (0 V then),
+    // so every input reads its factory zero back, to the code.
+    for input in inputs {
+        assert!(
+            (input.zero_code - factory.zero_code).abs() <= 1,
+            "{input:?}"
+        );
+        let error = (i64::from(input.nanovolts_per_code) - i64::from(factory.nanovolts_per_code))
+            .abs()
+            * 1_000
+            / i64::from(factory.nanovolts_per_code).abs();
+        assert!(
+            error <= 5,
+            "gain within 0.5 % of the modelled ADC: {input:?}"
+        );
+    }
+
+    // The gain was measured, not left at the factory value: the modelled ADC
+    // quantises 1 V and 3 V to codes 2320 and 1501, 819 codes apart, where
+    // the factory slope assumes 819.2.
+    assert_ne!(inputs[0].nanovolts_per_code, factory.nanovolts_per_code);
+    assert_eq!(inputs[0].nanovolts_per_code, -2_442_002);
+
+    while engine.wizard().step() != Step::Finish {
+        tap(&mut engine, Button::Down);
+    }
+    tap(&mut engine, Button::RightEncoder);
+    assert!(engine.take_save_request());
+    assert_eq!(engine.settings().calibration.inputs, inputs);
 }
