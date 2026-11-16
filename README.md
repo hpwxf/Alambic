@@ -90,9 +90,12 @@ therefore reads as absent.
 Under the version, every backend's splash screen shows which build is
 running: the short commit hash, suffixed `-dirty` when a tracked file differed
 from that commit at build time (untracked files do not count). It is computed
-by `crates/oc-buildinfo` from each backend's build script, and is empty when
-building outside a git checkout. Set `OC_BUILD_ID` in the environment to
-impose a value instead (journal/D-025).
+by `crates/oc-buildinfo` from each backend's build script, through
+[vergen-gix](https://crates.io/crates/vergen-gix) (pure Rust, no `git` binary
+needed), and is empty when building outside a git checkout. A source edit
+shows as `-dirty` at the next build; a documentation-only edit, from the next
+`git add` or commit. Set `OC_BUILD_ID` in the environment to impose a value
+instead (journal/D-025).
 
 ## The simulator
 

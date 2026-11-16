@@ -36,6 +36,10 @@ oc-core = { path = "crates/oc-core", version = "0.2.0" }
 oc-drivers = { path = "crates/oc-drivers", version = "0.2.0" }
 # Build-script helper only: computes the build identifier (journal/D-025).
 oc-buildinfo = { path = "crates/oc-buildinfo" }
+# Reads the commit and dirty state for oc-buildinfo through gitoxide (pure
+# Rust): no `git` binary needed. `emit_and_set` exposes the values to the
+# build script itself, which composes OC_BUILD_ID from them.
+vergen-gix = { version = "10.0.3", features = ["emit_and_set"] }
 
 # Host tooling
 anyhow = "1.0"

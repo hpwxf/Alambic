@@ -5,15 +5,24 @@
 //! `oc-sim`, `oc-vcv-ffi`): each calls [`emit`], which sets the
 //! `OC_BUILD_ID` compile-time environment variable to the short commit hash,
 //! suffixed `-dirty` when a tracked file differs from that commit. Outside a
-//! git checkout, or without `git` on `PATH`, the identifier is empty and the
-//! splash shows the version alone.
+//! git checkout the identifier is empty and the splash shows the version
+//! alone.
+//!
+//! The repository is read by [`vergen_gix`] (gitoxide, pure Rust): no `git`
+//! binary is needed. vergen only reruns the build script when `HEAD` or the
+//! current ref moves, so an edit that is not staged yet would leave the
+//! identifier clean; [`watch_sources`] adds the workspace's source paths to
+//! close that gap.
 //!
 //! `oc-core` deliberately does not use this: it only displays the string it
 //! is handed, so its tests and the golden simulator screens never depend on
 //! the commit being built.
 
+use std::env;
+use std::fs;
 use std::path::{Path, PathBuf};
-use std::process::Command;
+
+use vergen_gix::{Emitter, Gix};
 
 /// Name of the compile-time environment variable [`emit`] sets.
 pub const ENV_VAR: &str = "OC_BUILD_ID";
@@ -21,32 +30,46 @@ pub const ENV_VAR: &str = "OC_BUILD_ID";
 /// Suffix appended when tracked files differ from the commit.
 pub const DIRTY_SUFFIX: &str = "-dirty";
 
+/// What vergen reports in place of a value it could not compute (outside a
+/// git checkout, for instance).
+const VERGEN_DEFAULT: &str = "VERGEN_IDEMPOTENT_OUTPUT";
+
 /// Sets `OC_BUILD_ID` for the calling crate and tells Cargo when to rerun.
 ///
 /// Call it from `build.rs`; read the value with `env!("OC_BUILD_ID")`.
 pub fn emit() {
-    // `OC_BUILD_ID` set by the caller (a CI job, a reproducible build) wins
-    // over git, so the identifier can be imposed rather than computed.
+    // An `OC_BUILD_ID` from the environment (a CI job, a reproducible build)
+    // wins over git, so the identifier can be imposed rather than computed.
     println!("cargo:rerun-if-env-changed={ENV_VAR}");
-    let id = std::env::var(ENV_VAR).unwrap_or_else(|_| compute());
+    let id = env::var(ENV_VAR).unwrap_or_else(|_| compute());
     println!("cargo:rustc-env={ENV_VAR}={id}");
 }
 
-/// The identifier of the working tree around the calling crate, or an empty
-/// string outside a git checkout. Also emits the `rerun-if-changed` lines.
+/// The identifier of the repository around the calling crate, or an empty
+/// string if it cannot be read. Also emits the `rerun-if-changed` lines.
 fn compute() -> String {
-    let Some(git_dir) = git(&["rev-parse", "--absolute-git-dir"]).map(PathBuf::from) else {
+    // Short SHA, and dirty on tracked files only (untracked build artefacts
+    // must not count), as `git describe --dirty` does.
+    let gix = Gix::builder().sha(true).dirty(false).build();
+    let emitted = Emitter::default()
+        .quiet()
+        .add_instructions(&gix)
+        .and_then(|emitter| emitter.emit_and_set());
+    if emitted.is_err() {
         return String::new();
-    };
-    watch_git(&git_dir);
-    watch_tracked_files();
+    }
 
-    let Some(hash) = git(&["rev-parse", "--short", "HEAD"]) else {
+    if let Some(root) = workspace_root() {
+        watch_sources(&root);
+    }
+
+    let (Ok(sha), Ok(dirty)) = (env::var("VERGEN_GIT_SHA"), env::var("VERGEN_GIT_DIRTY")) else {
         return String::new();
     };
-    let dirty = git(&["status", "--porcelain", "--untracked-files=no"])
-        .is_some_and(|status| !status.is_empty());
-    format_id(&hash, dirty)
+    if sha.is_empty() || sha == VERGEN_DEFAULT {
+        return String::new();
+    }
+    format_id(&sha, dirty == "true")
 }
 
 /// `hash`, or `hash-dirty`.
@@ -59,59 +82,82 @@ pub fn format_id(hash: &str, dirty: bool) -> String {
     }
 }
 
-/// Reruns the build script when HEAD moves, the index changes or a ref is
-/// updated.
-fn watch_git(git_dir: &Path) {
-    for name in ["HEAD", "index", "packed-refs", "refs"] {
-        let path = git_dir.join(name);
-        if path.exists() {
-            println!("cargo:rerun-if-changed={}", path.display());
+/// The nearest ancestor of the calling crate whose `Cargo.toml` declares a
+/// `[workspace]`.
+fn workspace_root() -> Option<PathBuf> {
+    let manifest_dir = PathBuf::from(env::var_os("CARGO_MANIFEST_DIR")?);
+    manifest_dir.ancestors().find_map(|dir| {
+        let manifest = fs::read_to_string(dir.join("Cargo.toml")).ok()?;
+        manifest
+            .lines()
+            .any(|line| line.trim() == "[workspace]")
+            .then(|| dir.to_path_buf())
+    })
+}
+
+/// Reruns the build script when a source of the workspace changes, so an
+/// edit that is not staged yet still turns the identifier `-dirty`.
+///
+/// Only paths that hold sources are listed, never a directory a build writes
+/// into (`target/`, the plugin's `build/`, or the C header that `cargo xtask
+/// vcv` copies next to the C++ sources), or every build would retrigger the
+/// next one. Documentation edits are not watched: they show as `-dirty` from
+/// the next `git add` or commit.
+fn watch_sources(root: &Path) {
+    let mut paths = vec![
+        root.join("Cargo.toml"),
+        root.join("Cargo.lock"),
+        root.join("rust-toolchain.toml"),
+        root.join(".cargo/config.toml"),
+    ];
+
+    for package in subdirectories(&root.join("crates"))
+        .into_iter()
+        .chain([root.join("xtask")])
+    {
+        for entry in ["Cargo.toml", "build.rs", "src", "tests", "benches"] {
+            paths.push(package.join(entry));
         }
     }
+
+    let plugin = root.join("vcv/OrnamentCrimeAlambic");
+    for entry in ["Makefile", "plugin.json", "res"] {
+        paths.push(plugin.join(entry));
+    }
+    paths.extend(
+        files(&plugin.join("src"))
+            .into_iter()
+            .filter(|file| !file.ends_with("oc_vcv_ffi.h")),
+    );
+
+    for path in paths.iter().filter(|path| path.exists()) {
+        println!("cargo:rerun-if-changed={}", path.display());
+    }
 }
 
-/// Reruns the build script when any tracked file changes, so an edit that is
-/// not staged yet still turns the identifier `-dirty`. Untracked build
-/// artefacts (`target/`, the plugin's `build/`) are not listed, so building
-/// does not retrigger itself.
-fn watch_tracked_files() {
-    let Some(top) = git(&["rev-parse", "--show-toplevel"]).map(PathBuf::from) else {
-        return;
+/// The subdirectories of `dir`, or none if it cannot be read.
+fn subdirectories(dir: &Path) -> Vec<PathBuf> {
+    entries(dir)
+        .into_iter()
+        .filter(|path| path.is_dir())
+        .collect()
+}
+
+/// The regular files directly inside `dir`, or none if it cannot be read.
+fn files(dir: &Path) -> Vec<PathBuf> {
+    entries(dir)
+        .into_iter()
+        .filter(|path| path.is_file())
+        .collect()
+}
+
+fn entries(dir: &Path) -> Vec<PathBuf> {
+    let Ok(read) = fs::read_dir(dir) else {
+        return Vec::new();
     };
-    // From the top level: run from the calling crate's directory, `ls-files`
-    // would list only that crate, relative to it.
-    let Some(files) = git_in(Some(&top), &["ls-files", "-z"]) else {
-        return;
-    };
-    for file in files.split('\0').filter(|file| !file.is_empty()) {
-        println!("cargo:rerun-if-changed={}", top.join(file).display());
-    }
-}
-
-/// Runs `git` with `arguments` and returns its trimmed standard output, or
-/// `None` if git is missing or fails.
-fn git(arguments: &[&str]) -> Option<String> {
-    git_in(None, arguments)
-}
-
-/// [`git`], run from `directory` instead of the build script's own.
-fn git_in(directory: Option<&Path>, arguments: &[&str]) -> Option<String> {
-    let mut command = Command::new("git");
-    if let Some(directory) = directory {
-        command.current_dir(directory);
-    }
-    let output = command
-        .args(arguments)
-        // Without this, `git status` opportunistically rewrites `.git/index`,
-        // which would make the next build rerun this script forever.
-        .env("GIT_OPTIONAL_LOCKS", "0")
-        .output()
-        .ok()?;
-    if !output.status.success() {
-        return None;
-    }
-    let text = String::from_utf8(output.stdout).ok()?;
-    Some(text.trim().to_owned())
+    let mut paths: Vec<PathBuf> = read.filter_map(|entry| Some(entry.ok()?.path())).collect();
+    paths.sort();
+    paths
 }
 
 #[cfg(test)]

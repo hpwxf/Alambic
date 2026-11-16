@@ -51,7 +51,8 @@ Architectural decisions behind each change are in `journal/` (French).
 ### Added
 
 - Every backend's splash screen shows the build identifier under the version:
-  short commit hash, `-dirty` when tracked files differed (journal/D-025);
+  short commit hash, `-dirty` when tracked files differed, read through
+  vergen-gix so no `git` binary is needed (journal/D-025);
   the firmware also logs it on USB.
 - CI runs `cargo xtask flash --dry-run`, validating the real firmware image
   and logging its SHA-256 (journal/D-016).

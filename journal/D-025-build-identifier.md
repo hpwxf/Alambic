@@ -5,8 +5,8 @@
 | **Identifiant** | D-025 |
 | **Date** | 2026-11-16 |
 | **Auteur** | Pascal Havé |
-| **Statut** | adoptée |
-| **Commits** | ce commit (ADR) ; implémentation dans le commit suivant (`crates/oc-buildinfo`) |
+| **Statut** | adoptée, révisée |
+| **Commits** | `b2565ff` (ADR), `e8d5f85` (implémentation), `0a684ce` (correctif `ls-files`), révision : passage à vergen-gix |
 | **Relations** | révise D-003 (un crate de plus) ; sert D-016 (savoir quelle image tourne) |
 
 ## 1. Contexte
@@ -62,3 +62,34 @@ trois crates terminaux.
   métadonnées git, en acceptant un `-dirty` en retard sur les modifications non indexées.
 * Un besoin de builds reproductibles bit à bit (même image depuis deux arbres identiques) : l'identifiant y est
   compatible, mais il faudrait alors une variable `OC_BUILD_ID` imposée par la CI plutôt que calculée.
+
+## Révision (2026-11-16) — vergen-gix plutôt que le binaire `git`
+
+L'utilisateur a relevé que la détection git était écrite à la main alors que des crates répandues le font. Comparées
+(code lu, 2026-11-16) :
+
+| Crate | Sans binaire `git` | `-dirty` | Notes |
+|---|---|---|---|
+| **vergen-gix** 10.0.3 | oui (gitoxide, pur Rust) | oui (suivis ; non suivis en option) | famille vergen ≈ 59 M téléchargements ; MSRV 1.96 |
+| vergen-git2 | oui (libgit2, code C) | oui | compilateur C requis |
+| vergen-gitcl | non | oui | même principe que l'implémentation initiale |
+| `built` 0.8.1 (`gix`) | oui | oui | écrit un fichier Rust plutôt que des variables d'environnement |
+
+Mesuré sur vergen-gix dans un projet jetable : 145 crates, ≈ 15 s de build propre ; et **un défaut** : vergen ne
+relance le script que sur `.git/HEAD`, la ref courante et `build.rs` — un source modifié sans `git add` recompile le
+crate mais laisse `VERGEN_GIT_DIRTY=false`.
+
+Décidé (option retenue par l'utilisateur) : **vergen-gix**, avec la feature `emit_and_set` (API documentée ;
+`emit_to` est `#[doc(hidden)]`), et `oc-buildinfo` qui garde deux responsabilités :
+
+* composer `OC_BUILD_ID` (`VERGEN_GIT_SHA` court, `-dirty` si `VERGEN_GIT_DIRTY`), vide si vergen ne trouve pas de
+  dépôt (valeur `VERGEN_IDEMPOTENT_OUTPUT`), `OC_BUILD_ID` de l'environnement toujours prioritaire ;
+* **corriger le défaut de relance** sans git : `rerun-if-changed` sur les chemins sources du workspace (`Cargo.toml`,
+  `Cargo.lock`, `rust-toolchain.toml`, `.cargo/config.toml`, `src`/`tests`/`benches`/`build.rs`/`Cargo.toml` de chaque
+  crate et de `xtask`, sources, `Makefile`, `plugin.json` et `res/` du plugin, **hors** l'en-tête C que `cargo xtask
+  vcv` y recopie). Jamais un dossier où un build écrit, sinon chaque build relance le suivant.
+
+Prix accepté : une modification de documentation non indexée ne passe en `-dirty` qu'au prochain `git add` ou commit ;
+145 crates de plus à compiler (une fois par profil). Gagné : plus de dépendance au binaire `git` (vérifié : build avec
+un `PATH` sans `git`, identifiant correct), et la lecture du dépôt (worktrees, sous-modules, packs) confiée à
+gitoxide plutôt qu'à du code maison.

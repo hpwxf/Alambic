@@ -9,5 +9,8 @@ repository.workspace = true
 authors.workspace = true
 publish = false
 
+[dependencies]
+vergen-gix.workspace = true
+
 [lints]
 workspace = true
