@@ -28,7 +28,10 @@ embedded-hal.workspace = true
 # controller driver (imxrt-usbd); these are the stack and the class it
 # plugs into, the ones imxrt-log used before, and the cell that gives the
 # bus allocator its 'static lifetime.
-usb-device = "0.3"
+# `control-buffer-256`: the configuration descriptor of two CDC ports is
+# 141 bytes (9 + 2 x 66), over the default 128-byte control buffer; without
+# it the host's descriptor request fails and the device never enumerates.
+usb-device = { version = "0.3", features = ["control-buffer-256"] }
 usbd-serial = "0.2"
 static_cell = "2"
 log = { version = "0.4", default-features = false }
