@@ -87,7 +87,8 @@ Décidé (option retenue par l'utilisateur) : **vergen-gix**, avec la feature `e
 * **corriger le défaut de relance** sans git : `rerun-if-changed` sur les chemins sources du workspace (`Cargo.toml`,
   `Cargo.lock`, `rust-toolchain.toml`, `.cargo/config.toml`, `src`/`tests`/`benches`/`build.rs`/`Cargo.toml` de chaque
   crate et de `xtask`, sources, `Makefile`, `plugin.json` et `res/` du plugin, **hors** l'en-tête C que `cargo xtask
-  vcv` y recopie). Jamais un dossier où un build écrit, sinon chaque build relance le suivant.
+  vcv` y recopie), **et `.git/index`**, trouvé sans le binaire (`.git` dossier, ou fichier `gitdir:` d'un worktree),
+  pour qu'un `git add` suffise. Jamais un dossier où un build écrit, sinon chaque build relance le suivant.
 
 Prix accepté : une modification de documentation non indexée ne passe en `-dirty` qu'au prochain `git add` ou commit ;
 145 crates de plus à compiler (une fois par profil). Gagné : plus de dépendance au binaire `git` (vérifié : build avec

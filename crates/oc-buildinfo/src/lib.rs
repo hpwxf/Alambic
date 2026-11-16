@@ -10,9 +10,9 @@
 //!
 //! The repository is read by [`vergen_gix`] (gitoxide, pure Rust): no `git`
 //! binary is needed. vergen only reruns the build script when `HEAD` or the
-//! current ref moves, so an edit that is not staged yet would leave the
-//! identifier clean; [`watch_sources`] adds the workspace's source paths to
-//! close that gap.
+//! current ref moves, so an edit would leave the identifier clean until the
+//! next commit; [`watch_sources`] (unstaged source edits) and [`watch_index`]
+//! (anything staged) close that gap.
 //!
 //! `oc-core` deliberately does not use this: it only displays the string it
 //! is handed, so its tests and the golden simulator screens never depend on
@@ -61,6 +61,7 @@ fn compute() -> String {
 
     if let Some(root) = workspace_root() {
         watch_sources(&root);
+        watch_index(&root);
     }
 
     let (Ok(sha), Ok(dirty)) = (env::var("VERGEN_GIT_SHA"), env::var("VERGEN_GIT_DIRTY")) else {
@@ -101,8 +102,8 @@ fn workspace_root() -> Option<PathBuf> {
 /// Only paths that hold sources are listed, never a directory a build writes
 /// into (`target/`, the plugin's `build/`, or the C header that `cargo xtask
 /// vcv` copies next to the C++ sources), or every build would retrigger the
-/// next one. Documentation edits are not watched: they show as `-dirty` from
-/// the next `git add` or commit.
+/// next one. Documentation edits are not watched here: they show as `-dirty`
+/// from the next `git add` ([`watch_index`]).
 fn watch_sources(root: &Path) {
     let mut paths = vec![
         root.join("Cargo.toml"),
@@ -132,6 +133,34 @@ fn watch_sources(root: &Path) {
 
     for path in paths.iter().filter(|path| path.exists()) {
         println!("cargo:rerun-if-changed={}", path.display());
+    }
+}
+
+/// Reruns the build script when the git index changes, so a staged change
+/// (`git add`, including documentation) turns the identifier `-dirty`;
+/// vergen itself only watches `HEAD` and the current ref.
+///
+/// Found without the `git` binary: `.git` is a directory in a plain clone,
+/// and a file holding `gitdir: <path>` in a worktree or submodule.
+fn watch_index(root: &Path) {
+    let dot_git = root.join(".git");
+    let git_dir = if dot_git.is_dir() {
+        Some(dot_git)
+    } else {
+        fs::read_to_string(&dot_git).ok().and_then(|text| {
+            let path = PathBuf::from(text.trim().strip_prefix("gitdir:")?.trim());
+            Some(if path.is_absolute() {
+                path
+            } else {
+                root.join(path)
+            })
+        })
+    };
+    if let Some(index) = git_dir
+        .map(|dir| dir.join("index"))
+        .filter(|index| index.exists())
+    {
+        println!("cargo:rerun-if-changed={}", index.display());
     }
 }
 
