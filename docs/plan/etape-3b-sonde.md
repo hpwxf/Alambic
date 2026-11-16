@@ -100,3 +100,9 @@ Relance (`aa5bcf7`) : 79 fronts, intervalle 126 à 128 ticks (moyenne 126,91) : 
 de deux ticks vient de ce qu'**un tick ne dure pas toujours 1 ms** : un sur vingt (rendu) dure ≈ 2,1 ms avant que
 le calendrier se recale ; « 10 s » comptées en ticks en durent ≈ 10,5. Corrigé dans l'outil : les échantillons
 portent l'horloge du module (protocole version 2), durées et intervalles sont en temps réel.
+
+Avec l'horloge du module (`9b5d74f`) : TR1 74 fronts en 10 s, 132,716 à 134,849 ms d'écart (moyenne 134,008 ms,
+≈ 7,46 Hz) ; **9 469 ticks en 9 999,9 ms, soit ≈ 947 ticks/s au lieu de 1 000** : les ≈ 50 rendus par seconde
+dépassent chacun leur période d'≈ 1,1 ms. Un front est daté au début du tick qui le voit, d'où une dispersion des
+intervalles égale à la durée d'un tick de rendu (≈ 2,1 ms). Pour D-023 : le rendu coûte ≈ 5 % de la cadence du
+signal et retarde la lecture d'un trigger jusqu'à ≈ 2 ms. Valeurs indicatives.
