@@ -579,15 +579,40 @@ its sleeve, so the sign reads directly.
    `SETTINGS SAVED` for a second and a half, and the USB log prints
    `settings saved`. Power-cycle: the setting is still there, and every
    heartbeat line ends with `settings=loaded`.
-5. Wear and power cuts: save a hundred times (any setting back and forth),
-   then power-cycle; the last value must be the one in force and the log must
-   never print `settings NOT saved`. Cut the power right after a `SAVE`: the
-   module must start with either the old or the new settings, never the
-   defaults unless nothing was ever saved.
 4. Power-cycle holding the left encoder switch until the splash screen ends:
    the calibration wizard opens. Power-cycle holding `up` + `down`: they
    open in `SAFE MODE`, upright and with the encoders as wired, and the app
    menu does not open.
+
+5. Sector rotation and power cuts during a save: see 9.5c, which automates
+   both.
+
+### 9.5c — Settings flash under stress (test firmware)
+
+The settings store adds each save after the previous one and erases one of
+its four 4 KiB sectors only when it has to reuse it, so the flash wears
+evenly. That rotation (sectors filling, being reclaimed, erased) only shows
+after dozens of saves, and a power cut only matters in the milliseconds of a
+write or an erase: neither is practical by hand. A test firmware does both.
+
+1. Calibrate and save first (9.4), so there is something to lose.
+2. `cargo xtask flash --features settings-stress`. At power-up it saves the
+   settings 300 times, alternating them with the contrast one step off, reads
+   each save back, and shows progress (`STRESS OK 120/300 9 ERASES`). The
+   last save restores the settings as they were.
+3. The result stays on screen for 3 s, then `SETTINGS SAVED` (or
+   `SAVE FAILED!`) shows over the splash, and every USB heartbeat line ends
+   with `settings=stress run done | STRESS OK 300/300 n ERASES`. Pass: `OK`,
+   `300/300`, and `n` above a dozen (the sectors were reclaimed).
+4. Power cut: power-cycle; the run starts again; cut the power while it is
+   counting, at any moment. Power up again and let the run finish: it must
+   pass, its first load having found the settings (a failed load would leave
+   the defaults and show as a calibration lost in step 5). Repeat a few times
+   at different moments.
+5. **Reflash the normal firmware** (`cargo xtask flash`): the stress build
+   rewrites the sectors at every power-up. The module must start with the
+   calibration of step 1 (`settings=loaded`; the contrast may be one step
+   off if the last cut landed between two saves).
 
 ### 9.6 — Sign-off
 

@@ -68,6 +68,7 @@ cargo xtask build                           # cross-compile firmware (thumbv7em-
 cargo xtask size                            # section table + linker-layout checklist
 cargo xtask hex                             # dist/oc-firmware.hex
 cargo xtask build|hex --features ssd1306    # OLED override (default is SH1106); ssd1309 also available
+cargo xtask flash --features settings-stress # test firmware: 300 settings saves at power-up (TESTING.md 9.5c), never for a module in use
 cargo xtask flash --dry-run                 # validate only, upload nothing
 cargo xtask flash                           # validate, show SHA-256 digest, confirm, upload
 cargo xtask vcv build --rack-dir <path>     # build the VCV Rack 2 plugin (needs a downloaded Rack SDK)

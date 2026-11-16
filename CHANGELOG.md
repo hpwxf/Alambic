@@ -44,6 +44,12 @@ Architectural decisions behind each change are in `journal/` (French).
   saved); the splash recalls both gestures. Rotation and shift are applied to
   the pixels in the core, contrast through the new `Display::set_contrast`
   (journal/D-026).
+- **Settings flash stress test** (test firmware only):
+  `cargo xtask flash --features settings-stress` saves the settings 300 times
+  at power-up, reading each back, and reports the result and the number of
+  sector erases on screen and on every USB heartbeat line; cutting the power
+  during the run tests recovery from a cut mid-write (`TESTING.md` 9.5c).
+  Normal saves now log the erase count too.
 - **Save confirmation.** After a `SAVE` (settings screen or wizard) a box
   over the screen says how it went for 1.5 s: `SETTINGS SAVED`,
   `SAVE FAILED!`, `KEPT UNTIL RESTART` (simulator without `--settings`) or
