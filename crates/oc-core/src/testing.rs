@@ -10,6 +10,10 @@
 
 use core::cell::Cell;
 
+use embedded_storage_async::nor_flash::{
+    ErrorType, NorFlash, NorFlashError, NorFlashErrorKind, ReadNorFlash,
+};
+
 use crate::calibration::{CvInputCalibration, CvOutputCalibration};
 use crate::engine::Engine;
 use crate::framebuffer::FrameBuffer;
@@ -17,6 +21,7 @@ use crate::platform::{
     AnalogIn, AnalogOut, CV_CHANNELS, Clock, ControlEvents, Controls, CvChannel, DigitalIn,
     Display, MilliVolts, TRIGGER_CHANNELS, TriggerChannel,
 };
+use crate::settings::{FLASH_BYTES, SECTOR_BYTES};
 
 /// CV inputs backed by a plain array of levels.
 ///
@@ -306,4 +311,171 @@ pub fn mock_engine_at_boot(clock_read_cost_micros: u64) -> MockEngine {
         VirtualClock::with_read_cost(clock_read_cost_micros),
         MockDisplay::new(),
     )
+}
+
+/// Size of a [`MemoryFlash`], in bytes: exactly what the settings store uses.
+pub const MEMORY_FLASH_BYTES: usize = FLASH_BYTES as usize;
+
+/// A NOR flash held in memory, sized for the settings store.
+///
+/// It behaves like the real part where it matters: erasing sets whole
+/// sectors to `0xFF`, and a write can only clear bits, never set them, so a
+/// store that forgot to erase fails here as it would on the module. The
+/// simulator mirrors its bytes to a file, and the tests restart a store over
+/// the same bytes to model a power cycle.
+#[derive(Clone)]
+pub struct MemoryFlash {
+    bytes: [u8; MEMORY_FLASH_BYTES],
+    erases: u32,
+}
+
+impl core::fmt::Debug for MemoryFlash {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("MemoryFlash")
+            .field("erases", &self.erases)
+            .finish_non_exhaustive()
+    }
+}
+
+/// What a [`MemoryFlash`] refuses.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MemoryFlashError {
+    /// The access falls outside the flash.
+    OutOfBounds,
+    /// The access is not aligned to the operation's granularity.
+    NotAligned,
+    /// The write would need to set a bit that is not erased.
+    NotErased,
+}
+
+impl NorFlashError for MemoryFlashError {
+    fn kind(&self) -> NorFlashErrorKind {
+        match self {
+            Self::OutOfBounds => NorFlashErrorKind::OutOfBounds,
+            Self::NotAligned => NorFlashErrorKind::NotAligned,
+            Self::NotErased => NorFlashErrorKind::Other,
+        }
+    }
+}
+
+impl MemoryFlash {
+    /// A blank flash: every byte erased.
+    #[must_use]
+    pub const fn erased() -> Self {
+        Self {
+            bytes: [0xFF; MEMORY_FLASH_BYTES],
+            erases: 0,
+        }
+    }
+
+    /// A flash holding a previously captured image.
+    #[must_use]
+    pub const fn from_image(bytes: [u8; MEMORY_FLASH_BYTES]) -> Self {
+        Self { bytes, erases: 0 }
+    }
+
+    /// The flash contents, to save or to restart a store over.
+    #[must_use]
+    pub const fn as_bytes(&self) -> &[u8; MEMORY_FLASH_BYTES] {
+        &self.bytes
+    }
+
+    /// Number of sector erases performed, a measure of wear.
+    #[must_use]
+    pub const fn erase_count(&self) -> u32 {
+        self.erases
+    }
+
+    /// The byte range of an access, if it lies inside the flash.
+    fn span(offset: u32, length: usize) -> Result<core::ops::Range<usize>, MemoryFlashError> {
+        let start = usize::try_from(offset).map_err(|_| MemoryFlashError::OutOfBounds)?;
+        let end = start
+            .checked_add(length)
+            .filter(|&end| end <= MEMORY_FLASH_BYTES)
+            .ok_or(MemoryFlashError::OutOfBounds)?;
+        Ok(start..end)
+    }
+}
+
+impl Default for MemoryFlash {
+    fn default() -> Self {
+        Self::erased()
+    }
+}
+
+impl ErrorType for MemoryFlash {
+    type Error = MemoryFlashError;
+}
+
+/// The flash operations themselves, synchronous: a [`MemoryFlash`] never has
+/// to wait, so its trait methods return futures that are already complete.
+impl MemoryFlash {
+    fn read_now(&self, offset: u32, bytes: &mut [u8]) -> Result<(), MemoryFlashError> {
+        let span = Self::span(offset, bytes.len())?;
+        bytes.copy_from_slice(&self.bytes[span]);
+        Ok(())
+    }
+
+    fn erase_now(&mut self, from: u32, to: u32) -> Result<(), MemoryFlashError> {
+        if !from.is_multiple_of(SECTOR_BYTES) || !to.is_multiple_of(SECTOR_BYTES) || from > to {
+            return Err(MemoryFlashError::NotAligned);
+        }
+        let length = usize::try_from(to - from).map_err(|_| MemoryFlashError::OutOfBounds)?;
+        let span = Self::span(from, length)?;
+        self.bytes[span].fill(0xFF);
+        self.erases = self.erases.saturating_add((to - from) / SECTOR_BYTES);
+        Ok(())
+    }
+
+    fn write_now(&mut self, offset: u32, bytes: &[u8]) -> Result<(), MemoryFlashError> {
+        let aligned = usize::try_from(offset).is_ok_and(|offset| {
+            offset.is_multiple_of(<Self as NorFlash>::WRITE_SIZE)
+                && bytes.len().is_multiple_of(<Self as NorFlash>::WRITE_SIZE)
+        });
+        if !aligned {
+            return Err(MemoryFlashError::NotAligned);
+        }
+        let span = Self::span(offset, bytes.len())?;
+        let target = &mut self.bytes[span];
+        if target.iter().zip(bytes).any(|(&old, &new)| new & !old != 0) {
+            return Err(MemoryFlashError::NotErased);
+        }
+        for (old, &new) in target.iter_mut().zip(bytes) {
+            *old &= new;
+        }
+        Ok(())
+    }
+}
+
+impl ReadNorFlash for MemoryFlash {
+    const READ_SIZE: usize = 1;
+
+    fn read(
+        &mut self,
+        offset: u32,
+        bytes: &mut [u8],
+    ) -> impl Future<Output = Result<(), Self::Error>> {
+        core::future::ready(self.read_now(offset, bytes))
+    }
+
+    fn capacity(&self) -> usize {
+        MEMORY_FLASH_BYTES
+    }
+}
+
+impl NorFlash for MemoryFlash {
+    const WRITE_SIZE: usize = 4;
+    const ERASE_SIZE: usize = SECTOR_BYTES as usize;
+
+    fn erase(&mut self, from: u32, to: u32) -> impl Future<Output = Result<(), Self::Error>> {
+        core::future::ready(self.erase_now(from, to))
+    }
+
+    fn write(
+        &mut self,
+        offset: u32,
+        bytes: &[u8],
+    ) -> impl Future<Output = Result<(), Self::Error>> {
+        core::future::ready(self.write_now(offset, bytes))
+    }
 }

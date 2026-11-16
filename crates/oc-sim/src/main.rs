@@ -25,6 +25,10 @@ enum Command {
         /// Record every input and write the scenario here on exit.
         #[arg(long, value_name = "FILE")]
         record: Option<PathBuf>,
+        /// Keep the module's settings (calibration, preferences) in this
+        /// flash image, created on first save.
+        #[arg(long, value_name = "FILE")]
+        settings: Option<PathBuf>,
     },
     /// Replay a scenario without a terminal and print the final state.
     Replay {
@@ -36,9 +40,16 @@ enum Command {
 fn main() -> Result<()> {
     let cli = Cli::parse();
 
-    match cli.command.unwrap_or(Command::Run { record: None }) {
-        Command::Run { record } => {
+    let default = Command::Run {
+        record: None,
+        settings: None,
+    };
+    match cli.command.unwrap_or(default) {
+        Command::Run { record, settings } => {
             let mut tui = Tui::new();
+            if let Some(path) = settings {
+                tui.keep_settings_in(&path)?;
+            }
             if let Some(path) = record {
                 tui.record_to(path);
             }

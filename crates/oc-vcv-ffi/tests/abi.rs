@@ -12,7 +12,8 @@ use oc_core::testing::adc_reading;
 use oc_vcv_ffi::{
     OcEngine, oc_engine_button, oc_engine_buttons, oc_engine_cv_channels, oc_engine_cv_out,
     oc_engine_encoder, oc_engine_encoders, oc_engine_framebuffer, oc_engine_framebuffer_len,
-    oc_engine_free, oc_engine_new, oc_engine_set_cv_in, oc_engine_set_trigger, oc_engine_tick,
+    oc_engine_free, oc_engine_new, oc_engine_set_cv_in, oc_engine_set_trigger,
+    oc_engine_settings_load, oc_engine_settings_max_len, oc_engine_settings_save, oc_engine_tick,
     oc_engine_trigger_channels,
 };
 
@@ -145,4 +146,40 @@ fn channel_count_getters_match_oc_core() {
     assert_eq!(usize::from(oc_engine_encoders()), ENCODERS);
     assert_eq!(usize::from(oc_engine_buttons()), BUTTONS);
     assert_eq!(oc_engine_framebuffer_len(), FRAMEBUFFER_LEN);
+}
+
+/// What a patch saves, a fresh instance must read back; and a damaged patch
+/// must be refused rather than half-applied.
+#[test]
+fn settings_round_trip_through_the_patch_bytes() {
+    let source = oc_engine_new();
+    let target = oc_engine_new();
+    let mut buffer = vec![0u8; oc_engine_settings_max_len()];
+
+    // SAFETY: both engines are live and `buffer` is as long as stated.
+    unsafe {
+        let len = oc_engine_settings_save(source, buffer.as_mut_ptr(), buffer.len());
+        assert!(len > 1, "the defaults still encode to something");
+        assert!(oc_engine_settings_load(target, buffer.as_ptr(), len));
+
+        assert_eq!(
+            oc_engine_settings_save(source, buffer.as_mut_ptr(), 1),
+            0,
+            "a buffer that is too short is refused"
+        );
+        assert!(!oc_engine_settings_load(target, buffer.as_ptr(), 1));
+        assert!(!oc_engine_settings_load(target, std::ptr::null(), 8));
+        assert!(!oc_engine_settings_load(
+            std::ptr::null_mut(),
+            buffer.as_ptr(),
+            len
+        ));
+        assert_eq!(
+            oc_engine_settings_save(std::ptr::null(), buffer.as_mut_ptr(), buffer.len()),
+            0
+        );
+
+        oc_engine_free(source);
+        oc_engine_free(target);
+    }
 }

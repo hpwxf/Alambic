@@ -8,6 +8,9 @@
 //! What this module adds on top is the parts a human or a scenario needs:
 //! momentary presses that survive debouncing, a tick counter, and replay.
 
+use std::io;
+use std::path::{Path, PathBuf};
+
 use oc_core::TickReport;
 use oc_core::apps::AppId;
 use oc_core::apps::diagnostic::DiagnosticApp;
@@ -17,7 +20,8 @@ use oc_core::framebuffer::FrameBuffer;
 use oc_core::platform::{
     BUTTONS, Button, CV_CHANNELS, CvChannel, MilliVolts, TRIGGER_CHANNELS, TriggerChannel,
 };
-use oc_core::testing::{MockEngine, mock_engine_at_boot};
+use oc_core::settings::{LoadOutcome, SettingsStore};
+use oc_core::testing::{MEMORY_FLASH_BYTES, MemoryFlash, MockEngine, mock_engine_at_boot};
 
 use crate::clock::TICK_MICROS;
 use crate::scenario::{Event, Scenario};
@@ -51,6 +55,18 @@ pub struct Simulator {
     trigger_hold: [u32; TRIGGER_CHANNELS],
     recording: Option<Scenario>,
     last_report: Option<TickReport>,
+    settings: Option<SettingsFile>,
+}
+
+/// The settings flash of a simulated module, mirrored to a file.
+///
+/// The file is a raw image of the flash the settings store manages, so the
+/// simulator exercises the same store, format and wear levelling as the
+/// module (journal/D-028).
+#[derive(Debug)]
+struct SettingsFile {
+    path: PathBuf,
+    store: SettingsStore<MemoryFlash>,
 }
 
 impl Simulator {
@@ -67,7 +83,64 @@ impl Simulator {
             trigger_hold: [0; TRIGGER_CHANNELS],
             recording: None,
             last_report: None,
+            settings: None,
         }
+    }
+
+    /// Keeps the module's settings in `path`, a flash image, and applies the
+    /// ones it holds, as the module does at power-up.
+    ///
+    /// A missing file is a module that was never set up: its flash is blank
+    /// and the defaults apply; the file is created on the first save.
+    ///
+    /// # Errors
+    ///
+    /// Fails if the file exists but cannot be read, or is not a flash image
+    /// of the expected size.
+    pub fn attach_settings(&mut self, path: &Path) -> io::Result<LoadOutcome> {
+        let flash = match std::fs::read(path) {
+            Ok(bytes) => {
+                let image: [u8; MEMORY_FLASH_BYTES] =
+                    bytes.try_into().map_err(|bytes: Vec<u8>| {
+                        io::Error::new(
+                            io::ErrorKind::InvalidData,
+                            format!(
+                                "{} is {} bytes, not a {MEMORY_FLASH_BYTES}-byte settings image",
+                                path.display(),
+                                bytes.len()
+                            ),
+                        )
+                    })?;
+                MemoryFlash::from_image(image)
+            }
+            Err(error) if error.kind() == io::ErrorKind::NotFound => MemoryFlash::erased(),
+            Err(error) => return Err(error),
+        };
+        let mut store = SettingsStore::new(flash);
+        let (settings, outcome) = store.load_or_default();
+        self.engine.apply_settings(settings);
+        self.settings = Some(SettingsFile {
+            path: path.to_path_buf(),
+            store,
+        });
+        Ok(outcome)
+    }
+
+    /// Saves the settings in force to the attached file, as the module saves
+    /// them to its flash. Without [`Self::attach_settings`] there is nowhere
+    /// to save, which is not an error: the settings simply do not persist.
+    ///
+    /// # Errors
+    ///
+    /// Fails if the store rejects the save or the file cannot be written.
+    pub fn save_settings(&mut self) -> io::Result<()> {
+        let Some(file) = &mut self.settings else {
+            return Ok(());
+        };
+        file.store
+            .save(self.engine.settings())
+            .map_err(|error| io::Error::other(format!("settings store: {error:?}")))?;
+        std::fs::write(&file.path, file.store.flash().as_bytes())
     }
 
     /// Shows the build identifier under the version on the splash screen.
@@ -371,6 +444,34 @@ mod tests {
             0,
             "the press must have registered"
         );
+    }
+
+    #[test]
+    fn settings_saved_to_a_file_come_back_after_a_restart() {
+        use oc_core::apps::AppId;
+        use oc_core::settings::{LoadOutcome, Settings};
+
+        let path = std::env::temp_dir().join(format!(
+            "oc-sim-settings-{}-{:?}.bin",
+            std::process::id(),
+            std::thread::current().id()
+        ));
+        let _ = std::fs::remove_file(&path);
+
+        let mut first = Simulator::new();
+        assert_eq!(first.attach_settings(&path).unwrap(), LoadOutcome::Empty);
+        let mut settings = Settings::DEFAULT;
+        settings.startup_app = AppId::Scope;
+        first.engine.apply_settings(settings);
+        first.save_settings().unwrap();
+
+        let mut second = Simulator::new();
+        assert_eq!(second.attach_settings(&path).unwrap(), LoadOutcome::Loaded);
+        assert_eq!(second.current_app(), AppId::Scope);
+
+        std::fs::write(&path, b"short").unwrap();
+        assert!(Simulator::new().attach_settings(&path).is_err());
+        std::fs::remove_file(&path).unwrap();
     }
 
     #[test]

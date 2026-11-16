@@ -171,6 +171,21 @@ impl Tui {
         }
     }
 
+    /// Keeps the module's settings in `path` (a flash image) and applies
+    /// those already there; see [`Simulator::attach_settings`].
+    ///
+    /// # Errors
+    ///
+    /// Fails if the file exists but is not a settings image.
+    pub fn keep_settings_in(&mut self, path: &std::path::Path) -> Result<()> {
+        let outcome = self
+            .simulator
+            .attach_settings(path)
+            .with_context(|| format!("cannot use {} for settings", path.display()))?;
+        self.status = format!("settings {}: {outcome:?}", path.display());
+        Ok(())
+    }
+
     /// Records every input and writes the scenario to `path` on exit.
     pub fn record_to(&mut self, path: PathBuf) {
         self.simulator.start_recording();

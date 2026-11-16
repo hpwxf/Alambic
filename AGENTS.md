@@ -298,6 +298,7 @@ Full protocol, per level, with exact commands and what each proves: see
 | The boot splash screen (name/version, progressive border) | `crates/oc-core/src/splash.rs` |
 | ADC/DAC unit conversion and calibration           | `crates/oc-core/src/calibration.rs` |
 | Input presence derived from the signal (defaults for unused inputs) | `crates/oc-core/src/presence.rs` |
+| Persistent settings, their format and the flash store | `crates/oc-core/src/settings.rs` (`MemoryFlash` in `testing.rs`) |
 | Deterministic mocks used by every `oc-core` test  | `crates/oc-core/src/testing.rs` |
 | The pinout (the only file allowed to name a pin)  | `crates/oc-firmware/src/board.rs` (rule test: `xtask/tests/pin_rule.rs`) |
 | Memory map / boot sections rationale              | `crates/oc-firmware/MEMORY.md` |

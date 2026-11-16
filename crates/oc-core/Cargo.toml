@@ -9,7 +9,12 @@ repository.workspace = true
 authors.workspace = true
 
 [dependencies]
+embassy-futures.workspace = true
 embedded-graphics.workspace = true
+embedded-storage-async.workspace = true
+postcard.workspace = true
+sequential-storage.workspace = true
+serde.workspace = true
 
 [dev-dependencies]
 criterion.workspace = true

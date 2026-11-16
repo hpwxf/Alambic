@@ -7,6 +7,9 @@ mesures ; il sera complété à la fin de l'étape.
 
 * **4a** (`e73d873`) : conversion code ↔ mV dans `oc-core`, `Calibration::FACTORY` de Phazerville partagée par les
   trois backends (révision de D-027).
+* **4b** : réglages (`oc_core::settings`), stockage `sequential-storage` sur `NorFlash`, simulateur `--settings`,
+  ABI et JSON du patch Rack (révision de D-028). Reste à vérifier dans Rack : réglages restaurés à la réouverture
+  d'un patch (le C++ n'a pas été compilé, faute de Rack SDK sur la machine de développement).
 
 ## Mesures sur le module TLM
 

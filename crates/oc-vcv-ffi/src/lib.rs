@@ -20,7 +20,9 @@
 //! dereference and carries a `# Safety` comment stating the invariant the
 //! caller (the C++ plugin) must uphold: that a non-null pointer was
 //! previously returned by [`oc_engine_new`] and has not already been passed
-//! to [`oc_engine_free`]. No other part of this crate uses `unsafe`.
+//! to [`oc_engine_free`]. The settings functions also turn a caller-provided
+//! byte buffer into a slice, under the same kind of contract (pointer valid
+//! for the stated length). No other part of this crate uses `unsafe`.
 //!
 //! Because [`OcEngine`] wraps a [`VirtualClock`], which uses a [`Cell`] for
 //! interior mutability, the compiler cannot prove a `&mut OcEngine` is safe
@@ -41,6 +43,7 @@ use oc_core::framebuffer::LEN as FRAMEBUFFER_LEN;
 use oc_core::platform::{
     BUTTONS, Button, CV_CHANNELS, CvChannel, ENCODERS, MilliVolts, TRIGGER_CHANNELS, TriggerChannel,
 };
+use oc_core::settings;
 use oc_core::testing::{
     MockAnalogIn, MockAnalogOut, MockControls, MockDigitalIn, MockDisplay, VirtualClock,
 };
@@ -359,6 +362,88 @@ pub unsafe extern "C" fn oc_engine_framebuffer(engine: *const OcEngine) -> *cons
 #[unsafe(no_mangle)]
 pub extern "C" fn oc_engine_framebuffer_len() -> usize {
     FRAMEBUFFER_LEN
+}
+
+/// Upper bound, in bytes, on what [`oc_engine_settings_save`] writes: the
+/// buffer size the plugin should allocate.
+#[must_use]
+#[unsafe(no_mangle)]
+pub extern "C" fn oc_engine_settings_max_len() -> usize {
+    settings::ENCODED_MAX
+}
+
+/// Encodes the engine's settings (calibration and preferences) into
+/// `buffer`, for the plugin to keep in the patch (`dataToJson`), and returns
+/// the number of bytes written.
+///
+/// Returns `0` for a null `engine` or `buffer`, or a buffer shorter than
+/// needed; [`oc_engine_settings_max_len`] bytes always suffice. The bytes are
+/// the same format the module keeps in its flash (journal/D-028).
+///
+/// # Safety
+///
+/// `engine`, if non-null, must point to a live [`OcEngine`]; `buffer`, if
+/// non-null, must be valid for writes of `capacity` bytes.
+#[must_use]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn oc_engine_settings_save(
+    engine: *const OcEngine,
+    buffer: *mut u8,
+    capacity: usize,
+) -> usize {
+    catch_unwind(AssertUnwindSafe(move || {
+        // SAFETY: see the function's own safety contract.
+        let Some(engine) = (unsafe { as_ref(engine) }) else {
+            return 0;
+        };
+        if buffer.is_null() {
+            return 0;
+        }
+        // SAFETY: `buffer` is non-null and, per the contract, valid for
+        // writes of `capacity` bytes for the duration of this call.
+        let buffer = unsafe { std::slice::from_raw_parts_mut(buffer, capacity) };
+        settings::encode(engine.engine.settings(), buffer).unwrap_or(0)
+    }))
+    .unwrap_or(0)
+}
+
+/// Applies settings previously produced by [`oc_engine_settings_save`]
+/// (`dataFromJson`), as the module applies its stored settings at power-up.
+///
+/// Returns whether they were applied. Anything that does not decode
+/// (another format, a truncated or edited patch, a null pointer) leaves the
+/// engine untouched and returns `false`, so a bad patch keeps the defaults
+/// rather than a half-read calibration.
+///
+/// # Safety
+///
+/// `engine`, if non-null, must point to a live [`OcEngine`]; `bytes`, if
+/// non-null, must be valid for reads of `len` bytes.
+#[must_use]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn oc_engine_settings_load(
+    engine: *mut OcEngine,
+    bytes: *const u8,
+    len: usize,
+) -> bool {
+    catch_unwind(AssertUnwindSafe(move || {
+        // SAFETY: see the function's own safety contract.
+        let Some(engine) = (unsafe { as_mut(engine) }) else {
+            return false;
+        };
+        if bytes.is_null() {
+            return false;
+        }
+        // SAFETY: `bytes` is non-null and, per the contract, valid for reads
+        // of `len` bytes for the duration of this call.
+        let bytes = unsafe { std::slice::from_raw_parts(bytes, len) };
+        let Some(settings) = settings::decode(bytes) else {
+            return false;
+        };
+        engine.engine.apply_settings(settings);
+        true
+    }))
+    .unwrap_or(false)
 }
 
 /// Number of CV channels, in and out.

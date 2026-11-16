@@ -20,6 +20,8 @@
 pub mod diagnostic;
 pub mod scope;
 
+use serde::{Deserialize, Serialize};
+
 use crate::apps::diagnostic::DiagnosticApp;
 use crate::apps::scope::ScopeApp;
 use crate::buttons::ButtonEvents;
@@ -80,7 +82,9 @@ pub struct TickContext {
 }
 
 /// One of the applets the module can run.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default, Serialize, Deserialize,
+)]
 pub enum AppId {
     /// The I/O diagnostic screen the module boots into.
     #[default]

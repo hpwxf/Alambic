@@ -177,6 +177,19 @@ which needs a real overlap. `m` presses both in the same tick, which is the
 one-keystroke way to do it; to hold them by hand instead, press `Shift+↑` then
 `Shift+↓` (in either order), and `Shift+↑`/`Shift+↓` again to release them.
 
+### Settings
+
+The module's settings (calibration, startup applet, screen and encoder
+preferences) can be kept between sessions in a file, a raw image of the
+16 KiB settings flash the module itself uses, managed by the same store:
+
+```sh
+cargo run -p oc-sim -- run --settings module.bin   # created on first save
+```
+
+Without `--settings` the simulator starts from the defaults every time, which
+is what the scenarios rely on. In VCV Rack the settings travel with the patch.
+
 ### Scenarios
 
 Inputs can be recorded and replayed, which turns a bug found by hand into a

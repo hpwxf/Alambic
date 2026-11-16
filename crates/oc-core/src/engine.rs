@@ -17,6 +17,7 @@ use crate::platform::{
     AnalogIn, AnalogOut, CV_CHANNELS, Clock, Controls, DigitalIn, Display, MilliVolts,
     TRIGGER_CHANNELS, TriggerChannel,
 };
+use crate::settings::Settings;
 use crate::splash::SplashScreen;
 
 /// Upper bound reported for a tick duration, in microseconds.
@@ -76,7 +77,7 @@ pub struct Engine<A, O, D, C, K, S> {
     controls: C,
     clock: K,
     display: S,
-    calibration: Calibration,
+    settings: Settings,
     apps: AppHost,
     splash: SplashScreen,
     menu: Menu,
@@ -114,7 +115,7 @@ where
             controls,
             clock,
             display,
-            calibration: Calibration::FACTORY,
+            settings: Settings::DEFAULT,
             apps: AppHost::new(),
             splash: SplashScreen::new(),
             menu: Menu::new(),
@@ -247,6 +248,7 @@ where
     /// cycle.
     pub fn reset(&mut self) {
         self.apps = AppHost::new();
+        self.apps.select(self.settings.startup_app);
         self.splash.reset();
         self.menu.reset();
         self.buttons = ButtonReader::new();
@@ -315,7 +317,7 @@ where
         for channel in crate::platform::CvChannel::ALL {
             let index = channel.index();
             let code = self.analog_in.read_code(channel);
-            snapshot.cv[index] = self.calibration.inputs[index].to_millivolts(code);
+            snapshot.cv[index] = self.settings.calibration.inputs[index].to_millivolts(code);
         }
 
         for channel in TriggerChannel::ALL {
@@ -331,7 +333,7 @@ where
     fn write_outputs(&mut self, levels: &[MilliVolts; CV_CHANNELS]) {
         for channel in crate::platform::CvChannel::ALL {
             let index = channel.index();
-            let code = self.calibration.outputs[index].to_code(levels[index]);
+            let code = self.settings.calibration.outputs[index].to_code(levels[index]);
             self.analog_out.write_code(channel, code);
         }
         self.analog_out.flush();
@@ -340,13 +342,32 @@ where
     /// The calibration currently converting every input and output.
     #[must_use]
     pub const fn calibration(&self) -> &Calibration {
-        &self.calibration
+        &self.settings.calibration
     }
 
     /// Replaces the calibration, effective from the next tick. It survives
     /// [`Self::reset`]: it belongs to the module, not to a run.
     pub const fn set_calibration(&mut self, calibration: Calibration) {
-        self.calibration = calibration;
+        self.settings.calibration = calibration;
+    }
+
+    /// The settings in force, as a backend would save them
+    /// ([`crate::settings::SettingsStore::save`]).
+    #[must_use]
+    pub const fn settings(&self) -> &Settings {
+        &self.settings
+    }
+
+    /// Installs settings loaded at power-up: the calibration takes effect on
+    /// the next tick and the startup applet is selected. Like the
+    /// calibration, they survive [`Self::reset`], which restarts in the
+    /// startup applet.
+    ///
+    /// Screen and encoder preferences are carried but not yet applied
+    /// (step 4, lot 4c).
+    pub fn apply_settings(&mut self, settings: Settings) {
+        self.settings = settings;
+        self.apps.select(settings.startup_app);
     }
 
     /// Time since the previous tick, clamped and wrap-safe.
@@ -512,6 +533,36 @@ mod tests {
             report.cv_out, [0; CV_CHANNELS],
             "a reset engine boots again before resuming normal execution"
         );
+    }
+
+    #[test]
+    fn applied_settings_drive_the_conversion_and_the_startup_applet() {
+        use crate::apps::AppId;
+        use crate::calibration::CvOutputCalibration;
+        use crate::settings::Settings;
+
+        let mut engine = mock_engine_at_boot(0);
+        let mut settings = Settings::DEFAULT;
+        settings.startup_app = AppId::Scope;
+        // Every output 1000 codes below the factory table (the top point is
+        // already 0).
+        let mut shifted = CvOutputCalibration::FACTORY;
+        for code in &mut shifted.codes {
+            *code = code.saturating_sub(1_000);
+        }
+        settings.calibration.outputs = [shifted; CV_CHANNELS];
+        engine.apply_settings(settings);
+        engine.skip_splash();
+        assert_eq!(engine.current_app(), AppId::Scope);
+
+        engine.tick();
+        let (_, analog_out, ..) = engine.parts_mut();
+        assert_eq!(analog_out.codes, [shifted.to_code(0); CV_CHANNELS]);
+
+        // A reset is a restart of the same module: same settings, same app.
+        engine.reset();
+        assert_eq!(engine.current_app(), AppId::Scope);
+        assert_eq!(engine.settings(), &settings);
     }
 
     #[test]

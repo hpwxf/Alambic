@@ -53,6 +53,15 @@ cbindgen = { version = "0.29", default-features = false }
 # Shared embedded/host libraries
 embedded-graphics = "0.8.2"
 embedded-hal = "1.0"
+# Settings persistence (journal/D-028): postcard encodes the settings,
+# sequential-storage keeps them in flash with wear levelling and CRCs over the
+# embedded-storage NorFlash traits; embassy-futures drives its async API to
+# completion from the blocking 1 kHz loop.
+embedded-storage-async = "0.4.2"
+embassy-futures = "0.1.2"
+postcard = { version = "1.1.3", default-features = false }
+sequential-storage = { version = "8.0.2", features = ["postcard"] }
+serde = { version = "1.0.229", default-features = false, features = ["derive"] }
 
 # Terminal UI for the simulator. Only the crossterm backend is enabled; the
 # default feature set also pulls in the calendar widget and alternative

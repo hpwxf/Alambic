@@ -21,6 +21,15 @@ Architectural decisions behind each change are in `journal/` (French).
   model), 10 V over the DAC range, 0 V at code 40984 instead of 43690. On the
   module, every output therefore moves by about 0.4 V for the same request
   compared with 0.2.0 until it is calibrated.
+- **Settings and their persistence (core, simulator, Rack).**
+  `oc_core::settings` holds the calibration, the startup applet and the screen
+  and encoder preferences, encoded with `postcard` and kept in flash by
+  `sequential-storage` (wear levelling, CRC, repair after a power cut).
+  `Engine::apply_settings` installs them; a reset restarts in the startup
+  applet. The simulator keeps them in a flash image (`run --settings FILE`);
+  the VCV Rack module keeps them in the patch (`oc_engine_settings_save` /
+  `oc_engine_settings_load` in the C ABI, base64 in `dataToJson`). The
+  firmware does not persist them yet (journal/D-028).
 - **Simulator and VCV Rack quantise CV inputs like the module's 12-bit ADC**
   (about 2.44 mV per step): an input of 1.000 V now reads 1.001 V there, as
   it would on the hardware.

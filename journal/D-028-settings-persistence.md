@@ -5,7 +5,7 @@
 | **Identifiant** | D-028 |
 | **Date** | 2026-11-16 |
 | **Auteur** | Pascal Havé |
-| **Statut** | adoptée |
+| **Statut** | adoptée, révisée |
 | **Commits** | ce commit (ADR) ; implémentation aux lots 4b (encodage, stockage) et 4e (flash) de l'étape 4 |
 | **Relations** | **révise** D-002 (une capacité de plateforme de plus), D-003 (`oc-firmware` « sans `unsafe` »), D-006 (« non persistées ») ; sert D-026 et D-027 ; touche D-004 / D-016 (zone flash réservée, contrôlée par `xtask`) |
 
@@ -73,3 +73,25 @@ est occupée. La vérification au manuel de référence reste le premier pas du 
 * API ROM absente, différente ou défaillante sur la puce du Teensy : commandes FlexSPI façon Teensyduino.
 * `sequential-storage` trop lourd en taille de code ou contraignant à cause de son API asynchrone : M.
 * Sauvegarde perceptible comme une coupure gênante : écriture découpée sur plusieurs ticks.
+
+## Révision (2026-11-16, lot 4b) — stockage hors de l'`Engine`, blob encodé pour Rack
+
+Écarts à l'implémentation :
+
+* **pas de paramètre de plateforme de plus dans l'`Engine`** : `oc_core::settings::SettingsStore<F: NorFlash>`
+  porte le chargement et la sauvegarde (bloquants, `embassy_futures::block_on` sur l'API asynchrone de
+  `sequential-storage` 8.0.2) ; le backend le construit sur sa flash, charge au démarrage
+  (`load_or_default`, qui retombe toujours sur `Settings::DEFAULT`) et passe le résultat à
+  `Engine::apply_settings`. La logique (format, repli, usure) reste dans `oc-core` et testée une fois ; l'`Engine`
+  garde ses six traits. La demande de sauvegarde viendra de l'écran système (4c) ;
+* **Rack ne garde pas une image de flash** mais l'enregistrement encodé (`settings::encode` / `decode`, octet de
+  format puis `postcard`), via `oc_engine_settings_max_len` / `_save` / `_load` (et non `oc_engine_storage_get/set`) :
+  quelques centaines d'octets en base64 dans le JSON du patch au lieu de 16 Kio ;
+* **format** : octet `FORMAT = 1`, qui est aussi la clé de la carte ; un changement de `Settings` que `postcard` ne
+  relit pas l'incrémente, et l'ancien enregistrement est ignoré (valeurs par défaut) ;
+* **zone** : `FLASH_BYTES` = 4 secteurs de 4 Kio, adresses `0..16 Kio` de la `NorFlash` fournie ; le firmware la
+  placera à `0x601F_0000` (4e) ;
+* **flash simulée** : `testing::MemoryFlash`, NOR stricte (effacement à `0xFF`, écriture qui ne fait que baisser des
+  bits) ; le simulateur l'écrit dans un fichier (`run --settings`). Testé : flash vierge, aller-retour après
+  « coupure », 456 sauvegardes successives (secteurs recyclés), données étrangères ignorées puis écrasées par une
+  sauvegarde.

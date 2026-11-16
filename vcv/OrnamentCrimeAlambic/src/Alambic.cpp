@@ -1,6 +1,7 @@
 #include <cassert>
 #include <cmath>
 #include <cstdint>
+#include <vector>
 
 #include "oc_vcv_ffi.h"
 #include "plugin.hpp"
@@ -160,6 +161,33 @@ struct Alambic : Module {
             encoderPrev[index] = 0.f;
             encoderRemainder[index] = 0.f;
         }
+    }
+
+    // The module's settings (calibration, preferences) live in the patch:
+    // Rack has no flash, and a patch is what a Rack user expects to carry a
+    // module's state. The bytes are the core's own settings format
+    // (journal/D-028), base64-encoded; the core decides what they mean and
+    // refuses anything it cannot decode, so a damaged or foreign patch just
+    // keeps the defaults. "Initialize" (onReset) keeps them, as a power cycle
+    // keeps the module's.
+    json_t *dataToJson() override {
+        json_t *root = json_object();
+        std::vector<uint8_t> bytes(oc_engine_settings_max_len());
+        const size_t len = oc_engine_settings_save(engine, bytes.data(), bytes.size());
+        if (len > 0) {
+            json_object_set_new(root, "settings",
+                                json_string(string::toBase64(bytes.data(), len).c_str()));
+        }
+        return root;
+    }
+
+    void dataFromJson(json_t *root) override {
+        json_t *settings = json_object_get(root, "settings");
+        if (!json_is_string(settings)) {
+            return;
+        }
+        const std::vector<uint8_t> bytes = string::fromBase64(json_string_value(settings));
+        static_cast<void>(oc_engine_settings_load(engine, bytes.data(), bytes.size()));
     }
 
     // Converts a knob's movement since the last call into whole detents,

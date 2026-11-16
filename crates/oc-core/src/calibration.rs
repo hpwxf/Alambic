@@ -30,6 +30,8 @@
     clippy::cast_possible_wrap
 )]
 
+use serde::{Deserialize, Serialize};
+
 use crate::platform::{CV_CHANNELS, MilliVolts};
 
 /// Resolution of the CV input converter (i.MX RT ADC configured for 12 bits).
@@ -77,7 +79,7 @@ pub const CV_OUT_MAX_MV: MilliVolts = 6_000;
 /// Affine calibration of one CV input.
 ///
 /// `millivolts = (code - zero_code) * nanovolts_per_code / 1_000_000`
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CvInputCalibration {
     /// ADC code that reads as 0 V.
     pub zero_code: i32,
@@ -142,7 +144,7 @@ pub const OUTPUT_POINTS: usize = 11;
 /// between are interpolated linearly, as `DAC::PitchToScaledDAC` does in the
 /// reference. On the module the table *decreases*, because the output stage
 /// inverts.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CvOutputCalibration {
     /// DAC code of each point, lowest voltage first.
     pub codes: [u16; OUTPUT_POINTS],
@@ -277,7 +279,7 @@ impl CvOutputCalibration {
 }
 
 /// The calibration of the whole module: every input and every output.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Calibration {
     /// One calibration per CV input, `CV1..CV4`.
     pub inputs: [CvInputCalibration; CV_CHANNELS],

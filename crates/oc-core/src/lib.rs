@@ -44,6 +44,7 @@ pub mod framebuffer;
 pub mod menu;
 pub mod platform;
 pub mod presence;
+pub mod settings;
 pub mod signal;
 pub mod splash;
 pub mod testing;
