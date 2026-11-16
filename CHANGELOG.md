@@ -30,6 +30,15 @@ Architectural decisions behind each change are in `journal/` (French).
   the VCV Rack module keeps them in the patch (`oc_engine_settings_save` /
   `oc_engine_settings_load` in the C ABI, base64 in `dataToJson`). The
   firmware does not persist them yet (journal/D-028).
+- **System settings screen.** `SETUP`, the last entry of the app menu, edits
+  the startup app, the contrast, a 180° rotation, a picture shift and each
+  encoder's direction, live; `SAVE` keeps and stores them, `EXIT` or the
+  `up` + `down` chord puts back what was in force. Held through the splash
+  screen, the left encoder switch opens it on the calibration line and
+  `up` + `down` in safe mode (screen and encoders at their defaults until
+  saved); the splash recalls both gestures. Rotation and shift are applied to
+  the pixels in the core, contrast through the new `Display::set_contrast`
+  (journal/D-026).
 - **Simulator and VCV Rack quantise CV inputs like the module's 12-bit ADC**
   (about 2.44 mV per step): an input of 1.000 V now reads 1.001 V there, as
   it would on the hardware.

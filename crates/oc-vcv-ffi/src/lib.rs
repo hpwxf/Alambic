@@ -303,6 +303,10 @@ pub unsafe extern "C" fn oc_engine_tick(engine: *mut OcEngine, now_micros: u64) 
         };
         engine.engine.clock().set(now_micros);
         let report = engine.engine.tick();
+        // Rack has no flash: the settings in force go out with the patch the
+        // next time Rack saves it (`oc_engine_settings_save` from
+        // `dataToJson`), so a SAVE on the settings screen needs nothing more.
+        let _ = engine.engine.take_save_request();
         engine.cv_out = report.cv_out;
         engine.framebuffer = *engine.engine.frame().as_bytes();
     }));

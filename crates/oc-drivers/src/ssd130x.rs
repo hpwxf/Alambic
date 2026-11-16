@@ -358,6 +358,10 @@ where
         // report a dead panel instead of appearing to work.
         self.last_error = self.flush_frame().err();
     }
+
+    fn set_contrast(&mut self, contrast: u8) {
+        self.last_error = self.commands(&[command::SET_CONTRAST, contrast]).err();
+    }
 }
 
 /// Compile-time reminder that a refresh is a single full-buffer transfer.
@@ -714,6 +718,19 @@ mod tests {
                 .windows(2)
                 .any(|w| w == [false, true]),
             "each transfer still brackets its bytes with a CS low→high pair"
+        );
+    }
+
+    #[test]
+    fn the_contrast_is_one_command_and_its_value() {
+        let mut panel = panel(Controller::Sh1106);
+        panel.spi.written.clear();
+        panel.set_contrast(0x42);
+        assert_eq!(panel.spi.written, [command::SET_CONTRAST, 0x42]);
+        assert_eq!(
+            panel.data_command.levels.last(),
+            Some(&false),
+            "sent as a command"
         );
     }
 

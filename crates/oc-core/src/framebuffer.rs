@@ -114,6 +114,41 @@ impl FrameBuffer {
         self.data.iter().map(|byte| byte.count_ones()).sum()
     }
 
+    /// Turns the picture by 180°, for a module mounted upside down.
+    ///
+    /// In the page layout a half turn is the byte order reversed and each
+    /// byte's bits reversed: column `x` of page `p` becomes column `127 - x`
+    /// of page `7 - p`, row `r` within the page becomes `7 - r`.
+    pub fn rotate_half_turn(&mut self) {
+        self.data.reverse();
+        for byte in &mut self.data {
+            *byte = byte.reverse_bits();
+        }
+    }
+
+    /// Moves the picture `columns` to the right (left if negative); columns
+    /// shifted in are dark. Centres a panel whose visible area is offset in
+    /// its controller RAM ("Center Display" in the reference firmware).
+    pub fn shift_columns(&mut self, columns: i32) {
+        let Ok(distance) = usize::try_from(columns.unsigned_abs()) else {
+            return;
+        };
+        if distance == 0 {
+            return;
+        }
+        for page in self.data.as_chunks_mut::<WIDTH>().0 {
+            if distance >= WIDTH {
+                page.fill(0);
+            } else if columns > 0 {
+                page.copy_within(..WIDTH - distance, distance);
+                page[..distance].fill(0);
+            } else {
+                page.copy_within(distance.., 0);
+                page[WIDTH - distance..].fill(0);
+            }
+        }
+    }
+
     /// Byte index of a pixel, or `None` when it falls outside the screen.
     const fn index_of(x: i32, y: i32) -> Option<usize> {
         if x < 0 || y < 0 || x >= WIDTH_I32 || y >= HEIGHT_I32 {
@@ -265,5 +300,30 @@ mod tests {
 
         let b = FrameBuffer::new();
         assert_eq!(a, b);
+    }
+
+    #[test]
+    fn a_half_turn_moves_each_pixel_to_the_opposite_corner() {
+        let mut frame = FrameBuffer::new();
+        frame.set_pixel(3, 10, true);
+        frame.rotate_half_turn();
+        assert!(frame.pixel(124, 53));
+        assert_eq!(frame.lit_pixels(), 1);
+        frame.rotate_half_turn();
+        assert!(frame.pixel(3, 10), "two half turns are the identity");
+    }
+
+    #[test]
+    fn shifting_moves_columns_and_darkens_the_gap() {
+        let mut frame = FrameBuffer::new();
+        frame.set_pixel(0, 0, true);
+        frame.set_pixel(127, 63, true);
+        frame.shift_columns(2);
+        assert!(frame.pixel(2, 0));
+        assert_eq!(frame.lit_pixels(), 1, "the right edge fell off");
+        frame.shift_columns(-2);
+        assert!(frame.pixel(0, 0));
+        frame.shift_columns(200);
+        assert_eq!(frame.lit_pixels(), 0);
     }
 }

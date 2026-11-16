@@ -4,6 +4,7 @@
 //! replaced by the deterministic mocks from [`oc_core::testing`].
 
 use oc_core::apps::AppId;
+use oc_core::menu::MenuEntry;
 use oc_core::platform::{Button, CV_CHANNELS, CvChannel};
 use oc_core::testing::{MockEngine, adc_reading, mock_engine};
 
@@ -63,7 +64,7 @@ fn the_up_down_chord_opens_the_menu_without_cycling_the_output_mode() {
     );
     assert_eq!(
         engine.menu_selection(),
-        AppId::Diagnostic,
+        MenuEntry::App(AppId::Diagnostic),
         "the menu opens on the running app"
     );
 }
@@ -104,7 +105,7 @@ fn the_menu_launches_the_highlighted_app() {
 
     chord(&mut engine);
     tap(&mut engine, Button::Down);
-    assert_eq!(engine.menu_selection(), AppId::Scope);
+    assert_eq!(engine.menu_selection(), MenuEntry::App(AppId::Scope));
 
     tap(&mut engine, Button::LeftEncoder);
 
@@ -146,7 +147,7 @@ fn the_left_encoder_also_moves_the_highlight() {
     }
     run_ticks(&mut engine, 1);
 
-    assert_eq!(engine.menu_selection(), AppId::Scope);
+    assert_eq!(engine.menu_selection(), MenuEntry::App(AppId::Scope));
 }
 
 #[test]
@@ -158,7 +159,7 @@ fn reopening_the_menu_highlights_the_running_app() {
     assert_eq!(engine.current_app(), AppId::Scope);
 
     chord(&mut engine);
-    assert_eq!(engine.menu_selection(), AppId::Scope);
+    assert_eq!(engine.menu_selection(), MenuEntry::App(AppId::Scope));
 }
 
 #[test]

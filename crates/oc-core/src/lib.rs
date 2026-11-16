@@ -47,6 +47,7 @@ pub mod presence;
 pub mod settings;
 pub mod signal;
 pub mod splash;
+pub mod system;
 pub mod testing;
 
 pub use apps::diagnostic::{DiagnosticApp, OutputMode};

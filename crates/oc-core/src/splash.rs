@@ -34,6 +34,14 @@ pub const DURATION_MICROS: u32 = 1_500_000;
 /// one 8-pixel text line plus a 2-pixel gap.
 const BUILD_ID_GAP: i32 = 10;
 
+/// The boot gestures, recalled at the bottom of the screen as the reference
+/// firmware does (`[L] => Calibrate`): hold the left encoder for the
+/// calibration, `up` + `down` for the safe-mode settings (journal/D-026).
+pub const GESTURE_HINT: &str = "L:CALIB  UP+DN:SAFE";
+
+/// Baseline row of the gesture hint: just inside the bottom border.
+const GESTURE_HINT_Y: i32 = HEIGHT_I32 - 11;
+
 /// Number of pixels in the one-pixel-wide border traced around the screen:
 /// the perimeter of the `WIDTH_I32 x HEIGHT_I32` rectangle.
 const PERIMETER_PIXELS: u32 = (2 * WIDTH_I32 + 2 * HEIGHT_I32 - 4) as u32;
@@ -126,6 +134,18 @@ impl SplashScreen {
             )
             .draw(frame);
         }
+
+        let hint = TextStyleBuilder::new()
+            .alignment(Alignment::Center)
+            .baseline(Baseline::Top)
+            .build();
+        let _ = Text::with_text_style(
+            GESTURE_HINT,
+            Point::new(WIDTH_I32 / 2, GESTURE_HINT_Y),
+            style,
+            hint,
+        )
+        .draw(frame);
 
         draw_border(frame, self.lit_border_pixels());
     }

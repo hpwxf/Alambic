@@ -251,6 +251,9 @@ impl Tui {
         }
         self.last_advance = now;
         self.simulator.step_many(owed.min(MAX_TICKS_PER_FRAME));
+        if let Some(note) = self.simulator.take_settings_note() {
+            self.status = note;
+        }
     }
 
     /// Applies one keystroke.
@@ -315,7 +318,10 @@ impl Tui {
             KeyCode::Char('3') => self.set_speed(Speed::Turbo(TURBO_FACTOR)),
             KeyCode::Char(' ') => {
                 self.simulator.step();
-                self.status = format!("stepped to tick {}", self.simulator.tick_count());
+                self.status = self
+                    .simulator
+                    .take_settings_note()
+                    .unwrap_or_else(|| format!("stepped to tick {}", self.simulator.tick_count()));
             }
 
             KeyCode::Char('o' | '0') => self.reset(),

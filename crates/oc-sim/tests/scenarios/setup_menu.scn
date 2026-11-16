@@ -1,0 +1,17 @@
+# oc-sim scenario v1
+# Open the app menu with up and down, step up from the first entry to SETUP
+# (the last one), confirm with the right encoder, move down two lines to
+# ROTATE with the left encoder, and turn the right encoder once: the whole
+# screen, settings included, is drawn upside down from then on, before any
+# save (journal/D-026).
+ticks 200
+20  button up down
+20  button down down
+40  button up up
+40  button down up
+60  button up down
+66  button up up
+90  button right down
+96  button right up
+120 encoder 1 +2
+140 encoder 2 +1

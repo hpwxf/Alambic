@@ -190,6 +190,14 @@ pub trait Display {
 
     /// Sends the framebuffer to the screen.
     fn present(&mut self);
+
+    /// Sets the panel contrast, 0 to 255 (journal/D-026).
+    ///
+    /// The engine calls it only when the setting changes. A host without a
+    /// physical panel has nothing to adjust, hence the empty default.
+    fn set_contrast(&mut self, contrast: u8) {
+        let _ = contrast;
+    }
 }
 
 #[cfg(test)]

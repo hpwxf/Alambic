@@ -9,16 +9,17 @@
 use crate::apps::diagnostic::DiagnosticApp;
 use crate::apps::{AppHost, AppId};
 use crate::apps::{InputSnapshot, TickContext};
-use crate::buttons::ButtonReader;
+use crate::buttons::{ButtonEvents, ButtonReader};
 use crate::calibration::Calibration;
 use crate::framebuffer::FrameBuffer;
-use crate::menu::{Menu, MenuOutcome};
+use crate::menu::{Menu, MenuEntry, MenuOutcome};
 use crate::platform::{
-    AnalogIn, AnalogOut, CV_CHANNELS, Clock, Controls, DigitalIn, Display, MilliVolts,
+    AnalogIn, AnalogOut, Button, CV_CHANNELS, Clock, Controls, DigitalIn, Display, MilliVolts,
     TRIGGER_CHANNELS, TriggerChannel,
 };
 use crate::settings::Settings;
 use crate::splash::SplashScreen;
+use crate::system::{Line, SystemOutcome, SystemScreen};
 
 /// Upper bound reported for a tick duration, in microseconds.
 ///
@@ -66,6 +67,8 @@ enum Screen {
     App,
     /// The app picker.
     Menu,
+    /// The system settings; the applet is paused and the outputs rest.
+    System,
 }
 
 /// Drives the applets against a platform.
@@ -81,7 +84,15 @@ pub struct Engine<A, O, D, C, K, S> {
     apps: AppHost,
     splash: SplashScreen,
     menu: Menu,
+    system: SystemScreen,
     buttons: ButtonReader,
+    /// The buttons as last seen during the splash screen: what is still held
+    /// when it ends picks the boot gesture.
+    boot_buttons: ButtonEvents,
+    /// Contrast last sent to the display, so it is only sent on change.
+    applied_contrast: Option<u8>,
+    /// Set when the settings screen saved; taken by the backend.
+    save_requested: bool,
     screen: Screen,
     tick_count: u64,
     previous_micros: Option<u64>,
@@ -119,7 +130,11 @@ where
             apps: AppHost::new(),
             splash: SplashScreen::new(),
             menu: Menu::new(),
+            system: SystemScreen::new(),
             buttons: ButtonReader::new(),
+            boot_buttons: ButtonEvents::default(),
+            applied_contrast: None,
+            save_requested: false,
             screen: Screen::Splash,
             tick_count: 0,
             previous_micros: None,
@@ -160,22 +175,33 @@ where
         if self.screen == Screen::Splash {
             let report = self.tick_splash(started, elapsed);
             if self.splash.is_done() {
-                self.screen = Screen::App;
+                self.screen = self.after_boot();
             }
             return report;
         }
 
         let mut snapshot = self.acquire(elapsed);
-        self.route_panel(&snapshot);
+        // The settings screen reads the encoders as wired (see
+        // `crate::system`); everything else follows the reversal setting.
+        let wired = snapshot.controls.encoder_delta;
+        if self.screen != Screen::System {
+            self.reverse_encoders(&mut snapshot);
+        }
+        self.route_panel(&snapshot, wired);
 
         // The applet keeps running while the menu is up: time advances, the
         // inputs still reach it and its outputs stay live. Only the panel
         // changes hands, so picking an app cannot also move the applet's own
-        // selection behind the menu.
+        // selection behind the menu. The settings screen pauses it and rests
+        // the outputs instead: it may drive them itself (calibration).
         if self.screen == Screen::Menu {
             snapshot.silence_controls();
         }
-        let outputs = self.apps.update(&snapshot);
+        let outputs = if self.screen == Screen::System {
+            [0; CV_CHANNELS]
+        } else {
+            self.apps.update(&snapshot)
+        };
 
         self.write_outputs(&outputs);
 
@@ -187,12 +213,14 @@ where
                 tick_count: self.tick_count,
                 duration_micros: self.last_duration_micros,
             };
-            if self.screen == Screen::Menu {
-                self.menu.render(self.display.frame_mut());
-            } else {
-                self.apps.render(self.display.frame_mut(), &context);
+            match self.screen {
+                Screen::Menu => self.menu.render(self.display.frame_mut()),
+                Screen::System => self.system.render(self.display.frame_mut()),
+                Screen::App | Screen::Splash => {
+                    self.apps.render(self.display.frame_mut(), &context);
+                }
             }
-            self.display.present();
+            self.present();
         }
 
         let duration = clamp_duration(self.clock.now_micros().wrapping_sub(started));
@@ -216,14 +244,14 @@ where
     /// [`Self::render_interval`], so the border traces smoothly.
     fn tick_splash(&mut self, started: u64, elapsed: u32) -> TickReport {
         let controls = self.controls.poll();
-        let _ = self.buttons.update(&controls);
+        self.boot_buttons = self.buttons.update(&controls);
         self.splash.advance(elapsed);
 
         let outputs = [0; CV_CHANNELS];
         self.write_outputs(&outputs);
 
         self.splash.render(self.display.frame_mut());
-        self.display.present();
+        self.present();
 
         let duration = clamp_duration(self.clock.now_micros().wrapping_sub(started));
         self.last_duration_micros = duration;
@@ -251,7 +279,9 @@ where
         self.apps.select(self.settings.startup_app);
         self.splash.reset();
         self.menu.reset();
+        self.system = SystemScreen::new();
         self.buttons = ButtonReader::new();
+        self.boot_buttons = ButtonEvents::default();
         self.screen = Screen::Splash;
         self.tick_count = 0;
         self.previous_micros = None;
@@ -282,27 +312,114 @@ where
     /// The chord is handled before navigation, and never both in one tick: the
     /// tick that opens the menu must not also move its highlight or close it
     /// again.
-    fn route_panel(&mut self, snapshot: &InputSnapshot) {
+    ///
+    /// On the settings screen the chord leaves without keeping the draft, like
+    /// `EXIT`, rather than opening the menu over it.
+    fn route_panel(&mut self, snapshot: &InputSnapshot, wired: [i8; 2]) {
         if snapshot.buttons.menu_chord() {
-            if self.screen == Screen::Menu {
-                self.screen = Screen::App;
-            } else {
-                self.menu.open(self.apps.current());
-                self.screen = Screen::Menu;
+            match self.screen {
+                Screen::Menu => self.screen = Screen::App,
+                Screen::System => {
+                    self.settings = *self.system.original();
+                    self.screen = Screen::App;
+                }
+                Screen::App | Screen::Splash => {
+                    self.menu.open(self.apps.current());
+                    self.screen = Screen::Menu;
+                }
             }
             return;
         }
 
-        if self.screen != Screen::Menu {
-            return;
+        match self.screen {
+            Screen::Menu => {
+                match self
+                    .menu
+                    .update(&snapshot.buttons, snapshot.controls.delta(0))
+                {
+                    Some(MenuOutcome::Launch(chosen)) => {
+                        self.apps.select(chosen);
+                        self.screen = Screen::App;
+                    }
+                    Some(MenuOutcome::OpenSetup) => {
+                        self.system.open(self.settings, Line::StartupApp);
+                        self.screen = Screen::System;
+                    }
+                    None => {}
+                }
+            }
+            Screen::System => self.route_system(&snapshot.buttons, wired),
+            Screen::App | Screen::Splash => {}
         }
-        if let Some(MenuOutcome::Launch(chosen)) = self
-            .menu
-            .update(&snapshot.buttons, snapshot.controls.delta(0))
+    }
+
+    /// Drives the settings screen; the engine runs with its draft while open.
+    fn route_system(&mut self, buttons: &ButtonEvents, wired: [i8; 2]) {
+        match self.system.update(buttons, wired) {
+            Some(SystemOutcome::Save(settings)) => {
+                self.settings = settings;
+                self.save_requested = true;
+                self.screen = Screen::App;
+            }
+            Some(SystemOutcome::Exit(settings)) => {
+                self.settings = settings;
+                self.screen = Screen::App;
+            }
+            // The wizard arrives with lot 4d; until then the line is inert.
+            Some(SystemOutcome::Calibrate) | None => self.settings = *self.system.draft(),
+        }
+    }
+
+    /// Where the module goes once the splash screen has played: the settings
+    /// screen if a boot gesture is still held (journal/D-026), the startup
+    /// applet otherwise.
+    ///
+    /// * `up` + `down`: safe mode, the screen and encoder preferences at their
+    ///   defaults until saved;
+    /// * the left encoder switch: the settings, on the calibration line.
+    fn after_boot(&mut self) -> Screen {
+        let held = self.boot_buttons;
+        if held.held(Button::Up) && held.held(Button::Down) {
+            self.system.open_safe(self.settings);
+            self.settings = *self.system.draft();
+            Screen::System
+        } else if held.held(Button::LeftEncoder) {
+            self.system.open(self.settings, Line::Calibrate);
+            Screen::System
+        } else {
+            Screen::App
+        }
+    }
+
+    /// Negates the detents of each encoder set to reversed.
+    fn reverse_encoders(&self, snapshot: &mut InputSnapshot) {
+        for (delta, &reversed) in snapshot
+            .controls
+            .encoder_delta
+            .iter_mut()
+            .zip(&self.settings.encoder_reversed)
         {
-            self.apps.select(chosen);
-            self.screen = Screen::App;
+            if reversed {
+                *delta = delta.saturating_neg();
+            }
         }
+    }
+
+    /// Sends the frame, after the screen preferences: the contrast when it
+    /// changed, then the shift and the half turn, applied to the pixels in
+    /// the core so every backend and controller shows the same picture.
+    fn present(&mut self) {
+        let display = self.settings.display;
+        if self.applied_contrast != Some(display.contrast) {
+            self.display.set_contrast(display.contrast);
+            self.applied_contrast = Some(display.contrast);
+        }
+        let frame = self.display.frame_mut();
+        if display.rotated {
+            frame.rotate_half_turn();
+        }
+        frame.shift_columns(i32::from(display.column_shift));
+        self.display.present();
     }
 
     /// Samples every input.
@@ -402,10 +519,34 @@ where
         matches!(self.screen, Screen::Menu)
     }
 
-    /// The app the menu is highlighting, meaningful only while it is open.
+    /// The entry the menu is highlighting, meaningful only while it is open.
     #[must_use]
-    pub const fn menu_selection(&self) -> AppId {
+    pub const fn menu_selection(&self) -> MenuEntry {
         self.menu.selected()
+    }
+
+    /// Whether the system settings screen currently owns the panel.
+    #[must_use]
+    pub const fn system_is_open(&self) -> bool {
+        matches!(self.screen, Screen::System)
+    }
+
+    /// The system settings screen, for inspection by tests and host UIs.
+    #[must_use]
+    pub const fn system(&self) -> &SystemScreen {
+        &self.system
+    }
+
+    /// Whether the settings screen asked for the settings to be stored since
+    /// the last call; the request is consumed.
+    ///
+    /// The backend owns the store ([`crate::settings::SettingsStore`]): on
+    /// `true` it saves [`Self::settings`]. The save blocks; it only ever
+    /// follows an explicit `SAVE`.
+    pub const fn take_save_request(&mut self) -> bool {
+        let requested = self.save_requested;
+        self.save_requested = false;
+        requested
     }
 
     /// The framebuffer as last rendered.

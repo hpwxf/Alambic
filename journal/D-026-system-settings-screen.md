@@ -5,7 +5,7 @@
 | **Identifiant** | D-026 |
 | **Date** | 2026-11-16 |
 | **Auteur** | Pascal Havé |
-| **Statut** | adoptée |
+| **Statut** | adoptée, révisée |
 | **Commits** | ce commit (ADR) ; implémentation au lot 4c de l'étape 4 |
 | **Relations** | **étend** D-021 (menu haut + bas : un item de plus) et D-020 (écran de démarrage : des gestes) ; sert D-002 (même écran sur les trois backends) ; s'appuie sur D-027 (calibration) et D-028 (persistance) |
 
@@ -76,3 +76,27 @@ applet, parce qu'il pilote les sorties pendant la calibration et ne doit jamais 
 * Un geste de démarrage qui entre en conflit avec un usage d'applet : décaler vers un autre geste Phazerville.
 * Un applet qui a besoin de réglages propres persistants : généraliser l'écran en pages (système, puis une par
   applet) plutôt que dupliquer.
+
+## Révision (2026-11-16, lot 4c) — ce que l'implémentation a fixé
+
+* **Item du menu** : `SETUP` (et non `SYSTEM`), dernière entrée, une ligne vide sous les applets
+  (`MenuEntry::Setup`, `MenuOutcome::OpenSetup`).
+* **Brouillon** : l'écran édite une copie des `Settings` que l'`Engine` applique pendant qu'il est ouvert (aperçu
+  immédiat du contraste, de la rotation, du décalage). `SAVE` garde le brouillon et lève une demande de sauvegarde
+  (`Engine::take_save_request`), que le backend satisfait avec son `SettingsStore` (D-028) ; `EXIT` ou l'accord
+  `up` + `down` rétablit les réglages d'entrée. Pas de confirmation de sortie : rien n'est perdu de ce qui était
+  enregistré.
+* **Encodeurs** : l'écran lit toujours les encodeurs tels que câblés, quelle que soit leur inversion (au lieu
+  d'ignorer l'inversion du seul réglage en cours d'édition) : plus simple, et l'écran qui répare un réglage ne peut
+  jamais être rendu inutilisable par lui.
+* **Applet de démarrage** : une ligne explicite (`START APP`), et non « le dernier choisi » mémorisé à chaque
+  lancement depuis le menu : une écriture flash par changement d'applet serait une usure sans demande explicite.
+* **Gestes** : lus sur l'état anti-rebondi des boutons à la fin de l'écran de démarrage ; l'accord `up` + `down`
+  tenu pendant le démarrage n'ouvre pas le menu. Rappel en bas de l'écran de démarrage :
+  `L:CALIB  UP+DN:SAFE`.
+* **Sorties** : l'applet est en pause et les sorties à 0 V tant que l'écran est ouvert.
+* **Écran** : rotation (`FrameBuffer::rotate_half_turn`) puis décalage (`FrameBuffer::shift_columns`, ±8 colonnes)
+  appliqués aux pixels dans le cœur avant `present`, sur tous les écrans, démarrage compris ; contraste par
+  `Display::set_contrast` (méthode à corps vide par défaut, commande `0x81` sur SSD130x), envoyé seulement quand il
+  change.
+* **Calibration** : la ligne `CALIBRATE` existe mais reste inerte jusqu'au lot 4d.

@@ -56,6 +56,7 @@ pub struct Simulator {
     recording: Option<Scenario>,
     last_report: Option<TickReport>,
     settings: Option<SettingsFile>,
+    settings_note: Option<String>,
 }
 
 /// The settings flash of a simulated module, mirrored to a file.
@@ -84,6 +85,7 @@ impl Simulator {
             recording: None,
             last_report: None,
             settings: None,
+            settings_note: None,
         }
     }
 
@@ -124,6 +126,24 @@ impl Simulator {
             store,
         });
         Ok(outcome)
+    }
+
+    /// Whether the system settings screen currently owns the panel.
+    #[must_use]
+    pub const fn system_is_open(&self) -> bool {
+        self.engine.system_is_open()
+    }
+
+    /// The settings in force (the draft while the settings screen is open).
+    #[must_use]
+    pub const fn settings(&self) -> &oc_core::settings::Settings {
+        self.engine.settings()
+    }
+
+    /// What became of the last save the settings screen asked for, once:
+    /// for the interface to show.
+    pub fn take_settings_note(&mut self) -> Option<String> {
+        self.settings_note.take()
     }
 
     /// Saves the settings in force to the attached file, as the module saves
@@ -254,6 +274,18 @@ impl Simulator {
     pub fn step(&mut self) -> TickReport {
         self.engine.clock().advance(TICK_MICROS);
         let report = self.engine.tick();
+        if self.engine.take_save_request() {
+            let saved = self.save_settings();
+            let path = self
+                .settings
+                .as_ref()
+                .map(|file| file.path.display().to_string());
+            self.settings_note = Some(match (path, saved) {
+                (None, _) => "settings kept for this session (no --settings file)".to_owned(),
+                (Some(path), Ok(())) => format!("settings saved to {path}"),
+                (Some(_), Err(error)) => format!("settings NOT saved: {error}"),
+            });
+        }
         self.tick = self.tick.wrapping_add(1);
         self.last_report = Some(report);
         self.expire_holds();

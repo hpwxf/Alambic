@@ -1,4 +1,5 @@
-//! The app picker, opened by holding `up` and `down` together.
+//! The app picker, opened by holding `up` and `down` together; its last entry,
+//! `SETUP`, opens the system settings screen (journal/D-026).
 //!
 //! Like [`SplashScreen`](crate::splash::SplashScreen), this is a screen that
 //! owns the display without owning the outputs: while it is up the running
@@ -34,17 +35,54 @@ const FIRST_ROW: i32 = 2;
 /// Horizontal padding of a list entry, so text does not touch the highlight edge.
 const TEXT_INSET: i32 = 2;
 
-/// The list must fit on screen; adding an app past that is a compile error.
+/// Label of the entry that opens the system settings.
+const SETUP_LABEL: &str = "SETUP";
+
+/// Number of entries: every app, then `SETUP`.
+const ENTRIES: usize = AppId::ALL.len() + 1;
+
+/// The list must fit on screen, `SETUP` one blank row below the apps; adding
+/// an app past that is a compile error.
 const _: () = assert!(
-    AppId::ALL.len() <= (ROWS - FIRST_ROW) as usize,
+    ENTRIES < (ROWS - FIRST_ROW) as usize,
     "the app list no longer fits on the screen"
 );
+
+/// One line of the menu.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MenuEntry {
+    /// An applet to run.
+    App(AppId),
+    /// The system settings screen.
+    Setup,
+}
+
+impl MenuEntry {
+    /// The entry at `index`, apps first.
+    const fn at(index: usize) -> Self {
+        match AppId::from_index(index) {
+            Some(id) => Self::App(id),
+            None => Self::Setup,
+        }
+    }
+
+    /// Screen row of the entry at `index`: `SETUP` sits one blank row below
+    /// the apps, so it does not read as one of them.
+    #[allow(clippy::cast_possible_truncation, clippy::cast_possible_wrap)]
+    // `index` is below `ENTRIES`, a handful, checked at compile time above.
+    const fn row(index: usize) -> i32 {
+        let gap = if index >= AppId::ALL.len() { 1 } else { 0 };
+        FIRST_ROW + index as i32 + gap
+    }
+}
 
 /// What the menu decided on this tick.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MenuOutcome {
     /// The highlighted app was confirmed and should start running.
     Launch(AppId),
+    /// `SETUP` was confirmed: open the system settings.
+    OpenSetup,
 }
 
 /// The app picker.
@@ -70,16 +108,10 @@ impl Menu {
         self.selected = current.index();
     }
 
-    /// The app currently highlighted.
+    /// The entry currently highlighted.
     #[must_use]
-    pub const fn selected(&self) -> AppId {
-        match AppId::from_index(self.selected) {
-            Some(id) => id,
-            // Unreachable while `selected` is only ever set through `move_by`
-            // and `open`, both of which keep it in range; falling back beats
-            // panicking in a 1 kHz interrupt.
-            None => AppId::Diagnostic,
-        }
+    pub const fn selected(&self) -> MenuEntry {
+        MenuEntry::at(self.selected)
     }
 
     /// Moves the highlight, wrapping in both directions.
@@ -87,7 +119,7 @@ impl Menu {
         if steps == 0 {
             return;
         }
-        let count = i32::try_from(AppId::ALL.len()).unwrap_or(1);
+        let count = i32::try_from(ENTRIES).unwrap_or(1);
         let selected = i32::try_from(self.selected).unwrap_or(0);
         self.selected =
             usize::try_from((selected + steps).rem_euclid(count)).unwrap_or(self.selected);
@@ -109,7 +141,10 @@ impl Menu {
         self.move_by(steps);
 
         if buttons.pressed(Button::LeftEncoder) || buttons.pressed(Button::RightEncoder) {
-            return Some(MenuOutcome::Launch(self.selected()));
+            return Some(match self.selected() {
+                MenuEntry::App(id) => MenuOutcome::Launch(id),
+                MenuEntry::Setup => MenuOutcome::OpenSetup,
+            });
         }
         None
     }
@@ -121,8 +156,12 @@ impl Menu {
         let dark = MonoTextStyle::new(&FONT_5X8, BinaryColor::Off);
         let _ = Text::with_baseline(TITLE, Point::zero(), lit, Baseline::Top).draw(frame);
 
-        for (index, id) in AppId::ALL.into_iter().enumerate() {
-            let row = FIRST_ROW + i32::try_from(index).unwrap_or(0);
+        for index in 0..ENTRIES {
+            let label = match MenuEntry::at(index) {
+                MenuEntry::App(id) => id.name(),
+                MenuEntry::Setup => SETUP_LABEL,
+            };
+            let row = MenuEntry::row(index);
             let top_left = Point::new(0, row * ROW_HEIGHT);
             let highlighted = index == self.selected;
             if highlighted {
@@ -139,14 +178,14 @@ impl Menu {
             }
             let style = if highlighted { dark } else { lit };
             let text_at = Point::new(TEXT_INSET, top_left.y);
-            let _ = Text::with_baseline(id.name(), text_at, style, Baseline::Top).draw(frame);
+            let _ = Text::with_baseline(label, text_at, style, Baseline::Top).draw(frame);
         }
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{FIRST_ROW, Menu, MenuOutcome};
+    use super::{FIRST_ROW, Menu, MenuEntry, MenuOutcome};
     use crate::apps::AppId;
     use crate::buttons::{ButtonEvents, ButtonReader};
     use crate::framebuffer::ROW_HEIGHT;
@@ -187,38 +226,52 @@ mod tests {
     fn opening_highlights_the_running_app() {
         let mut menu = Menu::new();
         menu.open(AppId::Scope);
-        assert_eq!(menu.selected(), AppId::Scope);
+        assert_eq!(menu.selected(), MenuEntry::App(AppId::Scope));
         menu.reset();
-        assert_eq!(menu.selected(), AppId::Diagnostic);
+        assert_eq!(menu.selected(), MenuEntry::App(AppId::Diagnostic));
     }
 
     #[test]
     fn the_highlight_wraps_in_both_directions() {
         let mut menu = Menu::new();
-        let count = i32::try_from(AppId::ALL.len()).unwrap();
+        let count = i32::try_from(AppId::ALL.len() + 1).unwrap();
 
         menu.move_by(-1);
-        assert_eq!(menu.selected(), AppId::ALL[AppId::ALL.len() - 1]);
+        assert_eq!(menu.selected(), MenuEntry::Setup, "SETUP is last");
         menu.move_by(1);
-        assert_eq!(menu.selected(), AppId::Diagnostic);
+        assert_eq!(menu.selected(), MenuEntry::App(AppId::Diagnostic));
         menu.move_by(count * 3);
-        assert_eq!(menu.selected(), AppId::Diagnostic, "a full turn comes home");
+        assert_eq!(
+            menu.selected(),
+            MenuEntry::App(AppId::Diagnostic),
+            "a full turn comes home"
+        );
     }
 
     #[test]
     fn up_and_down_move_the_highlight() {
         let mut menu = Menu::new();
         assert_eq!(menu.update(&press(Button::Down), 0), None);
-        assert_eq!(menu.selected(), AppId::Scope);
+        assert_eq!(menu.selected(), MenuEntry::App(AppId::Scope));
         assert_eq!(menu.update(&press(Button::Up), 0), None);
-        assert_eq!(menu.selected(), AppId::Diagnostic);
+        assert_eq!(menu.selected(), MenuEntry::App(AppId::Diagnostic));
     }
 
     #[test]
     fn the_left_encoder_moves_the_highlight_clockwise_down_the_list() {
         let mut menu = Menu::new();
         assert_eq!(menu.update(&ButtonEvents::default(), 1), None);
-        assert_eq!(menu.selected(), AppId::Scope);
+        assert_eq!(menu.selected(), MenuEntry::App(AppId::Scope));
+    }
+
+    #[test]
+    fn confirming_setup_asks_for_the_settings_screen() {
+        let mut menu = Menu::new();
+        menu.move_by(-1);
+        assert_eq!(
+            menu.update(&press(Button::RightEncoder), 0),
+            Some(MenuOutcome::OpenSetup)
+        );
     }
 
     #[test]
@@ -269,12 +322,12 @@ mod tests {
     fn every_app_is_listed_on_its_own_row() {
         let mut frame = FrameBuffer::new();
         Menu::new().render(&mut frame);
-        for index in 0..AppId::ALL.len() {
-            let row = usize::try_from(FIRST_ROW).unwrap() + index;
+        for index in 0..=AppId::ALL.len() {
+            let row = usize::try_from(MenuEntry::row(index)).unwrap();
             let page = &frame.as_bytes()[row * WIDTH..(row + 1) * WIDTH];
             assert!(
                 page.iter().any(|&byte| byte != 0),
-                "row {row} must show an app name"
+                "row {row} must show an entry"
             );
         }
         assert_eq!(

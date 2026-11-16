@@ -249,6 +249,8 @@ pub struct MockDisplay {
     frame: FrameBuffer,
     /// Number of times the frame was presented.
     pub presents: u32,
+    /// Last contrast the engine set, `None` before the first.
+    pub contrast: Option<u8>,
 }
 
 impl MockDisplay {
@@ -258,6 +260,7 @@ impl MockDisplay {
         Self {
             frame: FrameBuffer::new(),
             presents: 0,
+            contrast: None,
         }
     }
 
@@ -275,6 +278,10 @@ impl Display for MockDisplay {
 
     fn present(&mut self) {
         self.presents = self.presents.saturating_add(1);
+    }
+
+    fn set_contrast(&mut self, contrast: u8) {
+        self.contrast = Some(contrast);
     }
 }
 

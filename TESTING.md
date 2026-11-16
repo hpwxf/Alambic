@@ -563,6 +563,23 @@ module instead of being edited into the source.
    interface) that the four outputs are a saw wave roughly a quarter-period
    apart, per Level 1's `the_four_ramp_channels_are_a_quarter_period_apart`.
 
+### 9.5b — System settings
+
+1. Open the app menu, go to `SETUP`, press the right encoder: the settings
+   screen opens and all four outputs read 0 V.
+2. On `CONTRAST`, turn the right encoder: the panel brightens and dims at
+   once. On `ROTATE`, one detent turns the whole picture upside down; on
+   `SHIFT`, the picture moves sideways one column per detent.
+3. On `ENC LEFT`, reverse the left encoder, choose `EXIT`: nothing is kept.
+   Do it again and choose `SAVE`: in the diagnostic applet the left encoder
+   now moves the channel selection the other way. Until the flash store
+   exists (step 4, lot 4e) the USB log reports the save request and the
+   setting lasts until power-off.
+4. Power-cycle holding the left encoder switch until the splash screen ends:
+   the settings open on `CALIBRATE`. Power-cycle holding `up` + `down`: they
+   open in `SAFE MODE`, upright and with the encoders as wired, and the app
+   menu does not open.
+
 ### 9.6 — Sign-off
 
 Record the outcome (pass/fail per section, measured calibration values, OLED

@@ -53,6 +53,31 @@ their own action on **release**, and not at all when the chord formed while they
 were down. That is the only way the first of the two presses cannot act before
 the chord is even detectable.
 
+## System settings
+
+The last entry of the app menu, `SETUP`, opens the system settings: the app
+the module starts in, the screen contrast, a 180° rotation for a module
+mounted upside down, a horizontal picture shift, the direction of each
+encoder, and (from the next release) the calibration wizard. `up`/`down` or
+the left encoder move between lines, the right encoder changes the
+highlighted value, and pressing the right encoder runs `SAVE` or `EXIT`.
+Changes show at once; `SAVE` keeps and stores them, `EXIT` or `up` + `down`
+leaves and puts back what was in force. The app is paused and the outputs sit
+at 0 V while the screen is open. The screen always reads the encoders as
+wired, whatever their direction setting.
+
+Two gestures work at power-up, held until the splash screen ends (it recalls
+them at the bottom):
+
+| Held through the splash | Opens                                                         |
+|-------------------------|---------------------------------------------------------------|
+| left encoder switch     | the settings, on the calibration line                         |
+| `up` + `down`           | the settings in **safe mode**: screen and encoders at their defaults until saved, to recover from a setting that made the module hard to use |
+
+The simulator keeps the settings in a file (`--settings`, see below), VCV
+Rack in the patch. The firmware does not store them yet: a `SAVE` lasts until
+the next power cycle.
+
 ## The diagnostic applet
 
 The first milestone's application is deliberately trivial musically: it makes

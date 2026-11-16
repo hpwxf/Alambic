@@ -220,6 +220,26 @@ fn every_scenario_replays_identically_twice() {
 }
 
 #[test]
+fn the_setup_screen_previews_a_rotation_before_any_save() {
+    let mut simulator = replay("setup_menu");
+    assert!(!simulator.menu_is_open());
+    assert!(
+        simulator.system_is_open(),
+        "SETUP opened the settings screen"
+    );
+    assert!(
+        simulator.settings().display.rotated,
+        "the draft is in force"
+    );
+    assert_eq!(
+        simulator.cv_out(),
+        [0; 4],
+        "the applet is paused, outputs at rest"
+    );
+    assert_screen_matches(&mut simulator, "setup_menu");
+}
+
+#[test]
 fn every_scenario_file_has_a_test_and_a_snapshot() {
     let known = [
         "cv_passthrough",
@@ -227,6 +247,7 @@ fn every_scenario_file_has_a_test_and_a_snapshot() {
         "encoder_offset",
         "mode_cycle",
         "app_menu",
+        "setup_menu",
     ];
 
     let mut found: Vec<String> = std::fs::read_dir(scenario_dir())

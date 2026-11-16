@@ -61,7 +61,7 @@ seul ; interaction et modèle de calibration repris de Phazerville. Plan détail
 |---|---|---|
 | **4a** — conversion dans le cœur | ✅ traits en codes bruts (`read_code` / `write_code`) ; `Engine` convertit avec sa `Calibration` (entrées affines par canal, sorties en table de 11 points) ; `Calibration::FACTORY` de Phazerville partagée par les trois backends (révision de D-027) ; `board.rs` sans calibration | fait |
 | **4b** — modèle et stockage | ✅ `oc_core::settings` (`Settings`, `SettingsStore` sur `NorFlash`, `encode`/`decode`), `Engine::apply_settings` ; simulateur `run --settings` ; ABI Rack + JSON du patch (C++ non compilé ici : pas de Rack SDK) ; firmware sans persistance jusqu'à 4e | fait |
-| **4c** — écran système | `Screen::System`, item `SETUP`, gestes au démarrage, réglages hors calibration | à faire |
+| **4c** — écran système | ✅ `oc_core::system` (`Screen::System`), item `SETUP`, gestes au démarrage (encodeur gauche, `up` + `down` = secours), brouillon appliqué en direct, `SAVE` / `EXIT` ; rotation et décalage dans le cœur, `Display::set_contrast` ; demande de sauvegarde consommée par les backends (révision de D-026) | fait |
 | **4d** — assistant de calibration | étapes Phazerville (DAC, zéros ADC, gain ADC par rebouclage) | à faire |
 | **4e** — flash du module | `NorFlash` via l'API ROM, zone `0x601F_0000`–`0x601F_3FFF` | à faire |
 | **4f** — mesure | calibration réelle du module TLM ; seuil D-024 ; version 0.3.0 | à faire |

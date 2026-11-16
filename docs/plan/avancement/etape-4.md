@@ -11,6 +11,10 @@ mesures ; il sera complété à la fin de l'étape.
   ABI et JSON du patch Rack (révision de D-028). Reste à vérifier dans Rack : réglages restaurés à la réouverture
   d'un patch (le C++ n'a pas été compilé, faute de Rack SDK sur la machine de développement).
 
+* **4c** : écran système (`SETUP`, gestes au démarrage, mode secours), réglages d'écran et d'encodeurs appliqués
+  (révision de D-026). À vérifier sur le module : contraste visible, rotation et décalage, gestes au démarrage, sens
+  des encodeurs ; le firmware ne sauvegarde pas encore (4e).
+
 ## Mesures sur le module TLM
 
 ### 2026-11-16 — sorties en mode ZERO, calibration d'usine (`e73d873`)

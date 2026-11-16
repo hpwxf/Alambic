@@ -222,6 +222,11 @@ fn main() -> ! {
             panel.sample();
         }
         let report = engine.tick();
+        if engine.take_save_request() {
+            // The flash store arrives with step 4, lot 4e (journal/D-028):
+            // until then a SAVE lasts until the next power cycle.
+            log::warn!("settings save requested: no flash store yet, kept until power-off");
+        }
         {
             let inputs = engine.calibration().inputs;
             let (cv_inputs, ..) = engine.parts_mut();
