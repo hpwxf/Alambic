@@ -28,3 +28,7 @@
 
 # macOS
 .DS_Store
+
+# Tool-specific agent files are local; AGENTS.md is the shared guide
+# (journal/D-001).
+/CLAUDE.md
