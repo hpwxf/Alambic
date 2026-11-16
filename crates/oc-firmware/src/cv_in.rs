@@ -3,8 +3,9 @@
 //! All four Ornament & Crime CV pads (Teensy pins 19, 18, 20 and 17) are wired
 //! to `GPIO_AD_B1_*` pads, which `imxrt-iomuxc` exposes on both ADC1 and ADC2.
 //! Using a single bank keeps the four readings in a predictable order at the
-//! cost of serialising them, which is affordable: four blocking 12-bit
-//! conversions cost a few microseconds out of the 1000 the tick has.
+//! cost of serialising them: four blocking 12-bit conversions with four
+//! hardware averages cost 288 us measured on the module (lot 3b1), about
+//! 72 us each, a third of the 1000 the tick has.
 //!
 //! The channel numbers are resolved from the pad *types*, never hand-written,
 //! which removes the classic "the inputs are shuffled" failure mode.

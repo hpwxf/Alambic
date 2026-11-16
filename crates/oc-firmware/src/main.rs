@@ -282,6 +282,10 @@ fn main() -> ! {
 
     let mut ticks: u32 = 0;
     loop {
+        // The period runs from here, sampling included: pacing from the
+        // tick's own start left the sampling outside it and stretched every
+        // period by its cost (288 us measured, lot 3b1).
+        let period_start = engine.clock().now_micros();
         let mark = engine.clock().fine_count();
         {
             let (cv_inputs, _, triggers, panel, _) = engine.parts_mut();
@@ -375,7 +379,7 @@ fn main() -> ! {
         // A 64-bit microsecond counter takes 584 000 years to wrap, so a plain
         // comparison is safe here; the clock folds the 32-bit hardware rollover
         // away for us.
-        let deadline = report.timestamp_micros + u64::from(board::TICK_PERIOD_MICROS);
+        let deadline = period_start + u64::from(board::TICK_PERIOD_MICROS);
         while engine.clock().now_micros() < deadline {
             // Poll USB inside the idle spin so bulk log traffic still drains
             // when a tick finishes early.
