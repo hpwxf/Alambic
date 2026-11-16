@@ -75,13 +75,14 @@ fn watch_git(git_dir: &Path) {
 /// artefacts (`target/`, the plugin's `build/`) are not listed, so building
 /// does not retrigger itself.
 fn watch_tracked_files() {
-    let (Some(top), Some(files)) = (
-        git(&["rev-parse", "--show-toplevel"]),
-        git(&["ls-files", "-z"]),
-    ) else {
+    let Some(top) = git(&["rev-parse", "--show-toplevel"]).map(PathBuf::from) else {
         return;
     };
-    let top = PathBuf::from(top);
+    // From the top level: run from the calling crate's directory, `ls-files`
+    // would list only that crate, relative to it.
+    let Some(files) = git_in(Some(&top), &["ls-files", "-z"]) else {
+        return;
+    };
     for file in files.split('\0').filter(|file| !file.is_empty()) {
         println!("cargo:rerun-if-changed={}", top.join(file).display());
     }
@@ -90,7 +91,16 @@ fn watch_tracked_files() {
 /// Runs `git` with `arguments` and returns its trimmed standard output, or
 /// `None` if git is missing or fails.
 fn git(arguments: &[&str]) -> Option<String> {
-    let output = Command::new("git")
+    git_in(None, arguments)
+}
+
+/// [`git`], run from `directory` instead of the build script's own.
+fn git_in(directory: Option<&Path>, arguments: &[&str]) -> Option<String> {
+    let mut command = Command::new("git");
+    if let Some(directory) = directory {
+        command.current_dir(directory);
+    }
+    let output = command
         .args(arguments)
         // Without this, `git status` opportunistically rewrites `.git/index`,
         // which would make the next build rerun this script forever.
