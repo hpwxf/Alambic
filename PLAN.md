@@ -41,7 +41,7 @@ comportemental (`oc-core`, D-002). Les applets musicaux sont la suite.
 | **2** — plusieurs applets (2026-08-19 → 09-05) | ✅ menu par accord haut + bas, applets résidents, `ScopeApp`, haut / bas au relâchement (D-021) ; module Rack renommé `Alambic` (D-015) ; étude supersaw (base de D-023). Réserve : CI rouge avec `--all-features` depuis l'ajout de la feature `octant` (D-013) | [etape-2.md](docs/plan/avancement/etape-2.md) |
 | **4** — réglages système, calibration, persistance (2026-11-16) | ✅ écran `SETUP` et gestes de démarrage façon Phazerville (D-026) ; conversion dans `oc-core`, valeurs d'usine de Phazerville, assistant de calibration (D-027) ; réglages dans la flash du Teensy par l'API ROM, fichier (sim), patch (Rack) (D-028) ; seuil de présence 50 mV mesuré (D-024). Version **0.3.0**. Réserve : C++ Rack non compilé | [etape-4.md](docs/plan/avancement/etape-4.md) |
 
-### Étape 3 — assainissement, puis choix de la cadence (en cours, reprend après l'étape 4)
+### Étape 3 — assainissement, puis choix de la cadence (en cours)
 
 Ouverte par la revue du 2026-11-16 ([revue-decisions-2026-11-16.md](docs/plan/revue-decisions-2026-11-16.md)).
 D-023 (double cadence) est **proposée** ; elle ne s'adopte qu'après 3a et la mesure de 3b.
@@ -49,7 +49,7 @@ D-023 (double cadence) est **proposée** ; elle ne s'adopte qu'après 3a et la m
 | Lot | Contenu | État |
 |---|---|---|
 | **3a** — dette de revue | ✅ CI verte avec `--all-features` (R1, D-013) ; ✅ triggers sans anti-rebond mécanique (R2, D-019) ; ✅ règle du brochage rendue vraie et testée (R3, D-007) ; ✅ docs « jamais sur matériel » / « jamais dans Rack » corrigées (R4, D-011, D-015) ; ✅ `flash --dry-run` en CI (V5, D-016) ; ✅ plus de présence de câble, backends alignés (R5, D-019) ; ✅ plan de cadence suivi par git, conflit avec l'étude audio consigné, OLED par pages proposé (R6, D-023) | fait — version **0.2.0** (plugin Rack 2.2.0, `CHANGELOG.md`) |
-| **3b** — mesure sur module | niveau 9 (CV, triggers ; la calibration passe à l'étape 4) ; coût réel d'une trame OLED et gigue de la boucle (GPIO + oscilloscope, `docs/supersaw/` § 13) | à faire |
+| **3b** — sonde et mesure sur module | sonde live (D-029, plan : [etape-3b-sonde.md](docs/plan/etape-3b-sonde.md)) : 3b1 profilage dans le cœur ; 3b2 protocole `oc-protocol` ; 3b3 firmware (deux ports CDC) ; 3b4 outil `oc-probe` ; 3b5 niveau 9 (CV, triggers ; la calibration est faite à l'étape 4), coût réel d'une trame OLED et d'une page, gigue de la boucle | à faire |
 | **3c** — cadence | trancher D-023 (A, B ou C ; plan A : [etape-3-plan-a-isr-16khz.md](docs/plan/etape-3-plan-a-isr-16khz.md)) ; scinder `Engine::tick` en `signal_tick` / `ui_tick` dans `oc-core` | à faire |
 
 ### Étape 4 — réglages système, calibration, persistance (terminée)
@@ -99,3 +99,4 @@ Valeurs seules ; le raisonnement est dans `journal/`.
 | identifiant de build | hash court + `-dirty` sous la version, écran de démarrage des trois backends ; calculé par `oc-buildinfo` (vergen-gix, sans binaire `git`), jamais dans `oc-core` | D-025 |
 | réglages système | écran `oc-core` hors applets ; gestes au démarrage (encodeur gauche ⇒ calibration, `up` + `down` ⇒ secours) et item `SETUP` ; interaction de Phazerville | D-026 |
 | persistance | `postcard` + `sequential-storage` sur `embedded-storage` ; flash Teensy 4.0 par l'API ROM (`unsafe` confiné) ; fichier (sim) ; JSON du patch (Rack) | D-028 |
+| sonde live | *proposée* : profilage dans `oc-core` (DWT sur le module), second port USB CDC binaire `postcard` COBS, crates `oc-protocol` et `oc-probe`, toujours compilée | D-029 |

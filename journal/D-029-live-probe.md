@@ -1,0 +1,84 @@
+# D-029 — Sonde live : profilage dans le cœur, second port USB CDC binaire, outil hôte `oc-probe`
+
+| | |
+|---|---|
+| **Identifiant** | D-029 |
+| **Date** | 2026-11-16 |
+| **Auteur** | Pascal Havé |
+| **Statut** | proposée |
+| **Commits** | ce commit (ADR) ; implémentation aux lots 3b1 (profilage), 3b2 (protocole, firmware, outil hôte) de l'étape 3 |
+| **Relations** | **révise** D-002 (une capacité de plus sur `Clock`), D-003 (deux crates de plus), D-011 (deux ports CDC, sans `imxrt-log`) ; sert D-023 (mesure du lot 3b) ; touche D-016 (redémarrage en mode chargement sans bouton) |
+
+## 1. Contexte
+
+Le diagnostic hôte du module se limite à un journal texte sur USB CDC (`imxrt-log`, D-011) : des lignes à sens
+unique, une par seconde. Le lot 3b doit mesurer le coût réel d'une trame OLED et la gigue de la boucle (D-023) ;
+le protocole prévu (GPIO + oscilloscope, `docs/supersaw/` § 13) demande deux sondes, des broches libres et une
+lecture à l'œil.
+
+Demande de l'utilisateur (2026-11-16) : une interface plus élaborée pour capter des informations fines pendant
+l'exécution, qui serve aussi au profilage, sous la forme d'un outil du projet avec des capacités dans les deux sens
+(envoi de commandes, réception d'informations) avec le module en marche.
+
+Contraintes : pas d'UART (D-011) ; pas de sonde SWD accessible sur le Teensy 4.0 ; la boucle est coopérative et
+sans exécuteur (D-008) ; `oc-core` reste `no_std` et sans `unsafe`.
+
+## 2. Options envisagées
+
+**Transport.**
+
+* **T1 — deux ports CDC** sur un même périphérique USB composite : le premier garde le journal texte (lisible par
+  `screen`), le second porte un protocole binaire réservé à l'outil hôte.
+* **T2 — un port, tout encadré** : le journal devient un type de message ; l'outil hôte devient obligatoire.
+* **T3 — un port, commandes texte** : mini-shell ; simple, fragile pour des flux et des histogrammes.
+
+**Encodage.** `postcard` (déjà utilisé, D-028) avec l'encadrement COBS qu'il fournit (`to_slice_cobs`,
+`CobsAccumulator`). `postcard-rpc` est écarté : son serveur exige un exécuteur embassy ou des E/S asynchrones.
+
+**Pile USB.** `usb-device` + `usbd-serial` sur `imxrt-usbd`, les crates qu'`imxrt-log` utilise déjà
+(`Cargo.lock`) ; `imxrt-log` possède le périphérique USB et ne peut pas le partager, il est donc remplacé par un
+journal `log` maison sur le premier port.
+
+**Mesure du temps.** Le compteur de cycles du Cortex-M7 (DWT `CYCCNT`, 600 MHz, 32 bits, ≈ 7 s avant
+repliement) : une lecture coûte quelques cycles, la résolution est de 1,7 ns.
+
+**Présence dans l'image.** Toujours compilée, ou derrière une feature comme `settings-stress`.
+
+## 3. Ce que l'assistant a proposé
+
+T1, `postcard` + COBS, `usb-device` + `usbd-serial`, DWT ; sonde toujours présente : une image de debug à part
+changerait précisément les timings que l'on veut mesurer, et le canal ne fait rien tant qu'aucun hôte ne lui
+parle.
+
+Forme dans le code :
+
+* **profilage dans `oc-core`** (`oc_core::profile`) : des étapes nommées (tick, acquisition, applet, sorties,
+  rendu, envoi de la trame) mesurées par l'`Engine`, des statistiques min / max / moyenne / nombre et un
+  histogramme de la période de boucle, testés sur l'hôte. Le temps fin vient d'une capacité **par défaut** de
+  `Clock` (`fine_count`, `fine_per_micro`, déduites de `now_micros` sauf surcharge) : le firmware y branche
+  `CYCCNT`, le simulateur et Rack n'ont rien à faire ;
+* **`oc-protocol`** (nouvelle crate, `no_std`, `forbid(unsafe_code)`) : les messages des deux sens, leur
+  encadrement, et le numéro de version du protocole ; testée sur l'hôte, partagée par le firmware et l'outil ;
+* **commandes dans le cœur** quand elles changent le comportement (forcer une sortie, relire le framebuffer) :
+  les trois backends pourraient les servir, et elles sont testées une fois ;
+* **`oc-probe`** (nouvelle crate, binaire hôte) : `oc-probe stats | stream | out | screen | reboot`, sur le port
+  série (`serialport`) ; un TUI viendra plus tard s'il sert ;
+* **redémarrage en mode chargement** : le geste de Teensyduino (débit 134 bauds sur le port série), à vérifier
+  sur les sources du cœur Teensy 4 avant d'écrire le moindre `unsafe`, dans un module à lui.
+
+## 4. Ce que nous avons décidé, et pourquoi
+
+Choix de l'utilisateur (2026-11-16) : **T1**, **toujours présente**, périmètre complet pour la première version
+(profilage, flux de valeurs, commandes de test, capture d'écran et redémarrage), **`oc-protocol` + `oc-probe`**
+plutôt qu'une sous-commande `xtask` (qui mélangerait construction et instrumentation live).
+
+Statut `proposée` : adoptée lot par lot, comme D-026 à D-028.
+
+## 5. Ce qui nous ferait changer d'avis
+
+* Si la pile USB à deux ports coûtait plus que quelques pour cent d'une période de 1 ms en sondage, ou si macOS
+  ne voyait pas les deux ports, T2 sur un seul port.
+* Si le redémarrage logiciel en mode chargement exigeait plus qu'un appel documenté, il resterait hors de la
+  sonde (le bouton PROGRAM suffit, D-016).
+* Si l'audio (D-023 option B) passe en DMA et en interruptions, le profilage devra mesurer l'ISR elle-même ; les
+  étapes nommées restent, leur point de mesure change.
