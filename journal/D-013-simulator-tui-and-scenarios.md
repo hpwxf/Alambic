@@ -5,8 +5,8 @@
 | **Identifiant** | D-013 |
 | **Date** | 2026-11-16 (rétrospective ; décision prise le 2026-08-01, complétée jusqu'au 2026-09-03) |
 | **Auteur** | Pascal Havé |
-| **Statut** | adoptée (rétrospective) |
-| **Commits** | `84f9d86` (simulateur), `384cb2b` (glyphes octants), `baf70c7` (écrans régénérés), `d97db13` (AZERTY / QWERTY, compteurs de boutons), `a839a03` (touche `m`, `SETTLE_TICKS`) |
+| **Statut** | adoptée (rétrospective), révisée |
+| **Commits** | `84f9d86` (simulateur), `384cb2b` (glyphes octants), `baf70c7` (écrans régénérés), `d97db13` (AZERTY / QWERTY, compteurs de boutons), `a839a03` (touche `m`, `SETTLE_TICKS`), lot 3a (écrans dorés en braille quelle que soit la feature) |
 
 ## 1. Contexte
 
@@ -45,9 +45,17 @@ l'accord est deux événements `button` au même tick.
 * Si les écrans dorés devenaient trop fragiles (chaque changement de police casse tout), il faudrait des
   assertions sur des régions plutôt que sur l'écran entier.
 
+## Révision (2026-11-16, lot 3a)
+
+Les écrans dorés sont désormais **toujours rendus en braille**, quelle que soit la feature `octant`.
+`oc_sim::braille` expose le jeu de glyphes en valeur (`Glyphs::Braille`, `Glyphs::Octant`, `Glyphs::DEFAULT` choisi
+par la feature) et `render_with` ; la TUI suit la feature, `tests/scenarios.rs` force `Glyphs::Braille`. Les
+`*.screen` existants ne changent pas. Pourquoi plutôt que retirer `--all-features` de la CI : un test doré ne doit pas
+dépendre d'une feature de présentation, et la CI doit continuer à compiler toutes les features (D-017).
+
 ## Points ouverts (revue du 2026-11-16)
 
-* **La CI est rouge sur `master`.** La CI lance `cargo test --all-features` ; avec la feature `octant`, le rendu du
+* ~~**La CI est rouge sur `master`.**~~ **Traité** (révision ci-dessus). La CI lance `cargo test --all-features` ; avec la feature `octant`, le rendu du
   simulateur passe en octants alors que les `*.screen` sont en braille, et **5 des 9 scénarios échouent**
   (`cv_passthrough`, `trigger_burst`, `encoder_offset`, `mode_cycle`, `app_menu`). Sans features, les 9 passent.
   Constaté le 2026-11-16. Correctif : soit la comparaison dorée force le braille quelle que soit la feature, soit la

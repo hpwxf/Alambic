@@ -53,7 +53,12 @@ fn replay(name: &str) -> Simulator {
 /// Compares the module's screen against the golden snapshot for `name`.
 fn assert_screen_matches(simulator: &mut Simulator, name: &str) {
     let path = scenario_dir().join(format!("{name}.screen"));
-    let rendered = format!("{}\n", braille::render(simulator.frame()).join("\n"));
+    // Snapshots are braille whatever the `octant` feature says, so the suite
+    // passes under `cargo test --all-features` too (journal/D-013).
+    let rendered = format!(
+        "{}\n",
+        braille::render_with(simulator.frame(), braille::Glyphs::Braille).join("\n")
+    );
 
     if std::env::var_os("UPDATE_SCREENS").is_some() {
         std::fs::write(&path, &rendered)

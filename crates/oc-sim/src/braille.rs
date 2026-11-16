@@ -13,11 +13,7 @@
 //! replacement characters (`�`).
 
 use oc_core::framebuffer::{FrameBuffer, HEIGHT, WIDTH};
-
-#[cfg(not(feature = "octant"))]
-use ratatui::symbols::braille::BRAILLE as GLYPHS;
-#[cfg(feature = "octant")]
-use ratatui::symbols::pixel::OCTANTS as GLYPHS;
+use ratatui::symbols::{braille::BRAILLE, pixel::OCTANTS};
 
 /// Characters per rendered row.
 pub const COLUMNS: usize = WIDTH / 2;
@@ -25,23 +21,70 @@ pub const COLUMNS: usize = WIDTH / 2;
 /// Number of rendered rows.
 pub const LINES: usize = HEIGHT / 4;
 
-/// Renders the framebuffer as [`LINES`] strings of [`COLUMNS`] characters.
-#[must_use]
-pub fn render(frame: &FrameBuffer) -> Vec<String> {
-    (0..LINES).map(|line| render_line(frame, line)).collect()
+/// The glyph set a framebuffer is rendered with.
+///
+/// The interactive TUI follows the `octant` cargo feature ([`Glyphs::DEFAULT`]);
+/// golden `.screen` snapshots always use [`Glyphs::Braille`], so the
+/// regression suite gives the same verdict whatever features are enabled
+/// (`cargo test --all-features` in CI, journal/D-013).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Glyphs {
+    /// Classic Unicode braille patterns, covered by almost every font.
+    Braille,
+    /// Octants from the Symbols for Legacy Computing Supplement.
+    Octant,
 }
 
-/// Renders a single glyph row of the framebuffer.
+impl Glyphs {
+    /// The glyph set selected by the `octant` cargo feature.
+    #[cfg(not(feature = "octant"))]
+    pub const DEFAULT: Self = Self::Braille;
+    /// The glyph set selected by the `octant` cargo feature.
+    #[cfg(feature = "octant")]
+    pub const DEFAULT: Self = Self::Octant;
+
+    /// The 256-entry lookup table, indexed by the row-major cell bit pattern.
+    fn table(self) -> &'static [char; 256] {
+        match self {
+            Self::Braille => &BRAILLE,
+            Self::Octant => &OCTANTS,
+        }
+    }
+}
+
+/// Renders the framebuffer as [`LINES`] strings of [`COLUMNS`] characters,
+/// with the feature-selected glyph set.
+#[must_use]
+pub fn render(frame: &FrameBuffer) -> Vec<String> {
+    render_with(frame, Glyphs::DEFAULT)
+}
+
+/// Renders the framebuffer with an explicit glyph set.
+#[must_use]
+pub fn render_with(frame: &FrameBuffer, glyphs: Glyphs) -> Vec<String> {
+    (0..LINES)
+        .map(|line| render_line_with(frame, line, glyphs))
+        .collect()
+}
+
+/// Renders a single glyph row of the framebuffer with the feature-selected
+/// glyph set.
 #[must_use]
 pub fn render_line(frame: &FrameBuffer, line: usize) -> String {
+    render_line_with(frame, line, Glyphs::DEFAULT)
+}
+
+/// Renders a single glyph row of the framebuffer with an explicit glyph set.
+#[must_use]
+pub fn render_line_with(frame: &FrameBuffer, line: usize, glyphs: Glyphs) -> String {
     let mut rendered = String::with_capacity(COLUMNS);
     for column in 0..COLUMNS {
-        rendered.push(cell(frame, column, line));
+        rendered.push(glyphs.table()[usize::from(cell(frame, column, line))]);
     }
     rendered
 }
 
-/// The 2x4 glyph covering one block of pixels.
+/// The bit pattern of the 2x4 block of pixels covering one glyph.
 ///
 /// Both the braille and octant lookup tables from ratatui are indexed by the
 /// same row-major bit pattern:
@@ -52,7 +95,7 @@ pub fn render_line(frame: &FrameBuffer, line: usize) -> String {
 /// | 4 5 |
 /// | 6 7 |
 /// ```
-fn cell(frame: &FrameBuffer, column: usize, line: usize) -> char {
+fn cell(frame: &FrameBuffer, column: usize, line: usize) -> u8 {
     let base_x = i32::try_from(column * 2).unwrap_or(i32::MAX);
     let base_y = i32::try_from(line * 4).unwrap_or(i32::MAX);
 
@@ -67,14 +110,19 @@ fn cell(frame: &FrameBuffer, column: usize, line: usize) -> char {
         }
     }
 
-    GLYPHS[usize::from(pattern)]
+    pattern
 }
 
 #[cfg(test)]
 mod tests {
     use oc_core::framebuffer::FrameBuffer;
 
-    use super::{COLUMNS, GLYPHS, LINES, render, render_line};
+    use super::{COLUMNS, Glyphs, LINES, render, render_line, render_with};
+
+    /// The table the feature-selected renderer draws from.
+    fn glyph(pattern: usize) -> char {
+        Glyphs::DEFAULT.table()[pattern]
+    }
 
     #[test]
     fn an_empty_screen_renders_as_blank_glyphs() {
@@ -83,7 +131,7 @@ mod tests {
         assert_eq!(lines.len(), LINES);
         for line in &lines {
             assert_eq!(line.chars().count(), COLUMNS);
-            assert!(line.chars().all(|glyph| glyph == GLYPHS[0]));
+            assert!(line.chars().all(|ch| ch == glyph(0)));
         }
     }
 
@@ -92,7 +140,7 @@ mod tests {
         let mut frame = FrameBuffer::new();
         frame.fill();
         for line in render(&frame) {
-            assert!(line.chars().all(|glyph| glyph == GLYPHS[0xFF]));
+            assert!(line.chars().all(|ch| ch == glyph(0xFF)));
         }
     }
 
@@ -101,7 +149,7 @@ mod tests {
         let mut frame = FrameBuffer::new();
         frame.set_pixel(0, 0, true);
         let line = render_line(&frame, 0);
-        assert_eq!(line.chars().next(), Some(GLYPHS[0x01]));
+        assert_eq!(line.chars().next(), Some(glyph(0x01)));
     }
 
     #[test]
@@ -122,7 +170,7 @@ mod tests {
             frame.set_pixel(x, y, true);
             assert_eq!(
                 render_line(&frame, 0).chars().next(),
-                Some(GLYPHS[bit]),
+                Some(glyph(bit)),
                 "pixel ({x}, {y})"
             );
         }
@@ -133,7 +181,17 @@ mod tests {
         let mut frame = FrameBuffer::new();
         frame.set_pixel(127, 63, true);
         let lines = render(&frame);
-        assert_eq!(lines[LINES - 1].chars().last(), Some(GLYPHS[0x80]));
-        assert!(lines[0].chars().all(|glyph| glyph == GLYPHS[0]));
+        assert_eq!(lines[LINES - 1].chars().last(), Some(glyph(0x80)));
+        assert!(lines[0].chars().all(|ch| ch == glyph(0)));
+    }
+
+    #[test]
+    fn explicit_glyph_sets_ignore_the_feature() {
+        let mut frame = FrameBuffer::new();
+        frame.fill();
+        let braille = render_with(&frame, Glyphs::Braille);
+        let octant = render_with(&frame, Glyphs::Octant);
+        assert!(braille[0].starts_with('\u{28FF}'));
+        assert_ne!(braille, octant);
     }
 }

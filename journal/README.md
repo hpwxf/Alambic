@@ -78,7 +78,7 @@ une section datée en fin de fichier) au lieu d'en ouvrir une nouvelle. Les num�
 | [D-010](D-010-shared-spi-bus.md) | bus SPI partagé DAC / OLED : `SharedBus` sur `RefCell`, CS en GPIO, 8 MHz, tronçons ≤ 512 octets | adoptée (rétrospective) |
 | [D-011](D-011-no-uart-usb-cdc-diagnostics.md) | aucun UART ; diagnostic par USB CDC sondé et LED de démarrage | adoptée (rétrospective), révisée |
 | [D-012](D-012-native-simulation-over-renode.md) | harnais principal = simulation native ; Renode limité à un smoke test, resté non fait | adoptée (rétrospective) |
-| [D-013](D-013-simulator-tui-and-scenarios.md) | simulateur : TUI ratatui, horloge virtuelle déterministe, scénarios texte et écrans dorés | adoptée (rétrospective) |
+| [D-013](D-013-simulator-tui-and-scenarios.md) | simulateur : TUI ratatui, horloge virtuelle déterministe, scénarios texte et écrans dorés | adoptée (rétrospective), révisée |
 | [D-014](D-014-host-only-test-strategy.md) | stratégie de test : tout sur l'hôte, firmware sans tests, bus simulés, proptest, criterion, niveau 9 manuel | adoptée (rétrospective) |
 | [D-015](D-015-vcv-rack-shim-over-c-abi.md) | module VCV Rack 2 : coquille C++ sur `staticlib`, ABI C défensive, tick décimé à 1 kHz | adoptée (rétrospective), révisée |
 | [D-016](D-016-safe-flash-and-xtask.md) | `cargo xtask` seul point d'entrée ; flash = validations puis `teensy_loader_cli`, sans sonde USB | adoptée (rétrospective), révisée |

@@ -40,7 +40,7 @@ justifié en une ligne. Le plugin VCV est hors CI (SDK téléchargé à la main,
 
 ## Points ouverts (revue du 2026-11-16)
 
-* **La CI échoue aujourd'hui** sur `cargo test --all-features` (D-013 : feature `octant` contre écrans dorés en
+* **Traité au lot 3a** (D-013, révision du 2026-11-16 ; « fait » = commandes CI dans `AGENTS.md`, D-001). **La CI échouait** sur `cargo test --all-features` (D-013 : feature `octant` contre écrans dorés en
   braille). La commande documentée dans `CLAUDE.md` (`cargo test`) ne lance pas les features et passe : la
   définition locale de « fait » et la CI divergent.
 * Canal `stable` non épinglé + `-D warnings` + `pedantic` : CI non reproductible dans le temps. Et `rust-version =
