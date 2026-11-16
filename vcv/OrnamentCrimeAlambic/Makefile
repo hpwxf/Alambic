@@ -31,8 +31,14 @@ CXXFLAGS +=
 # explicitly with the workspace's actual target directory; the default here
 # only serves a manual `make` invocation from a checkout laid out as this
 # repository normally is.
+#
+# The staticlib is a *prerequisite* of the plugin binary (see the rule after
+# `include $(RACK_DIR)/plugin.mk`), not just a linker flag: the SDK's link
+# rule only depends on the C++ objects, so a change on the Rust side alone
+# (behaviour, or the version shown on the splash screen) would otherwise
+# leave a stale plugin.dylib. As a prerequisite it also reaches the link
+# line through `$^`, after the objects and before `LDFLAGS`'s libraries.
 OC_VCV_FFI_LIB ?= ../../target/release/liboc_vcv_ffi.a
-LDFLAGS += $(OC_VCV_FFI_LIB)
 
 # The Rust staticlib links the standard library, which needs the platform's
 # threading and dynamic-loading primitives; macOS provides them through
@@ -51,3 +57,6 @@ DISTRIBUTABLES += $(wildcard LICENSE*)
 
 # Include the Rack plugin Makefile framework.
 include $(RACK_DIR)/plugin.mk
+
+# Relink whenever the Rust staticlib changes (see OC_VCV_FFI_LIB above).
+$(TARGET): $(OC_VCV_FFI_LIB)

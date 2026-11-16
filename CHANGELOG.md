@@ -35,6 +35,10 @@ Architectural decisions behind each change are in `journal/` (French).
 
 ### Fixed
 
+- The VCV Rack plugin is relinked whenever the Rust staticlib changes. The
+  SDK's link rule only depended on the C++ objects, so a Rust-only change
+  left a stale `plugin.dylib` (the splash still said v0.1.0 under a 2.2.0
+  manifest).
 - `cargo test --all-features` (the CI command) failed 5 of 9 simulator
   scenarios: golden screens are now always compared in braille, whatever the
   `octant` feature selects for the interactive simulator (journal/D-013).
