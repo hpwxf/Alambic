@@ -493,6 +493,29 @@ For each of the four trigger jacks:
 3. Press the left encoder: all four trigger counters must reset to zero
    (`README.md`, encoder table).
 
+Because trigger inputs accept a level on its first sample (journal/D-019),
+also check that nothing counts *too much*. Reset the counter before each
+step and compare it with the expected count:
+
+4. **Exact count.** Send a known number of 1 ms triggers (a sequencer or
+   burst generator: 16 or 32 pulses, at 120 BPM sixteenths or faster). The
+   counter must equal the number sent. Repeat with 5 ms and 10 ms triggers.
+5. **Slow edges.** Patch a slow LFO (triangle or sine, ±5 V, 0.2 to 1 Hz)
+   into the jack for ten cycles. The counter must read exactly ten. More
+   means the input chatters while the slow edge crosses the threshold.
+6. **Idle noise.** Leave a cable plugged in but undriven, or driven by a
+   steady 0 V, for one minute next to busy modules. The counter must stay
+   at zero.
+7. **Short pulses (informative).** If the source can, send 0.5 ms
+   triggers. Some may be missed: pulses shorter than one 1 kHz tick fall
+   between samples, a known limit that only edge capture can lift (D-023).
+   Record the ratio; it is not a failure.
+
+A failure in 4 to 6 is a reason to add a short re-trigger hold-off after
+each rising edge (accept the edge at once, ignore further rising edges for
+about 2 ms), which keeps 1 ms triggers and rejects chatter; record it in
+journal/D-019 before changing the code.
+
 ### 9.4 — Calibration slopes
 
 This step turns the "provisional" calibration in `board.rs` into a measured
