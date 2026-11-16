@@ -1295,7 +1295,7 @@ dependencies = [
 
 [[package]]
 name = "oc-core"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "criterion",
  "embedded-graphics",
@@ -1304,7 +1304,7 @@ dependencies = [
 
 [[package]]
 name = "oc-drivers"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "embedded-hal 1.0.0",
  "oc-core",
@@ -1312,7 +1312,7 @@ dependencies = [
 
 [[package]]
 name = "oc-firmware"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "cortex-m",
  "embedded-hal 1.0.0",
@@ -1326,7 +1326,7 @@ dependencies = [
 
 [[package]]
 name = "oc-sim"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "clap",
@@ -1336,7 +1336,7 @@ dependencies = [
 
 [[package]]
 name = "oc-vcv-ffi"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "cbindgen",
  "oc-core",
@@ -2702,7 +2702,7 @@ checksum = "f17a85883d4e6d00e8a97c586de764dabcc06133f7f1d55dce5cdc070ad7fe59"
 
 [[package]]
 name = "xtask"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "clap",

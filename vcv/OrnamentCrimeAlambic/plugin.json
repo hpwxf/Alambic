@@ -1,17 +1,17 @@
 {
   "slug": "OrnamentCrimeAlambic",
   "name": "Ornament & Crime (Alambic)",
-  "version": "2.0.0",
+  "version": "2.2.0",
   "license": "MIT",
   "brand": "Ornament & Crime (Alambic)",
   "author": "Pascal Have",
   "authorEmail": "",
   "authorUrl": "https://github.com/hpwxf/Alambic",
   "pluginUrl": "https://github.com/hpwxf/Alambic",
-  "manualUrl": "https://github.com/hpwxf/Alambic/blob/main/README.md",
+  "manualUrl": "https://github.com/hpwxf/Alambic/blob/HEAD/README.md",
   "sourceUrl": "https://github.com/hpwxf/Alambic",
   "donateUrl": "",
-  "changelogUrl": "",
+  "changelogUrl": "https://github.com/hpwxf/Alambic/blob/HEAD/CHANGELOG.md",
   "modules": [
     {
       "slug": "Alambic",

@@ -22,7 +22,7 @@ default-members = [
 ]
 
 [workspace.package]
-version = "0.1.0"
+version = "0.2.0"
 edition = "2024"
 rust-version = "1.85"
 license = "MIT OR Apache-2.0"
@@ -30,8 +30,8 @@ repository = "https://github.com/hpwxf/Alambic"
 authors = ["Pascal Havé"]
 
 [workspace.dependencies]
-oc-core = { path = "crates/oc-core", version = "0.1.0" }
-oc-drivers = { path = "crates/oc-drivers", version = "0.1.0" }
+oc-core = { path = "crates/oc-core", version = "0.2.0" }
+oc-drivers = { path = "crates/oc-drivers", version = "0.2.0" }
 
 # Host tooling
 anyhow = "1.0"

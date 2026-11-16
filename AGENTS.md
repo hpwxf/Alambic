@@ -292,6 +292,7 @@ Full protocol, per level, with exact commands and what each proves: see
 | VCV plugin build/install orchestration            | `xtask/src/vcv.rs` |
 | The VCV Rack plugin shim (module, widget)         | `vcv/OrnamentCrimeAlambic/src/Alambic.cpp` |
 | Full test protocol                                | `TESTING.md` |
+| Release notes; version rule (Rack plugin = `2.<minor>.<patch>`, checked by `xtask/tests/versions.rs`) | `CHANGELOG.md` |
 | Project state, steps, decisions taken             | `PLAN.md` |
 | Architectural decisions (ADRs, French)            | `journal/` (index in `journal/README.md`) |
 | Step-0 foundation plan (requirements, delivery)   | `.junie/plans/oc-rust-firmware-foundation.md` |
