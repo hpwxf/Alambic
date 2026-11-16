@@ -245,3 +245,33 @@ fn a_garbled_frame_gets_an_error_and_the_session_goes_on() {
     );
     assert_eq!(decode::<Reply<'_>>(&mut replies[1]), Ok(Reply::Done));
 }
+
+#[test]
+fn the_screen_is_captured_upright_whatever_the_mounting() {
+    use oc_core::settings::Settings;
+
+    let (mut server, mut engine) = opened();
+    let mut settings = Settings::DEFAULT;
+    settings.display.rotated = true;
+    engine.apply_settings(settings);
+    engine.tick();
+    // The frame as sent is turned; what the module shows is it turned back.
+    let mut upright = engine.parts_mut().4.frame_mut().clone();
+    upright.rotate_half_turn();
+    let upright = *upright.as_bytes();
+    assert_ne!(
+        *engine.parts_mut().4.frame_mut().as_bytes(),
+        upright,
+        "sent turned"
+    );
+
+    send(&mut server, &mut engine, &[Request::GetScreen]);
+    let mut screen = Vec::new();
+    for mut frame in frames(&mut server) {
+        let Ok(Reply::ScreenPage { bytes, .. }) = decode::<Reply<'_>>(&mut frame) else {
+            panic!("no page");
+        };
+        screen.extend_from_slice(bytes);
+    }
+    assert_eq!(screen, upright);
+}

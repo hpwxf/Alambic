@@ -226,8 +226,16 @@ impl Server {
         K: Clock,
         S: Display,
     {
+        // The frame was sent turned and shifted for the panel's mounting;
+        // undone here, so the capture reads as the module's face does.
+        let screen = engine.settings().display;
         let (.., display) = engine.parts_mut();
-        let frame = *display.frame_mut().as_bytes();
+        let mut upright = display.frame_mut().clone();
+        upright.shift_columns(-i32::from(screen.column_shift));
+        if screen.rotated {
+            upright.rotate_half_turn();
+        }
+        let frame = *upright.as_bytes();
         for (page, bytes) in
             (0..SCREEN_PAGES).zip(frame.chunks(frame.len() / usize::from(SCREEN_PAGES)))
         {

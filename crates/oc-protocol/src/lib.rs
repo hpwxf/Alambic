@@ -68,7 +68,8 @@ pub enum Request {
         /// The level, or `None` to release.
         millivolts: Option<MilliVolts>,
     },
-    /// The framebuffer as last presented, as [`SCREEN_PAGES`] replies.
+    /// The framebuffer as last presented, as [`SCREEN_PAGES`] replies, with
+    /// the screen's rotation and shift undone: as it reads on the module.
     GetScreen,
     /// Restarts into the Teensy's bootloader, ready to be flashed.
     RebootToLoader,
