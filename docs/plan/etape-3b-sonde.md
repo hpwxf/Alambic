@@ -65,3 +65,9 @@ dépassement, donc toujours sans dette), et plus de `poll` USB quand le plus lon
 Après le calendrier fixe (`6f475d4`) : `last_us=1000` ; hors ticks de rendu, toutes les périodes à moins de 4 µs de
 la cible (≈ 48 % sous 1 µs, 40 % à 1–2 µs, 7 % à 2–4 µs) ; minimum 997,6 µs, la compensation attendue d'une
 période sortie tard ; les ticks de rendu (≈ 5 %) restent au-delà de 1 ms, sujet du lot 3c. Valeurs indicatives.
+
+Après le lot 3b3 (`bd0db5e`, deux ports USB, `screen` ouvert sur le premier) : deux ports visibles sous macOS,
+journal inchangé ; `page` ≈ 145 µs par page (huit par trame, cohérent avec `present`). Gigue hors rendu toujours
+sous 8 µs, mais plus étalée (≈ 14 % sous 1 µs, 47 % à 1–2 µs, 31 % à 2–4 µs, 2 % à 4–8 µs) : à examiner avec la
+sonde (service du second port dans l'attente, marge de `poll` en µs entières). Valeurs indicatives. La ligne
+`profile` était tronquée (tampon de 160 caractères) : corrigé.

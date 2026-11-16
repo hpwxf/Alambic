@@ -7,10 +7,14 @@ use core::fmt::Write as _;
 use oc_core::fmt::TextBuf;
 use oc_core::profile::{Profile, Stage, Stat};
 
+/// Longest profile line: nine stages of up to two seven-digit durations.
+/// Fits the log backend's own line limit.
+const LINE_BYTES: usize = 256;
+
 /// Logs the mean and longest duration of every stage that ran, then the
 /// period's extremes and its jitter histogram, all since the splash ended.
 pub(crate) fn log(profile: &Profile) {
-    let mut line = TextBuf::<160>::new();
+    let mut line = TextBuf::<LINE_BYTES>::new();
     let _ = line.write_str("profile us mean/max:");
     for stage in Stage::ALL {
         let stat = profile.stage(stage);
@@ -23,7 +27,7 @@ pub(crate) fn log(profile: &Profile) {
     }
     log::info!("{}", line.as_str());
 
-    let mut line = TextBuf::<160>::new();
+    let mut line = TextBuf::<LINE_BYTES>::new();
     let period: &Stat = profile.period();
     if let (Some(min), Some(max)) = (period.min(), period.max()) {
         let _ = line.write_str("period us ");
@@ -40,7 +44,7 @@ pub(crate) fn log(profile: &Profile) {
 }
 
 /// Writes `fine` counts as microseconds with one decimal.
-fn write_micros(line: &mut TextBuf<160>, profile: &Profile, fine: u32) {
+fn write_micros(line: &mut TextBuf<LINE_BYTES>, profile: &Profile, fine: u32) {
     let nanos = profile.nanos(fine);
     let _ = write!(line, "{}.{}", nanos / 1_000, nanos % 1_000 / 100);
 }

@@ -454,7 +454,7 @@ screen /dev/cu.usbmodem*1 115200
 ```
 
 Setting either port to 134 baud restarts the module into its bootloader
-(Teensyduino's convention): `stty -f /dev/cu.usbmodem…1 134` on macOS.
+(Teensyduino's convention): `stty -f /dev/cu.usbmodem…1 134` with macOS's own `stty` (`/bin/stty`), or `stty -F …` with GNU coreutils.
 
 Expect lines such as `oc-firmware 0.2.0 (a1b2c3d) starting (oled=…)`, `oled init ok|failed`,
 and a once-per-second `tick=…` heartbeat, followed by one line per CV input
