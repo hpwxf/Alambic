@@ -225,8 +225,16 @@ fn triggers(session: &mut Session, seconds: u64) -> anyhow::Result<()> {
     let samples = collect(session, ticks)?;
     session.stream(0)?;
     let count = measure::count_edges(&samples);
-    for (index, edges) in count.rising.iter().enumerate() {
-        println!("TR{}  {edges} rising edges", index + 1);
+    for (index, (edges, intervals)) in count.rising.iter().zip(&count.intervals).enumerate() {
+        match intervals.mean() {
+            Some(mean) => println!(
+                "TR{}  {edges:>6} rising edges, ticks between them {}..{} (mean {mean:.2})",
+                index + 1,
+                intervals.min,
+                intervals.max
+            ),
+            None => println!("TR{}  {edges:>6} rising edges", index + 1),
+        }
     }
     if count.missed_ticks > 0 {
         println!(

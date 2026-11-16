@@ -91,3 +91,8 @@ sortie.
 de présence de 50 mV (D-024). CV1 reçoit une sinusoïde (Dixie II+, ≈ ± 4,8 V) : +4 793 mV en haut, −3 280 mV en
 bas au code 4 086 — le creux est écrêté par la plage de l'entrée (≈ −3,33 à +6,67 V, calibration d'usine de
 Phazerville), pas un défaut. Valeurs indicatives.
+
+**9.3, `cargo probe triggers --seconds 10`** : carré du Dixie II+ sur TR1 → 79 fronts montants en 10 s
+(≈ 7,9 Hz), aucun échantillon perdu, 0 sur TR2–TR4 non branchés. La fréquence de la source n'étant pas connue
+exactement, la commande donne désormais aussi l'intervalle entre fronts (min, max, moyenne en ticks) : constant à
+un tick près pour une horloge régulière, un rebond ou un front manqué s'y voient sans connaître la source.

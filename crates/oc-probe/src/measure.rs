@@ -67,6 +67,44 @@ pub struct EdgeCount {
     pub missed_ticks: u64,
     /// Ticks covered.
     pub ticks: u64,
+    /// Shortest, longest and total ticks between two rising edges of each
+    /// trigger: a steady clock keeps them within a tick, a bounce shows as
+    /// a short one, a missed edge as one twice as long.
+    pub intervals: [Intervals; TRIGGER_CHANNELS],
+}
+
+/// Ticks between successive rising edges of one trigger.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct Intervals {
+    /// Intervals measured (one fewer than the edges).
+    pub count: u64,
+    /// Shortest, ticks.
+    pub min: u64,
+    /// Longest, ticks.
+    pub max: u64,
+    /// All of them added, ticks.
+    pub total: u64,
+}
+
+impl Intervals {
+    fn record(&mut self, ticks: u64) {
+        if self.count == 0 {
+            self.min = ticks;
+            self.max = ticks;
+        } else {
+            self.min = self.min.min(ticks);
+            self.max = self.max.max(ticks);
+        }
+        self.count += 1;
+        self.total += ticks;
+    }
+
+    /// The mean interval in ticks, `None` with fewer than two edges.
+    #[must_use]
+    pub fn mean(&self) -> Option<f64> {
+        #[allow(clippy::cast_precision_loss)] // tick counts far below 2^52
+        (self.count > 0).then(|| self.total as f64 / self.count as f64)
+    }
 }
 
 /// Counts the rising edges of every trigger over `samples`, which must be
@@ -79,6 +117,7 @@ pub fn count_edges(samples: &[Sample]) -> EdgeCount {
         return count;
     };
     let mut previous = first;
+    let mut last_edge: [Option<u64>; TRIGGER_CHANNELS] = [None; TRIGGER_CHANNELS];
     for sample in &samples[1..] {
         let step = sample.tick.saturating_sub(previous.tick);
         count.missed_ticks += step.saturating_sub(1);
@@ -86,6 +125,10 @@ pub fn count_edges(samples: &[Sample]) -> EdgeCount {
         for (index, edges) in count.rising.iter_mut().enumerate() {
             if rose & (1 << index) != 0 {
                 *edges += 1;
+                if let Some(last) = last_edge[index] {
+                    count.intervals[index].record(sample.tick - last);
+                }
+                last_edge[index] = Some(sample.tick);
             }
         }
         previous = sample;
@@ -191,6 +234,8 @@ mod tests {
         ];
         let count = count_edges(&samples);
         assert_eq!(count.rising, [2, 1, 0, 0]);
+        assert_eq!((count.intervals[0].min, count.intervals[0].max), (3, 3));
+        assert_eq!(count.intervals[1].count, 0);
         assert_eq!((count.missed_ticks, count.ticks), (0, 4));
     }
 
