@@ -60,7 +60,9 @@ l'ancien slug ne retrouvent plus le module, coût jugé nul puisque rien n'est d
 * **Divergence de comportement entre backends** : Rack transmet un vrai `isConnected()`, le firmware répond toujours
   `true` (pas de détection de jack, D-019). L'écran de diagnostic affiche donc des `P` différents dans Rack et sur
   le module, contrairement à la promesse de D-002.
-* `AGENTS.md` et `README.md` disent que le plugin n'a « jamais été chargé dans une instance de Rack » ; le message de
+* **Traité au lot 3a (2026-11-16)** : `README.md`, `AGENTS.md` et `TESTING.md` disent que le plugin se charge dans
+  Rack (`8bdd9bc`) mais que panneau, émulation d'encodeur et entrée de menu n'ont pas de vérification consignée.
+  Constat d'origine : `AGENTS.md` et `README.md` disaient que le plugin n'a « jamais été chargé dans une instance de Rack » ; le message de
   `8bdd9bc` décrit pourtant son nom « dans le navigateur de Rack ». À confirmer, puis mettre à jour les « Known
   gaps » (panneau, émulation d'encodeur, entrée de menu).
 * Le plugin n'est pas construit en CI (le SDK est téléchargé à la main) : une rupture de l'ABI côté C++ ne se voit

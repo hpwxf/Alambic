@@ -9,10 +9,13 @@ behaviour runs on hardware, in a native simulator, and inside VCV Rack 2.
 
 > Status: the cross-compilation chain, the shared core, the simulator, the
 > Teensy firmware, the safe flashing tool and the VCV Rack 2 module are in
-> place, with host tests throughout. The VCV Rack plugin builds and links
-> against the real Rack SDK but has not yet been opened inside a running Rack
-> instance; the Renode boot smoke test is not written; and the firmware has
-> **not** been run on real hardware — see *Before the first flash* below.
+> place, with host tests throughout. The firmware has been brought up on a
+> real module (TLM build): the SH1106 OLED, the USB CDC boot log, the encoders
+> and the buttons work, but the CV inputs, the CV outputs and their
+> calibration, and the trigger inputs have **not** been verified yet — see
+> *Before the first flash* below. The VCV Rack plugin builds against the real
+> Rack SDK and loads in Rack, but its panel and controls have not been checked
+> systematically there. The Renode boot smoke test is not written.
 
 ## Layout
 
@@ -336,16 +339,22 @@ its exact command and what it does (and does not) prove in
 
 ## Before the first flash
 
-The firmware compiles, links and passes every host test, but it has not yet been
-run on a real module. Two things are derived from the reference firmware's source
-rather than measured, and should be checked with the diagnostic applet before
-being trusted:
+The firmware has run on a real module (TLM build): the SH1106 OLED, the USB
+CDC boot log, the boot LED, the encoders and the buttons were checked while
+bringing it up. The analog and trigger paths have not been, and Level 9 of
+`TESTING.md` has not been run as a whole. What is derived from the reference
+firmware's source rather than measured, and should be checked with the
+diagnostic applet before being trusted:
 
 * **the calibration slopes.** Both the input and the output stage invert, which
   `crates/oc-firmware/src/board.rs` expresses as negative slopes, but the exact
   gain and offset are per-unit properties.
-* **the OLED controller.** SH1106 is assumed (stock O&C); build or flash with
-  `cargo xtask … --features ssd1306` or `--features ssd1309` if the screen stays blank.
+* **the CV inputs and the trigger inputs** themselves (pin mapping, polarity,
+  levels).
+* **the OLED controller** on other builds. SH1106 is the default and is what
+  the TLM build carries; build or flash with `cargo xtask … --features ssd1306`
+  or `--features ssd1309` if the screen stays blank or only a band of rows
+  lights up.
 
 The pinout itself is in one reviewed table in `crates/oc-firmware/src/board.rs`,
 which is the only file allowed to name a pin. Note that the firmware drives

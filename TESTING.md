@@ -543,21 +543,25 @@ under Eurorack power-supply noise; none of that is in scope for this plan.
 
 ## What is not tested yet
 
-* **The VCV Rack 2 module inside an actual running Rack instance.** The ABI
-  is implemented and defensively tested (see *VCV Rack ABI robustness*
-  above), and `vcv/OrnamentCrimeAlambic` has been built and linked successfully
-  against a real Rack SDK, but nobody has yet loaded the resulting plugin
-  into VCV Rack and patched cables to it. There is no automated way to do
-  that; treat the panel layout and the knob-as-encoder interaction in
-  `Alambic.cpp` as unverified until someone has.
+* **The VCV Rack 2 module inside a running Rack instance, systematically.**
+  The ABI is implemented and defensively tested (see *VCV Rack ABI
+  robustness* above), and the plugin builds against a real Rack SDK and loads
+  in Rack (it showed in Rack's module browser, `8bdd9bc`), but there is no
+  recorded check of patching cables to it. There is no automated way to do
+  that; treat the panel layout, the knob-as-encoder interaction and the
+  "Open/close app menu" context entry in `Alambic.cpp` as unverified until
+  someone has.
 * **Renode boot smoke test** — dropped as originally specified because the
   firmware drives no UART (every LPUART on pins 0–23 collides with the
   panel, as documented in `crates/oc-firmware/src/main.rs`). The plan file
   records the alternatives under consideration (USB CDC banner, semihosting,
   or observing SPI writes); none is implemented.
-* **The firmware has never run on real hardware** — Level 9 above is
-  untried in practice as of this writing; treat its content as a procedure
-  to execute and refine, not as a report of results already obtained.
+* **Level 9 as a whole.** The firmware has been brought up on a real module
+  (TLM build): 9.1 (screen) and 9.5 (encoders and buttons) were exercised
+  while fixing the OLED controller and the pad pull-ups (`3f50a42`,
+  `a8f3560`), but 9.2 (CV inputs), 9.3 (triggers) and 9.4 (calibration) have
+  not been run. Treat those as a procedure to execute and refine, not as a
+  report of results already obtained.
 
 ## Continuous integration
 

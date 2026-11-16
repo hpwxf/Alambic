@@ -54,7 +54,9 @@ Ajout de l'USB CDC et des éclats de LED. Les documents n'ont pas tous suivi —
 
 ## Points ouverts (revue du 2026-11-16)
 
-* `README.md` (« not been run on real hardware »), `AGENTS.md` (« The firmware has never run on real hardware ») et la
+* **Traité au lot 3a (2026-11-16)** : `README.md`, `AGENTS.md`, `TESTING.md` et `board.rs` disent maintenant ce qui
+  a été vérifié sur le module (OLED, journal USB, LED, encodeurs, boutons) et ce qui ne l'a pas été (entrées CV,
+  sorties et calibration, triggers, niveau 9 dans son ensemble). Constat d'origine : `README.md` (« not been run on real hardware »), `AGENTS.md` (« The firmware has never run on real hardware ») et la
   section « Unverified » de `board.rs` sont **périmés** : `3f50a42` et `a8f3560` corrigent des défauts observés sur
   le module (OLED, encodeurs, boutons), `docs/supersaw/` rapporte des essais sur le Teensy du module, et le plan ISR
   cite une mesure « log USB antérieur ≈ 20 µs ». Il faut écrire ce qui a été vérifié (écran, panneau) et ce qui ne

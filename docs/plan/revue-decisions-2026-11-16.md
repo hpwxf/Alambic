@@ -13,12 +13,15 @@ D-004, D-005, D-009 hors point mineur, D-010, D-014) sont jugées saines en l'é
 
 ## À réviser
 
+✅ = traité au lot 3a (2026-11-16) : `f862a9e` (R1), `3cf09e9` (R2), `61de0a6` (R3), commit des docs (R4) ; voir la
+section « Révision » ou « Points ouverts » de chaque ADR.
+
 | # | ADR | Problème | Preuve | Correctif proposé |
 |---|---|---|---|---|
-| R1 | D-013, D-017 | **CI rouge sur `master`** : `cargo test --all-features` active `octant`, les écrans dorés sont en braille → 5 / 9 scénarios échouent | `cargo test --all-features` le 2026-11-16 ; sans features : tout vert | forcer le braille dans la comparaison dorée ; aligner « fait » local et CI |
-| R2 | D-019 | **Triggers de moins de 3 ms perdus** : l'anti-rebond mécanique (3 échantillons à 1 kHz) s'applique à des fronts électroniques ; le scénario doré `trigger_burst` classe une impulsion de 1 ms comme rebond. Aggravé par la gigue d'≈ 1 ms toutes les 20 ms (D-008) | `debounce.rs`, `trigger_burst.scn` (TR2 : impulsions d'un tick ignorées) | `required = 1` (ou front sur 2 échantillons) pour les triggers ; capture par IRQ / cadence ISR avec D-023 |
-| R3 | D-007 | **Règle de sécurité « seul `board.rs` nomme une broche » fausse dans le code** : `main.rs` réserve les 27 broches ; la broche 12 (SDI) est absente de la table ; rien ne vérifie la concordance | `grep pins.p crates/oc-firmware/src` | déplacer la réservation dans `board.rs` (fonction qui consomme `Pins`) |
-| R4 | D-011, D-015 | **Documentation périmée** : « never run on real hardware » (`README.md`, `AGENTS.md`, `board.rs`) alors que `3f50a42` / `a8f3560` corrigent des défauts vus sur le module ; « never loaded into Rack » contredit par `8bdd9bc` | messages de commit, `docs/supersaw/` § 13 | écrire ce qui est vérifié (écran, panneau) et ce qui ne l'est pas (calibration, CV, triggers) |
+| R1 ✅ | D-013, D-017 | **CI rouge sur `master`** : `cargo test --all-features` active `octant`, les écrans dorés sont en braille → 5 / 9 scénarios échouent | `cargo test --all-features` le 2026-11-16 ; sans features : tout vert | forcer le braille dans la comparaison dorée ; aligner « fait » local et CI |
+| R2 ✅ | D-019 | **Triggers de moins de 3 ms perdus** : l'anti-rebond mécanique (3 échantillons à 1 kHz) s'applique à des fronts électroniques ; le scénario doré `trigger_burst` classe une impulsion de 1 ms comme rebond. Aggravé par la gigue d'≈ 1 ms toutes les 20 ms (D-008) | `debounce.rs`, `trigger_burst.scn` (TR2 : impulsions d'un tick ignorées) | `required = 1` (ou front sur 2 échantillons) pour les triggers ; capture par IRQ / cadence ISR avec D-023 |
+| R3 ✅ | D-007 | **Règle de sécurité « seul `board.rs` nomme une broche » fausse dans le code** : `main.rs` réserve les 27 broches ; la broche 12 (SDI) est absente de la table ; rien ne vérifie la concordance | `grep pins.p crates/oc-firmware/src` | déplacer la réservation dans `board.rs` (fonction qui consomme `Pins`) |
+| R4 ✅ | D-011, D-015 | **Documentation périmée** : « never run on real hardware » (`README.md`, `AGENTS.md`, `board.rs`) alors que `3f50a42` / `a8f3560` corrigent des défauts vus sur le module ; « never loaded into Rack » contredit par `8bdd9bc` | messages de commit, `docs/supersaw/` § 13 | écrire ce qui est vérifié (écran, panneau) et ce qui ne l'est pas (calibration, CV, triggers) |
 | R5 | D-019, D-002 | **`is_patched` diverge entre backends** : `true` sur le module (pas de détection de jack), vrai `isConnected()` dans Rack → écrans de diagnostic différents | `cv_in.rs`, `Alambic.cpp` | retirer du trait, ou forcer `true` hors matériel |
 | R6 | D-023 | **Plan A (ISR 16 666 Hz) incompatible avec l'étude audio** : OLED sous masque d'IRQ = ≈ 16 échéances manquées par trame, que `docs/supersaw/` § 13 juge inacceptable ; et le plan est **hors git** | `.git/info/exclude`, plan local § Budget | suivre le plan sous `docs/plan/`, mesurer (3b), choisir l'objectif avant la cadence |
 

@@ -38,14 +38,14 @@ comportemental (`oc-core`, D-002). Les applets musicaux sont la suite.
 | **1** — mise en route sur le module (2026-08-02) | ✅ OLED SH1106 affiché (D-009), encodeurs et boutons (pull-ups, D-007), journal USB CDC + LED de démarrage (D-011), écran de démarrage (D-020), contrôles de disposition au flash (D-016), façade VCV alignée sur le module. Réserves : calibration, entrées CV et triggers non vérifiés au niveau 9 | [etape-1.md](docs/plan/avancement/etape-1.md) |
 | **2** — plusieurs applets (2026-08-19 → 09-05) | ✅ menu par accord haut + bas, applets résidents, `ScopeApp`, haut / bas au relâchement (D-021) ; module Rack renommé `Alambic` (D-015) ; étude supersaw (base de D-023). Réserve : CI rouge avec `--all-features` depuis l'ajout de la feature `octant` (D-013) | [etape-2.md](docs/plan/avancement/etape-2.md) |
 
-### Étape 3 — assainissement, puis choix de la cadence (à lancer)
+### Étape 3 — assainissement, puis choix de la cadence (en cours)
 
 Ouverte par la revue du 2026-11-16 ([revue-decisions-2026-11-16.md](docs/plan/revue-decisions-2026-11-16.md)).
 D-023 (double cadence) est **proposée** ; elle ne s'adopte qu'après 3a et la mesure de 3b.
 
 | Lot | Contenu | État |
 |---|---|---|
-| **3a** — dette de revue | CI verte avec `--all-features` (D-013) ; triggers sans anti-rebond mécanique (D-019) ; règle du brochage rendue vraie (D-007) ; docs « jamais sur matériel » / « jamais dans Rack » corrigées (D-011, D-015) ; `flash --dry-run` en CI (D-016) | à faire |
+| **3a** — dette de revue | ✅ CI verte avec `--all-features` (R1, D-013) ; ✅ triggers sans anti-rebond mécanique (R2, D-019) ; ✅ règle du brochage rendue vraie et testée (R3, D-007) ; ✅ docs « jamais sur matériel » / « jamais dans Rack » corrigées (R4, D-011, D-015) ; ☐ `flash --dry-run` en CI (V5, D-016) | en cours |
 | **3b** — mesure sur module | niveau 9 complet (calibration, CV, triggers) ; coût réel d'une trame OLED et gigue de la boucle (GPIO + oscilloscope, `docs/supersaw/` § 13) | à faire |
 | **3c** — cadence | trancher D-023 (A, B ou C) ; scinder `Engine::tick` en `signal_tick` / `ui_tick` dans `oc-core` | à faire |
 

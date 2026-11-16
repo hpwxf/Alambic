@@ -51,16 +51,24 @@
 //! panel is wired, and it is the classic source of a "the inputs are shuffled"
 //! bug.
 //!
-//! # Unverified against real hardware
+//! # What has been checked on a real module
 //!
-//! Everything below is derived from source, not measured. Until the diagnostic
-//! applet has been run on a real module, treat as provisional:
+//! Verified on the TLM build while bringing the firmware up: the OLED rows
+//! (SH1106, pins 6 to 8 and the shared bus), the boot LED, and the encoder and
+//! button rows (pins 4, 5 and 14 to 16, 21 to 23, which needed the pad pull-up
+//! of [`DIGITAL_INPUT_CONFIG`]).
 //!
+//! Still derived from source, not measured — treat as provisional until
+//! `TESTING.md` Level 9 has been run:
+//!
+//! * the CV input rows (17 to 20), the trigger rows (0 to 3) and the DAC rows
+//!   (9 and 10);
 //! * the ADC and DAC calibration slopes and offsets. Both stages **invert**
 //!   (the reference firmware computes `offset - raw` for inputs and
 //!   `MAX_VALUE - value` for outputs), which is expressed here as a negative
-//!   slope, but the exact gain is a per-unit calibration.
-//! * which OLED controller the panel carries. Stock O&C is SH1106; SSD1306/SSD1309 are opt-in.
+//!   slope, but the exact gain is a per-unit calibration;
+//! * the OLED controller on other builds. SH1106 is the default; SSD1306 and
+//!   SSD1309 are opt-in features.
 
 use oc_core::calibration::{
     ADC_CODES, CV_IN_MAX_MV, CV_IN_MIN_MV, CV_OUT_MAX_MV, CV_OUT_MIN_MV, CvInputCalibration,

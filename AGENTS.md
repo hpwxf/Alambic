@@ -159,8 +159,8 @@ lives in `oc-core` and is tested once, on the host.
   there is a hardware-modelling bug, not a style choice. Do not "fix" the
   sign without re-reading the provenance comment in `board.rs`.
 * Calibration constants in `board.rs` are **provisional**, derived from the
-  reference firmware's source rather than measured on real hardware. Treat
-  them as placeholders until Level 9 of `TESTING.md` has been run.
+  reference firmware's source rather than measured on the module. Treat
+  them as placeholders until Level 9.4 of `TESTING.md` has been run.
 
 ## Safety-critical conventions
 
@@ -249,21 +249,25 @@ Full protocol, per level, with exact commands and what each proves: see
 
 ## Known gaps (do not assume these are done)
 
-* **The VCV Rack 2 module has never been loaded into a running Rack
-  instance.** `crates/oc-vcv-ffi` and `vcv/OrnamentCrimeAlambic` are implemented
-  and `vcv/OrnamentCrimeAlambic` has been built and linked against a real Rack
-  SDK, but the panel layout and the knob-as-encoder interaction in
-  `Alambic.cpp` have not been exercised inside Rack itself. Building it
+* **The VCV Rack 2 module has not been checked systematically inside Rack.**
+  It builds and links against a real Rack SDK and loads in Rack (it showed in
+  Rack's module browser under its old name, see `8bdd9bc`), but there is no
+  recorded check of the panel layout, the knob-as-encoder interaction or the
+  "Open/close app menu" context entry in `Alambic.cpp`. Building it
   requires a separately downloaded [Rack SDK](https://vcvrack.com/downloads)
   (`RACK_DIR`/`--rack-dir`), which is why CI does not build it.
 * **Renode smoke test** — dropped as originally specified (no UART to log
   to). USB CDC logging is now wired in `oc-firmware` for real hardware; a
   Renode observation path (semihosting, SPI-write watch) is still not
   implemented.
-* **The firmware has never run on real hardware.** Calibration slopes and
-  the OLED controller choice (SH1106 default vs `--features ssd1306`/`ssd1309`) are
-  unverified; see `TESTING.md` Level 9. OLED overrides go through the normal
-  gate: `cargo xtask build|size|hex|flash --features ssd1306` (or `ssd1309`).
+* **The firmware has been brought up on a real module, but only partly
+  verified.** Checked on the TLM build: the SH1106 OLED, the USB CDC log, the
+  boot LED, the encoders and the buttons (`3f50a42`, `a8f3560`). **Not**
+  checked: the CV inputs, the CV outputs and their calibration slopes, the
+  trigger inputs, the DAC8565 simultaneous update; `TESTING.md` Level 9 has
+  not been run as a whole. OLED overrides for other builds go through the
+  normal gate: `cargo xtask build|size|hex|flash --features ssd1306` (or
+  `ssd1309`).
 
 ## Where things live (quick index)
 
