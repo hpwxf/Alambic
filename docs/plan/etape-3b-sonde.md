@@ -16,7 +16,7 @@ au lieu du protocole GPIO + oscilloscope ; l'oscilloscope reste un recoupement p
 |---|---|---|
 | **3b1** — profilage dans le cœur | `oc_core::profile` : étapes nommées, statistiques (min / max / moyenne / nombre), histogramme de la période de boucle ; `Clock::fine_count` / `fine_per_micro` par défaut ; l'`Engine` mesure tick, acquisition, applet, sorties, rendu, envoi ; le firmware écrit le profil sur le journal USB (fait ; le simulateur n'a pas de compteur fin réel, révision de D-029) | tests `oc-core` sur horloge simulée ; définition de « fait » |
 | **3b2** — protocole | crate `oc-protocol` (`no_std`) : messages hôte → module (hello, profil, remise à zéro, flux, sortie forcée, capture, redémarrage) et module → hôte (hello, profil, échantillons, écran, erreur) ; encadrement `postcard` COBS ; version du protocole | tests d'aller-retour et de trames corrompues |
-| **3b3** — firmware (code écrit `fcd683d`, essai sur module à faire) | `usb-device` composite à deux ports CDC (journal `log` maison sur le premier, `imxrt-log` retiré) ; serveur du protocole sondé par la boucle ; envoi OLED mesuré page par page ; commandes servies par l'`Engine` (sortie forcée, framebuffer) ; redémarrage en mode chargement vérifié sur les sources Teensy 4 | sur module : deux ports visibles sous macOS, journal inchangé ; coût du sondage mesuré |
+| **3b3** — firmware (fait, `fcd683d` → `22fb58a`, vérifié sur module) | `usb-device` composite à deux ports CDC (journal `log` maison sur le premier, `imxrt-log` retiré) ; serveur du protocole sondé par la boucle ; envoi OLED mesuré page par page ; commandes servies par l'`Engine` (sortie forcée, framebuffer) ; redémarrage en mode chargement vérifié sur les sources Teensy 4 | sur module : deux ports visibles sous macOS, journal inchangé ; coût du sondage mesuré |
 | **3b4** — outil hôte | crate `oc-probe` : `stats`, `stream`, `out`, `screen` (PNG ou texte), `reboot` ; `cargo xtask flash` peut demander le redémarrage | tests de l'outil sur un faux port ; essai sur module |
 | **3b5** — mesure | niveau 9 de `TESTING.md` (CV, triggers) aidé de la sonde ; coût d'une page, d'une trame, gigue de la boucle consignés dans `avancement/etape-3.md` | D-029 adoptée (révisée si besoin) ; chiffres utilisables pour trancher D-023 au lot 3c |
 
@@ -71,3 +71,6 @@ journal inchangé ; `page` ≈ 145 µs par page (huit par trame, cohérent avec 
 sous 8 µs, mais plus étalée (≈ 14 % sous 1 µs, 47 % à 1–2 µs, 31 % à 2–4 µs, 2 % à 4–8 µs) : à examiner avec la
 sonde (service du second port dans l'attente, marge de `poll` en µs entières). Valeurs indicatives. La ligne
 `profile` était tronquée (tampon de 160 caractères) : corrigé.
+
+Essai du redémarrage (`22fb58a`) : `stty -f <port> 134` (le `stty` de macOS ; GNU : `-F`) fait passer le module en
+mode chargement, et `cargo xtask flash` passe ensuite sans appui sur PROGRAM.
