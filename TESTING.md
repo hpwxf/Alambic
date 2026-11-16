@@ -62,7 +62,8 @@ Covers, from `crates/oc-core/tests/`:
   transitions); framebuffer pixel independence.
 * `diagnostic.rs` — behavioural tests driven through `Engine::tick` with the
   deterministic mocks in `oc_core::testing`: mode cycling (OFFS/RAMP/ZERO),
-  trigger debouncing and counting, encoder selection and offset dialling with
+  trigger edge counting (single-sample, no time filter: journal/D-019),
+  encoder selection and offset dialling with
   saturation at the output limits, signal-presence detection, microsecond
   counter rollover, render-interval decoupling from the signal path, and
   byte-for-byte reproducibility of the rendered screen for a fixed input
@@ -478,11 +479,12 @@ For each of the four trigger jacks:
 
 1. Unpatched, the gate indicator must read low and the edge counter must not
    advance on its own.
-2. Send a clean gate or trigger pulse (a Eurorack-level trigger source, or a
-   push-button through a suitable pull-up/level circuit — **do not** drive
-   the jack directly from a low-impedance source outside Eurorack levels).
-   The edge counter must increment by exactly one per pulse, matching the
-   debouncing behaviour proven on the host in Level 1.
+2. Send a clean gate or trigger pulse from an electronic Eurorack-level
+   trigger source — **do not** drive the jack directly from a low-impedance
+   source outside Eurorack levels. Trigger inputs are not debounced
+   (journal/D-019), so a mechanical push-button would count its bounces. The
+   edge counter must increment by exactly one per pulse, including for a
+   1 ms trigger, matching the behaviour proven on the host in Level 1.
 3. Press the left encoder: all four trigger counters must reset to zero
    (`README.md`, encoder table).
 

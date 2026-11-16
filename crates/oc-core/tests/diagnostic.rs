@@ -138,10 +138,12 @@ fn a_clean_trigger_edge_is_counted_exactly_once() {
 }
 
 #[test]
-fn a_bouncing_trigger_edge_is_still_counted_once() {
+fn one_millisecond_triggers_are_each_counted() {
     let mut engine = mock_engine(0);
-    // A noisy gate: the level flaps for a few milliseconds before settling.
-    for level in [true, false, true, false, true, true, true, true, true, true] {
+    // Eurorack triggers are commonly 1 ms wide: one 1 kHz tick high, then low.
+    // Trigger edges are electronic and do not bounce, so none may be filtered
+    // out (journal/D-019).
+    for level in [true, false, true, false, true, false, false, false] {
         {
             let (_, _, digital_in, ..) = engine.parts_mut();
             digital_in.set(TriggerChannel::One, level);
@@ -152,9 +154,10 @@ fn a_bouncing_trigger_edge_is_still_counted_once() {
 
     assert_eq!(
         engine.diagnostic().trigger_count(TriggerChannel::One),
-        1,
-        "debouncing must collapse the bounce into a single event"
+        3,
+        "every single-tick trigger is an edge"
     );
+    assert!(!engine.diagnostic().trigger_state(TriggerChannel::One));
 }
 
 #[test]

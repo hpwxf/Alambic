@@ -120,7 +120,7 @@ fn a_steady_input_is_not_mistaken_for_a_signal() {
 }
 
 #[test]
-fn clean_gates_are_counted_and_bounce_is_not() {
+fn gates_and_one_millisecond_triggers_are_all_counted() {
     let mut simulator = replay("trigger_burst");
 
     assert_eq!(
@@ -130,8 +130,8 @@ fn clean_gates_are_counted_and_bounce_is_not() {
     );
     assert_eq!(
         simulator.diagnostic().trigger_count(TriggerChannel::Two),
-        1,
-        "a bouncing contact must count once"
+        3,
+        "three single-tick triggers, three edges"
     );
     assert_eq!(
         simulator.diagnostic().trigger_count(TriggerChannel::Three),

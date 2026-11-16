@@ -1,9 +1,17 @@
 //! Debouncing and edge detection for the trigger inputs and the buttons.
 //!
 //! A level is only accepted once it has been observed unchanged for a number
-//! of consecutive samples. At the nominal 1 kHz tick rate the default of three
-//! samples rejects bounce shorter than 3 ms while adding at most 3 ms of
-//! latency, which is inaudible for gate timing.
+//! of consecutive samples. The two input families need different depths
+//! (journal/D-019):
+//!
+//! * **mechanical contacts** (buttons, encoder switches) bounce: at the nominal
+//!   1 kHz tick rate, [`DEFAULT_STABLE_SAMPLES`] rejects bounce shorter than
+//!   3 ms while adding at most 3 ms of latency;
+//! * **trigger inputs** are driven by electronic edges that do not bounce, and
+//!   Eurorack triggers are commonly 1 ms wide: a time filter would swallow
+//!   them, so [`TRIGGER_STABLE_SAMPLES`] accepts a level on its first sample.
+//!   A pulse narrower than one tick can still fall between two samples; only
+//!   edge capture by interrupt or a faster signal rate fixes that (D-023).
 
 /// A transition of a debounced input.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -14,8 +22,13 @@ pub enum Edge {
     Falling,
 }
 
-/// Default number of identical consecutive samples required to accept a level.
+/// Default number of identical consecutive samples required to accept a level
+/// from a mechanical contact.
 pub const DEFAULT_STABLE_SAMPLES: u8 = 3;
+
+/// Samples required to accept a trigger level: one, i.e. pure edge detection,
+/// because electronic trigger edges do not bounce.
+pub const TRIGGER_STABLE_SAMPLES: u8 = 1;
 
 /// Debounces one boolean input.
 #[derive(Debug, Clone, Copy)]
@@ -77,7 +90,9 @@ impl Default for Debouncer {
 }
 
 /// A debounced input that also counts the rising edges it has seen.
-#[derive(Debug, Clone, Copy, Default)]
+///
+/// Its [`Default`] is the trigger configuration ([`TRIGGER_STABLE_SAMPLES`]).
+#[derive(Debug, Clone, Copy)]
 pub struct EdgeCounter {
     debouncer: Debouncer,
     rising: u32,
@@ -119,6 +134,12 @@ impl EdgeCounter {
     /// Resets the edge count, leaving the debounced level untouched.
     pub const fn reset_count(&mut self) {
         self.rising = 0;
+    }
+}
+
+impl Default for EdgeCounter {
+    fn default() -> Self {
+        Self::new(TRIGGER_STABLE_SAMPLES)
     }
 }
 
@@ -184,5 +205,15 @@ mod tests {
         assert_eq!(counter.rising_count(), 3);
         counter.reset_count();
         assert_eq!(counter.rising_count(), 0);
+    }
+
+    #[test]
+    fn a_default_trigger_counter_catches_a_single_sample_pulse() {
+        // A 1 ms Eurorack trigger seen by exactly one 1 kHz sample.
+        let mut counter = EdgeCounter::default();
+        assert_eq!(counter.update(true), Some(Edge::Rising));
+        assert_eq!(counter.update(false), Some(Edge::Falling));
+        assert_eq!(counter.update(true), Some(Edge::Rising));
+        assert_eq!(counter.rising_count(), 2);
     }
 }

@@ -33,7 +33,7 @@ use embedded_graphics::text::{Baseline, Text};
 use crate::apps::{InputSnapshot, TickContext};
 use crate::buttons::ButtonEvents;
 use crate::calibration::{CV_OUT_MAX_MV, CV_OUT_MIN_MV};
-use crate::debounce::EdgeCounter;
+use crate::debounce::{EdgeCounter, TRIGGER_STABLE_SAMPLES};
 use crate::fmt::{TextBuf, write_volts};
 use crate::framebuffer::{FrameBuffer, ROW_HEIGHT};
 use crate::platform::{
@@ -119,7 +119,7 @@ impl DiagnosticApp {
         Self {
             detectors: [SignalDetector::default(); CV_CHANNELS],
             patched: [false; CV_CHANNELS],
-            triggers: [EdgeCounter::default(); TRIGGER_CHANNELS],
+            triggers: [EdgeCounter::new(TRIGGER_STABLE_SAMPLES); TRIGGER_CHANNELS],
             press_counts: [0; BUTTONS],
             selected: 0,
             offset_mv: 0,

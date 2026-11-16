@@ -5,8 +5,8 @@
 | **Identifiant** | D-019 |
 | **Date** | 2026-11-16 (rétrospective ; décision prise le 2026-08-01) |
 | **Auteur** | Pascal Havé |
-| **Statut** | adoptée (rétrospective) |
-| **Commits** | `555f492` (`debounce.rs`, `signal.rs`), `ec140ed` (`is_patched` toujours vrai sur le firmware), `a839a03` (`ButtonReader` centralise l'anti-rebond des boutons) |
+| **Statut** | adoptée (rétrospective), révisée |
+| **Commits** | `555f492` (`debounce.rs`, `signal.rs`), `ec140ed` (`is_patched` toujours vrai sur le firmware), `a839a03` (`ButtonReader` centralise l'anti-rebond des boutons), lot 3a (triggers sans filtre temporel) |
 
 ## 1. Contexte
 
@@ -51,9 +51,25 @@ comptées, des impulsions d'**un tick (1 ms)** sur TR2 sont traitées comme du r
 * Un module qui manque des triggers sur un vrai patch — voir les points ouverts : c'est déjà prévisible par le calcul.
 * Un applet qui se met à dépendre de `is_patched` : il se comporterait différemment dans Rack et sur le module.
 
+## Révision (2026-11-16, lot 3a) — triggers sans filtre temporel
+
+**B** remplace **A** pour les triggers. `TRIGGER_STABLE_SAMPLES = 1` : un niveau de trigger est accepté dès son
+premier échantillon, c'est-à-dire détection de front pure ; `DEFAULT_STABLE_SAMPLES = 3` reste pour les contacts
+mécaniques (boutons, encodeurs). `EdgeCounter::default()` prend la configuration trigger, `DiagnosticApp` la nomme
+explicitement. Le scénario `trigger_burst` porte maintenant trois triggers d'un tick (1 ms) sur TR2, tous comptés ;
+le test `a_bouncing_trigger_edge_is_still_counted_once` devient `one_millisecond_triggers_are_each_counted`.
+
+Pourquoi : un front électronique ne rebondit pas, et 1 ms est une largeur courante en Eurorack ; le filtre ne
+protégeait de rien et perdait des triggers réels. Ce qui reste : une impulsion **plus courte qu'un tick**, ou tombée
+pendant le tick allongé de l'OLED (D-008), peut encore passer entre deux échantillons. Seule une capture par
+interruption GPIO ou à la cadence de l'ISR signal (D-023) la rattrape. Prix accepté : un parasite d'un échantillon
+compte comme un trigger, et un bouton-poussoir branché sur une entrée trigger compte ses rebonds (`TESTING.md`
+niveau 9.3 mis à jour).
+
 ## Points ouverts (revue du 2026-11-16)
 
-* **Les triggers courts sont perdus par construction.** À 1 kHz avec `N = 3`, toute impulsion de moins de 3 ms est
+* ~~**Les triggers courts sont perdus par construction.**~~ **Traité** pour les impulsions d'au moins un tick
+  (révision ci-dessus) ; la capture par interruption reste à trancher avec D-023. À 1 kHz avec `N = 3`, toute impulsion de moins de 3 ms est
   ignorée, et une impulsion de 3 à 4 ms dépend de la phase d'échantillonnage. S'y ajoute la gigue de D-008 : le tick
   qui pousse l'OLED dure ≈ 1 ms de plus, pendant lequel les entrées ne sont pas lues. Or 1 ms est une largeur de
   trigger courante en Eurorack, et le scénario doré la qualifie de rebond. Un front électronique propre (sortie

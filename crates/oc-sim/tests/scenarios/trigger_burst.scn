@@ -1,5 +1,6 @@
-# Four clean gates on TR1, plus a deliberately bouncing one on TR2.
-# TR1 must count four edges, TR2 exactly one.
+# Four 10 ms gates on TR1, and three 1 ms triggers on TR2 (the last one
+# left high). Trigger inputs are not debounced (journal/D-019): TR1 must
+# count four edges, TR2 three.
 ticks 120
 2 trigger 1 high
 12 trigger 1 low
@@ -10,9 +11,9 @@ ticks 120
 62 trigger 1 high
 72 trigger 1 low
 
-# A noisy contact: high, low, high, low, then settled high.
+# Single-tick triggers, the common Eurorack width at the 1 kHz tick.
 80 trigger 2 high
 81 trigger 2 low
-82 trigger 2 high
-83 trigger 2 low
-84 trigger 2 high
+85 trigger 2 high
+86 trigger 2 low
+90 trigger 2 high

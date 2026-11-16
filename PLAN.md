@@ -73,7 +73,7 @@ Valeurs seules ; le raisonnement est dans `journal/`.
 | flash | `cargo xtask` seul point d'entrée ; validations ELF puis `teensy_loader_cli`, sans sonde USB | D-016 |
 | CI | GitHub Actions ; fmt, clippy pedantic hôte + ARM, tests Linux + macOS, image firmware, bancs compilés ; canal `stable` | D-017 |
 | profil | release LTO fat, `overflow-checks = true` ; panique → journal USB + SOS | D-018 |
-| entrées | anti-rebond 3 échantillons (boutons et triggers) ; activité CV par crête-à-crête (256 éch., 40 mV) | D-019 |
+| entrées | anti-rebond 3 échantillons (boutons), front sur 1 échantillon (triggers) ; activité CV par crête-à-crête (256 éch., 40 mV) | D-019 |
 | démarrage | écran 1,5 s, sorties à 0 V, rendu à chaque tick | D-020 |
 | applets | `AppHost` (tous résidents), menu par accord haut + bas, haut / bas au relâchement ; `DiagnosticApp`, `ScopeApp` | D-021 |
 | licence | `MIT OR Apache-2.0` (workspace) | D-022 |

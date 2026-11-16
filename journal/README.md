@@ -84,7 +84,7 @@ une section datée en fin de fichier) au lieu d'en ouvrir une nouvelle. Les num�
 | [D-016](D-016-safe-flash-and-xtask.md) | `cargo xtask` seul point d'entrée ; flash = validations puis `teensy_loader_cli`, sans sonde USB | adoptée (rétrospective), révisée |
 | [D-017](D-017-ci-and-lint-policy.md) | CI GitHub Actions, `clippy::pedantic` hôte et ARM, toolchain `stable` non épinglée, plugin VCV hors CI | adoptée (rétrospective) |
 | [D-018](D-018-release-profile-and-panic.md) | profil release : LTO, `overflow-checks` actifs ; une panique arrête le module (SOS) | adoptée (rétrospective) |
-| [D-019](D-019-debounce-and-activity-detection.md) | anti-rebond 3 échantillons pour triggers et boutons ; activité par crête-à-crête faute de détection de jack | adoptée (rétrospective) |
+| [D-019](D-019-debounce-and-activity-detection.md) | anti-rebond 3 échantillons pour les boutons, front pur pour les triggers ; activité par crête-à-crête faute de détection de jack | adoptée (rétrospective), révisée |
 | [D-020](D-020-boot-splash.md) | écran de démarrage : 1,5 s, sorties au repos, rendu à chaque tick | adoptée (rétrospective) |
 | [D-021](D-021-app-host-and-menu-chord.md) | plusieurs applets résidents, menu par accord haut + bas, haut / bas agissent au relâchement | adoptée (rétrospective), révisée |
 | [D-022](D-022-license.md) | licence `MIT OR Apache-2.0`, jamais écrite comme décision | adoptée (rétrospective) |
