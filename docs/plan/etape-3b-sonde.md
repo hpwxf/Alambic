@@ -106,3 +106,22 @@ Avec l'horloge du module (`9b5d74f`) : TR1 74 fronts en 10 s, 132,716 à 134,849
 dépassent chacun leur période d'≈ 1,1 ms. Un front est daté au début du tick qui le voit, d'où une dispersion des
 intervalles égale à la durée d'un tick de rendu (≈ 2,1 ms). Pour D-023 : le rendu coûte ≈ 5 % de la cadence du
 signal et retarde la lecture d'un trigger jusqu'à ≈ 2 ms. Valeurs indicatives.
+
+**9.3, LFO lent** (Dixie ≈ 1,07 Hz, 20 s) : 21 fronts, un par cycle, 929,5 à 931,6 ms d'écart : pas de rebond sur
+un front lent. **Repos** (20 s) : 0 front.
+
+**9.3b, rebouclage `cargo probe sweep`** (−3 à +6 V, pas de 1 V, erreur entrée − sortie en mV) :
+
+| | −3 | −2 | −1 | 0 | +1 | +2 | +3 | +4 | +5 | +6 |
+|---|---|---|---|---|---|---|---|---|---|---|
+| A→1 | +24 | +22 | +2 | 0 | −23 | −22 | −23 | −44 | −46 | −66 |
+| B→2 | +13 | +14 | −4 | −2 | −22 | −18 | −16 | −34 | −33 | −51 |
+| C→3 | +21 | +21 | −1 | −2 | −23 | −23 | −22 | −42 | −43 | −63 |
+| D→4 | 0 | +5 | −7 | −1 | −16 | −6 | +1 | −12 | −6 | −19 |
+
+Chaque sortie arrive sur l'entrée attendue (ordre des canaux cohérent). L'erreur combinée a une pente (≈ −1 % sur
+A–C, bien moindre sur D) et des **marches d'≈ 20 mV** : les écarts de code ADC entre paliers alternent ≈ 402 / 409
+codes (A) ou 405 / 413 (D) aux mêmes tensions sur les quatre voies, signe d'une non-linéarité commune (ADC unique
+ou puce DAC8565). Le rebouclage ne sépare pas sortie et entrée : il faut une référence extérieure (multimètre sur
+la sortie). Rappel : l'assistant ne règle que −3 V et +5 V par sortie puis interpole, là où Phazerville règle
+chaque octave (point ouvert de l'étape 4). Valeurs indicatives.
