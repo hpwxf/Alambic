@@ -104,3 +104,28 @@ Statut `proposée` : adoptée lot par lot, comme D-026 à D-028.
   (`last_us` affichait le détail des réglages) ; corrigé.
 
 Statut inchangé (`proposée`) : le transport et l'outil hôte restent à faire.
+
+## Révision (2026-11-16, lot 3b3) — le serveur dans `oc-protocol`, le redémarrage vérifié sur les sources
+
+* **Le serveur de la sonde est dans `oc-protocol`** (`server.rs`), générique sur l'`Engine` et testé contre
+  `mock_engine` : session et version, profil, flux d'échantillons, sortie forcée, écran en huit pages, demande de
+  redémarrage, fermeture qui relâche les sorties. Le firmware n'a gardé que le câblage USB (`usb.rs`), conformément
+  à la règle « pas de tests dans `oc-firmware`, tester l'abstraction ». La file d'octets (`queue.rs`) sert aux deux
+  ports.
+* **Commandes dans le cœur** : `Engine::force_output` (ignorée pendant l'écran de démarrage et par l'assistant de
+  calibration, qui mesure ses propres niveaux ; `reset` relâche tout) et `Engine::raw_codes`. La capture d'écran lit
+  le framebuffer tel qu'envoyé (rotation et décalage déjà appliqués), sans commande dans le cœur.
+* **Pile USB** : `usb-device` + `usbd-serial` sur l'`imxrt-usbd` que le BSP réexporte, `BusAdapter::new` (la variante
+  sûre, avec sections critiques) ; périphérique composite à IAD, deux `CdcAcmClass` nommées « Alambic log » et
+  « Alambic probe » ; mêmes VID / PID que l'ancien backend. Le journal garde le format `[LEVEL cible]: message`.
+  Le `Server` (≈ 4,6 Kio) vit dans un `ConstStaticCell`, pas sur la pile de 16 Kio.
+* **Redémarrage en mode chargement, vérifié** sur `teensy4/usb.c` (cœur Teensyduino) : hors mode sécurisé
+  (`HW_OCOTP_CFG5 & 0x02`), `_reboot_Teensyduino_` exécute `bkpt #251`, auquel répond la puce du bootloader ; le
+  déclencheur des outils Teensy est un `SET_LINE_CODING` à 134 bauds. Les deux sont repris (`reboot.rs`, second
+  module `unsafe` du firmware) ; la variante sécurisée (saut dans la ROM NXP) n'est pas reprise et la sonde répond
+  `Unsupported` sur une puce verrouillée.
+* **Pages OLED** : `Ssd130x::flush_page` ; le firmware enveloppe le pilote (`TimedPanel`) pour envoyer et chronométrer
+  chaque page (`Stage::Page`). Sur SSD1306 / SSD1309, la trame passe donc en huit fenêtres d'une page au lieu d'une
+  seule fenêtre (6 octets de commande en plus par page).
+
+Statut inchangé (`proposée`) : essai sur module et outil hôte à faire.

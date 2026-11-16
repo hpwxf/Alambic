@@ -398,11 +398,17 @@ and whether the panel is SH1106 (stock), SSD1306, or SSD1309. Follow it in order
 3. **USB CDC log.** On the host (macOS example):
 
    ```sh
-   ls /dev/cu.usbmodem*
-   screen /dev/cu.usbmodem* 115200
+   ls /dev/cu.usbmodem*          # two ports: the log, then the probe
+   screen /dev/cu.usbmodem*1 115200
    ```
 
-   Baud is conventional only; CDC ACM ignores it. Expect, in order:
+   The module shows as one USB device with **two** serial ports (journal/D-029):
+   the first (lower interface number, usually `…1` on macOS) is the text log
+   read here, the second (usually `…3`) speaks the binary probe protocol for `oc-probe`
+   and shows nothing readable. Baud is conventional only, with one
+   exception: **134 baud** on either port restarts the module into its
+   bootloader, ready to flash (Teensyduino's convention), so never pick it in
+   a monitor. Expect, in order:
 
    ```text
    oc-firmware X.Y.Z starting (oled=SH1106|SSD1306|SSD1309)

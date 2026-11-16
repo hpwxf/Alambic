@@ -15,6 +15,15 @@ Architectural decisions behind each change are in `journal/` (French).
   The firmware backs it with the core's cycle counter and logs it on USB,
   two lines a second after the heartbeat (`TESTING.md` 9.1).
 
+- **Live probe, module side.** The firmware's USB device now has two
+  serial ports: the text log, as before, and a binary port speaking the
+  probe protocol (`oc-protocol`: postcard over COBS; profile, sample
+  stream, forced outputs, screen capture, restart into the bootloader).
+  `imxrt-log` is replaced by a `log` backend of the firmware's own. The OLED
+  frame is sent and timed page by page. Setting either port to 134 baud
+  restarts into the bootloader (journal/D-029).
+- `Engine::force_output`, `Engine::raw_codes`, `Ssd130x::flush_page`.
+
 ### Fixed
 
 - **The firmware loop ran at about 775 Hz, not 1 kHz.** The deadline was

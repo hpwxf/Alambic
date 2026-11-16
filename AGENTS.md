@@ -98,7 +98,7 @@ scope for now: the two shipped are a diagnostic I/O screen and a scope.
 |-----------------------|----------|-----------------------------|------|
 | `crates/oc-core`      | yes      | `forbid(unsafe_code)`       | **All** behaviour: platform traits, `Engine::tick`, the applets (`DiagnosticApp`, `ScopeApp`) and the app menu, button debouncing and chord arbitration, calibration, quadrature decoding, framebuffer. Knows nothing about registers or an OS. |
 | `crates/oc-drivers`   | yes      | `forbid(unsafe_code)`       | Peripheral protocols (DAC8565, SH1106/SSD1306/SSD1309, triggers, shared SPI bus) over `embedded-hal` 1.0 only; tested on the host against recording mock buses. |
-| `crates/oc-firmware`  | yes (bin)| `deny(unsafe_code)`; `unsafe` only in `flash_store.rs` (boot ROM calls) | Pure wiring: turns `teensy4-bsp`/`imxrt-hal` resources into the `oc-core` platform traits, runs the 1 kHz loop. The one crate that cannot be tested on the host. |
+| `crates/oc-firmware`  | yes (bin)| `deny(unsafe_code)`; `unsafe` only in `flash_store.rs` (boot ROM calls) and `reboot.rs` (bootloader hand-over) | Pure wiring: turns `teensy4-bsp`/`imxrt-hal` resources into the `oc-core` platform traits, runs the 1 kHz loop. The one crate that cannot be tested on the host. |
 | `crates/oc-protocol`  | yes      | `forbid(unsafe_code)`       | Messages between the firmware and the host probe (`Request`, `Reply`), `postcard` + COBS framing, `FrameReader`; tested on the host (journal/D-029). |
 | `crates/oc-sim`       | no       | ordinary                    | Host backend + ratatui TUI + deterministic virtual clock; runs the real `oc-core` engine. |
 | `crates/oc-vcv-ffi`   | no       | ordinary (defensive C ABI)  | `staticlib`/`rlib` exposing a defensive C ABI over `oc-core` (`oc_engine_*`), linked into the VCV Rack 2 module. Every function tolerates a null pointer or an out-of-range index and never lets a Rust panic unwind across the boundary (`catch_unwind`). |
@@ -194,17 +194,21 @@ lives in `oc-core` and is tested once, on the host.
 * **The firmware drives no UART.** Every LPUART exposed on pins 0–23
   collides with the panel wiring (see the module doc comment at the top of
   `crates/oc-firmware/src/main.rs` for the exact conflicts). Host-side
-  diagnostics use **USB CDC** (`imxrt-log` on the Teensy's native USB device),
-  polled from the 1 kHz loop; the OLED remains the on-panel channel. Early
+  diagnostics use **USB CDC** on the Teensy's native USB device, polled from
+  the 1 kHz loop (`crates/oc-firmware/src/usb.rs`): one composite device, two
+  serial ports, the text log first and the binary probe protocol second
+  (`oc-protocol`, journal/D-029); the OLED remains the on-panel channel. Early
   boot also flashes the onboard LED (pin 13) in stage groups before SPI
   claims that pad — see `crates/oc-firmware/src/boot_led.rs`.
 * `oc-core` and `oc-drivers` are `forbid(unsafe_code)`. `oc-firmware` is
   `deny(unsafe_code)`; register access is confined to `teensy4-bsp`/`imxrt-hal`,
-  and the one exception is `crates/oc-firmware/src/flash_store.rs`, which
+  and the two exceptions are `crates/oc-firmware/src/flash_store.rs`, which
   calls the i.MX RT1062 boot ROM's `FlexSPI` NOR driver to erase and program
-  the settings sectors (no crate offers it; journal/D-028, D-003). It carries
-  a module-level `#![allow(unsafe_code)]` and a `SAFETY:` comment on every
-  block. Any new `unsafe` must do the same, in a module of its own.
+  the settings sectors (no crate offers it; journal/D-028, D-003), and
+  `crates/oc-firmware/src/reboot.rs`, which reads the secure-mode fuse and
+  executes Teensyduino's `bkpt #251` to hand over to the bootloader
+  (journal/D-029). Each carries a module-level `#![allow(unsafe_code)]` and a
+  `SAFETY:` comment on every block. Any new `unsafe` must do the same, in a module of its own.
 * **The top 64 KiB of the flash (`0x601F_0000`..) is reserved**: the first
   four 4 KiB sectors hold the settings (`board::SETTINGS_FLASH_OFFSET`), the
   rest is Teensyduino's EEPROM emulation and, in the last sector, the restore
@@ -315,9 +319,10 @@ Full protocol, per level, with exact commands and what each proves: see
 | ADC/DAC unit conversion and calibration           | `crates/oc-core/src/calibration.rs` |
 | Input presence derived from the signal (defaults for unused inputs) | `crates/oc-core/src/presence.rs` |
 | Where the loop's time goes (stages, period jitter; the module's cycle counter) | `crates/oc-core/src/profile.rs` (firmware log lines: `crates/oc-firmware/src/profile_log.rs`) |
-| The probe protocol (messages, COBS framing) | `crates/oc-protocol/src/lib.rs` |
+| The probe protocol (messages, COBS framing) and the module's side of it | `crates/oc-protocol/src/lib.rs`, `crates/oc-protocol/src/server.rs` |
+| The two USB serial ports and the log backend | `crates/oc-firmware/src/usb.rs`, `crates/oc-firmware/src/usb_log.rs` |
 | Persistent settings, their format and the flash store | `crates/oc-core/src/settings.rs` (`MemoryFlash` in `testing.rs`) |
-| The Teensy's settings flash (boot ROM calls, the only `unsafe`) | `crates/oc-firmware/src/flash_store.rs` |
+| The Teensy's settings flash (boot ROM calls, `unsafe`) | `crates/oc-firmware/src/flash_store.rs` |
 | Deterministic mocks used by every `oc-core` test  | `crates/oc-core/src/testing.rs` |
 | The pinout (the only file allowed to name a pin)  | `crates/oc-firmware/src/board.rs` (rule test: `xtask/tests/pin_rule.rs`) |
 | Memory map / boot sections rationale              | `crates/oc-firmware/MEMORY.md` |

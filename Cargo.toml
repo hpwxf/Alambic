@@ -36,6 +36,7 @@ authors = ["Pascal Havé"]
 [workspace.dependencies]
 oc-core = { path = "crates/oc-core", version = "0.3.0" }
 oc-drivers = { path = "crates/oc-drivers", version = "0.3.0" }
+oc-protocol = { path = "crates/oc-protocol", version = "0.3.0" }
 # Build-script helper only: computes the build identifier (journal/D-025).
 oc-buildinfo = { path = "crates/oc-buildinfo" }
 # Reads the commit and dirty state for oc-buildinfo through gitoxide (pure

@@ -61,6 +61,12 @@ impl Server {
         }
     }
 
+    /// Says whether [`Request::RebootToLoader`] can be carried out, once the
+    /// backend knows (a server built as a constant cannot ask the chip).
+    pub const fn set_can_reboot(&mut self, can_reboot: bool) {
+        self.identity.can_reboot = can_reboot;
+    }
+
     /// Whether a host opened a session.
     #[must_use]
     pub const fn in_session(&self) -> bool {

@@ -443,13 +443,18 @@ The pinout itself is in one reviewed table in `crates/oc-firmware/src/board.rs`,
 which is the only file allowed to name a pin. Note that the firmware drives
 **no** UART: every LPUART available on pins 0-23 collides with the panel. Boot
 diagnostics go out over **USB CDC** instead (a virtual serial port on the
-Teensy's native USB). After flashing with the cable still plugged in:
+Teensy's native USB), which shows two serial ports: the text log first, the
+binary probe protocol second (journal/D-029). After flashing with the cable
+still plugged in:
 
 ```sh
-# macOS — the device usually appears as cu.usbmodem*
+# macOS — the ports usually appear as cu.usbmodem*1 (log) and *3 (probe)
 ls /dev/cu.usbmodem* 2>/dev/null
-screen /dev/cu.usbmodem* 115200
+screen /dev/cu.usbmodem*1 115200
 ```
+
+Setting either port to 134 baud restarts the module into its bootloader
+(Teensyduino's convention): `stty -f /dev/cu.usbmodem…1 134` on macOS.
 
 Expect lines such as `oc-firmware 0.2.0 (a1b2c3d) starting (oled=…)`, `oled init ok|failed`,
 and a once-per-second `tick=…` heartbeat, followed by one line per CV input

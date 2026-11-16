@@ -20,18 +20,21 @@
 //!
 //! # USB CDC boot log
 //!
-//! Diagnostics that need a host go out over the Teensy's native USB device as
-//! a CDC ACM serial port (`imxrt-log`). Plug the USB cable into the Teensy,
-//! flash, then open the virtual COM port from the host (115200 is conventional
-//! but the CDC ACM path ignores baud). Early boot stages also blink the
-//! onboard LED before SPI claims that pad — see [`boot_led`].
+//! Diagnostics that need a host go out over the Teensy's native USB device,
+//! which shows as two CDC ACM serial ports ([`usb`]): the first carries the
+//! text log, the second the probe protocol for `oc-probe` (journal/D-029).
+//! Plug the USB cable into the Teensy, flash, then open the first port from
+//! the host (115200 is conventional but the CDC ACM path ignores baud). Early
+//! boot stages also blink the onboard LED before SPI claims that pad — see
+//! [`boot_led`].
 //!
 //! # Unsafe code
 //!
-//! This crate contains **no** `unsafe` blocks of its own, which
-//! `deny(unsafe_code)` enforces. Register access is confined to `teensy4-bsp`
-//! and `imxrt-hal`. Should that ever change, every block must carry a
-//! `# Safety` section stating the invariant it upholds.
+//! `deny(unsafe_code)` holds everywhere but two modules, each with its own
+//! `allow` and a `SAFETY:` comment on every block: [`flash_store`] (the boot
+//! ROM's flash driver) and [`reboot`] (a fuse read and the breakpoint that
+//! hands over to the bootloader). Other register access is confined to
+//! `teensy4-bsp` and `imxrt-hal`.
 
 #![no_std]
 #![no_main]
@@ -45,8 +48,12 @@ mod cv_in;
 mod delay;
 mod flash_store;
 mod profile_log;
+mod reboot;
 #[cfg(feature = "settings-stress")]
 mod stress;
+mod timed_panel;
+mod usb;
+mod usb_log;
 
 use core::cell::RefCell;
 
@@ -70,17 +77,33 @@ use oc_drivers::panel::Panel;
 use oc_drivers::shared_bus::SharedBus;
 use oc_drivers::ssd130x::Ssd130x;
 use oc_drivers::triggers::Triggers;
+use oc_protocol::server::{Identity, Server};
+use static_cell::ConstStaticCell;
 
 use crate::clock::SystemClock;
 use crate::cv_in::CvInputs;
 use crate::delay::CycleDelay;
 use crate::flash_store::SettingsFlash;
+use crate::timed_panel::TimedPanel;
+use crate::usb::Usb;
 
 /// How long to spin-poll USB after bringing the CDC backend up, so a host that
 /// is already watching has a chance to finish enumeration before the first
 /// log lines are no longer in the ring buffer. One second is ample on macOS
 /// and Linux; messages logged later in `main` still go out during the loop.
 const USB_ENUMERATION_WAIT_MS: u32 = 1_000;
+
+/// The probe's session. Its queues are a few KiB: built in place in a
+/// static rather than on the 16 KiB stack, next to the engine.
+static PROBE: ConstStaticCell<Server> = ConstStaticCell::new(Server::new(Identity {
+    firmware: env!("CARGO_PKG_VERSION"),
+    build: env!("OC_BUILD_ID"),
+    can_reboot: false,
+}));
+
+/// How long the USB keeps being served before a restart into the
+/// bootloader, so the host sees the reply and the last log lines.
+const RESTART_DRAIN_MS: u32 = 50;
 
 /// Heartbeat log period in engine ticks (1 kHz → once per second).
 const HEARTBEAT_TICKS: u32 = 1_000;
@@ -99,7 +122,7 @@ fn main() -> ! {
         lpspi4,
         adc1,
         gpt1,
-        usb,
+        usb: usb_instances,
         ..
     } = bsp_board::t40(bsp_board::instances());
     // From here on, pins are only reachable by signal (journal/D-007).
@@ -114,11 +137,10 @@ fn main() -> ! {
     // 1 flash: we reached `main`. The LED pad is still free for GPIO here.
     boot_led::signal(&mut gpio2, &mut pins.led_sck, &mut delay, 1);
 
-    // USB CDC logger. Interrupts stay off: the 1 kHz loop polls the backend.
-    // A failure here means the logger was already installed, which cannot
-    // happen in this single-threaded firmware.
-    let mut usb_log = imxrt_log::log::usbd(usb, imxrt_log::Interrupts::Disabled)
-        .unwrap_or_else(|_| panic!("USB log already initialised"));
+    // USB: the log port and the probe port. Interrupts stay off: the 1 kHz
+    // loop polls the device.
+    usb_log::init();
+    let mut usb = Usb::new(usb_instances);
 
     log::info!(
         "oc-firmware {} ({}) starting (oled={})",
@@ -128,17 +150,17 @@ fn main() -> ! {
     );
     // Drain / keep the device alive while the host enumerates.
     for _ in 0..USB_ENUMERATION_WAIT_MS {
-        usb_log.poll();
+        usb.poll();
         delay.delay_ms(1);
     }
     log::info!("usb cdc up");
-    usb_log.poll();
+    usb.poll();
 
     // ---- CV inputs: analog pads, never driven --------------------------------
     let cv_pads = pins.cv.claim(&adc1);
     let cv_inputs = CvInputs::new(adc1, cv_pads);
     log::info!("adc ok");
-    usb_log.poll();
+    usb.poll();
     boot_led::signal(&mut gpio2, &mut pins.led_sck, &mut delay, 2);
 
     // ---- trigger inputs -----------------------------------------------------
@@ -149,7 +171,7 @@ fn main() -> ! {
         board::TRIGGER_POLARITY,
     );
     log::info!("triggers ok");
-    usb_log.poll();
+    usb.poll();
     // Last LED use: after this, the LED pad becomes SPI SCK.
     boot_led::signal(&mut gpio2, &mut pins.led_sck, &mut delay, 3);
 
@@ -163,7 +185,7 @@ fn main() -> ! {
         board::SPI_CLOCK_HZ,
     ));
     log::info!("spi ok");
-    usb_log.poll();
+    usb.poll();
 
     let dac_lines = pins.dac.claim(&mut gpio2);
     let dac = Dac8565::new(
@@ -186,7 +208,7 @@ fn main() -> ! {
     let mut dac_reset = dac_lines.reset;
     let _ = dac_reset.set_high();
     log::info!("dac reset released");
-    usb_log.poll();
+    usb.poll();
 
     // A dead panel must not stop the module: the CV path is what matters.
     // The result is logged so a blank screen is no longer silent on USB.
@@ -194,7 +216,7 @@ fn main() -> ! {
         Ok(()) => log::info!("oled init ok ({})", board::OLED_CONTROLLER.name()),
         Err(e) => log::error!("oled init failed: {e:?}"),
     }
-    usb_log.poll();
+    usb.poll();
 
     // ---- panel controls -----------------------------------------------------
     // Encoders and buttons short to ground; `claim` applies the pull-up without
@@ -206,7 +228,7 @@ fn main() -> ! {
         board::BUTTON_POLARITY,
     );
     log::info!("panel ok; entering 1 kHz loop");
-    usb_log.poll();
+    usb.poll();
 
     let mut engine = Engine::new(
         cv_inputs,
@@ -214,7 +236,7 @@ fn main() -> ! {
         triggers,
         panel,
         SystemClock::new(gpt1, &mut cortex.DCB, &mut cortex.DWT),
-        display,
+        TimedPanel::new(display),
     );
     engine.set_render_interval(board::RENDER_INTERVAL_TICKS);
     engine
@@ -250,13 +272,13 @@ fn main() -> ! {
             None
         }
     };
-    usb_log.poll();
+    usb.poll();
 
     #[cfg(feature = "settings-stress")]
     if let Some(store) = settings_store.as_mut() {
         let original = *engine.settings();
         let (_, _, _, _, display) = engine.parts_mut();
-        let report = stress::run(store, original, display, &mut || usb_log.poll());
+        let report = stress::run(store, original, display, &mut || usb.poll());
         settings_event = "stress run done";
         let _ = core::fmt::Write::write_fmt(
             &mut settings_detail,
@@ -265,7 +287,7 @@ fn main() -> ! {
         // Leave the result on screen long enough to read before the splash.
         for _ in 0..3_000 {
             delay.delay_ms(1);
-            usb_log.poll();
+            usb.poll();
         }
         engine.report_save(if report.ok {
             SaveOutcome::Stored
@@ -279,6 +301,9 @@ fn main() -> ! {
     // offset of an input can be measured as numbers over USB (TESTING.md 9.2).
     let mut cv_millivolts = [Extent::new(); CV_CHANNELS];
     let mut cv_codes = [Extent::new(); CV_CHANNELS];
+
+    let probe = PROBE.take();
+    probe.set_can_reboot(reboot::is_supported());
 
     let mut ticks: u32 = 0;
     // The start of the current period, sampling included: pacing from the
@@ -299,6 +324,13 @@ fn main() -> ! {
         }
         record_since(&mut engine, Stage::Sample, mark);
         let report = engine.tick();
+        probe.after_tick(&report, &mut engine);
+        let (.., panel) = engine.parts_mut();
+        if let Some(pages) = panel.take_page_times() {
+            for cycles in pages {
+                engine.profile_mut().record(Stage::Page, cycles);
+            }
+        }
         if engine.take_save_request() {
             // Blocks for an erase now and then (tens of milliseconds); only
             // ever after an explicit SAVE on the settings screen.
@@ -325,7 +357,7 @@ fn main() -> ! {
                 }
             };
             engine.report_save(outcome);
-            usb_log.poll();
+            usb.poll();
         }
         {
             let inputs = engine.calibration().inputs;
@@ -341,8 +373,12 @@ fn main() -> ! {
         // Keep the CDC pipe alive. Cheap when the host is absent: the backend
         // either has nothing queued or drops into a full ring buffer.
         let mark = engine.clock().fine_count();
-        usb_log.poll();
+        usb.poll();
+        usb.serve(probe, &mut engine);
         record_since(&mut engine, Stage::Usb, mark);
+        if probe.take_reboot_request() || usb.take_reboot_request() {
+            restart_into_loader(&mut usb, probe, &mut engine);
+        }
 
         // Occasional heartbeat so a quiet serial monitor still proves the
         // loop is running even when the OLED is blank.
@@ -353,9 +389,9 @@ fn main() -> ! {
                 report.elapsed_micros,
                 settings_detail.as_str()
             );
-            usb_log.poll();
+            usb.poll();
             profile_log::log(engine.profile());
-            usb_log.poll();
+            usb.poll();
             for channel in CvChannel::ALL {
                 let index = channel.index();
                 if let (Some((low_mv, high_mv)), Some((low_code, high_code))) =
@@ -373,7 +409,7 @@ fn main() -> ! {
                 cv_millivolts[index].reset();
                 cv_codes[index].reset();
             }
-            usb_log.poll();
+            usb.poll();
         }
 
         // Cooperative pacing against the microsecond clock, on a fixed
@@ -400,7 +436,8 @@ fn main() -> ! {
                 if before + longest_poll_micros + 1 >= deadline {
                     break;
                 }
-                usb_log.poll();
+                usb.poll();
+                usb.serve(probe, &mut engine);
                 let took = engine.clock().now_micros() - before;
                 longest_poll_micros = longest_poll_micros.max(took);
             }
@@ -409,6 +446,34 @@ fn main() -> ! {
             }
         }
     }
+}
+
+/// Lets the last replies and log lines reach the host, then hands the chip
+/// to the bootloader; on a chip that cannot do it, only says so.
+fn restart_into_loader<A, O, D, C, K, S>(
+    usb: &mut Usb,
+    probe: &mut Server,
+    engine: &mut Engine<A, O, D, C, K, S>,
+) where
+    A: oc_core::platform::AnalogIn,
+    O: oc_core::platform::AnalogOut,
+    D: oc_core::platform::DigitalIn,
+    C: oc_core::platform::Controls,
+    K: oc_core::platform::Clock,
+    S: oc_core::platform::Display,
+{
+    if !reboot::is_supported() {
+        log::warn!("restart into the bootloader refused: secure chip, press PROGRAM");
+        return;
+    }
+    log::info!("restarting into the bootloader");
+    let mut delay = CycleDelay;
+    for _ in 0..RESTART_DRAIN_MS {
+        usb.poll();
+        usb.serve(probe, engine);
+        delay.delay_ms(1);
+    }
+    reboot::to_loader();
 }
 
 /// Records the fine counts since `mark` as one duration of `stage`.

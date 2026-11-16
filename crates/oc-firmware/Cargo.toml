@@ -23,10 +23,17 @@ teensy4-panic = { version = "0.3", features = ["log"] }
 # `imxrt-log` needs on a bare-metal single-core target.
 cortex-m = { version = "0.7", features = ["critical-section-single-core"] }
 embedded-hal.workspace = true
-# USB CDC serial logging (host sees a virtual COM port). Poll from the main
-# loop — we do not enable USB interrupts, so no RTIC dependency.
-imxrt-log = { version = "0.2", default-features = false, features = ["usbd", "log"] }
+# USB: two CDC serial ports, the text log and the probe (journal/D-029),
+# polled from the main loop with interrupts off. The BSP re-exports the
+# controller driver (imxrt-usbd); these are the stack and the class it
+# plugs into, the ones imxrt-log used before, and the cell that gives the
+# bus allocator its 'static lifetime.
+usb-device = "0.3"
+usbd-serial = "0.2"
+static_cell = "2"
 log = { version = "0.4", default-features = false }
+# The probe protocol and its server, tested on the host.
+oc-protocol.workspace = true
 # The settings store (journal/D-028): the firmware provides the NorFlash it
 # runs on, and calls the boot ROM with the configuration block this image
 # boots with, which teensy4-fcb defines (the same crate the BSP links).
