@@ -23,6 +23,8 @@ behaviour runs on hardware, in a native simulator, and inside VCV Rack 2.
 |----------------------|-------------------------------------------------------------------|
 | `crates/oc-core`     | `no_std`, `forbid(unsafe_code)` core: platform traits, engine, UI  |
 | `crates/oc-firmware` | Teensy 4.0 binary; the only crate that touches registers           |
+| `crates/oc-protocol` | `no_std` messages and server of the live probe (postcard over COBS) |
+| `crates/oc-probe`    | Host tool talking to a running module over its probe port          |
 | `crates/oc-sim`      | Native backend and terminal UI, with a deterministic virtual clock |
 | `crates/oc-vcv-ffi`  | `staticlib` exposing a C ABI to the VCV Rack 2 module              |
 | `vcv/OrnamentCrimeAlambic` | The Rack SDK plugin shim: module declaration and widget only, no behaviour |
@@ -284,6 +286,24 @@ Screen rendering dominates by three orders of magnitude, and an OLED panel
 cannot show more than about 60 frames per second anyway, so the redraw rate is
 decoupled from the control loop through `Engine::set_render_interval`. The CV
 outputs are refreshed on every tick regardless.
+
+On the module itself, the engine times every stage of the loop on the core's
+cycle counter (journal/D-029): the USB log prints it once a second, and the
+probe gives it as a table:
+
+```sh
+cargo probe stats              # mean and longest time of each stage, loop jitter
+cargo probe stats --fresh 10   # the same over the next ten seconds only
+cargo probe stream --every 10  # inputs, codes, outputs and triggers every 10 ms
+cargo probe out A -2000        # hold output A at -2 V until Enter, printing the inputs
+cargo probe screen --png s.png # capture the screen as the module shows it
+cargo probe reboot             # restart into the bootloader, then `cargo xtask flash`
+```
+
+`cargo probe` is an alias of `cargo run -q -p oc-probe --`. The tool finds the
+module's probe port by itself (`--port` to name it); it is the second of the
+module's two USB serial ports, the first being the text log. Closing the tool
+ends the session, which releases every held output.
 
 ## Requirements
 

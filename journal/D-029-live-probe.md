@@ -129,3 +129,23 @@ Statut inchangé (`proposée`) : le transport et l'outil hôte restent à faire.
   seule fenêtre (6 octets de commande en plus par page).
 
 Statut inchangé (`proposée`) : essai sur module et outil hôte à faire.
+
+## Révision (2026-11-16, lot 3b4) — l'outil hôte, testé contre le serveur réel
+
+* **`oc-probe`** : `Client` générique sur `Read + Write` (le port série en vrai, une boucle en mémoire dans les
+  tests), qui met de côté les échantillons rencontrés en attendant une réponse ; `port` trouve le port de la sonde
+  en envoyant un hello à chaque candidat (le port du journal ne répond pas) ; `render` affiche le profil en
+  tableau, l'écran en texte (demi-blocs) ou en PNG. CLI : `ports`, `info`, `stats [--fresh S] [--watch S]`,
+  `stream`, `out <A-D> <mV>` (jusqu'à Entrée), `screen [--png]`, `reboot` ; alias `cargo probe`.
+* **Tests** : le client contre le vrai `oc_protocol::server` sur `mock_engine`, par une boucle qui fait tourner le
+  moteur pendant que l'hôte attend : toute la chaîne des deux côtés, sans matériel. Ils ont trouvé un blocage
+  (attendre un échantillon pendant un flux ne rendait jamais la main), corrigé avant tout essai sur module.
+* **`serialport` sans `libudev`** (feature par défaut) : elle exige les en-têtes système sous Linux, donc la CI ;
+  sans elle, la liste des ports n'a pas toujours les identifiants USB, et l'outil essaie alors tous les ports.
+  Licence MPL-2.0, au niveau du fichier : sans effet sur notre code.
+* **La capture d'écran défait rotation et décalage** côté module (le serveur connaît les réglages) : elle se lit
+  comme la façade.
+* Non fait : `cargo xtask flash` qui demanderait lui-même le redémarrage ; `cargo probe reboot` puis
+  `cargo xtask flash` en tient lieu.
+
+Statut inchangé (`proposée`) : essai de l'outil sur module (lot 3b5).

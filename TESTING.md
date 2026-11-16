@@ -466,6 +466,24 @@ and whether the panel is SH1106 (stock), SSD1306, or SSD1309. Follow it in order
    wait until it is fixed. The USB `tick=` heartbeat is the same signal when
    the panel is unreadable.
 
+### 9.1b — Live probe
+
+With the module running and the USB cable on the Teensy (journal/D-029):
+
+1. `cargo probe info` prints the port it found and `oc-firmware X.Y.Z (build)`,
+   the same as the splash screen.
+2. `cargo probe stats --fresh 5` prints, after five seconds, one row per stage
+   (`tick`, `acquire`, `update`, `outputs`, `render`, `present`, `page`,
+   `sample`, `usb`) and the period, then the jitter histogram. The `page`
+   count is eight per frame sent.
+3. `cargo probe screen` prints the screen as text; it reads as the panel does,
+   rotation setting included. `--png file.png` writes an image instead.
+4. `cargo probe stream --count 5` prints five samples, one every 100 ms.
+5. `cargo probe out A 1000` holds output A at 1 V (check it on a multimeter)
+   until Enter; closing the tool releases it, `oc-probe` killed included.
+6. `cargo probe reboot`, then `cargo xtask flash`: the flash goes through with
+   no PROGRAM press.
+
 ### 9.2 — CV inputs
 
 For each of the four front-panel CV jacks in turn:

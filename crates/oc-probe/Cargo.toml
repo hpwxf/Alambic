@@ -1,0 +1,25 @@
+[package]
+name = "oc-probe"
+description = "Host tool talking to a running Ornament & Crime module over its probe port (journal/D-029)"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+publish = false
+
+[dependencies]
+oc-core.workspace = true
+oc-protocol.workspace = true
+anyhow.workspace = true
+clap.workspace = true
+# The standard cross-platform serial port crate. Its default `libudev`
+# feature needs the system's libudev headers on Linux; without it the tool
+# simply tries every port instead of filtering them by USB identifiers.
+serialport = { version = "4.10", default-features = false }
+# Writes `oc-probe screen --png`.
+png = "0.18"
+
+[lints]
+workspace = true

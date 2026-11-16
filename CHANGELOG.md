@@ -23,6 +23,10 @@ Architectural decisions behind each change are in `journal/` (French).
   frame is sent and timed page by page. Setting either port to 134 baud
   restarts into the bootloader (journal/D-029).
 - `Engine::force_output`, `Engine::raw_codes`, `Ssd130x::flush_page`.
+- **`oc-probe`**, the host tool over the probe port (`cargo probe`):
+  `stats` (the profile as a table), `stream` (inputs, codes, outputs,
+  triggers), `out` (hold an output, watch the inputs), `screen` (text or
+  PNG, as the module shows it), `reboot` (into the bootloader).
 
 ### Fixed
 

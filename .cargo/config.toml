@@ -15,3 +15,4 @@ xtask = "run --package xtask --release --"
 # Convenience shorthands; `cargo xtask build` is the supported entry point.
 fw = "build --package oc-firmware --target thumbv7em-none-eabihf"
 sim = "run --package oc-sim"
+probe = "run --quiet --package oc-probe --"

@@ -74,12 +74,13 @@ cargo xtask flash                           # validate, show SHA-256 digest, con
 cargo xtask vcv build --rack-dir <path>     # build the VCV Rack 2 plugin (needs a downloaded Rack SDK)
 cargo xtask vcv install --rack-dir <path>   # build + drop into the Rack user plugin folder
 cargo xtask vcv clean                       # wipe plugin + oc-vcv-ffi build artefacts
+cargo probe stats                           # live profile of a running module (oc-probe; also stream, out, screen, reboot)
 
 cargo bench                                 # criterion benchmarks (crates/oc-core/benches/engine.rs)
 ```
 
-`cargo fw` and `cargo sim` (aliases in `.cargo/config.toml`) shortcut the
-firmware build and the simulator run. `cargo xtask` itself is also a cargo
+`cargo fw`, `cargo sim` and `cargo probe` (aliases in `.cargo/config.toml`)
+shortcut the firmware build, the simulator run and the probe tool. `cargo xtask` itself is also a cargo
 alias (`run --package xtask --release --`).
 
 ## What this is
@@ -100,6 +101,7 @@ scope for now: the two shipped are a diagnostic I/O screen and a scope.
 | `crates/oc-drivers`   | yes      | `forbid(unsafe_code)`       | Peripheral protocols (DAC8565, SH1106/SSD1306/SSD1309, triggers, shared SPI bus) over `embedded-hal` 1.0 only; tested on the host against recording mock buses. |
 | `crates/oc-firmware`  | yes (bin)| `deny(unsafe_code)`; `unsafe` only in `flash_store.rs` (boot ROM calls) and `reboot.rs` (bootloader hand-over) | Pure wiring: turns `teensy4-bsp`/`imxrt-hal` resources into the `oc-core` platform traits, runs the 1 kHz loop. The one crate that cannot be tested on the host. |
 | `crates/oc-protocol`  | yes      | `forbid(unsafe_code)`       | Messages between the firmware and the host probe (`Request`, `Reply`), `postcard` + COBS framing, `FrameReader`; tested on the host (journal/D-029). |
+| `crates/oc-probe`     | no       | ordinary                    | Host tool over the module's probe port (`serialport`, without `libudev`): a `Client` over any byte stream, tested against the real `oc_protocol::server` through an in-memory loopback on a mock engine; CLI `stats`, `stream`, `out`, `screen`, `reboot` (journal/D-029). |
 | `crates/oc-sim`       | no       | ordinary                    | Host backend + ratatui TUI + deterministic virtual clock; runs the real `oc-core` engine. |
 | `crates/oc-vcv-ffi`   | no       | ordinary (defensive C ABI)  | `staticlib`/`rlib` exposing a defensive C ABI over `oc-core` (`oc_engine_*`), linked into the VCV Rack 2 module. Every function tolerates a null pointer or an out-of-range index and never lets a Rust panic unwind across the boundary (`catch_unwind`). |
 | `vcv/OrnamentCrimeAlambic` | n/a (C++) | n/a | The Rack SDK plugin shim: module/port declaration, a widget reading the ABI's framebuffer, no behaviour of its own. Built by `cargo xtask vcv build\|install`, not by hand. |
