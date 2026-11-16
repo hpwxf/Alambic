@@ -82,3 +82,25 @@ Statut `proposée` : adoptée lot par lot, comme D-026 à D-028.
   sonde (le bouton PROGRAM suffit, D-016).
 * Si l'audio (D-023 option B) passe en DMA et en interruptions, le profilage devra mesurer l'ISR elle-même ; les
   étapes nommées restent, leur point de mesure change.
+
+## Révision (2026-11-16, lot 3b1) — un compteur fin absent par défaut, un profil qui commence après le démarrage
+
+Écarts à la proposition, apparus en écrivant le lot :
+
+* **`Clock::fine_count` vaut zéro par défaut** (et `fine_per_micro` aussi), au lieu d'être déduit de
+  `now_micros` : la `VirtualClock` des tests avance à chaque lecture de `now_micros` (coût de lecture modélisé), si
+  bien qu'un défaut qui la lirait déplacerait le temps de chaque tick et changerait les tests et les écrans dorés.
+  `VirtualClock` fournit son propre compteur fin, son temps lu sans l'avancer ; une horloge sans compteur fin
+  laisse le profil vide. Le simulateur et Rack, qui tournent sur la `VirtualClock`, ont donc un profil
+  déterministe mais sans valeur de mesure : seul le module mesure.
+* **Le profil est remis à zéro à la fin de l'écran de démarrage** : celui-ci redessine à chaque tick (D-020), ses
+  durées ne décrivent pas le module en marche.
+* **`Present` ne mesure que l'envoi** (`Display::present`), pas le contraste, la rotation ni le décalage : c'est le
+  coût du bus que D-023 doit connaître. Le détail par page (`Stage::Page`) attend le lot 3b3, qui doit ouvrir le
+  pilote OLED page par page.
+* En attendant l'outil hôte, le firmware écrit le profil **sur le journal USB**, deux lignes par seconde
+  (`profile_log.rs`) : les chiffres du lot 3b sont lisibles avec `screen` dès ce lot.
+* La revue a trouvé, au passage, les deux arguments de la ligne `tick=… last_us=…` inversés depuis le lot 4e
+  (`last_us` affichait le détail des réglages) ; corrigé.
+
+Statut inchangé (`proposée`) : le transport et l'outil hôte restent à faire.

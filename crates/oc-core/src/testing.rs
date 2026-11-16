@@ -241,6 +241,17 @@ impl Clock for VirtualClock {
         self.now.set(now.wrapping_add(self.read_cost_micros));
         now
     }
+
+    /// The virtual time itself, read without advancing it, so profiling a
+    /// tick sees the read costs of [`Self::now_micros`] and changes nothing.
+    #[allow(clippy::cast_possible_truncation)] // a wrapping counter, by contract
+    fn fine_count(&self) -> u32 {
+        self.now.get() as u32
+    }
+
+    fn fine_per_micro(&self) -> u32 {
+        1
+    }
 }
 
 /// A screen that keeps the framebuffer and counts presentations.

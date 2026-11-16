@@ -181,6 +181,23 @@ pub trait Clock {
     /// Must be monotonic. The core compares timestamps with wrapping
     /// arithmetic, so a source that wraps is acceptable.
     fn now_micros(&self) -> u64;
+
+    /// A free-running counter finer than a microsecond, for profiling only
+    /// (journal/D-029): the module's core cycle counter. It may wrap; only
+    /// differences between two readings are used.
+    ///
+    /// A clock without one keeps the default, and [`Self::fine_per_micro`]
+    /// at zero leaves the profile empty. Reading it must not move the time
+    /// [`Self::now_micros`] reports: behaviour never depends on it.
+    fn fine_count(&self) -> u32 {
+        0
+    }
+
+    /// Counts of [`Self::fine_count`] per microsecond; zero without a fine
+    /// counter.
+    fn fine_per_micro(&self) -> u32 {
+        0
+    }
 }
 
 /// The module's 128x64 monochrome screen.

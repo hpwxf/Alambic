@@ -267,7 +267,12 @@ Full protocol, per level, with exact commands and what each proves: see
   regression guard, not a hardware measurement: rendering costs roughly
   three orders of magnitude more than the state update on the host, which is
   why `Engine::set_render_interval` decouples screen redraw from the 1 kHz
-  signal path (`RENDER_INTERVAL_TICKS` in `board.rs`).
+  signal path (`RENDER_INTERVAL_TICKS` in `board.rs`). The hardware
+  measurement is the engine's own profile (`oc_core::profile`, journal/D-029):
+  the engine times its stages through `Clock::fine_count`, which the
+  firmware backs with the core's cycle counter and the virtual clock with
+  its own time, read without advancing it, so profiling never changes a
+  test or a golden screen.
 
 ## Known gaps (do not assume these are done)
 
@@ -308,6 +313,7 @@ Full protocol, per level, with exact commands and what each proves: see
 | The boot splash screen (name/version, progressive border) | `crates/oc-core/src/splash.rs` |
 | ADC/DAC unit conversion and calibration           | `crates/oc-core/src/calibration.rs` |
 | Input presence derived from the signal (defaults for unused inputs) | `crates/oc-core/src/presence.rs` |
+| Where the loop's time goes (stages, period jitter; the module's cycle counter) | `crates/oc-core/src/profile.rs` (firmware log lines: `crates/oc-firmware/src/profile_log.rs`) |
 | Persistent settings, their format and the flash store | `crates/oc-core/src/settings.rs` (`MemoryFlash` in `testing.rs`) |
 | The Teensy's settings flash (boot ROM calls, the only `unsafe`) | `crates/oc-firmware/src/flash_store.rs` |
 | Deterministic mocks used by every `oc-core` test  | `crates/oc-core/src/testing.rs` |

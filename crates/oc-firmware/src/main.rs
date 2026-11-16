@@ -44,6 +44,7 @@ mod clock;
 mod cv_in;
 mod delay;
 mod flash_store;
+mod profile_log;
 #[cfg(feature = "settings-stress")]
 mod stress;
 
@@ -60,6 +61,7 @@ use bsp::board as bsp_board;
 use oc_core::Engine;
 use oc_core::calibration::CvOutputCalibration;
 use oc_core::platform::{AnalogIn as _, CV_CHANNELS, Clock as _, CvChannel};
+use oc_core::profile::Stage;
 use oc_core::settings::{LoadOutcome, SettingsStore};
 use oc_core::signal::Extent;
 use oc_core::toast::SaveOutcome;
@@ -104,6 +106,10 @@ fn main() -> ! {
     let mut pins = board::split(pins);
 
     let mut delay = CycleDelay;
+    // The core peripherals: only the debug block and the cycle counter are
+    // used, for the profile (journal/D-029). Nothing else takes them.
+    let mut cortex =
+        cortex_m::Peripherals::take().unwrap_or_else(|| panic!("core peripherals already taken"));
 
     // 1 flash: we reached `main`. The LED pad is still free for GPIO here.
     boot_led::signal(&mut gpio2, &mut pins.led_sck, &mut delay, 1);
@@ -207,10 +213,13 @@ fn main() -> ! {
         dac,
         triggers,
         panel,
-        SystemClock::new(gpt1),
+        SystemClock::new(gpt1, &mut cortex.DCB, &mut cortex.DWT),
         display,
     );
     engine.set_render_interval(board::RENDER_INTERVAL_TICKS);
+    engine
+        .profile_mut()
+        .set_expected_period_micros(board::TICK_PERIOD_MICROS);
     engine.set_build_id(env!("OC_BUILD_ID"));
 
     // ---- settings: calibration and preferences, from the flash -------------
@@ -273,12 +282,14 @@ fn main() -> ! {
 
     let mut ticks: u32 = 0;
     loop {
+        let mark = engine.clock().fine_count();
         {
             let (cv_inputs, _, triggers, panel, _) = engine.parts_mut();
             cv_inputs.sample();
             triggers.sample();
             panel.sample();
         }
+        record_since(&mut engine, Stage::Sample, mark);
         let report = engine.tick();
         if engine.take_save_request() {
             // Blocks for an erase now and then (tens of milliseconds); only
@@ -321,7 +332,9 @@ fn main() -> ! {
 
         // Keep the CDC pipe alive. Cheap when the host is absent: the backend
         // either has nothing queued or drops into a full ring buffer.
+        let mark = engine.clock().fine_count();
         usb_log.poll();
+        record_since(&mut engine, Stage::Usb, mark);
 
         // Occasional heartbeat so a quiet serial monitor still proves the
         // loop is running even when the OLED is blank.
@@ -329,9 +342,11 @@ fn main() -> ! {
         if ticks.is_multiple_of(HEARTBEAT_TICKS) {
             log::info!(
                 "tick={ticks} last_us={} settings={settings_event}{}",
-                settings_detail.as_str(),
-                report.elapsed_micros
+                report.elapsed_micros,
+                settings_detail.as_str()
             );
+            usb_log.poll();
+            profile_log::log(engine.profile());
             usb_log.poll();
             for channel in CvChannel::ALL {
                 let index = channel.index();
@@ -368,6 +383,22 @@ fn main() -> ! {
             cortex_m::asm::nop();
         }
     }
+}
+
+/// Records the fine counts since `mark` as one duration of `stage`.
+fn record_since<A, O, D, C, S>(
+    engine: &mut Engine<A, O, D, C, SystemClock, S>,
+    stage: Stage,
+    mark: u32,
+) where
+    A: oc_core::platform::AnalogIn,
+    O: oc_core::platform::AnalogOut,
+    D: oc_core::platform::DigitalIn,
+    C: oc_core::platform::Controls,
+    S: oc_core::platform::Display,
+{
+    let fine = engine.clock().fine_count().wrapping_sub(mark);
+    engine.profile_mut().record(stage, fine);
 }
 
 /// Compile-time reminder that the engine drives exactly four channels.

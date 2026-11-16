@@ -17,6 +17,7 @@ use crate::platform::{
     AnalogIn, AnalogOut, Button, CV_CHANNELS, Clock, Controls, DigitalIn, Display, MilliVolts,
     TRIGGER_CHANNELS, TriggerChannel,
 };
+use crate::profile::{Profile, Stage};
 use crate::settings::Settings;
 use crate::splash::SplashScreen;
 use crate::system::{Line, SystemOutcome, SystemScreen};
@@ -103,6 +104,10 @@ pub struct Engine<A, O, D, C, K, S> {
     save_requested: bool,
     /// The message drawn over the screen, such as a save's outcome.
     toast: Option<Toast>,
+    /// Where the time of the ticks went (journal/D-029).
+    profile: Profile,
+    /// Fine counter at the start of the previous tick, for the period.
+    previous_fine: Option<u32>,
     screen: Screen,
     tick_count: u64,
     previous_micros: Option<u64>,
@@ -129,6 +134,7 @@ where
         clock: K,
         display: S,
     ) -> Self {
+        let profile = Profile::new(clock.fine_per_micro());
         Self {
             analog_in,
             analog_out,
@@ -148,6 +154,8 @@ where
             applied_contrast: None,
             save_requested: false,
             toast: None,
+            profile,
+            previous_fine: None,
             screen: Screen::Splash,
             tick_count: 0,
             previous_micros: None,
@@ -180,6 +188,11 @@ where
     /// rest, so nothing downstream can react to a signal before the module
     /// has visibly finished starting up.
     pub fn tick(&mut self) -> TickReport {
+        let tick_mark = self.clock.fine_count();
+        if let Some(previous) = self.previous_fine {
+            self.profile.record_period(tick_mark.wrapping_sub(previous));
+        }
+        self.previous_fine = Some(tick_mark);
         let started = self.clock.now_micros();
         let elapsed = self.elapsed_since_previous(started);
         if let Some(toast) = &mut self.toast
@@ -192,13 +205,19 @@ where
 
         if self.screen == Screen::Splash {
             let report = self.tick_splash(started, elapsed);
+            self.record_since(Stage::Tick, tick_mark);
             if self.splash.is_done() {
                 self.screen = self.after_boot();
+                // The splash redraws on every tick; the profile describes
+                // the module running, from here on.
+                self.profile.clear();
             }
             return report;
         }
 
+        let mark = self.clock.fine_count();
         let mut snapshot = self.acquire(elapsed);
+        self.record_since(Stage::Acquire, mark);
         // The settings screen and the wizard read the encoders as wired (see
         // `crate::system`); everything else follows the reversal setting.
         let wired = snapshot.controls.encoder_delta;
@@ -215,13 +234,17 @@ where
         if self.screen == Screen::Menu {
             snapshot.silence_controls();
         }
+        let mark = self.clock.fine_count();
         let outputs = match self.screen {
             Screen::System => [0; CV_CHANNELS],
             Screen::Calibration => [self.wizard.output_level(); CV_CHANNELS],
             Screen::App | Screen::Menu | Screen::Splash => self.apps.update(&snapshot),
         };
+        self.record_since(Stage::Update, mark);
 
+        let mark = self.clock.fine_count();
         self.write_outputs(&outputs);
+        self.record_since(Stage::Outputs, mark);
 
         self.ticks_since_render += 1;
         let rendered = self.ticks_since_render >= self.render_interval;
@@ -231,6 +254,7 @@ where
                 tick_count: self.tick_count,
                 duration_micros: self.last_duration_micros,
             };
+            let mark = self.clock.fine_count();
             match self.screen {
                 Screen::Menu => self.menu.render(self.display.frame_mut()),
                 Screen::System => self.system.render(self.display.frame_mut()),
@@ -239,11 +263,13 @@ where
                     self.apps.render(self.display.frame_mut(), &context);
                 }
             }
+            self.record_since(Stage::Render, mark);
             self.present();
         }
 
         let duration = clamp_duration(self.clock.now_micros().wrapping_sub(started));
         self.last_duration_micros = duration;
+        self.record_since(Stage::Tick, tick_mark);
 
         TickReport {
             timestamp_micros: started,
@@ -269,7 +295,9 @@ where
         let outputs = [0; CV_CHANNELS];
         self.write_outputs(&outputs);
 
+        let mark = self.clock.fine_count();
         self.splash.render(self.display.frame_mut());
+        self.record_since(Stage::Render, mark);
         self.present();
 
         let duration = clamp_duration(self.clock.now_micros().wrapping_sub(started));
@@ -305,8 +333,30 @@ where
         self.screen = Screen::Splash;
         self.tick_count = 0;
         self.previous_micros = None;
+        self.previous_fine = None;
         self.last_duration_micros = 0;
         self.ticks_since_render = 0;
+    }
+
+    /// Where the time of the ticks went since the boot splash ended or the
+    /// last [`Profile::clear`] (journal/D-029).
+    #[must_use]
+    pub const fn profile(&self) -> &Profile {
+        &self.profile
+    }
+
+    /// The profile, for a backend to add its own stages
+    /// ([`Stage::Sample`], [`Stage::Usb`], [`Stage::Page`]), set the
+    /// expected period or clear it.
+    pub const fn profile_mut(&mut self) -> &mut Profile {
+        &mut self.profile
+    }
+
+    /// Records the time since `mark`, a fine count read earlier, as one
+    /// duration of `stage`.
+    fn record_since(&mut self, stage: Stage, mark: u32) {
+        let fine = self.clock.fine_count().wrapping_sub(mark);
+        self.profile.record(stage, fine);
     }
 
     /// Sets the build identifier drawn under the version on the splash screen
@@ -478,7 +528,9 @@ where
             frame.rotate_half_turn();
         }
         frame.shift_columns(i32::from(display.column_shift));
+        let mark = self.clock.fine_count();
         self.display.present();
+        self.record_since(Stage::Present, mark);
     }
 
     /// Samples every input.

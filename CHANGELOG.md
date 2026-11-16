@@ -5,6 +5,21 @@ plugin, which Rack 2 requires to have major version 2, ships as
 `2.<minor>.<patch>` of the same release (checked by `xtask/tests/versions.rs`).
 Architectural decisions behind each change are in `journal/` (French).
 
+## Unreleased
+
+### Added
+
+- **Loop profile.** `oc_core::profile` times each stage of `Engine::tick`
+  (acquire, update, outputs, render, present) and the period between ticks,
+  with a jitter histogram, on the new `Clock::fine_count` (journal/D-029).
+  The firmware backs it with the core's cycle counter and logs it on USB,
+  two lines a second after the heartbeat (`TESTING.md` 9.1).
+
+### Fixed
+
+- The USB heartbeat line printed the settings detail after `last_us=` and
+  the tick period at the end of the line.
+
 ## 0.3.0 — 2026-11-16 (Rack plugin 2.3.0)
 
 ### Changed

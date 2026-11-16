@@ -413,11 +413,17 @@ and whether the panel is SH1106 (stock), SSD1306, or SSD1309. Follow it in order
    dac reset released
    oled init ok (…)   # or: oled init failed: Bus|Pin
    panel ok; entering 1 kHz loop
-   tick=1000 last_us=…
+   tick=1000 last_us=… settings=…
+   profile us mean/max: tick=…/… acquire=…/… update=…/… outputs=…/… render=…/… present=…/… sample=…/… usb=…/…
+   period us 999.8..1000.3 n=… jitter(<1,<2,<4..)=…
    ```
 
    A once-per-second `tick=` line proves the 1 kHz loop is alive even when
-   the OLED stays black. A panic after the logger is up also prints the
+   the OLED stays black. The two `profile` / `period` lines that follow it
+   are the engine's profile since the splash ended (journal/D-029), timed on
+   the core's cycle counter: the mean and longest duration of each stage, in
+   microseconds, then the extremes of the loop period and how many periods
+   fell within 1 µs of 1000 µs, 1 to 2 µs off, 2 to 4 µs off, and so on. A panic after the logger is up also prints the
    panic message (`teensy4-panic` feature `log`) before the SOS blink.
 4. Power the module (Eurorack rail or USB). Expect the OLED to first show the
    boot splash screen for about 1.5 seconds: the name and version
