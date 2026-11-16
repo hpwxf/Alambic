@@ -82,7 +82,7 @@ une section datée en fin de fichier) au lieu d'en ouvrir une nouvelle. Les num�
 | [D-014](D-014-host-only-test-strategy.md) | stratégie de test : tout sur l'hôte, firmware sans tests, bus simulés, proptest, criterion, niveau 9 manuel | adoptée (rétrospective) |
 | [D-015](D-015-vcv-rack-shim-over-c-abi.md) | module VCV Rack 2 : coquille C++ sur `staticlib`, ABI C défensive, tick décimé à 1 kHz | adoptée (rétrospective), révisée |
 | [D-016](D-016-safe-flash-and-xtask.md) | `cargo xtask` seul point d'entrée ; flash = validations puis `teensy_loader_cli`, sans sonde USB | adoptée (rétrospective), révisée |
-| [D-017](D-017-ci-and-lint-policy.md) | CI GitHub Actions, `clippy::pedantic` hôte et ARM, toolchain `stable` non épinglée, plugin VCV hors CI | adoptée (rétrospective) |
+| [D-017](D-017-ci-and-lint-policy.md) | CI GitHub Actions, `clippy::pedantic` hôte et ARM, toolchain épinglée (1.100.0, = MSRV), plugin VCV hors CI | adoptée (rétrospective), révisée |
 | [D-018](D-018-release-profile-and-panic.md) | profil release : LTO, `overflow-checks` actifs ; une panique arrête le module (SOS) | adoptée (rétrospective) |
 | [D-019](D-019-debounce-and-activity-detection.md) | anti-rebond 3 échantillons pour les boutons, front pur pour les triggers ; activité par crête-à-crête, aucune présence de câble | adoptée (rétrospective), révisée |
 | [D-020](D-020-boot-splash.md) | écran de démarrage : 1,5 s, sorties au repos, rendu à chaque tick | adoptée (rétrospective) |

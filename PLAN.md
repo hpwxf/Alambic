@@ -72,7 +72,7 @@ Valeurs seules ; le raisonnement est dans `journal/`.
 | tests | tout sur l'hôte, `oc-firmware` sans tests, bus simulés, proptest, criterion compilé en CI, niveau 9 manuel | D-014 |
 | VCV Rack | `staticlib` + ABI C défensive (`catch_unwind`, `cbindgen`), coquille C++, tick décimé à 1 kHz, slug `Alambic` | D-015 |
 | flash | `cargo xtask` seul point d'entrée ; validations ELF puis `teensy_loader_cli`, sans sonde USB | D-016 |
-| CI | GitHub Actions ; fmt, clippy pedantic hôte + ARM, tests Linux + macOS, image firmware, bancs compilés ; canal `stable` | D-017 |
+| CI | GitHub Actions ; fmt, clippy pedantic hôte + ARM, tests Linux + macOS, image firmware, bancs compilés, `flash --dry-run` ; toolchain épinglée **1.100.0** = MSRV | D-017 |
 | profil | release LTO fat, `overflow-checks = true` ; panique → journal USB + SOS | D-018 |
 | entrées | anti-rebond 3 échantillons (boutons), front sur 1 échantillon (triggers) ; activité CV par crête-à-crête (256 éch., 40 mV), aucune présence de câble sur aucun backend | D-019 |
 | démarrage | écran 1,5 s, sorties à 0 V, rendu à chaque tick | D-020 |

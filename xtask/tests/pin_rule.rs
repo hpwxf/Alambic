@@ -58,9 +58,18 @@ fn pin_tokens(line: &str) -> Vec<String> {
 fn the_token_matcher_recognises_pin_names_only() {
     assert_eq!(pin_tokens("let x = pins.p13;"), ["p13"]);
     assert_eq!(pin_tokens("use teensy4_bsp::pins::common::P0;"), ["P0"]);
-    assert!(pin_tokens("// pin 13 is the LED, P13 in the BSP").is_empty());
-    assert!(pin_tokens("let pins = board::split(pins); let p = 1; u32;").is_empty());
-    assert!(pin_tokens("Pullup22k ResolutionBits::Res12").is_empty());
+    assert_eq!(
+        pin_tokens("// pin 13 is the LED, P13 in the BSP"),
+        Vec::<String>::new()
+    );
+    assert_eq!(
+        pin_tokens("let pins = board::split(pins); let p = 1; u32;"),
+        Vec::<String>::new()
+    );
+    assert_eq!(
+        pin_tokens("Pullup22k ResolutionBits::Res12"),
+        Vec::<String>::new()
+    );
 }
 
 #[test]

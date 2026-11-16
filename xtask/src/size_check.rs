@@ -882,7 +882,7 @@ fn format_region(region: std::ops::Range<u32>) -> String {
 
 /// Human-readable size for Teensy budgets (always whole KiB in this crate).
 fn format_bytes_kib(bytes: u64) -> String {
-    if bytes % 1024 == 0 {
+    if bytes.is_multiple_of(1024) {
         format!("{} KiB", bytes / 1024)
     } else {
         format!("{bytes} bytes")

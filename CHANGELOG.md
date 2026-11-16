@@ -43,6 +43,11 @@ Architectural decisions behind each change are in `journal/` (French).
   scenarios: golden screens are now always compared in braille, whatever the
   `octant` feature selects for the interactive simulator (journal/D-013).
 
+### Changed (toolchain)
+
+- Rust toolchain pinned to **1.100.0** (was the floating `stable` channel) and
+  MSRV raised from 1.85 to 1.100 (journal/D-017).
+
 ### Added
 
 - Every backend's splash screen shows the build identifier under the version:

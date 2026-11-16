@@ -31,7 +31,7 @@ section « Révision » ou « Points ouverts » de chaque ADR.
 |---|---|---|---|
 | V1 | D-006 | constantes de calibration nominales, plage d'entrée −5…+5 V non sourcée, aucune persistance | niveau 9 : mesure de 0 V, ±5 V et 1 V/oct par canal |
 | V2 | D-008 | gigue de la boucle (tick d'OLED ≈ 2 ms), jamais mesurée | GPIO + oscilloscope ; chiffre dans `avancement/` |
-| V3 | D-017 | toolchain `stable` flottante avec `-D warnings` + `pedantic` ; `rust-version = 1.85` jamais testé ; pas de `cargo deny` | épingler une version ou ajouter un job MSRV ; `deny.toml` |
+| V3 ◐ | D-017 | toolchain `stable` flottante avec `-D warnings` + `pedantic` ; `rust-version = 1.85` jamais testé ; pas de `cargo deny` | épingler une version ou ajouter un job MSRV ; `deny.toml` — **épinglé 1.100.0 = MSRV le 2026-11-16 ; reste `cargo deny`** |
 | V4 | D-018 | `overflow-checks = true` en release : un débordement fige le module (sorties gelées jusqu'à +6 V) | critère explicite : jusqu'au premier applet de jeu, puis arithmétique saturante + compteur d'erreurs |
 | V5 ✅ | D-016 | validation de l'image réelle seulement au flash ; `flash --dry-run` absent de la CI ; `flash` reconstruit toujours (l'image flashée n'est pas l'artefact CI) | ajouter `cargo xtask flash --dry-run` au job firmware |
 | V6 | D-020 | splash rendu à chaque tick : trame ≈ 1,05 ms > période de 1 ms, chaque tick dépasse pendant 1,5 s ; sortie « 0 V » dépend de l'ordre reset DAC / première écriture | rendre le splash à la cadence UI ; vérifier les sorties à la mise sous tension (niveau 9) |

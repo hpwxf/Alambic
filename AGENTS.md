@@ -112,7 +112,8 @@ lives in `oc-core` and is tested once, on the host.
 ## Cross-compilation specifics
 
 * **Target:** `thumbv7em-none-eabihf`. Toolchain pinned by
-  `rust-toolchain.toml` (stable channel, `rust-src` + `llvm-tools` components,
+  `rust-toolchain.toml` (**1.100.0**, bumped deliberately by hand;
+  `rust-src` + `llvm-tools` components,
   that target); `rustup` provisions everything on first build.
 * **`oc-firmware` is excluded from `default-members`** in the root
   `Cargo.toml`. A bare `cargo build`/`cargo test`/`cargo clippy` therefore
@@ -197,8 +198,9 @@ lives in `oc-core` and is tested once, on the host.
 
 ## Code style and lints
 
-* Edition 2024 (`rust-toolchain.toml`, `rustfmt.toml`); MSRV `1.85`
-  (`[workspace.package] rust-version`).
+* Edition 2024 (`rust-toolchain.toml`, `rustfmt.toml`); MSRV `1.100`
+  (`[workspace.package] rust-version`), equal to the pinned toolchain so
+  every CI job tests it (journal/D-017).
 * Workspace-wide lints in the root `Cargo.toml`:
   `clippy::pedantic` (warn), `missing_debug_implementations` (warn),
   `unreachable_pub` (warn), `rust_2018_idioms` (warn). CI runs

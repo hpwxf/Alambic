@@ -222,7 +222,7 @@ fn main() -> ! {
         // Occasional heartbeat so a quiet serial monitor still proves the
         // loop is running even when the OLED is blank.
         ticks = ticks.wrapping_add(1);
-        if ticks % HEARTBEAT_TICKS == 0 {
+        if ticks.is_multiple_of(HEARTBEAT_TICKS) {
             log::info!("tick={ticks} last_us={}", report.elapsed_micros);
             usb_log.poll();
         }

@@ -201,13 +201,13 @@ impl Simulator {
                 continue;
             }
             self.button_hold[index] -= 1;
-            if self.button_hold[index] == 0 {
-                if let Some(button) = Button::from_index(index) {
-                    self.apply(Event::Button {
-                        button,
-                        down: false,
-                    });
-                }
+            if self.button_hold[index] == 0
+                && let Some(button) = Button::from_index(index)
+            {
+                self.apply(Event::Button {
+                    button,
+                    down: false,
+                });
             }
         }
 

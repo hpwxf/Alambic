@@ -200,12 +200,11 @@ impl Tui {
                 .draw(|frame| self.draw(frame))
                 .context("cannot draw the interface")?;
 
-            if event::poll(FRAME_INTERVAL).context("cannot poll the terminal")? {
-                if let event::Event::Key(key) = event::read().context("cannot read a key")? {
-                    if key.kind == KeyEventKind::Press {
-                        self.on_key(key);
-                    }
-                }
+            if event::poll(FRAME_INTERVAL).context("cannot poll the terminal")?
+                && let event::Event::Key(key) = event::read().context("cannot read a key")?
+                && key.kind == KeyEventKind::Press
+            {
+                self.on_key(key);
             }
 
             self.advance();

@@ -215,7 +215,7 @@ mod tests {
     #[test]
     fn every_app_has_a_name_that_fits_the_screen() {
         for id in AppId::ALL {
-            assert!(!id.name().is_empty());
+            assert_ne!(id.name(), "");
             assert!(
                 id.name().len() <= 24,
                 "{} would overflow a menu row",
