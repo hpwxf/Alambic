@@ -83,3 +83,11 @@ Premier `cargo probe stats` (`d5365bb`, ≈ 94 s après le démarrage) : tick 11
 Essai de `cargo probe out A 1000` : 1 V au multimètre, mais l'écran Diagnostic affichait encore `0.0` (sa propre
 sortie, pas celle du jack) ; corrigé : la ligne `OUT` affiche ce qui est écrit, `OUT*` quand la sonde tient une
 sortie.
+
+## Niveau 9 avec la sonde (lot 3b5, module TLM, firmware `1c11495`)
+
+**9.2, `cargo probe inputs --seconds 20`** (20 000 échantillons, aucun perdu) : CV2–CV4 non branchées, moyenne
+−1 à 0 mV, crête-à-crête 20 à 24 mV (fenêtre de 20 s, contre ≈ 17 mV par seconde au journal), bien sous le seuil
+de présence de 50 mV (D-024). CV1 reçoit une sinusoïde (Dixie II+, ≈ ± 4,8 V) : +4 793 mV en haut, −3 280 mV en
+bas au code 4 086 — le creux est écrêté par la plage de l'entrée (≈ −3,33 à +6,67 V, calibration d'usine de
+Phazerville), pas un défaut. Valeurs indicatives.
