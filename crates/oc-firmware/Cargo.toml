@@ -32,6 +32,8 @@ log = { version = "0.4", default-features = false }
 # boots with, which teensy4-fcb defines (the same crate the BSP links).
 embedded-storage-async.workspace = true
 teensy4-fcb = "0.5"
+# Draws the stress run's progress (feature `settings-stress` only).
+embedded-graphics = { workspace = true, optional = true }
 
 # Computes the build identifier shown on the splash screen (journal/D-025).
 [build-dependencies]
@@ -43,6 +45,10 @@ oc-buildinfo.workspace = true
 # a blank or garbled screen with no other symptom.
 ssd1306 = []
 ssd1309 = []
+# Test firmware only: at power-up, save the settings 300 times and read each
+# back before running normally (src/stress.rs, TESTING.md 9.5c). Never for a
+# module in use: it wears the settings sectors for nothing.
+settings-stress = ["dep:embedded-graphics"]
 
 [lints]
 workspace = true

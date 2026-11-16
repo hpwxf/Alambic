@@ -44,6 +44,8 @@ mod clock;
 mod cv_in;
 mod delay;
 mod flash_store;
+#[cfg(feature = "settings-stress")]
+mod stress;
 
 use core::cell::RefCell;
 
@@ -218,6 +220,9 @@ fn main() -> ! {
     // The boot lines are gone by the time a serial monitor connects, so the
     // last settings event is repeated on every heartbeat line.
     let mut settings_event = "no flash";
+    // Extra detail after the event: the stress run's result, when built in.
+    #[allow(unused_mut)] // Only the `settings-stress` build writes to it.
+    let mut settings_detail = oc_core::fmt::TextBuf::<48>::new();
     let mut settings_store = match SettingsFlash::new() {
         Ok(flash) => {
             let mut store = SettingsStore::new(flash);
@@ -237,6 +242,28 @@ fn main() -> ! {
         }
     };
     usb_log.poll();
+
+    #[cfg(feature = "settings-stress")]
+    if let Some(store) = settings_store.as_mut() {
+        let original = *engine.settings();
+        let (_, _, _, _, display) = engine.parts_mut();
+        let report = stress::run(store, original, display, &mut || usb_log.poll());
+        settings_event = "stress run done";
+        let _ = core::fmt::Write::write_fmt(
+            &mut settings_detail,
+            format_args!(" | {}", report.line().as_str()),
+        );
+        // Leave the result on screen long enough to read before the splash.
+        for _ in 0..3_000 {
+            delay.delay_ms(1);
+            usb_log.poll();
+        }
+        engine.report_save(if report.ok {
+            SaveOutcome::Stored
+        } else {
+            SaveOutcome::Failed
+        });
+    }
 
     // Per-CV-input extent over the current heartbeat second, in calibrated
     // millivolts and in raw ADC codes: logged once a second so the noise and
@@ -261,7 +288,10 @@ fn main() -> ! {
                 .map(|store| store.save(engine.settings()));
             let outcome = match saved {
                 Some(Ok(())) => {
-                    log::info!("settings saved");
+                    let erases = settings_store
+                        .as_mut()
+                        .map_or(0, |store| store.flash().erase_count());
+                    log::info!("settings saved ({erases} sector erases since power-up)");
                     settings_event = "saved";
                     SaveOutcome::Stored
                 }
@@ -298,7 +328,8 @@ fn main() -> ! {
         ticks = ticks.wrapping_add(1);
         if ticks.is_multiple_of(HEARTBEAT_TICKS) {
             log::info!(
-                "tick={ticks} last_us={} settings={settings_event}",
+                "tick={ticks} last_us={} settings={settings_event}{}",
+                settings_detail.as_str(),
                 report.elapsed_micros
             );
             usb_log.poll();

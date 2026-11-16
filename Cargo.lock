@@ -2582,6 +2582,7 @@ name = "oc-firmware"
 version = "0.2.0"
 dependencies = [
  "cortex-m",
+ "embedded-graphics",
  "embedded-hal 1.0.0",
  "embedded-storage-async",
  "imxrt-log",

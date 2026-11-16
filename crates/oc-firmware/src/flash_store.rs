@@ -120,12 +120,14 @@ pub(crate) struct SettingsFlash {
     driver: &'static NorDriver,
     config: AlignedConfig,
     page: [u32; PAGE_WORDS],
+    erases: u32,
 }
 
 impl core::fmt::Debug for SettingsFlash {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         f.debug_struct("SettingsFlash")
             .field("rom_driver_version", &self.driver.version)
+            .field("erases", &self.erases)
             .finish_non_exhaustive()
     }
 }
@@ -152,6 +154,7 @@ impl SettingsFlash {
             driver,
             config: AlignedConfig(SERIAL_NOR_CONFIGURATION_BLOCK),
             page: [0; PAGE_WORDS],
+            erases: 0,
         };
         let init = flash.driver.init;
         // SAFETY: `init` is the ROM driver's own entry point; it gets the
@@ -159,6 +162,11 @@ impl SettingsFlash {
         // borrowed configuration block (see `rom_call`).
         flash.rom_call(|config| unsafe { init(FLEXSPI_INSTANCE, config) })?;
         Ok(flash)
+    }
+
+    /// Sectors erased since power-up: how often the store reclaimed one.
+    pub(crate) const fn erase_count(&self) -> u32 {
+        self.erases
     }
 
     /// Runs one ROM call with interrupts masked, then clears the `FlexSPI`
@@ -234,6 +242,7 @@ impl SettingsFlash {
                 erase(FLEXSPI_INSTANCE, config, sector, SECTOR_BYTES)
             })?;
             sector += SECTOR_BYTES;
+            self.erases = self.erases.saturating_add(1);
         }
         Ok(())
     }
