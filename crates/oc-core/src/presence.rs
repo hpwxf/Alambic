@@ -31,9 +31,12 @@ use crate::signal::{DEFAULT_ACTIVITY_THRESHOLD_MV, SignalDetector};
 
 /// A level further than this from 0 V counts as evidence on a CV input.
 ///
-/// Above the offset error expected from the provisional calibration, and
-/// musically negligible (a little over a semitone at 1 V/oct).
-pub const CV_LEVEL_THRESHOLD_MV: MilliVolts = 100;
+/// Measured on a calibrated TLM module (journal/D-024, revision of
+/// 2026-11-16): unplugged inputs sit within ±10 mV of 0 V with 17 mV of
+/// peak-to-peak noise at worst, so 50 mV keeps a margin of about three times
+/// the worst excursion while catching a little over half a semitone at
+/// 1 V/oct.
+pub const CV_LEVEL_THRESHOLD_MV: MilliVolts = 50;
 
 /// How long a CV input stays present without evidence. Long enough that an
 /// LFO crossing 0 V does not flicker absent.

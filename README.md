@@ -133,7 +133,7 @@ is present (`P`) or absent (`.`), whether a signal is moving (`~`), the gate
 level and the number of trigger edges counted, plus the tick duration and
 count. Presence is *derived from the signal*, not from a cable: the module's
 jacks cannot detect one, so an input is present when it has moved or sat more
-than 100 mV away from 0 V within the last 300 ms, identically on the module,
+than 50 mV away from 0 V within the last 300 ms, identically on the module,
 in the simulator and in Rack (journal/D-024). A cable carrying a steady 0 V
 therefore reads as absent.
 

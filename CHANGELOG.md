@@ -5,7 +5,7 @@ plugin, which Rack 2 requires to have major version 2, ships as
 `2.<minor>.<patch>` of the same release (checked by `xtask/tests/versions.rs`).
 Architectural decisions behind each change are in `journal/` (French).
 
-## Unreleased
+## 0.3.0 — 2026-11-16 (Rack plugin 2.3.0)
 
 ### Changed
 
@@ -44,6 +44,9 @@ Architectural decisions behind each change are in `journal/` (French).
   saved); the splash recalls both gestures. Rotation and shift are applied to
   the pixels in the core, contrast through the new `Display::set_contrast`
   (journal/D-026).
+- **Input presence threshold lowered to 50 mV** (from 100 mV), measured on a
+  calibrated module: unplugged inputs read within ±10 mV with 17 mV of noise
+  (journal/D-024).
 - **Settings flash stress test** (test firmware only):
   `cargo xtask flash --features settings-stress` saves the settings 300 times
   at power-up, reading each back, and reports the result and the number of

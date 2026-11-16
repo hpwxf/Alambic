@@ -465,7 +465,7 @@ For each of the four front-panel CV jacks in turn:
    second in millivolts and raw ADC codes (`cv1 mv=-3..4 (pp 7)
    code=2729..2732`; the factory 0 V code is 2730).
    Record the worst channel over 10 to 20 s: its offset and peak-to-peak
-   noise size the presence threshold (journal/D-024). If an unpatched input reads `P`, its offset exceeds the 100 mV
+   noise size the presence threshold (journal/D-024). If an unpatched input reads `P`, its offset exceeds the 50 mV
    presence threshold of journal/D-024: note the reading, it decides whether
    the threshold or the calibration has to move.
 2. Patch in a known, static DC voltage from a calibrated source (a battery

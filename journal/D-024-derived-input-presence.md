@@ -5,7 +5,7 @@
 | **Identifiant** | D-024 |
 | **Date** | 2026-11-16 |
 | **Auteur** | Pascal Havé |
-| **Statut** | adoptée |
+| **Statut** | adoptée, révisée |
 | **Commits** | ce commit (ADR) ; implémentation dans le commit suivant (`oc_core::presence`) |
 | **Relations** | **complète** D-019 (point « activité » : `SignalDetector` en est une source) ; **respecte** D-019 (aucune présence de câble fournie par la plateforme) ; sert D-002 (même comportement sur les trois backends) |
 
@@ -92,3 +92,13 @@ s'ajoutera par-dessus la détection, sans en changer la définition.
   entrée), pas un idiome local.
 * Une carte O&C dont les contacts de jack seraient reliés au microcontrôleur : elle pourrait fournir une preuve de
   plus, à condition que les autres backends aient un équivalent ; sinon, ce serait une divergence (D-002).
+
+## Révision (2026-11-16, étape 4, lot 4f) — seuil CV mesuré : 50 mV
+
+Le seuil de 100 mV couvrait l'erreur de la calibration provisoire (zéro d'entrée à mi-échelle, faux : D-027). Mesure
+sur le module TLM calibré par l'assistant (avancement de l'étape 4) : entrées débranchées à ±10 mV de 0 V au pire,
+17 mV crête à crête au pire, aucun `~` au repos. C'est la case « quelques mV, pas de `~` » du tableau de décision
+préparé avant la mesure : `CV_LEVEL_THRESHOLD_MV` passe à **50 mV**, environ trois fois la pire excursion au repos,
+six dixièmes de demi-ton à 1 V/oct. Maintien inchangé (300 ms). À revoir si un autre module, non calibré ou plus bruité,
+lit `P` débranché.
+

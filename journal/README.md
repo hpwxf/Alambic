@@ -89,7 +89,7 @@ une section datée en fin de fichier) au lieu d'en ouvrir une nouvelle. Les num�
 | [D-021](D-021-app-host-and-menu-chord.md) | plusieurs applets résidents, menu par accord haut + bas, haut / bas agissent au relâchement | adoptée (rétrospective), révisée |
 | [D-022](D-022-license.md) | licence `MIT OR Apache-2.0`, jamais écrite comme décision | adoptée (rétrospective) |
 | [D-023](D-023-dual-rate-signal-isr.md) | double cadence : ISR signal (GPT2, 16 666 Hz) et boucle UI 1 kHz — ou audio 48 kHz + DMA | proposée |
-| [D-024](D-024-derived-input-presence.md) | présence d'une entrée déduite du signal : activité récente avec maintien, réglages CV / trigger (verrou, horloge) | adoptée |
+| [D-024](D-024-derived-input-presence.md) | présence d'une entrée déduite du signal : activité récente avec maintien, réglages CV / trigger (verrou, horloge) | adoptée, révisée |
 | [D-025](D-025-build-identifier.md) | identifiant de build (hash court + `-dirty`) sur l'écran de démarrage des trois backends, crate `oc-buildinfo` sur vergen-gix | adoptée, révisée |
 | [D-026](D-026-system-settings-screen.md) | réglages système : écran dans `oc-core`, gestes de démarrage et assistant calqués sur Phazerville, item `SETUP` du menu | adoptée, révisée |
 | [D-027](D-027-calibration-in-core.md) | calibration dans `oc-core` (codes bruts à la frontière) ; modèle Phazerville : table DAC par octave, zéro ADC par canal, gain sur CV1 | adoptée, révisée |
