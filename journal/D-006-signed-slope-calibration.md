@@ -5,7 +5,7 @@
 | **Identifiant** | D-006 |
 | **Date** | 2026-11-16 (rétrospective ; décision prise le 2026-08-01) |
 | **Auteur** | Pascal Havé |
-| **Statut** | adoptée (rétrospective) |
+| **Statut** | adoptée (rétrospective), révisée |
 | **Commits** | `555f492` (`calibration.rs`), `ec140ed` (constantes et assertions de `board.rs`) |
 
 ## 1. Contexte
@@ -54,3 +54,16 @@ persistées ni réglables (le plan de fondation exclut explicitement la calibrat
   valeur absolue d'une entrée (quantizer).
 * Aucune procédure de calibration ni de stockage n'existe ; tant que c'est le cas, toute précision 1 V/oct annoncée
   est théorique.
+
+## Révision (2026-11-16, D-027) — calibration mesurée, persistée, modèle de Phazerville
+
+Les deux signaux de changement d'avis du § 5 et les deux points ouverts sont pris en compte d'un coup :
+
+* **sorties** : la conversion affine devient une **table de 11 points par octave et par canal** (−3 V…+7 V,
+  interpolation linéaire), le modèle de Phazerville ; la pente signée reste l'expression de l'inversion entre deux
+  points ;
+* **entrées** : affine conservée, **zéro par canal**, pente commune. Le zéro nominal est à 2/3 de l'échelle 12 bits
+  (≈ 2730, `OC_calibration.h` de Phazerville), pas à mi-échelle : la plage −5 V…+5 V centrée était fausse ;
+* les valeurs sont **mesurées** par un assistant sur le module et **persistées** (D-028) ; les constantes de
+  `board.rs` ne sont plus que les valeurs d'usine ;
+* la conversion quitte les backends pour `oc-core` (D-027, option A).

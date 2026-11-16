@@ -67,11 +67,11 @@ une section datée en fin de fichier) au lieu d'en ouvrir une nouvelle. Les num�
 | ID | Décision | Statut |
 |---|---|---|
 | [D-001](D-001-repository-conventions.md) | conventions du dépôt : `PLAN.md` index, `docs/plan/`, journal, langue, définition de « fait » | adoptée |
-| [D-002](D-002-single-behavioural-core.md) | un seul cœur comportemental `oc-core` (`no_std`, traits de plateforme, `Engine::tick`) | adoptée (rétrospective) |
+| [D-002](D-002-single-behavioural-core.md) | un seul cœur comportemental `oc-core` (`no_std`, traits de plateforme, `Engine::tick`) | adoptée (rétrospective), révisée |
 | [D-003](D-003-crate-split.md) | découpage en crates ; `oc-drivers` apparu en cours de route ; firmware hors `default-members` | adoptée (rétrospective), révisée |
 | [D-004](D-004-cross-compilation-toolchain.md) | chaîne croisée : script de lien généré par `imxrt-rt`, ni `memory.x` ni `flip-link`, LLVM du sysroot, `RUSTFLAGS` proscrit | adoptée (rétrospective) |
 | [D-005](D-005-millivolt-signal-unit.md) | unité de signal interne : millivolts `i32`, flottant seulement à la frontière VCV | adoptée (rétrospective) |
-| [D-006](D-006-signed-slope-calibration.md) | calibration affine à pente signée ; étages inverseurs = pente négative ; constantes provisoires | adoptée (rétrospective) |
+| [D-006](D-006-signed-slope-calibration.md) | calibration affine à pente signée ; étages inverseurs = pente négative ; constantes provisoires | adoptée (rétrospective), révisée |
 | [D-007](D-007-pinout-in-board-rs.md) | brochage centralisé dans `board.rs`, dérivé du firmware de référence | adoptée (rétrospective), révisée |
 | [D-008](D-008-cooperative-1khz-loop.md) | boucle coopérative à 1 kHz, sans RTOS ni interruption ; rendu découplé (1 tick sur 20) | adoptée (rétrospective) |
 | [D-009](D-009-display-framebuffer-and-oled-driver.md) | écran : framebuffer 1 bpp dans l'ordre du contrôleur, pilote maison, SH1106 par défaut | adoptée (rétrospective), révisée |
@@ -91,3 +91,6 @@ une section datée en fin de fichier) au lieu d'en ouvrir une nouvelle. Les num�
 | [D-023](D-023-dual-rate-signal-isr.md) | double cadence : ISR signal (GPT2, 16 666 Hz) et boucle UI 1 kHz — ou audio 48 kHz + DMA | proposée |
 | [D-024](D-024-derived-input-presence.md) | présence d'une entrée déduite du signal : activité récente avec maintien, réglages CV / trigger (verrou, horloge) | adoptée |
 | [D-025](D-025-build-identifier.md) | identifiant de build (hash court + `-dirty`) sur l'écran de démarrage des trois backends, crate `oc-buildinfo` sur vergen-gix | adoptée, révisée |
+| [D-026](D-026-system-settings-screen.md) | réglages système : écran dans `oc-core`, gestes de démarrage et assistant calqués sur Phazerville, item `SETUP` du menu | adoptée |
+| [D-027](D-027-calibration-in-core.md) | calibration dans `oc-core` (codes bruts à la frontière) ; modèle Phazerville : table DAC par octave, zéro ADC par canal, gain sur CV1 | adoptée |
+| [D-028](D-028-settings-persistence.md) | persistance : `postcard` + `sequential-storage` sur `embedded-storage`, flash du Teensy 4.0 par l'API ROM, fichier (sim), JSON du patch (Rack) | adoptée |

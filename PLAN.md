@@ -15,6 +15,7 @@ ne recharge que ce dont elle a besoin (journal/D-001).
 | `journal/` | **ADR** — un fichier par décision d'architecture ; `README.md` donne le périmètre, le format et l'index |
 | `docs/plan/roadmap.md` | étapes passées et à venir, questions ouvertes |
 | `docs/plan/revue-decisions-2026-11-16.md` | revue des décisions reconstruites : à vérifier / à réviser |
+| `docs/plan/etape-4-reglages-systeme.md` | plan de l'étape 4 : réglages système, calibration, persistance (lots 4a–4f) |
 | `docs/plan/etape-3-plan-a-isr-16khz.md` | plan A de D-023 (ISR 16 666 Hz), proposé par Junie, non adopté ; bandeau des points caducs |
 | `docs/plan/avancement/etape-*.md` | journal d'une étape terminée : fait, mesuré, corrigé |
 | `.junie/plans/oc-rust-firmware-foundation.md` | plan détaillé de l'étape 0 (fondation), rédigé par l'assistant Junie, terminé |
@@ -47,8 +48,23 @@ D-023 (double cadence) est **proposée** ; elle ne s'adopte qu'après 3a et la m
 | Lot | Contenu | État |
 |---|---|---|
 | **3a** — dette de revue | ✅ CI verte avec `--all-features` (R1, D-013) ; ✅ triggers sans anti-rebond mécanique (R2, D-019) ; ✅ règle du brochage rendue vraie et testée (R3, D-007) ; ✅ docs « jamais sur matériel » / « jamais dans Rack » corrigées (R4, D-011, D-015) ; ✅ `flash --dry-run` en CI (V5, D-016) ; ✅ plus de présence de câble, backends alignés (R5, D-019) ; ✅ plan de cadence suivi par git, conflit avec l'étude audio consigné, OLED par pages proposé (R6, D-023) | fait — version **0.2.0** (plugin Rack 2.2.0, `CHANGELOG.md`) |
-| **3b** — mesure sur module | niveau 9 complet (calibration, CV, triggers) ; coût réel d'une trame OLED et gigue de la boucle (GPIO + oscilloscope, `docs/supersaw/` § 13) | à faire |
+| **3b** — mesure sur module | niveau 9 (CV, triggers ; la calibration passe à l'étape 4) ; coût réel d'une trame OLED et gigue de la boucle (GPIO + oscilloscope, `docs/supersaw/` § 13) | à faire |
 | **3c** — cadence | trancher D-023 (A, B ou C ; plan A : [etape-3-plan-a-isr-16khz.md](docs/plan/etape-3-plan-a-isr-16khz.md)) ; scinder `Engine::tick` en `signal_tick` / `ui_tick` dans `oc-core` | à faire |
+
+### Étape 4 — réglages système, calibration, persistance (en cours)
+
+Demandée le 2026-11-16 : menu de réglages utilisable sur le module, assistant de calibration, persistance ; Teensy 4.0
+seul ; interaction et modèle de calibration repris de Phazerville. Plan détaillé :
+[etape-4-reglages-systeme.md](docs/plan/etape-4-reglages-systeme.md). Les lots 3b et 3c reprennent après l'étape 4.
+
+| Lot | Contenu | État |
+|---|---|---|
+| **4a** — conversion dans le cœur | traits en codes bruts ; calibration entrées (zéro par canal, gain commun) et sorties (table par octave) dans `oc-core` ; valeurs d'usine par backend | à faire |
+| **4b** — modèle et stockage | `oc_core::settings`, `postcard` + `sequential-storage` sur `NorFlash` ; simulateur `--settings` ; ABI Rack + JSON | à faire |
+| **4c** — écran système | `Screen::System`, item `SETUP`, gestes au démarrage, réglages hors calibration | à faire |
+| **4d** — assistant de calibration | étapes Phazerville (DAC, zéros ADC, gain ADC par rebouclage) | à faire |
+| **4e** — flash du module | `NorFlash` via l'API ROM, zone `0x601F_0000`–`0x601F_3FFF` | à faire |
+| **4f** — mesure | calibration réelle du module TLM ; seuil D-024 ; version 0.3.0 | à faire |
 
 ## Décisions actées
 
@@ -61,7 +77,7 @@ Valeurs seules ; le raisonnement est dans `journal/`.
 | crates | `oc-core`, `oc-drivers`, `oc-firmware` (hors `default-members`), `oc-sim`, `oc-vcv-ffi`, `oc-buildinfo` (dépendance de build), `xtask` | D-003, D-025 |
 | chaîne croisée | `thumbv7em-none-eabihf`, `t4link.x` généré par `imxrt-rt`, pas de `memory.x` ni `flip-link`, outils LLVM du sysroot, jamais `RUSTFLAGS` | D-004 |
 | signal | millivolts `i32` ; `f32` seulement dans le C++ du module Rack | D-005 |
-| calibration | affine, pente signée (négative : étages inverseurs), constantes provisoires non persistées | D-006 |
+| calibration | pente signée (négative : étages inverseurs) ; dans `oc-core`, codes bruts à la frontière ; entrées : zéro par canal (≈ 2730), gain commun ; sorties : table de 11 points par octave ; mesurée par assistant, persistée | D-006, D-027 |
 | brochage | table unique et réservation des broches dans `board.rs` (`split` + groupes par signal, test `xtask/tests/pin_rule.rs`), dérivée de `OC_gpio.cpp` ; pull-up 22 kΩ + hystérésis sur les entrées numériques | D-007 |
 | exécution | boucle coopérative 1 kHz, sans interruption ; rendu tous les 20 ticks (≈ 50 Hz) | D-008 (D-023 proposée) |
 | écran | framebuffer 1 024 octets dans l'ordre du contrôleur ; pilote `ssd130x` maison ; SH1106 par défaut, `ssd1306` / `ssd1309` en features | D-009 |
@@ -80,3 +96,5 @@ Valeurs seules ; le raisonnement est dans `journal/`.
 | licence | `MIT OR Apache-2.0` (workspace) | D-022 |
 | présence d'entrée | déduite dans `oc-core` (activité récente + maintien) : CV 100 mV / 300 ms, trigger verrou ou horloge 2 s ; jamais fournie par un backend | D-024 |
 | identifiant de build | hash court + `-dirty` sous la version, écran de démarrage des trois backends ; calculé par `oc-buildinfo` (vergen-gix, sans binaire `git`), jamais dans `oc-core` | D-025 |
+| réglages système | écran `oc-core` hors applets ; gestes au démarrage (encodeur gauche ⇒ calibration, `up` + `down` ⇒ secours) et item `SETUP` ; interaction de Phazerville | D-026 |
+| persistance | `postcard` + `sequential-storage` sur `embedded-storage` ; flash Teensy 4.0 par l'API ROM (`unsafe` confiné) ; fichier (sim) ; JSON du patch (Rack) | D-028 |

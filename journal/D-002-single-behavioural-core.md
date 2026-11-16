@@ -5,7 +5,7 @@
 | **Identifiant** | D-002 |
 | **Date** | 2026-11-16 (rétrospective ; décision prise le 2026-08-01) |
 | **Auteur** | Pascal Havé |
-| **Statut** | adoptée (rétrospective) |
+| **Statut** | adoptée (rétrospective), révisée |
 | **Commits** | `1524760` (workspace), `555f492` (traits, `Engine::tick`, applet diagnostic) |
 
 ## 1. Contexte
@@ -59,3 +59,12 @@ La frontière a tenu à l'usage :
 * `oc_core::testing` est un module **public et non conditionnel** qui sert de backend de production au simulateur et
   au module VCV. Le nom ment sur l'usage, et le module est compilé (puis éliminé) dans le firmware. À trancher :
   renommer (`host`) et/ou le placer derrière une feature `std`/`host`.
+
+## Révision (2026-11-16, D-027, D-028) — codes bruts et stockage
+
+Deux changements de la frontière entre `oc-core` et les backends, sans sortir de B :
+
+* `AnalogIn` / `AnalogOut` passent en **codes bruts** de convertisseur ; la conversion en millivolts et la calibration
+  vivent dans `oc-core` (D-027). Le simulateur et Rack modélisent un convertisseur idéal ;
+* une capacité de stockage persistant entre dans la plateforme, sous la forme des traits standard `NorFlash` de
+  `embedded-storage` plutôt que d'un trait propre à `oc-core` (D-028).

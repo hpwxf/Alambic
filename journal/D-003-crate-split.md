@@ -69,3 +69,9 @@ Un septième crate, `crates/oc-buildinfo` : bibliothèque hôte, utilisée seule
 `oc-firmware`, `oc-sim` et `oc-vcv-ffi`, pour calculer l'identifiant de build (hash court + `-dirty`). `oc-core`
 n'en dépend pas et reste sans `build.rs`. Raisons et détails dans D-025.
 
+## Révision (2026-11-16, D-028) — `unsafe` dans `oc-firmware`
+
+`oc-firmware` reste `deny(unsafe_code)` mais cesse d'être « sans `unsafe` » : l'écriture de la flash par l'API ROM
+du RT1062 (aucun crate ne la fournit) demande des appels par pointeurs de fonction. Ils sont confinés à
+`oc-firmware/src/flash_store.rs`, derrière un `#[allow(unsafe_code)]` local, chaque bloc avec sa section `# Safety`.
+`oc-core` et `oc-drivers` restent `forbid(unsafe_code)`.
