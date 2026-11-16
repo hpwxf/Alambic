@@ -6,7 +6,7 @@
 | **Date** | 2026-11-16 (rétrospective ; décision prise le 2026-08-01) |
 | **Auteur** | Pascal Havé |
 | **Statut** | adoptée (rétrospective), révisée |
-| **Commits** | `1524760` (`ci.yml`, lints de workspace, `rust-toolchain.toml`), `8bdd9bc` (correctif clippy qui bloquait `-D warnings`), 2026-11-16 (toolchain épinglée 1.100.0) |
+| **Commits** | `1524760` (`ci.yml`, lints de workspace, `rust-toolchain.toml`), `8bdd9bc` (correctif clippy qui bloquait `-D warnings`), 2026-11-16 (toolchain épinglée 1.100.0 ; tests macOS à la demande) |
 
 ## 1. Contexte
 
@@ -49,6 +49,14 @@ Constaté au passage, exactement le risque du point ouvert : clippy 1.100 a fait
 inchangé (`manual_is_multiple_of`, `collapsible_if` avec les chaînes de `let` de l'édition 2024,
 `assert_is_empty`). Huit corrections mécaniques, sans changement de comportement, dans le même commit. Le passage
 ouvre aussi la voie aux dépendances qui exigent une version récente (vergen 10 : 1.96, D-025).
+
+## Révision (2026-11-16) — tests macOS à la demande
+
+À la demande de l'utilisateur, le job de tests ne tourne plus par défaut que sur Linux. Les runners macOS sont lents
+et facturés bien plus cher ; le job `test-macos` ne s'exécute que sur lancement manuel (`workflow_dispatch`, case
+« macos » cochée). Ce qui est perdu par défaut : une régression propre à macOS (chemins, `make`/SDK, `llvm-tools` du
+sysroot) n'est plus vue à chaque push ; elle reste couverte par le développement local, qui se fait sur macOS, et par
+un lancement manuel avant une version.
 
 ## Points ouverts (revue du 2026-11-16)
 

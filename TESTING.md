@@ -600,7 +600,9 @@ under Eurorack power-supply noise; none of that is in scope for this plan.
 
 `.github/workflows/ci.yml` runs, on every push and pull request: `rustfmt`
 check, `clippy` on host crates and separately on `oc-firmware` for
-`thumbv7em-none-eabihf`, `cargo test --all-features` on Ubuntu and macOS,
+`thumbv7em-none-eabihf`, `cargo test --all-features` on Ubuntu (macOS only
+on demand: *Run workflow* with "macos" ticked, because its runners are slow
+and expensive),
 `cargo xtask build && cargo xtask size && cargo xtask hex`, then
 `cargo xtask flash --dry-run` (Level 8: the pre-flash gate on the real ELF,
 plus the `.hex` SHA-256 in the log), with the resulting `.hex` uploaded as a

@@ -5,6 +5,11 @@ on:
     branches: [master, main]
   pull_request:
   workflow_dispatch:
+    inputs:
+      macos:
+        description: "Also run the test suite on macOS (slow and billed at a higher rate)"
+        type: boolean
+        default: false
 
 env:
   CARGO_TERM_COLOR: always
@@ -36,12 +41,21 @@ jobs:
           --target thumbv7em-none-eabihf -- -D warnings
 
   test:
-    name: test
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, macos-latest]
+    name: test (linux)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: Swatinem/rust-cache@v2
+      - name: Run tests
+        run: cargo test --all-features
+
+  # macOS runners are slow and billed at a much higher rate, so this job only
+  # runs on demand: Actions > CI > Run workflow, with "macos" ticked
+  # (journal/D-017).
+  test-macos:
+    name: test (macos, on demand)
+    if: github.event_name == 'workflow_dispatch' && inputs.macos
+    runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
       - uses: Swatinem/rust-cache@v2
