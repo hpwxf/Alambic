@@ -83,6 +83,11 @@ signal, comme sur le module. Prix accepté : dans Rack, on perd une information 
 statique et une entrée débranchée sont indiscernables, comme sur le module. L'ABI C change sans compatibilité :
 rien n'est distribué.
 
+## Voir aussi
+
+* [D-024](D-024-derived-input-presence.md) — présence d'une entrée **déduite** du signal, pour les applets qui
+  veulent une valeur par défaut : complète cette entrée (activité) et respecte son retrait de la présence de câble.
+
 ## Points ouverts (revue du 2026-11-16)
 
 * ~~**Les triggers courts sont perdus par construction.**~~ **Traité** pour les impulsions d'au moins un tick

@@ -78,3 +78,4 @@ Valeurs seules ; le raisonnement est dans `journal/`.
 | démarrage | écran 1,5 s, sorties à 0 V, rendu à chaque tick | D-020 |
 | applets | `AppHost` (tous résidents), menu par accord haut + bas, haut / bas au relâchement ; `DiagnosticApp`, `ScopeApp` | D-021 |
 | licence | `MIT OR Apache-2.0` (workspace) | D-022 |
+| présence d'entrée | déduite dans `oc-core` (activité récente + maintien) : CV 100 mV / 300 ms, trigger verrou ou horloge 2 s ; jamais fournie par un backend | D-024 |
