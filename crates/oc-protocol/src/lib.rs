@@ -20,6 +20,12 @@
 #![forbid(unsafe_code)]
 #![warn(missing_docs)]
 
+#[cfg(test)]
+extern crate std;
+
+pub mod queue;
+pub mod server;
+
 use serde::{Deserialize, Serialize};
 
 use oc_core::platform::{CV_CHANNELS, MilliVolts};
