@@ -4,7 +4,8 @@
 //! to `GPIO_AD_B1_*` pads, which `imxrt-iomuxc` exposes on both ADC1 and ADC2.
 //! Using a single bank keeps the four readings in a predictable order at the
 //! cost of serialising them. Blocking conversions with hardware averaging
-//! are not cheap: the `sample` stage of the USB profile (journal/D-029)
+//! are not cheap (of the order of 300 us for the four on one module, for
+//! indication only): the `sample` stage of the USB profile (journal/D-029)
 //! gives their actual cost on a given module.
 //!
 //! The channel numbers are resolved from the pad *types*, never hand-written,
