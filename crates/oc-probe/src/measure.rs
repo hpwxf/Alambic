@@ -67,49 +67,53 @@ pub struct EdgeCount {
     pub missed_ticks: u64,
     /// Ticks covered.
     pub ticks: u64,
-    /// Shortest, longest and total ticks between two rising edges of each
-    /// trigger: a steady clock keeps them within a tick, a bounce shows as
-    /// a short one, a missed edge as one twice as long.
+    /// Time covered, microseconds of the module's clock.
+    pub micros: u64,
+    /// Time between two rising edges of each trigger, in microseconds: a
+    /// steady clock keeps them within a tick's length of each other, a
+    /// bounce shows as a short one, a missed edge as one twice as long.
     pub intervals: [Intervals; TRIGGER_CHANNELS],
 }
 
-/// Ticks between successive rising edges of one trigger.
+/// Microseconds between successive rising edges of one trigger, as the
+/// module's clock read them at the start of each tick.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct Intervals {
     /// Intervals measured (one fewer than the edges).
     pub count: u64,
-    /// Shortest, ticks.
+    /// Shortest, microseconds.
     pub min: u64,
-    /// Longest, ticks.
+    /// Longest, microseconds.
     pub max: u64,
-    /// All of them added, ticks.
+    /// All of them added, microseconds.
     pub total: u64,
 }
 
 impl Intervals {
-    fn record(&mut self, ticks: u64) {
+    fn record(&mut self, micros: u64) {
         if self.count == 0 {
-            self.min = ticks;
-            self.max = ticks;
+            self.min = micros;
+            self.max = micros;
         } else {
-            self.min = self.min.min(ticks);
-            self.max = self.max.max(ticks);
+            self.min = self.min.min(micros);
+            self.max = self.max.max(micros);
         }
         self.count += 1;
-        self.total += ticks;
+        self.total += micros;
     }
 
-    /// The mean interval in ticks, `None` with fewer than two edges.
+    /// The mean interval in microseconds, `None` with fewer than two edges.
     #[must_use]
-    pub fn mean(&self) -> Option<f64> {
-        #[allow(clippy::cast_precision_loss)] // tick counts far below 2^52
-        (self.count > 0).then(|| self.total as f64 / self.count as f64)
+    pub const fn mean(&self) -> Option<u64> {
+        self.total.checked_div(self.count)
     }
 }
 
 /// Counts the rising edges of every trigger over `samples`, which must be
 /// one per tick (`stream --every 1`); a gap in the tick numbers means samples
-/// were lost, and is reported rather than guessed over.
+/// were lost, and is reported rather than guessed over. An edge is dated by
+/// the tick that first saw the input high, so intervals are known to one
+/// tick's length.
 #[must_use]
 pub fn count_edges(samples: &[Sample]) -> EdgeCount {
     let mut count = EdgeCount::default();
@@ -126,14 +130,15 @@ pub fn count_edges(samples: &[Sample]) -> EdgeCount {
             if rose & (1 << index) != 0 {
                 *edges += 1;
                 if let Some(last) = last_edge[index] {
-                    count.intervals[index].record(sample.tick - last);
+                    count.intervals[index].record(sample.micros.saturating_sub(last));
                 }
-                last_edge[index] = Some(sample.tick);
+                last_edge[index] = Some(sample.micros);
             }
         }
         previous = sample;
     }
     count.ticks = previous.tick - first.tick;
+    count.micros = previous.micros.saturating_sub(first.micros);
     count
 }
 
@@ -204,6 +209,7 @@ mod tests {
     fn sample(tick: u64, cv1: i32, triggers: u8) -> Sample {
         Sample {
             tick,
+            micros: tick * 1_000,
             cv_in: [cv1, 0, 0, 0],
             cv_codes: [2_730, 2_730, 2_730, 2_730],
             cv_out: [0; 4],
@@ -234,7 +240,11 @@ mod tests {
         ];
         let count = count_edges(&samples);
         assert_eq!(count.rising, [2, 1, 0, 0]);
-        assert_eq!((count.intervals[0].min, count.intervals[0].max), (3, 3));
+        assert_eq!(
+            (count.intervals[0].min, count.intervals[0].max),
+            (3_000, 3_000)
+        );
+        assert_eq!(count.micros, 4_000);
         assert_eq!(count.intervals[1].count, 0);
         assert_eq!((count.missed_ticks, count.ticks), (0, 4));
     }

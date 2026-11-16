@@ -32,7 +32,7 @@ use oc_core::platform::{CV_CHANNELS, MilliVolts};
 pub use oc_core::profile::Profile;
 
 /// Protocol version, raised on any change to a message's encoding.
-pub const VERSION: u16 = 1;
+pub const VERSION: u16 = 2;
 
 /// Longest frame either side sends or accepts, zero byte included. A
 /// screen page (128 bytes) and a profile (a few hundred) both fit with room
@@ -112,6 +112,10 @@ pub enum Reply<'a> {
 pub struct Sample {
     /// The engine's tick count.
     pub tick: u64,
+    /// The module's clock at the start of that tick, microseconds: ticks
+    /// are not all the same length (a tick that redraws the screen may
+    /// overrun), so durations are measured on this, not on tick counts.
+    pub micros: u64,
     /// Each CV input, calibrated.
     pub cv_in: [MilliVolts; CV_CHANNELS],
     /// Each CV input's raw ADC code.

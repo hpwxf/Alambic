@@ -33,6 +33,9 @@ Architectural decisions behind each change are in `journal/` (French).
   For level 9: `inputs` (spread of every input), `triggers` (rising edges
   from a sample of every tick, flagged when samples were lost), `sweep`
   (an output stepped through levels into a patched input).
+  Samples carry the module's clock (protocol version 2): durations and
+  trigger intervals are real time, since a tick that redraws the screen
+  lasts longer than the others.
 
 ### Fixed
 

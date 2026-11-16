@@ -96,3 +96,7 @@ Phazerville), pas un défaut. Valeurs indicatives.
 (≈ 7,9 Hz), aucun échantillon perdu, 0 sur TR2–TR4 non branchés. La fréquence de la source n'étant pas connue
 exactement, la commande donne désormais aussi l'intervalle entre fronts (min, max, moyenne en ticks) : constant à
 un tick près pour une horloge régulière, un rebond ou un front manqué s'y voient sans connaître la source.
+Relance (`aa5bcf7`) : 79 fronts, intervalle 126 à 128 ticks (moyenne 126,91) : ni rebond ni front manqué. L'écart
+de deux ticks vient de ce qu'**un tick ne dure pas toujours 1 ms** : un sur vingt (rendu) dure ≈ 2,1 ms avant que
+le calendrier se recale ; « 10 s » comptées en ticks en durent ≈ 10,5. Corrigé dans l'outil : les échantillons
+portent l'horloge du module (protocole version 2), durées et intervalles sont en temps réel.

@@ -276,6 +276,7 @@ where
         .fold(0_u8, |bits, (index, _)| bits | (1 << index));
     Sample {
         tick: report.tick_count,
+        micros: report.timestamp_micros,
         cv_in,
         cv_codes: codes,
         cv_out: report.cv_out,

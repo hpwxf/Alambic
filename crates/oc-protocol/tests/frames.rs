@@ -74,6 +74,7 @@ fn replies_borrow_from_their_frame() {
         },
         Reply::Sample(Sample {
             tick: u64::MAX,
+            micros: u64::MAX - 1,
             cv_in: [-3_333, 0, 6_665, 1],
             cv_codes: [0, 2_730, 4_095, 1],
             cv_out: [-3_000, 7_000, 0, 5],

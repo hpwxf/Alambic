@@ -294,7 +294,7 @@ probe gives it as a table:
 ```sh
 cargo probe stats              # mean and longest time of each stage, loop jitter
 cargo probe stats --fresh 10   # the same over the next ten seconds only
-cargo probe stream --every 10  # inputs, codes, outputs and triggers every 10 ms
+cargo probe stream --every 10  # inputs, codes, outputs and triggers every 10 ticks
 cargo probe out A -2000        # hold output A at -2 V until Enter, printing the inputs
 cargo probe screen --png s.png # capture the screen as the module shows it
 cargo probe reboot             # restart into the bootloader, then `cargo xtask flash`

@@ -62,14 +62,14 @@ enum Command {
     /// Reads every input for a while: extremes, mean, peak to peak, codes
     /// (`TESTING.md` 9.2).
     Inputs {
-        /// How long, in seconds of module time.
+        /// How long, in seconds of the module's clock.
         #[arg(long, default_value_t = 10)]
         seconds: u64,
     },
     /// Counts the rising edges of every trigger, sampled on every tick
     /// (`TESTING.md` 9.3).
     Triggers {
-        /// How long, in seconds of module time.
+        /// How long, in seconds of the module's clock.
         #[arg(long, default_value_t = 10)]
         seconds: u64,
     },
@@ -107,12 +107,12 @@ struct SweepArgs {
     /// Step, mV.
     #[arg(long, default_value_t = 1_000)]
     step: i32,
-    /// Ticks left to settle after each change.
+    /// Milliseconds left to settle after each change.
     #[arg(long, default_value_t = 50)]
-    settle: u64,
-    /// Ticks averaged at each level.
+    settle_ms: u64,
+    /// Milliseconds averaged at each level.
     #[arg(long, default_value_t = 200)]
-    average: u64,
+    average_ms: u64,
 }
 
 fn main() -> anyhow::Result<()> {
@@ -196,9 +196,8 @@ fn hold(session: &mut Session, channel: &str, millivolts: i32) -> anyhow::Result
 }
 
 fn inputs(session: &mut Session, seconds: u64) -> anyhow::Result<()> {
-    let ticks = seconds * ticks_per_second(session)?;
     session.stream(1)?;
-    let samples = collect(session, ticks)?;
+    let samples = collect(session, seconds * 1_000_000)?;
     session.stream(0)?;
     let spread = measure::input_spread(&samples).context("no sample came")?;
     println!("{} samples", samples.len());
@@ -219,19 +218,19 @@ fn inputs(session: &mut Session, seconds: u64) -> anyhow::Result<()> {
 }
 
 fn triggers(session: &mut Session, seconds: u64) -> anyhow::Result<()> {
-    let ticks = seconds * ticks_per_second(session)?;
     session.stream(1)?;
-    eprintln!("counting for {seconds} s of module time");
-    let samples = collect(session, ticks)?;
+    eprintln!("counting for {seconds} s of the module's clock");
+    let samples = collect(session, seconds * 1_000_000)?;
     session.stream(0)?;
     let count = measure::count_edges(&samples);
     for (index, (edges, intervals)) in count.rising.iter().zip(&count.intervals).enumerate() {
         match intervals.mean() {
             Some(mean) => println!(
-                "TR{}  {edges:>6} rising edges, ticks between them {}..{} (mean {mean:.2})",
+                "TR{}  {edges:>6} rising edges, {} to {} ms apart (mean {})",
                 index + 1,
-                intervals.min,
-                intervals.max
+                millis(intervals.min),
+                millis(intervals.max),
+                millis(mean)
             ),
             None => println!("TR{}  {edges:>6} rising edges", index + 1),
         }
@@ -242,6 +241,7 @@ fn triggers(session: &mut Session, seconds: u64) -> anyhow::Result<()> {
             count.missed_ticks, count.ticks
         );
     }
+    println!("{} ticks over {} ms", count.ticks, millis(count.micros));
     Ok(())
 }
 
@@ -257,8 +257,8 @@ fn sweep(session: &mut Session, args: &SweepArgs) -> anyhow::Result<()> {
     let mut steps = || -> anyhow::Result<()> {
         for level in measure::sweep_levels(args.from, args.to, args.step) {
             session.force_output(channel, Some(level))?;
-            let _ = collect(session, args.settle)?;
-            let settled = collect(session, args.average)?;
+            let _ = collect(session, args.settle_ms * 1_000)?;
+            let settled = collect(session, args.average_ms * 1_000)?;
             let point = measure::sweep_point(level, input, &settled).context("no sample came")?;
             println!(
                 "{:>6}  {:>7}  {:>8}  {:>4}",
@@ -290,15 +290,14 @@ fn screen(session: &mut Session, png: Option<String>, scale: u32) -> anyhow::Res
     Ok(())
 }
 
-/// Ticks a second, from the period the module's loop aims at (samples are
-/// numbered in ticks); a millisecond if it does not say.
-fn ticks_per_second(session: &mut Session) -> anyhow::Result<u64> {
-    let period = u64::from(session.profile()?.expected_period_micros());
-    Ok(1_000_000_u64.checked_div(period).unwrap_or(1_000))
+/// Microseconds as milliseconds, three decimals.
+fn millis(micros: u64) -> String {
+    format!("{}.{:03}", micros / 1_000, micros % 1_000)
 }
 
-/// Samples covering `ticks` ticks of module time, from the next one on.
-fn collect(session: &mut Session, ticks: u64) -> anyhow::Result<Vec<Sample>> {
+/// Samples covering `micros` microseconds of the module's clock, from the
+/// next one on.
+fn collect(session: &mut Session, micros: u64) -> anyhow::Result<Vec<Sample>> {
     let mut samples: Vec<Sample> = Vec::new();
     loop {
         let sample = match session.next_sample() {
@@ -307,7 +306,7 @@ fn collect(session: &mut Session, ticks: u64) -> anyhow::Result<Vec<Sample>> {
             Err(error) => return Err(error.into()),
         };
         if let Some(first) = samples.first()
-            && sample.tick.saturating_sub(first.tick) >= ticks
+            && sample.micros.saturating_sub(first.micros) >= micros
         {
             return Ok(samples);
         }
