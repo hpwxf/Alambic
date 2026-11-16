@@ -14,13 +14,17 @@ Architectural decisions behind each change are in `journal/` (French).
   previously anything shorter than 3 ms was dropped. Buttons and encoder
   switches keep their 3-sample debounce. A mechanical push-button patched
   into a trigger jack now counts its bounces (journal/D-019).
-- **No more "cable plugged" indicator on any backend.** The module's jacks
-  cannot detect a cable, so the diagnostic screen's `P`/`.` column, the
-  simulator's `p` key and `[cable]` marker, and the scenario `patch` event
-  are gone; signal presence (`~`) is the only indicator, identical on the
-  module, in the simulator and in Rack. Scenarios containing `patch` lines are
-  rejected with a message: delete those lines. The C ABI's
-  `oc_engine_set_cv_in` lost its `patched` argument (journal/D-019, D-015).
+- **Input presence is derived from the signal, no longer reported by the
+  backend.** The module's jacks cannot detect a cable, so the firmware used to
+  claim every input was patched while Rack reported the truth. Now
+  `oc_core::presence` decides on every backend from the levels alone: a CV
+  input is present (`P`) when it has moved or sat more than 100 mV from 0 V
+  within the last 300 ms; trigger inputs offer a first-edge latch or a 2 s
+  clock hold. Applets use it for defaults on unused inputs. The simulator's
+  `p` key and `[cable]` marker and the scenario `patch` event are gone
+  (scenarios containing `patch` lines are rejected with a message: delete
+  those lines), and the C ABI's `oc_engine_set_cv_in` lost its `patched`
+  argument (journal/D-019, D-024, D-015).
 - **Pin claiming moved into `board.rs`.** The firmware's pins are reserved by
   signal group in `crates/oc-firmware/src/board.rs`; a host test fails if any
   other firmware source names a Teensy pin (journal/D-007). Pin 12 (SPI MISO)

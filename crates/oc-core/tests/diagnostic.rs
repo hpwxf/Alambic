@@ -15,6 +15,7 @@ use oc_core::calibration::{CV_OUT_MAX_MV, CV_OUT_MIN_MV};
 use oc_core::framebuffer::ROW_HEIGHT;
 use oc_core::framebuffer::{FrameBuffer, WIDTH};
 use oc_core::platform::{Button, CvChannel, TriggerChannel};
+use oc_core::presence::Presence;
 use oc_core::testing::{MockEngine, mock_engine};
 
 /// Runs `count` ticks, advancing the virtual clock by one millisecond each
@@ -527,9 +528,10 @@ fn the_screen_shows_the_banner_and_the_measured_levels() {
 
     let frame = engine.frame().clone();
     assert_row_reads(&frame, 0, &format!("{}    0us", oc_core::BANNER));
-    assert_row_reads(&frame, 1, ">1 +1.234 -l     0");
-    // Channel two: no signal detected, gate low, no edges counted.
-    assert_row_reads(&frame, 2, " 2 +0.000 -l     0");
+    // Channel one: present (1.234 V is away from 0 V), static, gate low.
+    assert_row_reads(&frame, 1, ">1 +1.234 P-l    0");
+    // Channel two: absent, no signal detected, gate low, no edges counted.
+    assert_row_reads(&frame, 2, " 2 +0.000 .-l    0");
     assert_row_reads(&frame, 5, "MODE OFFS OFS +0.000");
     assert_row_reads(&frame, 6, "OUT +0.0 +0.0 +0.0 +0.0");
     assert_row_reads(&frame, 7, "TICKS 1");
@@ -550,4 +552,35 @@ fn rendering_is_bit_for_bit_reproducible() {
     };
 
     assert_eq!(run(), run(), "the same inputs must produce the same screen");
+}
+
+#[test]
+fn input_presence_is_derived_from_the_level_and_released_after_the_hold() {
+    let mut engine = mock_engine(0);
+    {
+        let (analog_in, ..) = engine.parts_mut();
+        analog_in.patch(CvChannel::Two, -3_000);
+    }
+    run_ticks(&mut engine, 2);
+    assert_eq!(
+        engine.diagnostic().presence(CvChannel::Two),
+        Presence::Present
+    );
+    assert_eq!(
+        engine.diagnostic().presence(CvChannel::One),
+        Presence::Absent,
+        "an input at 0 V carries nothing the module can see"
+    );
+
+    // Back to 0 V, as an unplugged jack reads: absent once the activity block
+    // that saw the step and the hold have both run out.
+    {
+        let (analog_in, ..) = engine.parts_mut();
+        analog_in.patch(CvChannel::Two, 0);
+    }
+    run_ticks(&mut engine, 1_000);
+    assert_eq!(
+        engine.diagnostic().presence(CvChannel::Two),
+        Presence::Absent
+    );
 }

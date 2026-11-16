@@ -20,6 +20,10 @@
 //! [`crate::buttons`] for why that has to be arbitrated before an applet sees
 //! anything. Every button press, either encoder's included, is counted (see
 //! [`DiagnosticApp::button_press_count`]), the same way trigger edges are.
+//!
+//! Each CV row shows the derived presence of the input (`P` present, `.`
+//! absent, [`crate::presence`]), whether it is moving (`~`), the trigger gate
+//! and its edge count.
 
 use core::fmt::Write as _;
 
@@ -40,7 +44,8 @@ use crate::platform::{
     BUTTONS, Button, CV_CHANNELS, ControlEvents, CvChannel, MilliVolts, TRIGGER_CHANNELS,
     TriggerChannel,
 };
-use crate::signal::{DEFAULT_ACTIVITY_THRESHOLD_MV, SignalDetector};
+use crate::presence::{CvPresence, Presence};
+use crate::signal::DEFAULT_ACTIVITY_THRESHOLD_MV;
 
 /// Offset change per encoder detent, in millivolts.
 pub const OFFSET_STEP_MV: MilliVolts = 100;
@@ -101,7 +106,7 @@ impl OutputMode {
 /// The I/O diagnostic applet.
 #[derive(Debug, Clone)]
 pub struct DiagnosticApp {
-    detectors: [SignalDetector; CV_CHANNELS],
+    inputs: [CvPresence; CV_CHANNELS],
     triggers: [EdgeCounter; TRIGGER_CHANNELS],
     press_counts: [u32; BUTTONS],
     selected: usize,
@@ -116,7 +121,7 @@ impl DiagnosticApp {
     #[must_use]
     pub fn new() -> Self {
         Self {
-            detectors: [SignalDetector::default(); CV_CHANNELS],
+            inputs: [CvPresence::new(); CV_CHANNELS],
             triggers: [EdgeCounter::new(TRIGGER_STABLE_SAMPLES); TRIGGER_CHANNELS],
             press_counts: [0; BUTTONS],
             selected: 0,
@@ -129,8 +134,8 @@ impl DiagnosticApp {
 
     /// Consumes one snapshot and returns the levels the outputs should take.
     pub fn update(&mut self, input: &InputSnapshot) -> [MilliVolts; CV_CHANNELS] {
-        for (detector, &level) in self.detectors.iter_mut().zip(input.cv.iter()) {
-            detector.update(level);
+        for (presence, &level) in self.inputs.iter_mut().zip(input.cv.iter()) {
+            presence.update(level, input.elapsed_micros);
         }
         for (counter, &raw) in self.triggers.iter_mut().zip(input.triggers.iter()) {
             counter.update(raw);
@@ -258,7 +263,16 @@ impl DiagnosticApp {
     /// Whether an input is moving enough to count as carrying a signal.
     #[must_use]
     pub fn is_signal_active(&self, channel: CvChannel) -> bool {
-        self.detectors[channel.index()].is_active(DEFAULT_ACTIVITY_THRESHOLD_MV)
+        self.inputs[channel.index()]
+            .signal()
+            .is_active(DEFAULT_ACTIVITY_THRESHOLD_MV)
+    }
+
+    /// Whether an input carries something, as derived from its signal
+    /// (journal/D-024); shown as `P` / `.` on screen.
+    #[must_use]
+    pub fn presence(&self, channel: CvChannel) -> Presence {
+        self.inputs[channel.index()].presence()
     }
 
     /// Draws the diagnostic screen.
@@ -277,11 +291,17 @@ impl DiagnosticApp {
 
         for channel in CvChannel::ALL {
             let index = channel.index();
-            let detector = &self.detectors[index];
+            let input = &self.inputs[index];
+            let detector = input.signal();
             line.clear();
             let marker = if index == self.selected { '>' } else { ' ' };
             let _ = write!(line, "{marker}{} ", index + 1);
             let _ = write_volts(&mut line, detector.level(), 3);
+            let present = if input.presence().is_present() {
+                'P'
+            } else {
+                '.'
+            };
             let active = if detector.is_active(DEFAULT_ACTIVITY_THRESHOLD_MV) {
                 '~'
             } else {
@@ -289,7 +309,11 @@ impl DiagnosticApp {
             };
             let trigger = &self.triggers[index];
             let gate = if trigger.state() { 'H' } else { 'l' };
-            let _ = write!(line, " {active}{gate}{:>6}", trigger.rising_count());
+            let _ = write!(
+                line,
+                " {present}{active}{gate}{:>5}",
+                trigger.rising_count()
+            );
             draw(&line, 1 + i32::try_from(index).unwrap_or(0));
         }
 

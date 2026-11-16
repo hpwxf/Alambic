@@ -232,6 +232,11 @@ Full protocol, per level, with exact commands and what each proves: see
   `oc_core::testing::mock_engine`, not duplicated per backend. Holding
   `up`+`down` opens the app menu; because of that, `up` and `down` fire their
   own action on release, arbitrated in `crates/oc-core/src/buttons.rs`.
+  No backend reports whether a cable is plugged in (the module cannot
+  know); an applet that needs a default for an unused input asks
+  `oc_core::presence` (`CvPresence`, `TriggerPresence::latch|clock`), which
+  derives it from the levels alone — never add a backend-specific source
+  such as Rack's `isConnected()` (journal/D-019, D-024).
 * `crates/oc-sim/tests/scenarios/*.scn` are golden, hand-editable regression
   tests with matching `*.screen` snapshots. Never hand-edit a `.screen` file;
   regenerate with `UPDATE_SCREENS=1 cargo test -p oc-sim --test scenarios`
@@ -283,6 +288,7 @@ Full protocol, per level, with exact commands and what each proves: see
 | Button debouncing and the `up`+`down` chord       | `crates/oc-core/src/buttons.rs` |
 | The boot splash screen (name/version, progressive border) | `crates/oc-core/src/splash.rs` |
 | ADC/DAC unit conversion and calibration           | `crates/oc-core/src/calibration.rs` |
+| Input presence derived from the signal (defaults for unused inputs) | `crates/oc-core/src/presence.rs` |
 | Deterministic mocks used by every `oc-core` test  | `crates/oc-core/src/testing.rs` |
 | The pinout (the only file allowed to name a pin)  | `crates/oc-firmware/src/board.rs` (rule test: `xtask/tests/pin_rule.rs`) |
 | Memory map / boot sections rationale              | `crates/oc-firmware/MEMORY.md` |

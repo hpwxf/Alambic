@@ -455,13 +455,18 @@ SSD1306, or SSD1309. Follow it in order; each step assumes the previous one succ
 
 For each of the four front-panel CV jacks in turn:
 
-1. Leave it unpatched. The channel row must show a reading near 0 V (exact
-   value depends on the still-unmeasured calibration offset, see 9.4).
+1. Leave it unpatched. The channel row must show `.` (absent) and a reading
+   near 0 V (exact value depends on the still-unmeasured calibration offset,
+   see 9.4). If an unpatched input reads `P`, its offset exceeds the 100 mV
+   presence threshold of journal/D-024: note the reading, it decides whether
+   the threshold or the calibration has to move.
 2. Patch in a known, static DC voltage from a calibrated source (a battery
    or bench supply through a suitable divider — **never exceed the module's
    input range**, nominally -6 V to +9 V before scaling; when unsure, start
-   with ±1 V). The reading must follow it immediately. (There is no cable
-   indicator: the jacks cannot detect one, journal/D-019.)
+   with ±1 V). The reading must follow it and the row must show `P`
+   immediately. Unplug it: the row must go back to `.` within about half a
+   second (activity block plus 300 ms hold). Presence is derived from the
+   signal, not from the jack (journal/D-024).
 3. After roughly one second of a steady level, the "active signal" indicator
    (`~`) must turn **off** — Level 1's tests already prove a static input is
    never mistaken for an active one; this step confirms the same on real
