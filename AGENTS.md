@@ -4,9 +4,82 @@ This file documents facts about *this* codebase that are easy to get wrong by
 analogy with a typical embedded or workspace project. Read it before making
 structural changes. User-facing instructions (how to run the simulator, key
 maps, flashing) live in `README.md`; the test protocol lives in `TESTING.md`;
-the historical rationale for every decision lives in
-`.junie/plans/oc-rust-firmware-foundation.md`. This file is the shortest path
-to "how does this repository actually work".
+the rationale for every architectural decision lives in the ADR journal,
+`journal/` (French; index in `journal/README.md`), and the project state in
+`PLAN.md`. The original foundation plan,
+`.junie/plans/oc-rust-firmware-foundation.md`, is kept as the step-0 plan.
+This file is the shortest path to "how does this repository actually work".
+
+**This file is the single source of truth for agents** (Claude Code, Junie,
+Codex, …). Tool-specific files such as `CLAUDE.md` are local, untracked, and
+only point here plus tool-specific notes; anything that matters for the
+repository belongs in this file (journal/D-001).
+
+## Plan and decision journal
+
+**Read `PLAN.md` first**: map of the documents, one-line summary per finished
+step, the step **in progress** with its lot checklist, the decisions already
+taken. Then read only what the current lot needs: `docs/plan/roadmap.md`
+(steps, open questions), `docs/plan/avancement/etape-N.md` (what a finished
+step did, measured, corrected), `docs/plan/revue-decisions-2026-11-16.md`
+(decisions flagged for review or revision). Update `PLAN.md` before committing
+at the end of a lot; when a step ends, write `docs/plan/avancement/etape-N.md`.
+
+**Architectural decisions go in `journal/` as ADRs** (French, one file per
+decision, format and index in `journal/README.md`). `D-002`–`D-023` were
+reconstructed retrospectively from the git history. From `D-024` on, the
+**antériorité rule** applies: the ADR is committed *before or with* the code
+it describes, as the first file of that commit. Never start an architectural
+change without its entry; if the implementation diverges from a recorded
+decision, *revise* that entry (`Statut: adoptée, révisée`, dated section)
+rather than opening a new one. ADR numbers are never reassigned. Keep the
+index table in `journal/README.md` and the "Décisions actées" table in
+`PLAN.md` in sync. An assistant plan that carries an architectural decision
+must be tracked by git, not hidden in `.git/info/exclude`.
+
+Language: working docs (`PLAN.md`, `docs/plan/`, `journal/`) in French; code,
+comments, commit messages, `README.md`, `AGENTS.md` and `TESTING.md` in
+English.
+
+**Definition of done**: a lot is done only when the CI commands pass locally
+(journal/D-001, D-017):
+
+```sh
+cargo fmt --all -- --check
+cargo clippy --all-targets --all-features -- -D warnings
+cargo clippy -p oc-firmware --target thumbv7em-none-eabihf -- -D warnings
+cargo test --all-features
+cargo xtask build && cargo xtask size
+```
+
+## Commands
+
+```sh
+cargo test                                  # host crates only (oc-firmware excluded, see below)
+cargo test -p oc-core                       # single crate's tests
+cargo test -p oc-core some_test_name        # single test
+
+cargo run -p oc-sim                         # native simulator (ratatui TUI)
+cargo run -p oc-sim -- run --record bug.scn # record a simulator scenario
+cargo run -p oc-sim -- replay bug.scn       # replay one headless
+UPDATE_SCREENS=1 cargo test -p oc-sim --test scenarios   # regen golden .screen snapshots after an intentional render change
+
+cargo xtask build                           # cross-compile firmware (thumbv7em-none-eabihf, release)
+cargo xtask size                            # section table + linker-layout checklist
+cargo xtask hex                             # dist/oc-firmware.hex
+cargo xtask build|hex --features ssd1306    # OLED override (default is SH1106); ssd1309 also available
+cargo xtask flash --dry-run                 # validate only, upload nothing
+cargo xtask flash                           # validate, show SHA-256 digest, confirm, upload
+cargo xtask vcv build --rack-dir <path>     # build the VCV Rack 2 plugin (needs a downloaded Rack SDK)
+cargo xtask vcv install --rack-dir <path>   # build + drop into the Rack user plugin folder
+cargo xtask vcv clean                       # wipe plugin + oc-vcv-ffi build artefacts
+
+cargo bench                                 # criterion benchmarks (crates/oc-core/benches/engine.rs)
+```
+
+`cargo fw` and `cargo sim` (aliases in `.cargo/config.toml`) shortcut the
+firmware build and the simulator run. `cargo xtask` itself is also a cargo
+alias (`run --package xtask --release --`).
 
 ## What this is
 
@@ -151,7 +224,9 @@ Full protocol, per level, with exact commands and what each proves: see
   the tested abstraction instead.
 * `Engine::tick` is the one function every backend calls; a new behaviour
   belongs there (or in an applet reached through `AppHost`), tested once via
-  `oc_core::testing::mock_engine`, not duplicated per backend.
+  `oc_core::testing::mock_engine`, not duplicated per backend. Holding
+  `up`+`down` opens the app menu; because of that, `up` and `down` fire their
+  own action on release, arbitrated in `crates/oc-core/src/buttons.rs`.
 * `crates/oc-sim/tests/scenarios/*.scn` are golden, hand-editable regression
   tests with matching `*.screen` snapshots. Never hand-edit a `.screen` file;
   regenerate with `UPDATE_SCREENS=1 cargo test -p oc-sim --test scenarios`
@@ -208,4 +283,6 @@ Full protocol, per level, with exact commands and what each proves: see
 | VCV plugin build/install orchestration            | `xtask/src/vcv.rs` |
 | The VCV Rack plugin shim (module, widget)         | `vcv/OrnamentCrimeAlambic/src/Alambic.cpp` |
 | Full test protocol                                | `TESTING.md` |
-| Full requirements, decisions, delivery status     | `.junie/plans/oc-rust-firmware-foundation.md` |
+| Project state, steps, decisions taken             | `PLAN.md` |
+| Architectural decisions (ADRs, French)            | `journal/` (index in `journal/README.md`) |
+| Step-0 foundation plan (requirements, delivery)   | `.junie/plans/oc-rust-firmware-foundation.md` |
