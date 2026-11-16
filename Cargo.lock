@@ -2583,12 +2583,14 @@ version = "0.2.0"
 dependencies = [
  "cortex-m",
  "embedded-hal 1.0.0",
+ "embedded-storage-async",
  "imxrt-log",
  "log",
  "oc-buildinfo",
  "oc-core",
  "oc-drivers",
  "teensy4-bsp",
+ "teensy4-fcb",
  "teensy4-panic",
 ]
 

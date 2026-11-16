@@ -28,8 +28,13 @@ Architectural decisions behind each change are in `journal/` (French).
   `Engine::apply_settings` installs them; a reset restarts in the startup
   applet. The simulator keeps them in a flash image (`run --settings FILE`);
   the VCV Rack module keeps them in the patch (`oc_engine_settings_save` /
-  `oc_engine_settings_load` in the C ABI, base64 in `dataToJson`). The
-  firmware does not persist them yet (journal/D-028).
+  `oc_engine_settings_load` in the C ABI, base64 in `dataToJson`), the
+  module in four 4 KiB sectors of its own flash at `0x601F_0000`, erased and
+  programmed through the i.MX RT1062 boot ROM (`flash_store.rs`, the
+  firmware's only `unsafe`). That area overlaps Teensyduino's EEPROM
+  emulation: settings another firmware kept there are ignored, then replaced
+  on the first save. `cargo xtask` now rejects an image reaching
+  `0x601F_0000` (journal/D-028).
 - **System settings screen.** `SETUP`, the last entry of the app menu, edits
   the startup app, the contrast, a 180° rotation, a picture shift and each
   encoder's direction, live; `SAVE` keeps and stores them, `EXIT` or the

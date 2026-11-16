@@ -27,6 +27,11 @@ embedded-hal.workspace = true
 # loop — we do not enable USB interrupts, so no RTIC dependency.
 imxrt-log = { version = "0.2", default-features = false, features = ["usbd", "log"] }
 log = { version = "0.4", default-features = false }
+# The settings store (journal/D-028): the firmware provides the NorFlash it
+# runs on, and calls the boot ROM with the configuration block this image
+# boots with, which teensy4-fcb defines (the same crate the BSP links).
+embedded-storage-async.workspace = true
+teensy4-fcb = "0.5"
 
 # Computes the build identifier shown on the splash screen (journal/D-025).
 [build-dependencies]

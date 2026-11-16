@@ -413,6 +413,31 @@ impl PanelPins {
 /// it; afterwards only a panic handler (register-level SOS) may touch it.
 pub(crate) const LED_GPIO2_OFFSET: u32 = 3;
 
+/// Offset, from the `FlexSPI` base, of the four 4 KiB sectors that hold the
+/// settings: `0x601F_0000` on the bus.
+///
+/// They are the first sectors of the top 64 KiB, outside the 1984 KiB image
+/// budget, where Teensyduino keeps its emulated EEPROM (`teensy4/eeprom.c`,
+/// 15 sectors from `0x601F_0000`) and its restore program in the last one.
+/// Data another firmware left there is ignored (journal/D-028); conversely, a
+/// firmware that used the EEPROM emulation finds its first sectors replaced.
+/// `cargo xtask` refuses an image that reaches this address
+/// (`RESERVED_FLASH_START` in `xtask/src/validate.rs`).
+pub(crate) const SETTINGS_FLASH_OFFSET: u32 = 0x001F_0000;
+
+/// Offset of the last flash sector, the Teensy's restore program: the settings
+/// must end before it.
+const RESTORE_PROGRAM_OFFSET: u32 = 0x001F_F000;
+
+const _: () = assert!(
+    SETTINGS_FLASH_OFFSET + oc_core::settings::FLASH_BYTES <= RESTORE_PROGRAM_OFFSET,
+    "the settings must never reach the restore program's sector"
+);
+const _: () = assert!(
+    SETTINGS_FLASH_OFFSET >= 1984 * 1024,
+    "the settings must sit above the 1984 KiB image budget"
+);
+
 /// ADC channel of each CV input, in `CV1..CV4` order.
 ///
 /// The firmware never uses these numbers to address the converter: they are

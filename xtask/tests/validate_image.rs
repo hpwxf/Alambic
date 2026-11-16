@@ -7,7 +7,8 @@
 use std::path::PathBuf;
 
 use xtask::validate::{
-    self, FCB_TAG, FLEXSPI_BASE, TEENSY40_FLASH_CAPACITY, hex_encode, sha256_digest, validate_image,
+    self, FCB_TAG, FLEXSPI_BASE, RESERVED_FLASH_START, TEENSY40_FLASH_CAPACITY, hex_encode,
+    sha256_digest, validate_image,
 };
 
 /// ARM EABI5 + hard-float, matching `thumbv7em-none-eabihf`.
@@ -126,6 +127,18 @@ fn image_exceeding_flash_capacity_is_rejected() {
         }),
         "expected size-limit rejection, got {err:?}"
     );
+}
+
+#[test]
+fn a_segment_reaching_the_reserved_flash_is_rejected() {
+    // Small, so the size budget alone would let it through.
+    let elf = arm_elf_with_load(RESERVED_FLASH_START - 8, FCB_TAG, Some(16), true);
+    let err = validate_image(&elf).expect_err("an overlap with the settings must be rejected");
+    assert!(
+        err.iter().any(|r| r.message.contains("reserved flash")),
+        "expected reserved-flash rejection, got {err:?}"
+    );
+    assert_eq!(RESERVED_FLASH_START, 0x601F_0000);
 }
 
 #[test]

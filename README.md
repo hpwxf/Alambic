@@ -97,8 +97,12 @@ A capture far from the factory values (an input left patched, nothing in
 `CV1`) is refused with a message instead of stored.
 
 The simulator keeps the settings in a file (`--settings`, see below), VCV
-Rack in the patch. The firmware does not store them yet: a `SAVE` lasts until
-the next power cycle.
+Rack in the patch, the module in four sectors at the top of its own flash
+(`0x601F_0000`, outside the firmware image, kept across firmware uploads). A
+save takes a fraction of a second at most. That area is also where the
+Teensyduino EEPROM emulation lives: a module that ran a firmware storing its
+settings there (Phazerville, for one) starts here on the defaults, and finds
+its old settings gone if it goes back to that firmware.
 
 ## The diagnostic applet
 

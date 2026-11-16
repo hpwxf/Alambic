@@ -38,6 +38,16 @@ pub const TEENSY40_FLASH_CAPACITY: u64 = 1984 * 1024;
 /// `FlexSPI` base address where the i.MX RT1062 boot ROM expects the image.
 pub const FLEXSPI_BASE: u32 = 0x6000_0000;
 
+/// First address of the flash the image must never cover: the top 64 KiB of
+/// the Teensy 4.0's 2 MiB, **`0x601F_0000`** onwards.
+///
+/// Teensyduino keeps its emulated EEPROM there (15 sectors from
+/// `0x601F_0000`, `teensy4/eeprom.c`) followed by the restore program in the
+/// last sector; the firmware keeps its settings in the first four sectors
+/// (journal/D-028, `crates/oc-firmware/src/flash_store.rs`). An image reaching
+/// into it would be overwritten by the next settings save, or erase them.
+pub const RESERVED_FLASH_START: u32 = FLEXSPI_BASE + 1984 * 1024;
+
 /// Exclusive end of the `FlexSPI` / external flash window we accept.
 ///
 /// Upper address bound for memory-mapped flash checks: **`0x6800_0000`**
@@ -543,6 +553,12 @@ fn walk_program_headers(
 
         if p_paddr == FLEXSPI_BASE {
             check_fcb_segment(bytes, p_offset, p_filesz, &mut survey.fcb_ok, rejections);
+        }
+        let end = u64::from(p_paddr) + u64::from(p_filesz);
+        if FLEXSPI.contains(&p_paddr) && p_filesz > 0 && end > u64::from(RESERVED_FLASH_START) {
+            rejections.push(Rejection::new(format!(
+                "PT_LOAD segment {index} at {p_paddr:#010x} ({p_filesz} bytes) reaches into the reserved flash at {RESERVED_FLASH_START:#010x} (settings, EEPROM emulation, restore program)"
+            )));
         }
     }
 

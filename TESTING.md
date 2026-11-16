@@ -549,8 +549,8 @@ its sleeve, so the sign reads directly.
    the inputs unplugged for the zero, an output patched into `CV1` for the
    gain. Repeat points 1 to 3: the errors must now be within a few millivolts.
    Never edit `Calibration::FACTORY` for one module: it is the reference
-   firmware's default for every module. Until the flash store exists (step 4,
-   lot 4e) the calibration lasts until power-off.
+   firmware's default for every module. Power-cycle: the calibration must
+   still be in force (the USB log prints `settings: Loaded`).
 
 ### 9.5 — Encoders and buttons
 
@@ -575,9 +575,13 @@ its sleeve, so the sign reads directly.
    `SHIFT`, the picture moves sideways one column per detent.
 3. On `ENC LEFT`, reverse the left encoder, choose `EXIT`: nothing is kept.
    Do it again and choose `SAVE`: in the diagnostic applet the left encoder
-   now moves the channel selection the other way. Until the flash store
-   exists (step 4, lot 4e) the USB log reports the save request and the
-   setting lasts until power-off.
+   now moves the channel selection the other way, and the USB log prints
+   `settings saved`. Power-cycle: the setting is still there.
+5. Wear and power cuts: save a hundred times (any setting back and forth),
+   then power-cycle; the last value must be the one in force and the log must
+   never print `settings NOT saved`. Cut the power right after a `SAVE`: the
+   module must start with either the old or the new settings, never the
+   defaults unless nothing was ever saved.
 4. Power-cycle holding the left encoder switch until the splash screen ends:
    the calibration wizard opens. Power-cycle holding `up` + `down`: they
    open in `SAFE MODE`, upright and with the encoders as wired, and the app

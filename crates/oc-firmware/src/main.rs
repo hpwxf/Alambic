@@ -43,6 +43,7 @@ mod boot_led;
 mod clock;
 mod cv_in;
 mod delay;
+mod flash_store;
 
 use core::cell::RefCell;
 
@@ -57,6 +58,7 @@ use bsp::board as bsp_board;
 use oc_core::Engine;
 use oc_core::calibration::CvOutputCalibration;
 use oc_core::platform::{AnalogIn as _, CV_CHANNELS, Clock as _, CvChannel};
+use oc_core::settings::SettingsStore;
 use oc_core::signal::Extent;
 use oc_drivers::dac8565::Dac8565;
 use oc_drivers::panel::Panel;
@@ -67,6 +69,7 @@ use oc_drivers::triggers::Triggers;
 use crate::clock::SystemClock;
 use crate::cv_in::CvInputs;
 use crate::delay::CycleDelay;
+use crate::flash_store::SettingsFlash;
 
 /// How long to spin-poll USB after bringing the CDC backend up, so a host that
 /// is already watching has a chance to finish enumeration before the first
@@ -207,6 +210,25 @@ fn main() -> ! {
     engine.set_render_interval(board::RENDER_INTERVAL_TICKS);
     engine.set_build_id(env!("OC_BUILD_ID"));
 
+    // ---- settings: calibration and preferences, from the flash -------------
+    // Loaded before the first tick, so the splash already uses the stored
+    // screen preferences and the outputs the stored calibration. A module
+    // whose flash cannot be used still starts, on the defaults.
+    let mut settings_store = match SettingsFlash::new() {
+        Ok(flash) => {
+            let mut store = SettingsStore::new(flash);
+            let (settings, outcome) = store.load_or_default();
+            log::info!("settings: {outcome:?}");
+            engine.apply_settings(settings);
+            Some(store)
+        }
+        Err(error) => {
+            log::warn!("settings flash unavailable ({error:?}): defaults, nothing saved");
+            None
+        }
+    };
+    usb_log.poll();
+
     // Per-CV-input extent over the current heartbeat second, in calibrated
     // millivolts and in raw ADC codes: logged once a second so the noise and
     // offset of an input can be measured as numbers over USB (TESTING.md 9.2).
@@ -223,9 +245,17 @@ fn main() -> ! {
         }
         let report = engine.tick();
         if engine.take_save_request() {
-            // The flash store arrives with step 4, lot 4e (journal/D-028):
-            // until then a SAVE lasts until the next power cycle.
-            log::warn!("settings save requested: no flash store yet, kept until power-off");
+            // Blocks for an erase now and then (tens of milliseconds); only
+            // ever after an explicit SAVE on the settings screen.
+            match settings_store
+                .as_mut()
+                .map(|store| store.save(engine.settings()))
+            {
+                Some(Ok(())) => log::info!("settings saved"),
+                Some(Err(error)) => log::warn!("settings NOT saved: {error:?}"),
+                None => log::warn!("settings NOT saved: no flash store"),
+            }
+            usb_log.poll();
         }
         {
             let inputs = engine.calibration().inputs;

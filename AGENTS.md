@@ -97,7 +97,7 @@ scope for now: the two shipped are a diagnostic I/O screen and a scope.
 |-----------------------|----------|-----------------------------|------|
 | `crates/oc-core`      | yes      | `forbid(unsafe_code)`       | **All** behaviour: platform traits, `Engine::tick`, the applets (`DiagnosticApp`, `ScopeApp`) and the app menu, button debouncing and chord arbitration, calibration, quadrature decoding, framebuffer. Knows nothing about registers or an OS. |
 | `crates/oc-drivers`   | yes      | `forbid(unsafe_code)`       | Peripheral protocols (DAC8565, SH1106/SSD1306/SSD1309, triggers, shared SPI bus) over `embedded-hal` 1.0 only; tested on the host against recording mock buses. |
-| `crates/oc-firmware`  | yes (bin)| `deny(unsafe_code)`, currently zero `unsafe` of its own | Pure wiring: turns `teensy4-bsp`/`imxrt-hal` resources into the `oc-core` platform traits, runs the 1 kHz loop. The one crate that cannot be tested on the host. |
+| `crates/oc-firmware`  | yes (bin)| `deny(unsafe_code)`; `unsafe` only in `flash_store.rs` (boot ROM calls) | Pure wiring: turns `teensy4-bsp`/`imxrt-hal` resources into the `oc-core` platform traits, runs the 1 kHz loop. The one crate that cannot be tested on the host. |
 | `crates/oc-sim`       | no       | ordinary                    | Host backend + ratatui TUI + deterministic virtual clock; runs the real `oc-core` engine. |
 | `crates/oc-vcv-ffi`   | no       | ordinary (defensive C ABI)  | `staticlib`/`rlib` exposing a defensive C ABI over `oc-core` (`oc_engine_*`), linked into the VCV Rack 2 module. Every function tolerates a null pointer or an out-of-range index and never lets a Rust panic unwind across the boundary (`catch_unwind`). |
 | `vcv/OrnamentCrimeAlambic` | n/a (C++) | n/a | The Rack SDK plugin shim: module/port declaration, a widget reading the ABI's framebuffer, no behaviour of its own. Built by `cargo xtask vcv build\|install`, not by hand. |
@@ -197,10 +197,17 @@ lives in `oc-core` and is tested once, on the host.
   boot also flashes the onboard LED (pin 13) in stage groups before SPI
   claims that pad — see `crates/oc-firmware/src/boot_led.rs`.
 * `oc-core` and `oc-drivers` are `forbid(unsafe_code)`. `oc-firmware` is
-  `deny(unsafe_code)` and currently contains none of its own; all register
-  access is confined to `teensy4-bsp`/`imxrt-hal`. If that ever changes,
-  every `unsafe` block must carry a `# Safety` doc section stating the
-  invariant it upholds.
+  `deny(unsafe_code)`; register access is confined to `teensy4-bsp`/`imxrt-hal`,
+  and the one exception is `crates/oc-firmware/src/flash_store.rs`, which
+  calls the i.MX RT1062 boot ROM's `FlexSPI` NOR driver to erase and program
+  the settings sectors (no crate offers it; journal/D-028, D-003). It carries
+  a module-level `#![allow(unsafe_code)]` and a `SAFETY:` comment on every
+  block. Any new `unsafe` must do the same, in a module of its own.
+* **The top 64 KiB of the flash (`0x601F_0000`..) is reserved**: the first
+  four 4 KiB sectors hold the settings (`board::SETTINGS_FLASH_OFFSET`), the
+  rest is Teensyduino's EEPROM emulation and, in the last sector, the restore
+  program. `xtask::validate` rejects an image that reaches it
+  (`RESERVED_FLASH_START`); never move the settings into the last sector.
 
 ## Code style and lints
 
@@ -301,6 +308,7 @@ Full protocol, per level, with exact commands and what each proves: see
 | ADC/DAC unit conversion and calibration           | `crates/oc-core/src/calibration.rs` |
 | Input presence derived from the signal (defaults for unused inputs) | `crates/oc-core/src/presence.rs` |
 | Persistent settings, their format and the flash store | `crates/oc-core/src/settings.rs` (`MemoryFlash` in `testing.rs`) |
+| The Teensy's settings flash (boot ROM calls, the only `unsafe`) | `crates/oc-firmware/src/flash_store.rs` |
 | Deterministic mocks used by every `oc-core` test  | `crates/oc-core/src/testing.rs` |
 | The pinout (the only file allowed to name a pin)  | `crates/oc-firmware/src/board.rs` (rule test: `xtask/tests/pin_rule.rs`) |
 | Memory map / boot sections rationale              | `crates/oc-firmware/MEMORY.md` |

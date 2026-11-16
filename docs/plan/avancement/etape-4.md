@@ -18,6 +18,10 @@ mesures ; il sera complété à la fin de l'étape.
 * **4d** : assistant de calibration (révision de D-027). À faire sur le module : calibrer les 4 sorties et les
   entrées (TESTING.md 9.4) ; la calibration ne survit pas encore à une coupure (4e).
 
+* **4e** : réglages en flash du module par l'API ROM (révision de D-028). **Jamais exécuté sur le module à ce
+  stade** : premier essai = flasher, `SETUP` → modifier → `SAVE` (journal : `settings saved`), couper, rallumer
+  (journal : `settings: Loaded`) ; puis TESTING.md 9.4 et 9.5b.
+
 ## Mesures sur le module TLM
 
 ### 2026-11-16 — sorties en mode ZERO, calibration d'usine (`e73d873`)

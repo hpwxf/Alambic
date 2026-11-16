@@ -95,3 +95,43 @@ est occupée. La vérification au manuel de référence reste le premier pas du 
   bits) ; le simulateur l'écrit dans un fichier (`run --settings`). Testé : flash vierge, aller-retour après
   « coupure », 456 sauvegardes successives (secteurs recyclés), données étrangères ignorées puis écrasées par une
   sauvegarde.
+
+## Révision (2026-11-16, lot 4e) — la flash du Teensy par l'API ROM, vérifiée
+
+**Vérification préalable** (sources lues le 2026-11-16 : `fsl_romapi.{h,c}` et `MIMXRT1062_features.h` du SDK
+MCUXpresso de NXP, `teensy4/eeprom.c` de Teensyduino, `teensy4-fcb` 0.5.0, `imxrt-boot-gen` 0.4.0) :
+
+* le pointeur de l'arbre d'API est à `0x0020_001C` ; son cinquième mot pointe le pilote NOR `FlexSPI`
+  (`version`, `init`, `program`, `erase_all`, `erase`, `read`, `clear_cache`, …) ; le RT1062 a toutes ces
+  fonctions (`FSL_FEATURE_BOOT_ROM_HAS_ROMAPI`, `FSL_ROM_FLEXSPINOR_API_HAS_FEATURE_*`) ; adresses relatives à la
+  base `FlexSPI`, instance 0 ;
+* le bloc de configuration de 512 octets que la ROM attend est celui de l'image (`teensy4_fcb`,
+  `SERIAL_NOR_CONFIGURATION_BLOCK`, W25Q16JV) et contient les séquences d'écriture (write enable, effacement de
+  secteur `0x20`, programmation de page `0x02`, lecture d'état), pages de 256 octets, secteurs de 4 Kio ;
+* Teensyduino place l'EEPROM émulée du Teensy 4.0 à `0x601F_0000` sur 15 secteurs, le dernier secteur restant au
+  programme de restauration ;
+* `imxrt-rt` exécute `.text` depuis l'ITCM et n'active pas les caches.
+
+**Implémentation** (`oc-firmware/src/flash_store.rs`, `SettingsFlash`, seul `unsafe` du firmware) :
+
+* `init` une fois au démarrage avec une copie alignée du bloc de configuration ; chaque appel ROM sous
+  `cortex_m::interrupt::free`, suivi de `clear_cache` ;
+* **lectures par la fonction ROM `read`**, jamais par la fenêtre mémoire : aucune question de cohérence de cache ou
+  de tampon AHB après une écriture ;
+* `WRITE_SIZE` 4, `READ_SIZE` 4, `ERASE_SIZE` 4 Kio ; une écriture programme la ou les pages concernées, le reste de
+  la page à `0xFF` (sans effet sur une cellule NOR) ;
+* zone : `board::SETTINGS_FLASH_OFFSET = 0x1F_0000`, assertions de compilation : au-dessus du budget de 1 984 Kio,
+  avant le secteur de restauration ; `xtask::validate` refuse désormais tout segment chargé qui atteint
+  `0x601F_0000` (`RESERVED_FLASH_START`) ;
+* au démarrage : `SettingsStore::load_or_default`, résultat dans le journal USB (`settings: Loaded|Empty|Failed`) ;
+  si la ROM ne fournit pas de pilote, le module démarre sur les valeurs par défaut sans rien sauver ; sur demande de
+  l'écran système : `save`, résultat dans le journal.
+
+**Conséquence assumée** : la zone recouvre les quatre premiers secteurs de l'EEPROM émulée de Teensyduino. Un module
+venant de Phazerville démarre ici sur les valeurs par défaut (données étrangères ignorées) ; revenir à Phazerville
+après une sauvegarde lui fait perdre une partie de son EEPROM (ses sommes de contrôle le ramèneront à ses propres
+valeurs par défaut). Rester dans la zone EEPROM est ce qui fait survivre les réglages aux mises à jour du firmware ;
+une zone sous `0x601F_0000` serait dans l'espace programme.
+
+**Reste à mesurer sur le module** (`TESTING.md` 9.4, 9.5b) : sauvegarde relue après coupure, cent sauvegardes sans
+erreur, coupure juste après `SAVE`.

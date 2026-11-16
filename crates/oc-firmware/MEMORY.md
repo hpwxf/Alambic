@@ -42,7 +42,19 @@ OCRAM for the heap and uninitialised data.
 | `.heap`         | `0x2020_0000` | OCRAM  | 16 KiB  | heap (currently unused, no allocator)        |
 
 Total flash budget is **1984 KiB**, the size of the Teensy 4.0 application
-partition; `cargo xtask flash` refuses images that exceed it.
+partition; `cargo xtask flash` refuses images that exceed it, and any loadable
+segment that reaches **`0x601F_0000`**. The top 64 KiB from there are not the
+image's:
+
+| Range | Use |
+|---|---|
+| `0x601F_0000`–`0x601F_3FFF` | the module's settings: four 4 KiB sectors in rotation (`board::SETTINGS_FLASH_OFFSET`, `flash_store.rs`, journal/D-028) |
+| `0x601F_4000`–`0x601F_EFFF` | the rest of Teensyduino's EEPROM emulation, unused here |
+| `0x601F_F000`–`0x601F_FFFF` | the Teensy restore program; never written |
+
+The settings are erased and programmed through the boot ROM's `FlexSPI` NOR
+driver, which is safe while the firmware runs because `.text` executes from
+ITCM and nothing else reads the flash meanwhile.
 
 Run `cargo xtask size` for the current figures. That command prints a selective
 section table (runtime sections only — DWARF is omitted on purpose) and runs an

@@ -73,5 +73,6 @@ n'en dépend pas et reste sans `build.rs`. Raisons et détails dans D-025.
 
 `oc-firmware` reste `deny(unsafe_code)` mais cesse d'être « sans `unsafe` » : l'écriture de la flash par l'API ROM
 du RT1062 (aucun crate ne la fournit) demande des appels par pointeurs de fonction. Ils sont confinés à
-`oc-firmware/src/flash_store.rs`, derrière un `#[allow(unsafe_code)]` local, chaque bloc avec sa section `# Safety`.
+`oc-firmware/src/flash_store.rs`, derrière un `#![allow(unsafe_code)]` de module, chaque bloc avec son commentaire
+`SAFETY:` (implémenté au lot 4e).
 `oc-core` et `oc-drivers` restent `forbid(unsafe_code)`.
