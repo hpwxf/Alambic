@@ -30,6 +30,9 @@ Architectural decisions behind each change are in `journal/` (French).
   `stats` (the profile as a table), `stream` (inputs, codes, outputs,
   triggers), `out` (hold an output, watch the inputs), `screen` (text or
   PNG, as the module shows it), `reboot` (into the bootloader).
+  For level 9: `inputs` (spread of every input), `triggers` (rising edges
+  from a sample of every tick, flagged when samples were lost), `sweep`
+  (an output stepped through levels into a patched input).
 
 ### Fixed
 

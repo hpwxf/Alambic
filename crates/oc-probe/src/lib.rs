@@ -6,5 +6,6 @@
 //! text or an image. The binary (`src/main.rs`) is the command line on top.
 
 pub mod client;
+pub mod measure;
 pub mod port;
 pub mod render;

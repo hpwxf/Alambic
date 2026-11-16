@@ -495,7 +495,9 @@ For each of the four front-panel CV jacks in turn:
    second in millivolts and raw ADC codes (`cv1 mv=-3..4 (pp 7)
    code=2729..2732`; the factory 0 V code is 2730).
    Record the worst channel over 10 to 20 s: its offset and peak-to-peak
-   noise size the presence threshold (journal/D-024). If an unpatched input reads `P`, its offset exceeds the 50 mV
+   noise size the presence threshold (journal/D-024). `cargo probe inputs
+   --seconds 20` does it in one go, from every tick rather than once a
+   second: extremes, mean, peak to peak and raw codes of all four inputs. If an unpatched input reads `P`, its offset exceeds the 50 mV
    presence threshold of journal/D-024: note the reading, it decides whether
    the threshold or the calibration has to move.
 2. Patch in a known, static DC voltage from a calibrated source (a battery
@@ -537,7 +539,10 @@ For each of the four trigger jacks:
 
 Because trigger inputs accept a level on its first sample (journal/D-019),
 also check that nothing counts *too much*. Reset the counter before each
-step and compare it with the expected count:
+step and compare it with the expected count. `cargo probe triggers
+--seconds N` counts the rising edges of all four inputs from a sample of
+every tick, independently of the screen's counters; it says `INEXACT` if
+the host lost samples, in which case run it again:
 
 4. **Exact count.** Send a known number of 1 ms triggers (a sequencer or
    burst generator: 16 or 32 pulses, at 120 BPM sixteenths or faster). The
@@ -557,6 +562,23 @@ A failure in 4 to 6 is a reason to add a short re-trigger hold-off after
 each rising edge (accept the edge at once, ignore further rising edges for
 about 2 ms), which keeps 1 ms triggers and rejects chatter; record it in
 journal/D-019 before changing the code.
+
+### 9.3b — Outputs into inputs (loopback)
+
+Patch output A into CV1 with a short cable, then:
+
+```sh
+cargo probe sweep --out A --in 1            # -3 V to +6 V, 1 V steps
+```
+
+Each row is a level held on A, the mean reading of CV1 over 200 ticks after
+50 ticks to settle, their difference and the raw code. The difference is
+the error of both paths together. For indication only, the one module
+measured so far showed a few tens of millivolts with the factory
+calibration and about ten after the wizard (9.4); record this module's own. Repeat for B,
+C and D into their own inputs (`--out B --in 2`, …), which also checks the
+channel order of the outputs. Nothing is held once the command ends,
+whether it finished or failed.
 
 ### 9.4 — Calibration
 
