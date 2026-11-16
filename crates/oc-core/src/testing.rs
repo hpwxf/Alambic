@@ -10,6 +10,7 @@
 
 use core::cell::Cell;
 
+use crate::calibration::{CvInputCalibration, CvOutputCalibration};
 use crate::engine::Engine;
 use crate::framebuffer::FrameBuffer;
 use crate::platform::{
@@ -17,10 +18,15 @@ use crate::platform::{
     Display, MilliVolts, TRIGGER_CHANNELS, TriggerChannel,
 };
 
-/// CV inputs backed by a plain array.
+/// CV inputs backed by a plain array of levels.
+///
+/// The levels are what the jacks see; [`AnalogIn::read_code`] turns them into
+/// the codes the module's ADC would return with the factory calibration, so
+/// the engine's conversion runs exactly as on the hardware, quantisation
+/// included.
 #[derive(Debug, Clone, Copy, Default)]
 pub struct MockAnalogIn {
-    /// Level reported for each channel.
+    /// Level at each input jack.
     pub levels: [MilliVolts; CV_CHANNELS],
 }
 
@@ -39,17 +45,33 @@ impl MockAnalogIn {
     }
 }
 
+/// The level the engine reads for `millivolts` at an input jack: the factory
+/// ADC quantises it to one of its 4096 codes (about 2.44 mV apart).
+///
+/// Tests that patch an input and check where the level ends up compare
+/// against this rather than against the exact value they patched.
+#[must_use]
+pub const fn adc_reading(millivolts: MilliVolts) -> MilliVolts {
+    let factory = CvInputCalibration::FACTORY;
+    factory.to_millivolts(factory.to_code(millivolts))
+}
+
 impl AnalogIn for MockAnalogIn {
-    fn read_cv(&mut self, channel: CvChannel) -> MilliVolts {
-        self.levels[channel.index()]
+    fn read_code(&mut self, channel: CvChannel) -> u16 {
+        CvInputCalibration::FACTORY.to_code(self.levels[channel.index()])
     }
 }
 
 /// CV outputs that record what was written to them.
-#[derive(Debug, Clone, Copy, Default)]
+///
+/// The engine writes DAC codes; the mock reads them back through the factory
+/// calibration, as the module's output stage would turn them into volts.
+#[derive(Debug, Clone, Copy)]
 pub struct MockAnalogOut {
-    staged: [MilliVolts; CV_CHANNELS],
-    /// Levels as of the last flush; this is what the hardware would show.
+    staged: [u16; CV_CHANNELS],
+    /// DAC codes as of the last flush.
+    pub codes: [u16; CV_CHANNELS],
+    /// Levels as of the last flush; this is what the jacks would show.
     pub committed: [MilliVolts; CV_CHANNELS],
     /// Number of flushes performed.
     pub flushes: u32,
@@ -59,8 +81,10 @@ impl MockAnalogOut {
     /// All channels at 0 V, never flushed.
     #[must_use]
     pub const fn new() -> Self {
+        let rest = CvOutputCalibration::FACTORY.to_code(0);
         Self {
-            staged: [0; CV_CHANNELS],
+            staged: [rest; CV_CHANNELS],
+            codes: [rest; CV_CHANNELS],
             committed: [0; CV_CHANNELS],
             flushes: 0,
         }
@@ -73,13 +97,22 @@ impl MockAnalogOut {
     }
 }
 
+impl Default for MockAnalogOut {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl AnalogOut for MockAnalogOut {
-    fn write_cv(&mut self, channel: CvChannel, value: MilliVolts) {
-        self.staged[channel.index()] = value;
+    fn write_code(&mut self, channel: CvChannel, code: u16) {
+        self.staged[channel.index()] = code;
     }
 
     fn flush(&mut self) {
-        self.committed = self.staged;
+        self.codes = self.staged;
+        for (level, &code) in self.committed.iter_mut().zip(&self.codes) {
+            *level = CvOutputCalibration::FACTORY.to_millivolts(code);
+        }
         self.flushes = self.flushes.saturating_add(1);
     }
 }

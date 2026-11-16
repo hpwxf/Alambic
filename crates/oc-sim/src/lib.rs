@@ -21,8 +21,9 @@
 //! simulator.skip_splash(); // start past the boot splash screen
 //! simulator.replay(&scenario);
 //!
-//! // Channel two mirrors its input on the matching output.
-//! assert_eq!(simulator.cv_out()[1], -1_500);
+//! // Channel two mirrors its input on the matching output, as read by the
+//! // module's 12-bit ADC (about 2.44 mV per step).
+//! assert_eq!(simulator.cv_out()[1], oc_core::testing::adc_reading(-1_500));
 //! ```
 
 /// Dense 2x4 terminal glyphs for the module screen (braille by default).

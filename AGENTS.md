@@ -154,15 +154,21 @@ lives in `oc-core` and is tested once, on the host.
   volt-scaled `float`, never inside `oc-core` or `oc-vcv-ffi`'s own ABI,
   which stays `int32_t` millivolts). This keeps conversions exact and avoids
   FPU dependence in the critical loop.
+* **Backends exchange raw converter codes, not millivolts**
+  (`AnalogIn::read_code`, `AnalogOut::write_code`); `Engine` converts them
+  with its current `oc_core::calibration::Calibration` (journal/D-027). The
+  simulator and the VCV module model the module's converters through the
+  mocks in `oc_core::testing`, so inputs are quantised to 12 bits there too;
+  tests that compare an input with an output use `testing::adc_reading`.
 * **Both the analog input and output stages of this hardware invert.**
-  `crates/oc-firmware/src/board.rs` expresses this as *negative* calibration
-  slopes (`nanovolts_per_code`, `millicodes_per_volt`), and enforces it with
-  `const _: () = { assert!(...) }` compile-time checks — a positive slope
-  there is a hardware-modelling bug, not a style choice. Do not "fix" the
-  sign without re-reading the provenance comment in `board.rs`.
-* Calibration constants in `board.rs` are **provisional**, derived from the
-  reference firmware's source rather than measured on the module. Treat
-  them as placeholders until Level 9.4 of `TESTING.md` has been run.
+  `Calibration::FACTORY` in `crates/oc-core/src/calibration.rs` expresses
+  this as a *negative* input slope and a *decreasing* output table (one DAC
+  code per octave, −3 V to +7 V, Phazerville's model), enforced by
+  `const _: () = { assert!(...) }` checks — a positive slope there is a
+  hardware-modelling bug, not a style choice. The factory values are the
+  reference firmware's defaults (0 V input at ADC code 2730, 10 V over each
+  converter's range); the per-module values come from the calibration wizard
+  (journal/D-026, D-027), not from editing constants.
 
 ## Safety-critical conventions
 

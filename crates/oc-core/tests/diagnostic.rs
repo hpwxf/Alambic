@@ -16,7 +16,7 @@ use oc_core::framebuffer::ROW_HEIGHT;
 use oc_core::framebuffer::{FrameBuffer, WIDTH};
 use oc_core::platform::{Button, CvChannel, TriggerChannel};
 use oc_core::presence::Presence;
-use oc_core::testing::{MockEngine, mock_engine};
+use oc_core::testing::{MockEngine, adc_reading, mock_engine};
 
 /// Runs `count` ticks, advancing the virtual clock by one millisecond each
 /// time, as the 1 kHz firmware loop does.
@@ -96,15 +96,19 @@ fn known_input_levels_are_mirrored_on_the_matching_outputs() {
     let report = engine.tick();
 
     // Channel one is selected, so it carries the offset (0 V) rather than its
-    // input. The others mirror their input, clamped to the output range: the
-    // inputs reach -5 V but the outputs only go down to -3 V.
+    // input. The others mirror their input as the ADC reads it, clamped to the
+    // output range: the outputs only go down to -3 V.
     assert_eq!(report.cv_out[0], 0);
-    assert_eq!(report.cv_out[1], 5_000, "+5 V is inside the output range");
+    assert_eq!(
+        report.cv_out[1],
+        adc_reading(5_000),
+        "+5 V is inside the output range"
+    );
     assert_eq!(
         report.cv_out[2], CV_OUT_MIN_MV,
         "-5 V must clamp to the output floor rather than wrap"
     );
-    assert_eq!(report.cv_out[3], 1_234);
+    assert_eq!(report.cv_out[3], adc_reading(1_234));
 }
 
 #[test]
@@ -496,7 +500,7 @@ fn the_screen_can_be_redrawn_less_often_than_the_signal_path_runs() {
         let report = engine.tick();
         rendered += u32::from(report.rendered);
         // Whatever the redraw rate, the outputs are refreshed every tick.
-        assert_eq!(report.cv_out[1], 1_500);
+        assert_eq!(report.cv_out[1], adc_reading(1_500));
     }
 
     assert_eq!(rendered, 5);
@@ -521,15 +525,17 @@ fn the_screen_shows_the_banner_and_the_measured_levels() {
     let mut engine = mock_engine(0);
     {
         let (analog_in, ..) = engine.parts_mut();
-        analog_in.patch(CvChannel::One, 1_234);
+        // A level the 12-bit ADC reads back exactly (1.234 V would read 1.233).
+        analog_in.patch(CvChannel::One, 1_233);
     }
+    assert_eq!(adc_reading(1_233), 1_233);
     engine.clock().advance(1_000);
     engine.tick();
 
     let frame = engine.frame().clone();
     assert_row_reads(&frame, 0, &format!("{}    0us", oc_core::BANNER));
-    // Channel one: present (1.234 V is away from 0 V), static, gate low.
-    assert_row_reads(&frame, 1, ">1 +1.234 P-l    0");
+    // Channel one: present (1.233 V is away from 0 V), static, gate low.
+    assert_row_reads(&frame, 1, ">1 +1.233 P-l    0");
     // Channel two: absent, no signal detected, gate low, no edges counted.
     assert_row_reads(&frame, 2, " 2 +0.000 .-l    0");
     assert_row_reads(&frame, 5, "MODE OFFS OFS +0.000");

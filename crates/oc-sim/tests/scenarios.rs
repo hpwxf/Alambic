@@ -17,6 +17,7 @@ use oc_core::apps::AppId;
 use oc_core::apps::diagnostic::OutputMode;
 use oc_core::calibration::CV_OUT_MIN_MV;
 use oc_core::platform::{CvChannel, TriggerChannel};
+use oc_core::testing::adc_reading;
 use oc_sim::braille;
 use oc_sim::scenario::Scenario;
 use oc_sim::simulator::Simulator;
@@ -187,7 +188,7 @@ fn the_app_menu_switches_to_the_scope() {
     );
     assert_eq!(
         simulator.cv_out(),
-        [1_500; 4],
+        [adc_reading(1_500); 4],
         "the scope buffers CV1 to every output, which no output mode can do"
     );
 

@@ -5,6 +5,26 @@ plugin, which Rack 2 requires to have major version 2, ships as
 `2.<minor>.<patch>` of the same release (checked by `xtask/tests/versions.rs`).
 Architectural decisions behind each change are in `journal/` (French).
 
+## Unreleased
+
+### Changed
+
+- **The core converts, the backends pass raw codes.** `AnalogIn::read_code`
+  and `AnalogOut::write_code` replace the millivolt `read_cv` / `write_cv`;
+  `Engine` owns a `Calibration` (`calibration()`, `set_calibration()`) and
+  converts both ways. The DAC8565 driver sends codes and no longer holds a
+  calibration (journal/D-027).
+- **Factory calibration taken from the reference firmware.** CV inputs read
+  0 V at ADC code 2730 (two thirds of the range, not mid-scale), 10 V over
+  the 4096 codes, so about -3.33 V to +6.67 V instead of -5 V to +5 V. CV
+  outputs use a table of one DAC code per octave (-3 V to +7 V, Phazerville's
+  model), 10 V over the DAC range, 0 V at code 40984 instead of 43690. On the
+  module, every output therefore moves by about 0.4 V for the same request
+  compared with 0.2.0 until it is calibrated.
+- **Simulator and VCV Rack quantise CV inputs like the module's 12-bit ADC**
+  (about 2.44 mV per step): an input of 1.000 V now reads 1.001 V there, as
+  it would on the hardware.
+
 ## 0.2.0 — 2026-11-16 (Rack plugin 2.2.0)
 
 ### Changed

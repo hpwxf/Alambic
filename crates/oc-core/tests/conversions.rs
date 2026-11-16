@@ -7,34 +7,30 @@
 use proptest::prelude::*;
 
 use oc_core::calibration::{
-    ADC_CODE_MAX, CV_IN_MAX_MV, CV_IN_MIN_MV, CV_OUT_MAX_MV, CV_OUT_MIN_MV, CvInputCalibration,
-    CvOutputCalibration, DAC_CODE_MAX,
+    ADC_CODE_MAX, CV_IN_MAX_MV, CV_IN_MIN_MV, CV_LIMIT_MV, CV_OUT_MAX_MV, CV_OUT_MIN_MV,
+    CvInputCalibration, CvOutputCalibration, DAC_CODE_MAX,
 };
 use oc_core::debounce::EdgeCounter;
 use oc_core::encoder::QuadratureDecoder;
 use oc_core::framebuffer::{FrameBuffer, HEIGHT_I32, WIDTH_I32};
 
-/// The nominal input calibration, and its inverting counterpart.
+/// The factory input calibration, and a non-inverting counterpart.
 fn input_calibrations() -> [CvInputCalibration; 2] {
-    let nominal = CvInputCalibration::NOMINAL;
+    let factory = CvInputCalibration::FACTORY;
     [
-        nominal,
+        factory,
         CvInputCalibration {
-            zero_code: nominal.zero_code,
-            nanovolts_per_code: -nominal.nanovolts_per_code,
+            zero_code: 4_095 - factory.zero_code,
+            nanovolts_per_code: -factory.nanovolts_per_code,
         },
     ]
 }
 
-/// The nominal output calibration, and its inverting counterpart.
+/// The factory output table, and a non-inverting straight line.
 fn output_calibrations() -> [CvOutputCalibration; 2] {
-    let nominal = CvOutputCalibration::NOMINAL;
     [
-        nominal,
-        CvOutputCalibration {
-            zero_code: DAC_CODE_MAX - nominal.zero_code,
-            millicodes_per_volt: -nominal.millicodes_per_volt,
-        },
+        CvOutputCalibration::FACTORY,
+        CvOutputCalibration::linear(24_551, 6_553_500),
     ]
 }
 
@@ -66,11 +62,19 @@ proptest! {
     }
 
     #[test]
-    fn any_adc_code_yields_a_level_inside_the_declared_range(code in 0u16..=u16::MAX) {
-        for calibration in input_calibrations() {
-            let level = calibration.to_millivolts(code);
-            prop_assert!((CV_IN_MIN_MV..=CV_IN_MAX_MV).contains(&level));
-        }
+    fn any_adc_code_yields_a_level_inside_the_factory_range(code in 0u16..=u16::MAX) {
+        let level = CvInputCalibration::FACTORY.to_millivolts(code);
+        prop_assert!((CV_IN_MIN_MV..=CV_IN_MAX_MV).contains(&level));
+    }
+
+    #[test]
+    fn any_input_calibration_stays_within_the_rails(
+        code: u16,
+        zero_code in -10_000..10_000i32,
+        nanovolts_per_code: i32,
+    ) {
+        let calibration = CvInputCalibration { zero_code, nanovolts_per_code };
+        prop_assert!(calibration.to_millivolts(code).abs() <= CV_LIMIT_MV);
     }
 
     #[test]
@@ -86,13 +90,24 @@ proptest! {
     }
 
     #[test]
-    fn the_input_conversion_is_monotonic(
-        low in CV_IN_MIN_MV..CV_IN_MAX_MV,
+    fn any_dac_code_reads_back_inside_the_output_range(code: u16) {
+        for calibration in output_calibrations() {
+            let level = calibration.to_millivolts(code);
+            prop_assert!((CV_OUT_MIN_MV..=CV_OUT_MAX_MV).contains(&level));
+        }
+    }
+
+    #[test]
+    fn the_conversions_are_monotonic(
+        low in CV_OUT_MIN_MV..CV_OUT_MAX_MV,
         span in 1..=1_000i32,
     ) {
-        let high = (low + span).min(CV_IN_MAX_MV);
-        let calibration = CvInputCalibration::NOMINAL;
-        prop_assert!(calibration.to_code(low) <= calibration.to_code(high));
+        let high = (low + span).min(CV_OUT_MAX_MV);
+        // Both factory stages invert: a higher level is a lower code.
+        let input = CvInputCalibration::FACTORY;
+        prop_assert!(input.to_code(low) >= input.to_code(high));
+        let output = CvOutputCalibration::FACTORY;
+        prop_assert!(output.to_code(low) >= output.to_code(high));
     }
 
     #[test]

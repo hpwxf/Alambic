@@ -63,17 +63,15 @@
 //!
 //! * the CV input rows (17 to 20), the trigger rows (0 to 3) and the DAC rows
 //!   (9 and 10);
-//! * the ADC and DAC calibration slopes and offsets. Both stages **invert**
-//!   (the reference firmware computes `offset - raw` for inputs and
-//!   `MAX_VALUE - value` for outputs), which is expressed here as a negative
-//!   slope, but the exact gain is a per-unit calibration;
 //! * the OLED controller on other builds. SH1106 is the default; SSD1306 and
 //!   SSD1309 are opt-in features.
+//!
+//! The ADC and DAC calibration is not board data any more: the conversion,
+//! the factory calibration (which expresses that both analog stages invert)
+//! and its measurement on the module live in `oc_core::calibration`
+//! (journal/D-027).
 
-use oc_core::calibration::{
-    ADC_CODES, CV_IN_MAX_MV, CV_IN_MIN_MV, CV_OUT_MAX_MV, CV_OUT_MIN_MV, CvInputCalibration,
-    CvOutputCalibration, DAC_CODE_MAX,
-};
+use oc_core::calibration::{CV_IN_MAX_MV, CV_IN_MIN_MV, CV_OUT_MAX_MV, CV_OUT_MIN_MV};
 use oc_core::platform::{BUTTONS, CV_CHANNELS, ENCODERS, TRIGGER_CHANNELS};
 use oc_drivers::panel::EncoderPins;
 use oc_drivers::ssd130x::Controller;
@@ -415,29 +413,6 @@ impl PanelPins {
 /// it; afterwards only a panic handler (register-level SOS) may touch it.
 pub(crate) const LED_GPIO2_OFFSET: u32 = 3;
 
-/// Provisional CV input calibration.
-///
-/// The analog front end inverts, hence the negative slope: a rising voltage at
-/// the jack lowers the ADC code. Zero volts sits at mid-scale until a real
-/// calibration is measured.
-pub(crate) const CV_INPUT_CALIBRATION: CvInputCalibration = CvInputCalibration {
-    zero_code: ADC_CODES / 2,
-    nanovolts_per_code: -CvInputCalibration::NOMINAL.nanovolts_per_code,
-};
-
-/// Provisional CV output calibration.
-///
-/// The output stage inverts as well: the reference firmware writes
-/// `MAX_VALUE - value`, so code zero produces the *highest* voltage.
-pub(crate) const CV_OUTPUT_CALIBRATION: CvOutputCalibration = CvOutputCalibration {
-    zero_code: DAC_CODE_MAX - CvOutputCalibration::NOMINAL.zero_code,
-    millicodes_per_volt: -CvOutputCalibration::NOMINAL.millicodes_per_volt,
-};
-
-/// One calibration per output channel, ready for the DAC driver.
-pub(crate) const CV_OUTPUT_CALIBRATIONS: [CvOutputCalibration; CV_CHANNELS] =
-    [CV_OUTPUT_CALIBRATION; CV_CHANNELS];
-
 /// ADC channel of each CV input, in `CV1..CV4` order.
 ///
 /// The firmware never uses these numbers to address the converter: they are
@@ -446,31 +421,11 @@ pub(crate) const CV_OUTPUT_CALIBRATIONS: [CvOutputCalibration; CV_CHANNELS] =
 /// asserted below so that the two cannot silently disagree.
 pub(crate) const CV_ADC_CHANNELS: [u32; CV_CHANNELS] = [5, 6, 15, 11];
 
-/// Compile-time sanity checks on the calibration data.
+/// Compile-time sanity checks on the board data.
 ///
 /// These are cheap and catch a copy-and-paste slip in the constants above
 /// before it reaches a module.
 const _: () = {
-    assert!(
-        CV_INPUT_CALIBRATION.nanovolts_per_code < 0,
-        "the O&C analog front end inverts; the input slope must be negative"
-    );
-    assert!(
-        CV_OUTPUT_CALIBRATION.millicodes_per_volt < 0,
-        "the O&C output stage inverts; the output slope must be negative"
-    );
-    assert!(
-        CV_OUTPUT_CALIBRATION.zero_code > 0 && CV_OUTPUT_CALIBRATION.zero_code < DAC_CODE_MAX,
-        "0 V must land strictly inside the DAC range"
-    );
-    assert!(
-        CV_INPUT_CALIBRATION.to_millivolts(0) > CV_INPUT_CALIBRATION.to_millivolts(4095),
-        "an inverting front end must read code 0 as the highest voltage"
-    );
-    assert!(
-        CV_OUTPUT_CALIBRATION.to_code(CV_OUT_MAX_MV) < CV_OUTPUT_CALIBRATION.to_code(CV_OUT_MIN_MV),
-        "an inverting output stage must map the highest voltage to the lowest code"
-    );
     assert!(
         RENDER_INTERVAL_TICKS > 0,
         "the screen must be redrawn eventually"

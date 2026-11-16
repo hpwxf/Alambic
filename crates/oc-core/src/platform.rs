@@ -132,20 +132,28 @@ impl ControlEvents {
 
 /// Reads the CV inputs.
 pub trait AnalogIn {
-    /// Samples one CV input and returns its calibrated level.
+    /// Samples one CV input and returns its raw 12-bit ADC code.
+    ///
+    /// The code is uncalibrated: [`crate::engine::Engine`] converts it with the
+    /// module's current [`crate::calibration::Calibration`], so that the
+    /// conversion, and the calibration wizard that measures it, exist once for
+    /// every backend (journal/D-027). A host without a real converter models
+    /// one, typically with [`crate::calibration::CvInputCalibration::to_code`]
+    /// on the factory calibration.
     ///
     /// There is deliberately no "is a cable plugged in" query: the module's
     /// jacks have no detection switch, so only the level is observable, and a
     /// host that could tell (VCV Rack) would make the same applet behave
     /// differently on the module. Signal presence comes from
     /// [`crate::signal::SignalDetector`] on every backend (journal/D-019).
-    fn read_cv(&mut self, channel: CvChannel) -> MilliVolts;
+    fn read_code(&mut self, channel: CvChannel) -> u16;
 }
 
 /// Writes the CV outputs.
 pub trait AnalogOut {
-    /// Stages a value for one CV output.
-    fn write_cv(&mut self, channel: CvChannel, value: MilliVolts);
+    /// Stages a raw 16-bit DAC code for one CV output, already calibrated by
+    /// the engine (see [`AnalogIn::read_code`]).
+    fn write_code(&mut self, channel: CvChannel, code: u16);
 
     /// Pushes all staged values to the hardware.
     ///

@@ -8,6 +8,7 @@
 use oc_core::framebuffer::LEN as FRAMEBUFFER_LEN;
 use oc_core::platform::{BUTTONS, CV_CHANNELS, ENCODERS, TRIGGER_CHANNELS};
 use oc_core::splash::DURATION_MICROS;
+use oc_core::testing::adc_reading;
 use oc_vcv_ffi::{
     OcEngine, oc_engine_button, oc_engine_buttons, oc_engine_cv_channels, oc_engine_cv_out,
     oc_engine_encoder, oc_engine_encoders, oc_engine_framebuffer, oc_engine_framebuffer_len,
@@ -126,7 +127,8 @@ fn two_engines_are_independent() {
         oc_engine_tick(first, u64::from(DURATION_MICROS) * 2);
         oc_engine_tick(second, u64::from(DURATION_MICROS) * 2);
 
-        assert_eq!(oc_engine_cv_out(first, 1), 4_000);
+        // The level crosses the modelled 12-bit ADC on the way.
+        assert_eq!(oc_engine_cv_out(first, 1), adc_reading(4_000));
         assert_eq!(oc_engine_cv_out(second, 1), 0);
 
         oc_engine_free(first);

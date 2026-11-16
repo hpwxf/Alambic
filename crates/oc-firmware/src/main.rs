@@ -55,6 +55,7 @@ use teensy4_panic as _;
 use bsp::board as bsp_board;
 
 use oc_core::Engine;
+use oc_core::calibration::CvOutputCalibration;
 use oc_core::platform::{AnalogIn as _, CV_CHANNELS, Clock as _, CvChannel};
 use oc_core::signal::Extent;
 use oc_drivers::dac8565::Dac8565;
@@ -123,7 +124,7 @@ fn main() -> ! {
 
     // ---- CV inputs: analog pads, never driven --------------------------------
     let cv_pads = pins.cv.claim(&adc1);
-    let cv_inputs = CvInputs::new(adc1, cv_pads, board::CV_INPUT_CALIBRATION);
+    let cv_inputs = CvInputs::new(adc1, cv_pads);
     log::info!("adc ok");
     usb_log.poll();
     boot_led::signal(&mut gpio2, &mut pins.led_sck, &mut delay, 2);
@@ -156,7 +157,7 @@ fn main() -> ! {
     let dac = Dac8565::new(
         SharedBus::new(&bus),
         dac_lines.cs,
-        board::CV_OUTPUT_CALIBRATIONS,
+        CvOutputCalibration::FACTORY.to_code(0),
     );
     let oled_lines = pins.oled.claim(&mut gpio2);
     let mut display = Ssd130x::new(
@@ -222,11 +223,13 @@ fn main() -> ! {
         }
         let report = engine.tick();
         {
+            let inputs = engine.calibration().inputs;
             let (cv_inputs, ..) = engine.parts_mut();
             for channel in CvChannel::ALL {
                 let index = channel.index();
-                cv_millivolts[index].update(cv_inputs.read_cv(channel));
-                cv_codes[index].update(i32::from(cv_inputs.raw(channel)));
+                let code = cv_inputs.read_code(channel);
+                cv_millivolts[index].update(inputs[index].to_millivolts(code));
+                cv_codes[index].update(i32::from(code));
             }
         }
 

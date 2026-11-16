@@ -5,7 +5,7 @@
 
 use oc_core::apps::AppId;
 use oc_core::platform::{Button, CV_CHANNELS, CvChannel};
-use oc_core::testing::{MockEngine, mock_engine};
+use oc_core::testing::{MockEngine, adc_reading, mock_engine};
 
 /// Runs `count` ticks, advancing the virtual clock by one millisecond each
 /// time, as the 1 kHz firmware loop does.
@@ -114,7 +114,8 @@ fn the_menu_launches_the_highlighted_app() {
     engine.clock().advance(1_000);
     let report = engine.tick();
     assert_eq!(
-        report.cv_out, [1_500; CV_CHANNELS],
+        report.cv_out,
+        [adc_reading(1_500); CV_CHANNELS],
         "the scope buffers CV1 to every output, which the diagnostic applet never does"
     );
 }
@@ -179,7 +180,8 @@ fn the_running_app_keeps_driving_the_outputs_while_the_menu_is_open() {
     let report = engine.tick();
 
     assert_eq!(
-        report.cv_out[1], 4_000,
+        report.cv_out[1],
+        adc_reading(4_000),
         "the applet underneath keeps mirroring its inputs"
     );
     let (_, analog_out, ..) = engine.parts_mut();

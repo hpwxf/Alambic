@@ -10,6 +10,7 @@ use crate::apps::diagnostic::DiagnosticApp;
 use crate::apps::{AppHost, AppId};
 use crate::apps::{InputSnapshot, TickContext};
 use crate::buttons::ButtonReader;
+use crate::calibration::Calibration;
 use crate::framebuffer::FrameBuffer;
 use crate::menu::{Menu, MenuOutcome};
 use crate::platform::{
@@ -75,6 +76,7 @@ pub struct Engine<A, O, D, C, K, S> {
     controls: C,
     clock: K,
     display: S,
+    calibration: Calibration,
     apps: AppHost,
     splash: SplashScreen,
     menu: Menu,
@@ -112,6 +114,7 @@ where
             controls,
             clock,
             display,
+            calibration: Calibration::FACTORY,
             apps: AppHost::new(),
             splash: SplashScreen::new(),
             menu: Menu::new(),
@@ -173,12 +176,7 @@ where
         }
         let outputs = self.apps.update(&snapshot);
 
-        for (index, &level) in outputs.iter().enumerate() {
-            if let Some(channel) = crate::platform::CvChannel::from_index(index) {
-                self.analog_out.write_cv(channel, level);
-            }
-        }
-        self.analog_out.flush();
+        self.write_outputs(&outputs);
 
         self.ticks_since_render += 1;
         let rendered = self.ticks_since_render >= self.render_interval;
@@ -221,12 +219,7 @@ where
         self.splash.advance(elapsed);
 
         let outputs = [0; CV_CHANNELS];
-        for (index, &level) in outputs.iter().enumerate() {
-            if let Some(channel) = crate::platform::CvChannel::from_index(index) {
-                self.analog_out.write_cv(channel, level);
-            }
-        }
-        self.analog_out.flush();
+        self.write_outputs(&outputs);
 
         self.splash.render(self.display.frame_mut());
         self.display.present();
@@ -321,7 +314,8 @@ where
 
         for channel in crate::platform::CvChannel::ALL {
             let index = channel.index();
-            snapshot.cv[index] = self.analog_in.read_cv(channel);
+            let code = self.analog_in.read_code(channel);
+            snapshot.cv[index] = self.calibration.inputs[index].to_millivolts(code);
         }
 
         for channel in TriggerChannel::ALL {
@@ -331,6 +325,28 @@ where
         debug_assert_eq!(snapshot.cv.len(), CV_CHANNELS);
         debug_assert_eq!(snapshot.triggers.len(), TRIGGER_CHANNELS);
         snapshot
+    }
+
+    /// Converts and stages one level per output, then moves them together.
+    fn write_outputs(&mut self, levels: &[MilliVolts; CV_CHANNELS]) {
+        for channel in crate::platform::CvChannel::ALL {
+            let index = channel.index();
+            let code = self.calibration.outputs[index].to_code(levels[index]);
+            self.analog_out.write_code(channel, code);
+        }
+        self.analog_out.flush();
+    }
+
+    /// The calibration currently converting every input and output.
+    #[must_use]
+    pub const fn calibration(&self) -> &Calibration {
+        &self.calibration
+    }
+
+    /// Replaces the calibration, effective from the next tick. It survives
+    /// [`Self::reset`]: it belongs to the module, not to a run.
+    pub const fn set_calibration(&mut self, calibration: Calibration) {
+        self.calibration = calibration;
     }
 
     /// Time since the previous tick, clamped and wrap-safe.
@@ -414,7 +430,7 @@ mod tests {
     use crate::apps::diagnostic::OutputMode;
     use crate::platform::{CV_CHANNELS, CvChannel};
     use crate::splash;
-    use crate::testing::mock_engine_at_boot;
+    use crate::testing::{adc_reading, mock_engine_at_boot};
 
     #[test]
     fn durations_are_clamped_to_something_believable() {
@@ -471,7 +487,8 @@ mod tests {
         let report = engine.tick();
 
         assert_eq!(
-            report.cv_out[1], 4_000,
+            report.cv_out[1],
+            adc_reading(4_000),
             "once booted, inputs must reach the matching output again"
         );
         assert_eq!(engine.diagnostic().mode(), OutputMode::Offset);
@@ -507,6 +524,6 @@ mod tests {
         }
 
         let report = engine.tick();
-        assert_eq!(report.cv_out[1], 1_500);
+        assert_eq!(report.cv_out[1], adc_reading(1_500));
     }
 }

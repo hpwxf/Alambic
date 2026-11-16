@@ -7,7 +7,7 @@
 use oc_core::apps::diagnostic::OutputMode;
 use oc_core::platform::CvChannel;
 use oc_core::splash::DURATION_MICROS;
-use oc_core::testing::{MockEngine, mock_engine_at_boot};
+use oc_core::testing::{MockEngine, adc_reading, mock_engine_at_boot};
 
 /// Number of one-millisecond ticks that comfortably run past the end of the
 /// animation.
@@ -141,7 +141,7 @@ fn skipping_the_splash_screen_starts_normal_execution_immediately() {
     }
 
     let report = engine.tick();
-    assert_eq!(report.cv_out[2], -1_000);
+    assert_eq!(report.cv_out[2], adc_reading(-1_000));
 }
 
 #[test]

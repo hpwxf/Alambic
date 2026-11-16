@@ -116,8 +116,8 @@ fn menu(criterion: &mut Criterion) {
 
 fn conversions(criterion: &mut Criterion) {
     let mut group = criterion.benchmark_group("conversions");
-    let input = CvInputCalibration::NOMINAL;
-    let output = CvOutputCalibration::NOMINAL;
+    let input = CvInputCalibration::FACTORY;
+    let output = CvOutputCalibration::FACTORY;
 
     group.bench_function("adc_code_to_millivolts", |bencher| {
         bencher.iter(|| {

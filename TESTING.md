@@ -26,8 +26,9 @@ how to run it and how to read the result.
 | — | Everything on the host at once | `cargo test --all-features` | host |
 
 Level 9 is the only one that is not automated, and the only one that can
-confirm the two facts still marked provisional in `crates/oc-firmware/src/board.rs`:
-the calibration slopes and the OLED controller.
+confirm what is still taken from the reference firmware's source: the factory
+calibration (`Calibration::FACTORY` in `crates/oc-core/src/calibration.rs`)
+and the OLED controller (`crates/oc-firmware/src/board.rs`).
 
 ## Level 0 — Static checks
 
@@ -56,8 +57,9 @@ Covers, from `crates/oc-core/tests/`:
 
 * `conversions.rs` — `proptest` round-trips of ADC code ↔ millivolts and
   millivolts ↔ DAC code, over the whole input domain and both signal
-  polarities (nominal and inverting calibration); monotonicity of the input
-  conversion; edge-counter and quadrature-decoder invariants (never counts
+  polarities (the inverting factory calibration and a non-inverting one); any
+  input calibration stays within the supply rails; monotonicity of both
+  conversions; edge-counter and quadrature-decoder invariants (never counts
   more edges than samples, never drifts by more than one detent per four
   transitions); framebuffer pixel independence.
 * `diagnostic.rs` — behavioural tests driven through `Engine::tick` with the
@@ -362,9 +364,8 @@ image cannot brick the module — see *Hardware safety* in `README.md`.
 
 This is the level that did not exist as a written procedure before this
 document. It is the only way to confirm the two facts flagged as provisional
-in `crates/oc-firmware/src/board.rs` and in `README.md`'s *Before the first
-flash* section: the calibration slopes, and whether the panel is SH1106 (stock),
-SSD1306, or SSD1309. Follow it in order; each step assumes the previous one succeeded.
+in `README.md`'s *Before the first flash* section: the factory calibration,
+and whether the panel is SH1106 (stock), SSD1306, or SSD1309. Follow it in order; each step assumes the previous one succeeded.
 
 ### 9.0 — Before touching anything
 
@@ -458,18 +459,19 @@ SSD1306, or SSD1309. Follow it in order; each step assumes the previous one succ
 For each of the four front-panel CV jacks in turn:
 
 1. Leave it unpatched. The channel row must show `.` (absent) and a reading
-   near 0 V (exact value depends on the still-unmeasured calibration offset,
-   see 9.4). Read the exact figures from the USB log, which prints once a
-   second, per input, the lowest and highest reading of that second in
-   millivolts and raw ADC codes (`cv1 mv=-3..4 (pp 7) code=2046..2051`).
+   near 0 V (exact value depends on how far this module is from the factory
+   calibration, see 9.4). Read the exact figures from the USB log, which
+   prints once a second, per input, the lowest and highest reading of that
+   second in millivolts and raw ADC codes (`cv1 mv=-3..4 (pp 7)
+   code=2729..2732`; the factory 0 V code is 2730).
    Record the worst channel over 10 to 20 s: its offset and peak-to-peak
    noise size the presence threshold (journal/D-024). If an unpatched input reads `P`, its offset exceeds the 100 mV
    presence threshold of journal/D-024: note the reading, it decides whether
    the threshold or the calibration has to move.
 2. Patch in a known, static DC voltage from a calibrated source (a battery
    or bench supply through a suitable divider — **never exceed the module's
-   input range**, nominally -6 V to +9 V before scaling; when unsure, start
-   with ±1 V). The reading must follow it and the row must show `P`
+   input range**; the inputs read about -3.3 V to +6.7 V with the factory
+   calibration; when unsure, start with ±1 V). The reading must follow it and the row must show `P`
    immediately. Unplug it: the row must go back to `.` within about half a
    second (activity block plus 300 ms hold). Presence is derived from the
    signal, not from the jack (journal/D-024).
@@ -480,8 +482,8 @@ For each of the four front-panel CV jacks in turn:
 4. Sweep the source slowly (a few Hz) or wiggle it by hand. The `~` indicator
    must turn **on** while it is moving.
 5. Note the reading shown on screen next to the applied voltage for later use
-   in 9.4. Do not expect it to be exact yet: the slope in `board.rs` is
-   provisional.
+   in 9.4. Do not expect it to be exact yet: the module still runs on the
+   factory calibration.
 6. Confirm channel order: `CV1`, `CV2`, `CV3`, `CV4` on screen must correspond
    to the jacks in the same visual order as silkscreened on the panel. The
    pinout comment in `board.rs` calls out that the pins are *not* in that
@@ -526,10 +528,12 @@ each rising edge (accept the edge at once, ignore further rising edges for
 about 2 ms), which keeps 1 ms triggers and rejects chatter; record it in
 journal/D-019 before changing the code.
 
-### 9.4 — Calibration slopes
+### 9.4 — Calibration
 
-This step turns the "provisional" calibration in `board.rs` into a measured
-one.
+This step measures how far the module is from the factory calibration. Once
+the calibration wizard exists (step 4 of `PLAN.md`, journal/D-026, D-027), it
+replaces points 4 and 5 below: the measured values are then stored on the
+module instead of being edited into the source.
 
 1. In **ZERO** mode (press `up`/`down` on the module until the mode row
    reads `ZERO`), measure all four CV outputs with a voltmeter. They should
@@ -540,12 +544,10 @@ one.
    +3 V, +6 V) to derive the real gain, not just the offset.
 3. Compare against the values already fed into the module for the inputs
    (9.2, step 5) the same way, at a few known input voltages.
-4. If either slope or offset is off by more than the module's own precision
-   allows for musical use, update `CV_INPUT_CALIBRATION` /
-   `CV_OUTPUT_CALIBRATION` in `board.rs` accordingly, re-run
-   `cargo test -p oc-core` (Level 1) to confirm the compile-time assertions
-   still hold (both slopes must stay negative — the front end and the output
-   stage both invert), and reflash.
+4. Record the offset and gain error of each channel. Until the wizard
+   exists, do not edit `Calibration::FACTORY` for one module: it is the
+   reference firmware's default for every module, and the per-module values
+   belong in the stored calibration.
 
 ### 9.5 — Encoders and buttons
 
@@ -566,8 +568,8 @@ one.
 Record the outcome (pass/fail per section, measured calibration values, OLED
 controller identified) wherever the project tracks hardware notes. Only after
 this checklist passes should the module be considered fit for anything beyond
-bench testing, and only after 9.4 should the calibration constants in
-`board.rs` be treated as anything but a starting guess.
+bench testing, and only after 9.4 should the factory calibration be treated
+as anything but a starting guess for this module.
 
 **Proves:** the full signal chain — analog front end, GPIO, SPI peripherals,
 OLED — works on the actual module, and yields the real calibration.

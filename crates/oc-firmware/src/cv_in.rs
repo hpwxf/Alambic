@@ -11,14 +11,12 @@
 
 use teensy4_bsp::hal::adc::{Adc, AnalogInput, AveragingCount, ConversionSpeed, ResolutionBits};
 
-use oc_core::calibration::CvInputCalibration;
-use oc_core::platform::{AnalogIn, CV_CHANNELS, CvChannel, MilliVolts};
+use oc_core::platform::{AnalogIn, CV_CHANNELS, CvChannel};
 
 /// The four CV inputs.
 pub(crate) struct CvInputs {
     adc: Adc,
     inputs: [AnalogInput; CV_CHANNELS],
-    calibration: [CvInputCalibration; CV_CHANNELS],
     raw: [u16; CV_CHANNELS],
 }
 
@@ -28,11 +26,7 @@ impl CvInputs {
     /// The bank is configured for 12-bit conversions with four hardware
     /// averages: the extra averaging costs a little time but visibly steadies
     /// the reading, and the module's own noise floor is well above one code.
-    pub(crate) fn new(
-        mut adc: Adc,
-        inputs: [AnalogInput; CV_CHANNELS],
-        calibration: CvInputCalibration,
-    ) -> Self {
+    pub(crate) fn new(mut adc: Adc, inputs: [AnalogInput; CV_CHANNELS]) -> Self {
         adc.set_resolution(ResolutionBits::Res12);
         adc.set_averaging(AveragingCount::Avg4);
         adc.set_conversion_speed(ConversionSpeed::Medium);
@@ -40,16 +34,8 @@ impl CvInputs {
         Self {
             adc,
             inputs,
-            calibration: [calibration; CV_CHANNELS],
             raw: [0; CV_CHANNELS],
         }
-    }
-
-    /// The raw 12-bit ADC code of one channel from the last [`Self::sample`],
-    /// before calibration: logged alongside the millivolts so that a noise or
-    /// offset measurement also feeds the calibration (`TESTING.md` 9.4).
-    pub(crate) fn raw(&self, channel: CvChannel) -> u16 {
-        self.raw[channel.index()]
     }
 
     /// Converts all four channels, so the tick sees one coherent snapshot.
@@ -61,9 +47,10 @@ impl CvInputs {
 }
 
 impl AnalogIn for CvInputs {
-    fn read_cv(&mut self, channel: CvChannel) -> MilliVolts {
-        let index = channel.index();
-        self.calibration[index].to_millivolts(self.raw[index])
+    /// The raw 12-bit code from the last [`Self::sample`]; the engine
+    /// calibrates it (journal/D-027).
+    fn read_code(&mut self, channel: CvChannel) -> u16 {
+        self.raw[channel.index()]
     }
 }
 

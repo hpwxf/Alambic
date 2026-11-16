@@ -5,7 +5,7 @@
 | **Identifiant** | D-027 |
 | **Date** | 2026-11-16 |
 | **Auteur** | Pascal Havé |
-| **Statut** | adoptée |
+| **Statut** | adoptée, révisée |
 | **Commits** | ce commit (ADR) ; implémentation aux lots 4a (conversion) et 4d (assistant) de l'étape 4 |
 | **Relations** | **révise** D-006 (sorties : affine ⇒ table par octave ; constantes ni réglables ni persistées ⇒ mesurées et persistées) et D-002 (traits `AnalogIn` / `AnalogOut`) ; sert D-026 ; s'appuie sur D-028 |
 
@@ -73,3 +73,18 @@ dans le simulateur et Rack) est payé une fois.
   Squares-and-Circles), au prix d'un écart à Phazerville.
 * Bruit d'entrée qui empêche un zéro stable : moyenne plus longue.
 * Coût mesurable de la conversion dans `oc-core` à la cadence de D-023 : précalculer.
+
+## Révision (2026-11-16, lot 4a) — une seule calibration d'usine, partagée
+
+Écart à l'implémentation : il n'y a pas de valeurs d'usine **par backend**. `Calibration::FACTORY` (dans
+`oc_core::calibration`) porte les défauts de Phazerville — entrée : zéro au code 2730, 10 V sur 4096 codes, pente
+négative ; sortie : `kCalibrationDefaults` décalé de `DAC_OFFSET` puis inversé, 0 V au code 40 984 — et sert aux
+trois backends. Le simulateur et Rack ne modélisent donc pas un convertisseur « idéal » arbitraire mais **celui du
+module** (mocks de `oc_core::testing`, qui convertissent avec `FACTORY`) : à calibration d'usine, les trois backends
+lisent et produisent les mêmes codes. C'est plus fidèle à D-002 et retire toute constante de calibration de
+`board.rs`.
+
+Conséquences mesurées : les entrées du simulateur et de Rack sont quantifiées à 12 bits (≈ 2,44 mV : 1,000 V se lit
+1,001 V), la plage d'entrée devient −3,333 V…+6,665 V (au lieu de ±5 V), et le 0 V de sortie sur le module passe du
+code 43 690 au code 40 984 (≈ 0,4 V d'écart à demande égale, jusqu'à la calibration). Deux écrans dorés régénérés
+(`cv_passthrough`, `app_menu`), diff expliqué par ces deux effets seuls.

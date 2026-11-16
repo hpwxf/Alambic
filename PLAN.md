@@ -59,7 +59,7 @@ seul ; interaction et modèle de calibration repris de Phazerville. Plan détail
 
 | Lot | Contenu | État |
 |---|---|---|
-| **4a** — conversion dans le cœur | traits en codes bruts ; calibration entrées (zéro par canal, gain commun) et sorties (table par octave) dans `oc-core` ; valeurs d'usine par backend | à faire |
+| **4a** — conversion dans le cœur | ✅ traits en codes bruts (`read_code` / `write_code`) ; `Engine` convertit avec sa `Calibration` (entrées affines par canal, sorties en table de 11 points) ; `Calibration::FACTORY` de Phazerville partagée par les trois backends (révision de D-027) ; `board.rs` sans calibration | fait |
 | **4b** — modèle et stockage | `oc_core::settings`, `postcard` + `sequential-storage` sur `NorFlash` ; simulateur `--settings` ; ABI Rack + JSON | à faire |
 | **4c** — écran système | `Screen::System`, item `SETUP`, gestes au démarrage, réglages hors calibration | à faire |
 | **4d** — assistant de calibration | étapes Phazerville (DAC, zéros ADC, gain ADC par rebouclage) | à faire |

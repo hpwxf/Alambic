@@ -361,9 +361,12 @@ bringing it up. The analog and trigger paths have not been, and Level 9 of
 firmware's source rather than measured, and should be checked with the
 diagnostic applet before being trusted:
 
-* **the calibration slopes.** Both the input and the output stage invert, which
-  `crates/oc-firmware/src/board.rs` expresses as negative slopes, but the exact
-  gain and offset are per-unit properties.
+* **the calibration.** The module starts from the reference firmware's
+  factory calibration (`Calibration::FACTORY` in
+  `crates/oc-core/src/calibration.rs`: both stages invert, 0 V input at ADC
+  code 2730, 10 V over each converter's range); the exact gain and offset are
+  per-unit properties, to be measured by the calibration wizard (in
+  progress).
 * **the CV inputs and the trigger inputs** themselves (pin mapping, polarity,
   levels).
 * **the OLED controller** on other builds. SH1106 is the default and is what

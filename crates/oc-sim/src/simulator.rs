@@ -320,6 +320,7 @@ impl Default for Simulator {
 #[cfg(test)]
 mod tests {
     use oc_core::platform::{Button, CvChannel, TriggerChannel};
+    use oc_core::testing::adc_reading;
 
     use super::{PRESS_TICKS, Simulator};
     use crate::scenario::{Event, Scenario};
@@ -383,7 +384,8 @@ mod tests {
         simulator.step();
 
         assert_eq!(simulator.cv_in(CvChannel::Two), -1_500);
-        assert_eq!(simulator.cv_out()[1], -1_500);
+        // The level crosses the module's 12-bit ADC on the way.
+        assert_eq!(simulator.cv_out()[1], adc_reading(-1_500));
     }
 
     #[test]
