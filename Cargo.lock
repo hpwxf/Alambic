@@ -2596,6 +2596,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "oc-protocol"
+version = "0.3.0"
+dependencies = [
+ "oc-core",
+ "postcard",
+ "proptest",
+ "serde",
+]
+
+[[package]]
 name = "oc-sim"
 version = "0.3.0"
 dependencies = [

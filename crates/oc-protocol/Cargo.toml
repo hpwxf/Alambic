@@ -1,0 +1,20 @@
+[package]
+name = "oc-protocol"
+description = "Messages between the Ornament & Crime firmware and its host probe (journal/D-029)"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[dependencies]
+oc-core.workspace = true
+postcard.workspace = true
+serde.workspace = true
+
+[dev-dependencies]
+proptest.workspace = true
+
+[lints]
+workspace = true
