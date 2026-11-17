@@ -21,9 +21,18 @@ Faire tourner l'USB dans le gestionnaire de panique est écarté : la panique pe
 2. **Quelques secondes de SOS** (le signal visuel reste), puis **redémarrage logiciel** (`SCB::sys_reset`).
 3. **Au démarrage suivant**, avant tout le reste : si l'enregistrement est valide, l'écrire en tête du journal
    (`previous run panicked at …`), le garder pour la sonde et l'écran, puis l'effacer.
-4. **Boucle de crash** : si le compteur de paniques consécutives dépasse un seuil (2 ou 3), ne plus redémarrer et
-   rester en SOS, pour ne pas masquer un crash au démarrage par des redémarrages sans fin ; le compteur revient à
-   zéro après quelques secondes de fonctionnement normal.
+4. **Boucle de crash** : si le compteur de paniques consécutives dépasse un seuil (2 ou 3), démarrer en **mode
+   secours minimal** : l'USB seul, ni SPI, ni OLED, ni DAC, ni applet ; le journal donne l'enregistrement, la sonde
+   reste joignable (lecture du crash, redémarrage par 134 bauds pour reflasher), la LED (libre, le SPI n'a pas pris
+   sa broche) fait le SOS. Un crash au démarrage ne se cache donc ni derrière des redémarrages sans fin, ni derrière
+   un SOS muet. Le compteur revient à zéro après quelques secondes de fonctionnement normal.
+
+**Indépendance vis-à-vis de l'écran** (remarque de l'utilisateur, 2026-11-17) : le message ne doit jamais dépendre
+de l'OLED, dont la panne est justement un cas à couvrir. Le démarrage initialise l'USB avant le SPI et l'OLED
+(`usb cdc up` précède `spi ok`, `oled init`) : l'enregistrement est relu et journalisé juste après l'USB, avant de
+toucher au bus ; l'écran n'est qu'un affichage en plus, et le mode secours ne le touche pas du tout. Un échec de
+l'OLED qui n'est pas une panique (`oled init failed`) est déjà journalisé, et visible depuis la correction du
+journal.
 
 Les fautes matérielles (`HardFault`) peuvent passer par le même enregistrement (registres `PC`, `LR`, `CFSR`,
 `HFSR`, `BFAR`), à décider : elles ne passent pas par le gestionnaire de panique.
@@ -48,7 +57,8 @@ Les fautes matérielles (`HardFault`) peuvent passer par le même enregistrement
 * **Journal** : première ligne après le démarrage ; avec la correction du 2026-11-17, elle attend que `screen`
   s'ouvre.
 * **Sonde** : une requête (`LastCrash`) dans `oc-protocol`, une commande `cargo probe crash`.
-* **Écran** (à discuter) : une ligne sur l'écran de démarrage, comme l'identifiant de build (D-025).
+* **Écran** (à discuter, jamais seul) : une ligne sur l'écran de démarrage, comme l'identifiant de build (D-025) ;
+  en plus du journal, jamais à sa place.
 
 ## Où vit le code
 
@@ -62,7 +72,7 @@ Les fautes matérielles (`HardFault`) peuvent passer par le même enregistrement
 |---|---|
 | vérification | lire `CrashReport` de Teensyduino et la doc de la ROM (OCRAM au redémarrage) ; choisir la zone ; révision de D-018 |
 | format | enregistrement, somme de contrôle, compteur ; tests sur l'hôte |
-| firmware | gestionnaire de panique (SOS limité puis redémarrage, arrêt après N), relecture au démarrage, journal |
+| firmware | gestionnaire de panique (SOS limité puis redémarrage), relecture au démarrage juste après l'USB, journal ; mode secours (USB seul) après N paniques consécutives |
 | rapport | sonde (`cargo probe crash`), écran de démarrage si retenu |
 | essai | une panique provoquée par une feature d'essai (comme `settings-stress`), jamais sur un module en usage |
 
