@@ -9,7 +9,7 @@ Architectural decisions behind each change are in `journal/` (French).
 
 ### Added
 
-- **Browser probe and flasher** (journal/D-031, not yet tried on a module):
+- **Browser probe and flasher** (journal/D-031, tried on a module):
   `cargo xtask web` builds a static page into `dist/web/` that talks to the
   module from Chrome or Edge — the probe over Web Serial (screen, profile,
   stream, held outputs) and the flash over WebHID, from the firmware ELF,

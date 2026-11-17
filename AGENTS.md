@@ -329,12 +329,6 @@ Full protocol, per level, with exact commands and what each proves: see
 
 ## Known gaps (do not assume these are done)
 
-* **The browser flasher has never written a module** (journal/D-031,
-  `proposée`): the HalfKay reports match `teensy_loader_cli`'s on paper and
-  the flash contents match the HEX byte for byte, but WebHID against the real
-  bootloader (report size, erase delay) is untried, and so is the page's
-  probe session over Web Serial.
-
 * **The VCV Rack 2 module has not been checked systematically inside Rack.**
   It builds and links against a real Rack SDK and loads in Rack (it showed in
   Rack's module browser under its old name, see `8bdd9bc`), but there is no

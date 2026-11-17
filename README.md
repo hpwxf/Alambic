@@ -327,9 +327,10 @@ checks as `cargo xtask flash`, shows its SHA-256, and writes it through the
 bootloader (HalfKay) after an explicit confirmation; with the probe
 connected it restarts the module into the bootloader itself. `cargo xtask
 web` needs the `wasm-bindgen` command line at the version `Cargo.lock` pins
-(it says which, and how to install it). **The browser flasher has not been
-tried on a module yet**: until it has, `cargo xtask flash` stays the
-reference.
+(it says which, and how to install it). Both sides have been tried on a
+module from Chrome on macOS; `cargo xtask flash` stays the reference for
+development. After rebuilding the page, reload it without the cache
+(Cmd+Shift+R): Chrome otherwise keeps the previous `app.js`.
 
 ## Requirements
 

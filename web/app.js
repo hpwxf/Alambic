@@ -44,7 +44,9 @@ class Session {
         for (const message of this.reader.push(value)) this.dispatch(message);
       }
     } catch (error) {
-      if (!this.closed) setProbeStatus(`port lost: ${error.message ?? error}`);
+      if (!this.closed) {
+        setProbeStatus(`connection lost (unplugged or restarted?): ${error.message ?? error}`);
+      }
     } finally {
       this.failPending(new Error("the port closed"));
       if (!this.closed) closeSession();
@@ -123,7 +125,7 @@ async function connect() {
     // Any rate but 134, which restarts the module into its bootloader.
     await port.open({ baudRate: 115200 });
   } catch (error) {
-    setProbeStatus(`cannot open the port: ${error.message}`);
+    setProbeStatus(`cannot open it (another program may be using it): ${error.message}`);
     return;
   }
   session = new Session(port);
@@ -132,7 +134,7 @@ async function connect() {
     setProbeStatus(`connected: ${hello.text}`);
     setProbeEnabled(true);
   } catch (error) {
-    setProbeStatus(`no hello on this port (${error.message}): try the other one`);
+    setProbeStatus(`wrong one (${error.message}): click Connect and pick the other`);
     await closeSession();
   }
 }
@@ -151,6 +153,26 @@ async function run(action) {
     await action(session);
   } catch (error) {
     setProbeStatus(`error: ${error.message}`);
+  }
+}
+
+/**
+ * Runs a request started from `button`, saying in the `status` element that
+ * it is under way, then how it ended: an answer can take up to
+ * `ANSWER_TIMEOUT_MS`, and one that changes nothing on the page (a clear, a
+ * profile that reads the same) would otherwise look ignored.
+ */
+async function request(button, status, pending, action) {
+  if (!session) return;
+  const label = $(status);
+  button.disabled = true;
+  label.textContent = pending;
+  try {
+    label.textContent = `${await action(session)} at ${new Date().toLocaleTimeString()}`;
+  } catch (error) {
+    label.textContent = `error: ${error.message}`;
+  } finally {
+    button.disabled = !session;
   }
 }
 
@@ -214,15 +236,14 @@ async function loadImage(file) {
   try {
     firmware = new oc.Firmware(bytes);
   } catch (rejections) {
-    $("image-out").textContent = `refused, nothing will be written:\n${rejections}`;
+    $("image-out").textContent =
+      `This file is not a firmware for this module; nothing will be written.\n${rejections}`;
     return;
   }
   const lines = [
-    `image:         ${file.name}`,
-    `elf sha256:    ${firmware.sha256}`,
-    `loadable size: ${firmware.loadable_size} bytes`,
-    `flash written: ${firmware.flash_size} bytes in ${firmware.report_count - 1} blocks`,
-    `entry:         0x${firmware.entry.toString(16).padStart(8, "0")}`,
+    `file:        ${file.name}`,
+    `fingerprint: ${firmware.sha256}`,
+    `size:        ${Math.ceil(firmware.flash_size / 1024)} KiB to write`,
     ...firmware.warnings.map((warning) => `warning: ${warning}`),
   ];
   $("image-out").textContent = lines.join("\n");
@@ -263,6 +284,16 @@ async function findLoader() {
   return null;
 }
 
+/** Whether the bootloader left the bus within `LOADER_WAIT_MS`, as it does to start the image. */
+async function loaderGone() {
+  const deadline = performance.now() + LOADER_WAIT_MS;
+  while (performance.now() < deadline) {
+    if (!(await grantedLoader())) return true;
+    await sleep(200);
+  }
+  return false;
+}
+
 /** Sends one report, retrying while the bootloader is busy. */
 async function sendReport(device, bytes, timeoutMs) {
   const deadline = performance.now() + timeoutMs;
@@ -284,18 +315,18 @@ async function flash() {
   $("flash-go").disabled = true;
   try {
     if (session) {
-      status("restarting the module into its bootloader…");
+      status("switching the module to install mode…");
       try {
         await session.ask(oc.request_reboot_to_loader());
       } catch (error) {
-        status(`the module did not restart (${error.message}): press PROGRAM`);
+        status(`the module did not switch (${error.message}): press PROGRAM on the Teensy`);
       }
       await closeSession();
     }
-    status("waiting for the bootloader…");
+    status("waiting for the module in install mode (choose HalfKay if asked)…");
     const device = await findLoader();
     if (!device) {
-      status("no bootloader: press PROGRAM on the module, then Flash again");
+      status("the module is not in install mode: press PROGRAM on the Teensy, then Install again");
       return;
     }
     if (!device.opened) await device.open();
@@ -303,21 +334,34 @@ async function flash() {
     const progress = $("flash-progress");
     progress.max = total;
     for (let index = 0; index < total - 1; index += 1) {
-      status(index === 0 ? "erasing…" : `writing block ${index + 1} of ${total - 1}`);
-      await sendReport(device, image.report(index), image.report_timeout_ms(index));
+      status(index === 0
+        ? "erasing the old firmware (a few seconds)…"
+        : `writing: ${Math.floor((100 * index) / (total - 1))} %`);
+      try {
+        await sendReport(device, image.report(index), image.report_timeout_ms(index));
+      } catch (error) {
+        throw new Error(`block ${index + 1} of ${total - 1}: ${error.message}`);
+      }
       progress.value = index + 1;
     }
-    status("starting the new image…");
+    status("starting the new firmware…");
     try {
-      await device.sendReport(0, image.report(total - 1));
+      // Refused while the last block is still being written, as any other.
+      await sendReport(device, image.report(total - 1), image.report_timeout_ms(total - 1));
     } catch {
-      // The bootloader may leave before it acknowledges.
+      // The bootloader may leave before it acknowledges: whether it left
+      // is what tells.
+    }
+    if (!(await loaderGone())) {
+      status("written, but the module did not start: switch it off and on, "
+        + "or press PROGRAM and Install again");
+      return;
     }
     progress.value = total;
     try { await device.close(); } catch { /* gone with the restart */ }
-    status("done: the module restarts on the new image");
+    status("done: the module restarts on the new firmware");
   } catch (error) {
-    status(`flash failed: ${error.message}; press PROGRAM and try again`);
+    status(`install failed (${error.message}): press PROGRAM on the Teensy and try again`);
   } finally {
     updateFlashButton();
   }
@@ -332,7 +376,8 @@ function checkSupport() {
   if (!("hid" in navigator)) missing.push("WebHID");
   if (missing.length) {
     const banner = $("support");
-    banner.textContent = `This browser lacks ${missing.join(", ")}: use Chrome or Edge on a desktop.`;
+    banner.textContent = "This page needs Chrome or Edge on a desktop computer, opened from an "
+      + `https:// address (missing here: ${missing.join(", ")}).`;
     banner.hidden = false;
   }
   return missing.length === 0;
@@ -345,19 +390,30 @@ async function main() {
 
   $("connect").addEventListener("click", connect);
   $("disconnect").addEventListener("click", closeSession);
+  $("reboot").addEventListener("click", () => run(async (probe) => {
+    await probe.ask(oc.request_reboot_to_loader());
+    await closeSession();
+    setProbeStatus("the module is in install mode: install a firmware below");
+  }));
   $("screen-once").addEventListener("click", () => run(captureScreen));
   $("screen-live").addEventListener("change", (event) => {
     screenLive = event.target.checked;
     if (screenLive) screenLoop();
   });
-  $("profile").addEventListener("click", () => run(async (probe) => {
-    const [profile] = await probe.ask(oc.request_profile());
-    $("profile-out").textContent = profile.text;
-  }));
-  $("profile-clear").addEventListener("click", () => run(async (probe) => {
-    await probe.ask(oc.request_clear_profile());
-    $("profile-out").textContent = "";
-  }));
+  $("profile").addEventListener("click", (event) => request(
+    event.currentTarget, "profile-status", "reading…", async (probe) => {
+      const [profile] = await probe.ask(oc.request_profile());
+      $("profile-out").textContent = profile.text;
+      return "read";
+    },
+  ));
+  $("profile-clear").addEventListener("click", (event) => request(
+    event.currentTarget, "profile-status", "clearing…", async (probe) => {
+      await probe.ask(oc.request_clear_profile());
+      $("profile-out").textContent = "";
+      return "cleared, counting from now";
+    },
+  ));
   $("stream-start").addEventListener("click", () => run(async (probe) => {
     const every = Math.max(1, Math.min(65535, Number($("stream-every").value) || 100));
     await probe.ask(oc.request_stream(every));

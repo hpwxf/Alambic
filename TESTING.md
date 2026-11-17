@@ -508,8 +508,9 @@ Connect, pick the probe port: the status shows the firmware and build. Capture
 the screen (it matches the panel), read the profile, start a stream, hold
 output A at 1000 mV (multimeter) and release it. Then load
 `target/thumbv7em-none-eabihf/release/oc-firmware` from a commit other than
-the running one, check the SHA-256 against `cargo xtask flash --dry-run`,
-confirm and flash: the module restarts into the bootloader by itself, the
+the running one, check its fingerprint (the ELF's SHA-256) against
+`cargo xtask flash --dry-run`, confirm and install: the module restarts into
+the bootloader by itself, the
 page lists HalfKay, the progress bar fills, and the module boots with the new
 build identifier on its splash. Record the result in the step's progress file;
 a pass moves D-031 to `adoptée`.

@@ -5,7 +5,7 @@
 | **Identifiant** | D-031 |
 | **Date** | 2026-11-17 |
 | **Auteur** | Pascal Havé |
-| **Statut** | proposée |
+| **Statut** | adoptée, révisée |
 | **Commits** | branche `web-tools` |
 | **Relations** | **complète** D-016 (un second chemin de flash, même porte de validation) et D-029 (un second client de la sonde) ; **révise** D-003 (trois crates de plus) |
 
@@ -88,3 +88,31 @@ depuis Chrome sur le module.
 * Si le cœur sans E/S obligeait à dupliquer en JavaScript une logique de session non triviale (relances,
   synchronisation), un client asynchrone en Rust partagé avec `oc-probe`.
 * Si les versions publiées ne portaient que le HEX, accepter le HEX avec une validation réduite aux adresses.
+
+## 6. Révision du 2026-11-17 — essai sur le module
+
+Essayé depuis Chrome (macOS) sur le module TLM, page servie sur `localhost`.
+
+**Sonde.** Connexion, capture d'écran (aussi en continu), profil (lecture et remise à zéro, 20 sur 20 pendant la
+capture continue, environ 21 ms par réponse), flux d'échantillons, sortie A tenue à 1 000 mV (multimètre) puis
+relâchée : conformes.
+
+**Flash.** Le redémarrage en mode chargement par la sonde marche. Le descripteur HID de HalfKay (lu par `ioreg`) n'a
+pas d'identifiant de rapport et un rapport de sortie de 1 088 octets, ce que la page envoie. Trois écarts avec
+`teensy_loader_cli` sont apparus et ont été corrigés :
+
+* **délai d'effacement** : 5 s pour le premier bloc ne suffisaient pas (« Failed to write the report ») ;
+  `teensy_loader_cli` laisse **45 s à chacun des cinq premiers blocs**, `oc-halfkay` fait de même ;
+* **blocs vierges** : écrits jusque-là malgré la section 2 ; désormais sautés, sauf le premier ;
+* **demande de démarrage** : envoyée une fois sans relance, son échec ignoré ; l'image était écrite (le module est
+  passé de `11de326` à `32e0384`, démarré à la main par `teensy_loader_cli -b`) mais restait dans HalfKay.
+  Elle est maintenant relancée comme un bloc, et la page attend que HalfKay quitte le bus avant de dire « done ».
+
+Après correction, une installation complète depuis la page (redémarrage par la sonde, écriture, redémarrage seul
+sur la nouvelle image) a réussi. Piège noté : Chrome sert l'ancien `app.js` depuis son cache après un
+`cargo xtask web` ; recharger sans cache (Cmd+Shift+R).
+
+La page a aussi été réécrite pour un utilisateur qui n'est pas développeur, l'équivalent en ligne de commande de
+chaque fonction restant dans un encart « For developers ».
+
+Statut : **adoptée**. `cargo xtask flash` reste le chemin de référence des développeurs.
