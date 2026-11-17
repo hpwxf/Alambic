@@ -471,22 +471,22 @@ still plugged in:
 ```sh
 # macOS — the ports usually appear as cu.usbmodem*1 (log) and *3 (probe)
 ls /dev/cu.usbmodem* 2>/dev/null
-screen /dev/cu.usbmodem*1 115200
+cat /dev/cu.usbmodem*1          # or: cat … | tee boot.log; Ctrl-C to stop
 ```
 
-The log is held until a terminal opens its port, so there is no hurry: the
-boot lines are the first ones `screen` shows, however late it starts.
+The log carries the boot and the events only (settings loaded or saved,
+errors, restarts); live values and the loop profile come from `cargo probe`
+(`stats`, `stream`, `inputs`). It is held until a program opens the port, so
+there is no hurry: the boot lines come first, however late it starts. `cat`
+keeps every line in the terminal's scrollback, where `screen` scrolls them
+out of its own window (`screen -L` would keep them in `screenlog.0`).
 
 Setting either port to 134 baud restarts the module into its bootloader
 (Teensyduino's convention): `stty -f /dev/cu.usbmodem…1 134` with macOS's own `stty` (`/bin/stty`), or `stty -F …` with GNU coreutils.
 
-Expect lines such as `oc-firmware 0.2.0 (a1b2c3d) starting (oled=…)`, `oled init ok|failed`,
-and a once-per-second `tick=…` heartbeat, followed by one line per CV input
-with its lowest and highest reading over that second, in calibrated
-millivolts and raw ADC codes (`cv1 mv=-3..4 (pp 7) code=2046..2051`), and
-two profile lines: the mean and longest duration of each stage of the loop
-and the loop period's jitter, timed on the core's cycle counter
-(`TESTING.md` 9.1). Early boot also blinks the onboard
+Expect lines such as `oc-firmware 0.3.0 (a1b2c3d) starting (oled=…)`, the
+boot stages down to `entering 1 kHz loop`, `settings: Loaded`, then nothing
+until an event (`TESTING.md` 9.1). Early boot also blinks the onboard
 LED (pin 13) in stage groups **before** SPI claims that pad: 1 = `main`
 reached, 2 = ADC mapped, 3 = triggers mapped / about to take SPI. A Morse SOS
 (9 flashes) is still the panic handler, not a boot stage.

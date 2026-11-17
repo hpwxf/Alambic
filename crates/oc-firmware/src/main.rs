@@ -48,7 +48,6 @@ mod cv_in;
 mod delay;
 mod flash_store;
 mod paged_panel;
-mod profile_log;
 mod reboot;
 #[cfg(feature = "settings-stress")]
 mod stress;
@@ -67,10 +66,9 @@ use bsp::board as bsp_board;
 
 use oc_core::Engine;
 use oc_core::calibration::CvOutputCalibration;
-use oc_core::platform::{AnalogIn as _, CV_CHANNELS, Clock as _, CvChannel};
+use oc_core::platform::{CV_CHANNELS, Clock as _, CvChannel};
 use oc_core::profile::Stage;
-use oc_core::settings::{LoadOutcome, SettingsStore};
-use oc_core::signal::Extent;
+use oc_core::settings::SettingsStore;
 use oc_core::toast::SaveOutcome;
 use oc_drivers::dac8565::Dac8565;
 use oc_drivers::panel::Panel;
@@ -104,9 +102,6 @@ static PROBE: ConstStaticCell<Server> = ConstStaticCell::new(Server::new(Identit
 /// How long the USB keeps being served before a restart into the
 /// bootloader, so the host sees the reply and the last log lines.
 const RESTART_DRAIN_MS: u32 = 50;
-
-/// Heartbeat log period in engine ticks (1 kHz → once per second).
-const HEARTBEAT_TICKS: u32 = 1_000;
 
 // Wiring is one linear sequence of pin moves into concrete driver types;
 // factoring it out only invents type parameters and does not shrink the
@@ -248,22 +243,11 @@ fn main() -> ! {
     // Loaded before the first tick, so the splash already uses the stored
     // screen preferences and the outputs the stored calibration. A module
     // whose flash cannot be used still starts, on the defaults.
-    // The boot lines are gone by the time a serial monitor connects, so the
-    // last settings event is repeated on every heartbeat line.
-    let mut settings_event = "no flash";
-    // Extra detail after the event: the stress run's result, when built in.
-    #[allow(unused_mut)] // Only the `settings-stress` build writes to it.
-    let mut settings_detail = oc_core::fmt::TextBuf::<48>::new();
     let mut settings_store = match SettingsFlash::new() {
         Ok(flash) => {
             let mut store = SettingsStore::new(flash);
             let (settings, outcome) = store.load_or_default();
             log::info!("settings: {outcome:?}");
-            settings_event = match outcome {
-                LoadOutcome::Loaded => "loaded",
-                LoadOutcome::Empty => "defaults (none stored)",
-                LoadOutcome::Failed(_) => "defaults (load failed)",
-            };
             engine.apply_settings(settings);
             Some(store)
         }
@@ -279,11 +263,6 @@ fn main() -> ! {
         let original = *engine.settings();
         let (_, _, _, _, display) = engine.parts_mut();
         let report = stress::run(store, original, display, &mut || usb.poll());
-        settings_event = "stress run done";
-        let _ = core::fmt::Write::write_fmt(
-            &mut settings_detail,
-            format_args!(" | {}", report.line().as_str()),
-        );
         // Leave the result on screen long enough to read before the splash.
         for _ in 0..3_000 {
             delay.delay_ms(1);
@@ -296,16 +275,9 @@ fn main() -> ! {
         });
     }
 
-    // Per-CV-input extent over the current heartbeat second, in calibrated
-    // millivolts and in raw ADC codes: logged once a second so the noise and
-    // offset of an input can be measured as numbers over USB (TESTING.md 9.2).
-    let mut cv_millivolts = [Extent::new(); CV_CHANNELS];
-    let mut cv_codes = [Extent::new(); CV_CHANNELS];
-
     let probe = PROBE.take();
     probe.set_can_reboot(reboot::is_supported());
 
-    let mut ticks: u32 = 0;
     // The start of the current period, sampling included: pacing from the
     // tick's own start left the sampling outside it and stretched every
     // period by its cost.
@@ -337,12 +309,10 @@ fn main() -> ! {
                         .as_mut()
                         .map_or(0, |store| store.flash().erase_count());
                     log::info!("settings saved ({erases} sector erases since power-up)");
-                    settings_event = "saved";
                     SaveOutcome::Stored
                 }
                 Some(Err(error)) => {
                     log::warn!("settings NOT saved: {error:?}");
-                    settings_event = "save FAILED";
                     SaveOutcome::Failed
                 }
                 None => {
@@ -353,17 +323,6 @@ fn main() -> ! {
             engine.report_save(outcome);
             usb.poll();
         }
-        {
-            let inputs = engine.calibration().inputs;
-            let (cv_inputs, ..) = engine.parts_mut();
-            for channel in CvChannel::ALL {
-                let index = channel.index();
-                let code = cv_inputs.read_code(channel);
-                cv_millivolts[index].update(inputs[index].to_millivolts(code));
-                cv_codes[index].update(i32::from(code));
-            }
-        }
-
         // Keep the CDC pipe alive. Cheap when the host is absent: the backend
         // either has nothing queued or drops into a full ring buffer.
         let mark = engine.clock().fine_count();
@@ -372,38 +331,6 @@ fn main() -> ! {
         record_since(&mut engine, Stage::Usb, mark);
         if probe.take_reboot_request() || usb.take_reboot_request() {
             restart_into_loader(&mut usb, probe, &mut engine);
-        }
-
-        // Occasional heartbeat so a quiet serial monitor still proves the
-        // loop is running even when the OLED is blank.
-        ticks = ticks.wrapping_add(1);
-        if ticks.is_multiple_of(HEARTBEAT_TICKS) {
-            log::info!(
-                "tick={ticks} last_us={} settings={settings_event}{}",
-                report.elapsed_micros,
-                settings_detail.as_str()
-            );
-            usb.poll();
-            profile_log::log(engine.profile());
-            usb.poll();
-            for channel in CvChannel::ALL {
-                let index = channel.index();
-                if let (Some((low_mv, high_mv)), Some((low_code, high_code))) =
-                    (cv_millivolts[index].range(), cv_codes[index].range())
-                {
-                    log::info!(
-                        "cv{} mv={low_mv}..{high_mv} (pp {}) code={low_code}..{high_code}",
-                        index + 1,
-                        // Saturating: overflow checks are on in release
-                        // (journal/D-018), and a log line must never freeze
-                        // the module.
-                        high_mv.saturating_sub(low_mv)
-                    );
-                }
-                cv_millivolts[index].reset();
-                cv_codes[index].reset();
-            }
-            usb.poll();
         }
 
         // Cooperative pacing against the microsecond clock, on a fixed

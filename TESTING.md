@@ -404,7 +404,7 @@ and whether the panel is SH1106 (stock), SSD1306, or SSD1309. Follow it in order
 
    ```sh
    ls /dev/cu.usbmodem*          # two ports: the log, then the probe
-   screen /dev/cu.usbmodem*1 115200
+   cat /dev/cu.usbmodem*1        # Ctrl-C to stop; add `| tee boot.log` to keep it
    ```
 
    The module shows as one USB device with **two** serial ports (journal/D-029):
@@ -413,9 +413,10 @@ and whether the panel is SH1106 (stock), SSD1306, or SSD1309. Follow it in order
    and shows nothing readable. Baud is conventional only, with one
    exception: **134 baud** on either port restarts the module into its
    bootloader, ready to flash (Teensyduino's convention), so never pick it in
-   a monitor. The log is held until a terminal opens the port, so the boot
-   lines come first whenever `screen` is started; once about 4 KiB are
-   waiting, newer lines are dropped until then. Expect, in order:
+   a monitor. The log is held until a program opens the port, so the boot
+   lines come first whenever `cat` is started; once about 4 KiB are
+   waiting, newer lines are dropped until then. Prefer `cat` to `screen`,
+   which scrolls the first lines out of its own window. Expect, in order:
 
    ```text
    oc-firmware X.Y.Z starting (oled=SH1106|SSD1306|SSD1309)
@@ -426,18 +427,17 @@ and whether the panel is SH1106 (stock), SSD1306, or SSD1309. Follow it in order
    dac reset released
    oled init ok (…)   # or: oled init failed: Bus|Pin
    panel ok; entering 1 kHz loop
-   tick=1000 last_us=… settings=…
-   profile us mean/max: tick=…/… acquire=…/… update=…/… outputs=…/… render=…/… present=…/… sample=…/… usb=…/…
-   period us 999.8..1000.3 n=… jitter(<1,<2,<4..)=…
+   settings: Loaded            # or Empty, Failed(…); a warning if the flash is unavailable
    ```
 
-   A once-per-second `tick=` line proves the 1 kHz loop is alive even when
-   the OLED stays black. The two `profile` / `period` lines that follow it
-   are the engine's profile since the splash ended (journal/D-029), timed on
-   the core's cycle counter: the mean and longest duration of each stage, in
-   microseconds, then the extremes of the loop period and how many periods
-   fell within 1 µs of 1000 µs, 1 to 2 µs off, 2 to 4 µs off, and so on. A panic after the logger is up also prints the
-   panic message (`teensy4-panic` feature `log`) before the SOS blink.
+   After that the log only carries events: a settings save
+   (`settings saved …` / `settings NOT saved …`), a restart into the
+   bootloader, and the `settings-stress` lines (9.5c). Nothing is printed
+   periodically: whether the loop runs, its profile and the inputs come from
+   the probe (9.1b: `cargo probe info`, `stats`, `stream`, `inputs`). A
+   panic still writes its message to the log, but nothing sends it any more
+   once the panic handler blinks the SOS (journal/D-029;
+   `docs/plan/panique-persistante.md`).
 4. Power the module (Eurorack rail or USB). Expect the OLED to first show the
    boot splash screen for about 1.5 seconds: the name and version
    (`O&C Alambic vX.Y.Z`) centred on screen and, under it, the build
@@ -470,8 +470,8 @@ and whether the panel is SH1106 (stock), SSD1306, or SSD1309. Follow it in order
 6. Confirm the tick counter (`TICKS` row) advances steadily and the reported
    tick duration is well under 1000 µs — a stalled or exploding value points
    at the main loop, not at the analog path, and everything below should
-   wait until it is fixed. The USB `tick=` heartbeat is the same signal when
-   the panel is unreadable.
+   wait until it is fixed. When the panel is unreadable, `cargo probe stats`
+   is the same signal (tick count and period).
 
 ### 9.1b — Live probe
 
@@ -497,14 +497,11 @@ For each of the four front-panel CV jacks in turn:
 
 1. Leave it unpatched. The channel row must show `.` (absent) and a reading
    near 0 V (exact value depends on how far this module is from the factory
-   calibration, see 9.4). Read the exact figures from the USB log, which
-   prints once a second, per input, the lowest and highest reading of that
-   second in millivolts and raw ADC codes (`cv1 mv=-3..4 (pp 7)
-   code=2729..2732`; the factory 0 V code is 2730).
-   Record the worst channel over 10 to 20 s: its offset and peak-to-peak
-   noise size the presence threshold (journal/D-024). `cargo probe inputs
-   --seconds 20` does it in one go, from every tick rather than once a
-   second: extremes, mean, peak to peak and raw codes of all four inputs. If an unpatched input reads `P`, its offset exceeds the 50 mV
+   calibration, see 9.4). Read the exact figures with `cargo probe inputs
+   --seconds 20`, from every tick: extremes, mean, peak to peak and raw ADC
+   codes of all four inputs (the factory 0 V code is 2730). Record the worst
+   channel: its offset and peak-to-peak noise size the presence threshold
+   (journal/D-024). If an unpatched input reads `P`, its offset exceeds the 50 mV
    presence threshold of journal/D-024: note the reading, it decides whether
    the threshold or the calibration has to move.
 2. Patch in a known, static DC voltage from a calibrated source (a battery
@@ -618,7 +615,7 @@ its sleeve, so the sign reads directly.
    gain. Repeat points 1 to 3: the errors must now be within a few millivolts.
    Never edit `Calibration::FACTORY` for one module: it is the reference
    firmware's default for every module. Power-cycle: the calibration must
-   still be in force (the USB heartbeat lines end with `settings=loaded`).
+   still be in force (the USB log reads `settings: Loaded` at boot).
 
 ### 9.5 — Encoders and buttons
 
@@ -645,8 +642,8 @@ its sleeve, so the sign reads directly.
    Do it again and choose `SAVE`: in the diagnostic applet the left encoder
    now moves the channel selection the other way, the screen shows
    `SETTINGS SAVED` for a second and a half, and the USB log prints
-   `settings saved`. Power-cycle: the setting is still there, and every
-   heartbeat line ends with `settings=loaded`.
+   `settings saved`. Power-cycle: the setting is still there, and the boot
+   log reads `settings: Loaded`.
 4. Power-cycle holding the left encoder switch until the splash screen ends:
    the calibration wizard opens. Power-cycle holding `up` + `down`: they
    open in `SAFE MODE`, upright and with the encoders as wired, and the app
@@ -669,8 +666,8 @@ write or an erase: neither is practical by hand. A test firmware does both.
    each save back, and shows progress (`STRESS OK 120/300 9 ERASES`). The
    last save restores the settings as they were.
 3. The result stays on screen for 3 s, then `SETTINGS SAVED` (or
-   `SAVE FAILED!`) shows over the splash, and every USB heartbeat line ends
-   with `settings=stress run done | STRESS OK 300/300 n ERASES`. Pass: `OK`,
+   `SAVE FAILED!`) shows over the splash, and the USB log, read from the
+   boot, ends the run with `STRESS OK 300/300 n ERASES`. Pass: `OK`,
    `300/300`, and `n` above a dozen (the sectors were reclaimed).
 4. Power cut: power-cycle; the run starts again; cut the power while it is
    counting, at any moment. Power up again and let the run finish: it must
@@ -679,7 +676,7 @@ write or an erase: neither is practical by hand. A test firmware does both.
    at different moments.
 5. **Reflash the normal firmware** (`cargo xtask flash`): the stress build
    rewrites the sectors at every power-up. The module must start with the
-   calibration of step 1 (`settings=loaded`; the contrast may be one step
+   calibration of step 1 (`settings: Loaded` in the boot log; the contrast may be one step
    off if the last cut landed between two saves).
 
 ### 9.6 — Sign-off

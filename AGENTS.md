@@ -366,7 +366,7 @@ Full protocol, per level, with exact commands and what each proves: see
 | Text drawing (fonts as column bytes, the font in the style; same pixels as `embedded-graphics`, a test-only dependency whose adapter is `crates/oc-core/tests/common/mod.rs`) | `crates/oc-core/src/text/mod.rs`; generated fonts `text/fonts.rs` (`UPDATE_FONTS=1 cargo test -p oc-core --test fonts`) |
 | ADC/DAC unit conversion and calibration           | `crates/oc-core/src/calibration.rs` |
 | Input presence derived from the signal (defaults for unused inputs) | `crates/oc-core/src/presence.rs` |
-| Where the loop's time goes (stages, period jitter; the module's cycle counter) | `crates/oc-core/src/profile.rs` (firmware log lines: `crates/oc-firmware/src/profile_log.rs`) |
+| Where the loop's time goes (stages, period jitter; the module's cycle counter) | `crates/oc-core/src/profile.rs` (read with `cargo probe stats`) |
 | The probe protocol (messages, COBS framing) and the module's side of it | `crates/oc-protocol/src/lib.rs`, `crates/oc-protocol/src/server.rs` |
 | The two USB serial ports and the log backend | `crates/oc-firmware/src/usb.rs`, `crates/oc-firmware/src/usb_log.rs` |
 | Persistent settings, their format and the flash store | `crates/oc-core/src/settings.rs` (`MemoryFlash` in `testing.rs`) |

@@ -56,6 +56,12 @@ Architectural decisions behind each change are in `journal/` (French).
 
 ### Changed
 
+- **The USB log carries the boot and events only.** The once-a-second
+  heartbeat, the two profile lines and the per-input extents are gone: the
+  probe gives them live (`cargo probe info`, `stats`, `inputs`). Read the
+  log with `cat` rather than `screen`, which scrolls the first lines out of
+  its own window.
+
 - **Text is drawn about ten times faster.** `oc_core::text` lays each glyph
   of the 5x8 font as five column bytes straight into the framebuffer's
   page layout, instead of setting its pixels one at a time through

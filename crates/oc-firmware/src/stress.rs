@@ -14,8 +14,9 @@
 //! seconds, almost certainly lands inside a write or an erase: the next
 //! start must load either value, never fail.
 //!
-//! Progress shows on screen; the result is drawn at the end, repeated on
-//! every USB heartbeat line, and shown as the save confirmation.
+//! Progress shows on screen; the result is drawn at the end, written to the
+//! USB log (read from the boot, it waits for a terminal), and shown as the
+//! save confirmation.
 
 use core::fmt::Write as _;
 

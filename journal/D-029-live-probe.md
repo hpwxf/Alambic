@@ -193,3 +193,15 @@ moment où le terminal s'ouvre ; une fois la file pleine, ce sont les lignes nou
 Reste hors de portée : le message d'une panique, qui ne sort toujours sur aucun port (plus rien ne sonde l'USB
 après une panique). La conserver à travers un redémarrage est préparé dans
 `docs/plan/panique-persistante.md`, à décider après l'essai de cette correction.
+
+## Révision (2026-11-17) — un journal de démarrage et d'événements, sans lignes périodiques
+
+Proposition de l'utilisateur : les lignes périodiques du journal font double emploi avec la sonde. Retirées :
+la pulsation `tick=… last_us=… settings=…` (`cargo probe info` / `stats`), les deux lignes de profil
+(`profile_log.rs`, ajoutées au lot 3b1 en attendant l'outil hôte ; `cargo probe stats`) et les étendues par entrée
+`cvN mv=… code=…` (`cargo probe inputs`) ; `oc_core::signal::Extent`, qui ne servait qu'à elles, aussi. Le journal
+garde le démarrage et les événements : réglages chargés ou enregistrés, erreurs, redémarrage, lignes de
+`settings-stress`. L'état des réglages répété sur chaque pulsation (étape 4, parce que les lignes du démarrage se
+perdaient) n'a plus lieu d'être depuis que le journal attend l'ouverture du port. Lecture recommandée : `cat`
+plutôt que `screen`, qui fait sortir les premières lignes de sa propre fenêtre. Effet sur le firmware : `.text` 113 980 →
+107 248 octets, `.rodata` 25 536 → 25 152 (`cargo xtask size`).
