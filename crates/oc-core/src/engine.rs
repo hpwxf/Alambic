@@ -5,6 +5,13 @@
 //! state update, output, rendering — is identical in the three environments,
 //! which is what makes a test written against the simulator meaningful for the
 //! hardware.
+//!
+//! A tick runs the signal path every time and does at most one thing for the
+//! screen: nothing, draw a frame, or send one page of the frame already drawn
+//! ([`Display::page_count`]). Drawing and a whole frame together outlast a
+//! 1 kHz period on the module, so a paged display gets its frame over the
+//! ticks after the drawing, and the next frame waits for the last page
+//! (journal/D-023, option C+; AGENTS.md, "The loop and the screen").
 
 use crate::apps::diagnostic::DiagnosticApp;
 use crate::apps::{AppHost, AppId};

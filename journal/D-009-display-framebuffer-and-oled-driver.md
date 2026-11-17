@@ -63,8 +63,13 @@ découpe l'envoi** :
 
 * `Display` gagne `page_count` (1 par défaut) et `present_page` (par défaut, la trame entière pour la page 0) ;
 * l'`Engine` dessine dans un tick (toast, rotation, décalage compris), puis envoie **une page par tick suivant** ;
-  il ne redessine qu'après la dernière page, si bien qu'un intervalle de rendu plus court que le nombre de pages
-  ne déchire jamais l'image ;
+  il ne redessine qu'après la dernière page, si bien qu'**aucune page n'est envoyée à moitié redessinée**, même
+  avec un intervalle de rendu plus court que le nombre de pages. Ce n'est pas une image sans transition : pendant
+  l'envoi (≈ 8 ms, une page par tick), l'OLED montre en haut les pages déjà reçues de la nouvelle trame et en bas
+  celles de l'ancienne. La transition durait ≈ 1,2 ms quand la trame partait d'un bloc ; elle occupe maintenant
+  8 des 20 ms de chaque image. Rien de visible sur le Diagnostic, le Scope et le SETUP (2026-11-17) ; un contenu
+  qui défile vite pourrait montrer un décalage entre haut et bas. Parades si c'était le cas : deux pages par tick
+  sur les ticks sans dessin, ou le SPI en DMA (D-023, option A) ;
 * un écran d'une page (simulateur, Rack, tests) reçoit la trame dans le tick qui la dessine, comme avant : les
   écrans dorés ne bougent pas ;
 * l'écran de démarrage envoie toujours la trame entière à chaque tick (sorties au repos, rien à protéger) ;

@@ -150,6 +150,38 @@ lives in `oc-core` and is tested once, on the host.
   (`rustc --print sysroot`), not on `PATH`, so the build stays reproducible
   across machines with different system toolchains.
 
+## The loop and the screen
+
+* **One loop, no separate display loop.** The firmware runs one cooperative
+  1 kHz loop (`crates/oc-firmware/src/main.rs`, journal/D-008, D-023 option
+  C+). Each tick: sample the inputs (four blocking ADC conversions, the
+  trigger edge latches, the panel), then `Engine::tick` (panel routing, the
+  applet, the four DAC outputs, then **at most one** screen action), then
+  wait for the deadline (previous deadline + 1 ms) while serving USB. The
+  signal path runs on every tick; the screen is a side task cut so that no
+  tick outlasts the period.
+* **Vocabulary.** The *framebuffer* is the screen's copy in RAM (128 x 64,
+  1 024 bytes). A *frame* is one whole image. A *page* is one eighth of it,
+  a horizontal band 8 pixels high (128 bytes), the unit the SH1106 / SSD130x
+  controllers store and receive — not a screen. *Drawing* (`Stage::Render`)
+  computes pixels into the framebuffer, CPU only; *sending* (`Stage::Page`,
+  `Stage::Present`) copies it to the panel over the shared SPI bus. The panel
+  keeps showing what it last received.
+* **The screen action of a tick** is one of: nothing; draw a new frame
+  (`RENDER_INTERVAL_TICKS` = 20 ticks since the last one, and no page still
+  pending); send one page of the drawn frame. A display reports its parts
+  through `Display::page_count`: the module's `PagedPanel` answers 8, so a
+  frame goes out over the 8 ticks after the drawing; the simulator, Rack and
+  the tests keep the default 1 and get the frame in the tick that drew it.
+  The boot splash sends whole frames every tick (outputs at rest).
+* **Over 20 ticks**, with indicative costs from one module (the profile
+  measures them, `cargo probe stats`): tick 0 draws (≈ 0.29 ms sampling +
+  ≈ 0.65 ms drawing the diagnostic screen ≈ 0.96 ms, the tightest tick);
+  ticks 1–8 send pages 0–7 (≈ 0.145 ms each); ticks 9–19 have no screen
+  work. 50 frames a second, 1 000 ticks a second. While the 8 pages go out,
+  the panel shows the new frame on top and the previous one below (≈ 8 ms
+  of each 20 ms frame); no page is ever sent half-redrawn.
+
 ## Signal representation
 
 * **Internal unit: millivolts, `i32`** (`oc_core::platform::MilliVolts`).
