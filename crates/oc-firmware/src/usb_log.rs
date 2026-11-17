@@ -13,8 +13,9 @@ use cortex_m::interrupt::{self, Mutex};
 use oc_core::fmt::TextBuf;
 use oc_protocol::queue::ByteQueue;
 
-/// Bytes of log waiting for the host: a few seconds of heartbeat lines, so
-/// a monitor that connects late still sees the last ones.
+/// Bytes of log waiting for a terminal: nothing is sent before one opens the
+/// port, so the boot lines (a few hundred bytes) wait at the head of the
+/// queue; once it is full, newer lines are dropped until the terminal comes.
 pub(crate) const LOG_BYTES: usize = 4_096;
 
 /// Longest line; longer ones are cut.

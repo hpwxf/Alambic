@@ -413,7 +413,9 @@ and whether the panel is SH1106 (stock), SSD1306, or SSD1309. Follow it in order
    and shows nothing readable. Baud is conventional only, with one
    exception: **134 baud** on either port restarts the module into its
    bootloader, ready to flash (Teensyduino's convention), so never pick it in
-   a monitor. Expect, in order:
+   a monitor. The log is held until a terminal opens the port, so the boot
+   lines come first whenever `screen` is started; once about 4 KiB are
+   waiting, newer lines are dropped until then. Expect, in order:
 
    ```text
    oc-firmware X.Y.Z starting (oled=SH1106|SSD1306|SSD1309)

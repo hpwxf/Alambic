@@ -180,3 +180,16 @@ Statut inchangé (`proposée`) : essai de l'outil sur module (lot 3b5).
   `docs/plan/etape-3b-sonde.md`, bilan : `docs/plan/avancement/etape-3.md`.
 * Toujours non fait : `cargo xtask flash` qui demanderait lui-même le redémarrage (`cargo probe reboot` avant
   suffit).
+
+## Révision (2026-11-17) — le journal attend qu'un terminal ouvre le port
+
+Constat de l'utilisateur : les premières lignes du journal (démarrage, erreurs précoces) n'apparaissaient jamais,
+même en ouvrant `screen` dès que le port est visible. Le firmware envoyait le journal dès que l'hôte avait
+configuré le périphérique, sans attendre qu'un programme ouvre le port ; ce que l'hôte faisait de ces octets n'a
+pas été établi, ils n'arrivaient pas. Désormais le premier port n'envoie que lorsque DTR est levé (comme le port
+de la sonde) : les lignes du démarrage restent en tête de la file de 4 Kio et sortent en premier, quel que soit le
+moment où le terminal s'ouvre ; une fois la file pleine, ce sont les lignes nouvelles qui sont perdues.
+
+Reste hors de portée : le message d'une panique, qui ne sort toujours sur aucun port (plus rien ne sonde l'USB
+après une panique). La conserver à travers un redémarrage est préparé dans
+`docs/plan/panique-persistante.md`, à décider après l'essai de cette correction.

@@ -132,7 +132,13 @@ impl Usb {
         // be taken, or it is refused forever.
         let mut ignored = [0; PACKET_BYTES];
         let _ = self.log.read_packet(&mut ignored);
-        crate::usb_log::with_queue(|queue| send(&mut self.log, queue));
+        // The log waits until a terminal opens the port (DTR): sent as soon
+        // as the host enumerates the device, the boot lines went to a port
+        // nobody read and were lost. Held back, they stay at the head of the
+        // queue, which drops new lines rather than old ones when full.
+        if self.log.dtr() {
+            crate::usb_log::with_queue(|queue| send(&mut self.log, queue));
+        }
     }
 
     /// Exchanges the probe's bytes: requests in, replies and samples out.

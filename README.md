@@ -474,6 +474,9 @@ ls /dev/cu.usbmodem* 2>/dev/null
 screen /dev/cu.usbmodem*1 115200
 ```
 
+The log is held until a terminal opens its port, so there is no hurry: the
+boot lines are the first ones `screen` shows, however late it starts.
+
 Setting either port to 134 baud restarts the module into its bootloader
 (Teensyduino's convention): `stty -f /dev/cu.usbmodem…1 134` with macOS's own `stty` (`/bin/stty`), or `stty -F …` with GNU coreutils.
 

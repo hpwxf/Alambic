@@ -76,6 +76,11 @@ Architectural decisions behind each change are in `journal/` (French).
 
 ### Fixed
 
+- **The first log lines never reached a terminal.** The log was sent as
+  soon as the host enumerated the module, before any program opened the
+  port. It now waits for a terminal (DTR), so the boot lines are the first
+  ones `screen` shows, however late it starts (journal/D-029).
+
 - **Every redraw stalled the loop for about 2 ms.** The tick that drew
   the screen also sent the whole frame, longer than a period, so the
   module ran at about 947 ticks a second. The engine now draws in one tick
