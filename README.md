@@ -484,7 +484,7 @@ out of its own window (`screen -L` would keep them in `screenlog.0`).
 Setting either port to 134 baud restarts the module into its bootloader
 (Teensyduino's convention): `stty -f /dev/cu.usbmodem…1 134` with macOS's own `stty` (`/bin/stty`), or `stty -F …` with GNU coreutils.
 
-Expect lines such as `oc-firmware 0.3.0 (a1b2c3d) starting (oled=…)`, the
+Expect lines such as `oc-firmware 0.4.0 (a1b2c3d) starting (oled=…)`, the
 boot stages down to `entering 1 kHz loop`, `settings: Loaded`, a last line
 pointing to `cargo probe` for live data, then nothing until an event (`TESTING.md` 9.1). Early boot also blinks the onboard
 LED (pin 13) in stage groups **before** SPI claims that pad: 1 = `main`

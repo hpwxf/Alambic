@@ -28,7 +28,7 @@ default-members = [
 ]
 
 [workspace.package]
-version = "0.3.0"
+version = "0.4.0"
 edition = "2024"
 rust-version = "1.100"
 license = "MIT OR Apache-2.0"
@@ -36,9 +36,9 @@ repository = "https://github.com/hpwxf/Alambic"
 authors = ["Pascal Havé"]
 
 [workspace.dependencies]
-oc-core = { path = "crates/oc-core", version = "0.3.0" }
-oc-drivers = { path = "crates/oc-drivers", version = "0.3.0" }
-oc-protocol = { path = "crates/oc-protocol", version = "0.3.0" }
+oc-core = { path = "crates/oc-core", version = "0.4.0" }
+oc-drivers = { path = "crates/oc-drivers", version = "0.4.0" }
+oc-protocol = { path = "crates/oc-protocol", version = "0.4.0" }
 # Build-script helper only: computes the build identifier (journal/D-025).
 oc-buildinfo = { path = "crates/oc-buildinfo" }
 # Reads the commit and dirty state for oc-buildinfo through gitoxide (pure
