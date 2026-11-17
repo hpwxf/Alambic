@@ -18,6 +18,7 @@ ne recharge que ce dont elle a besoin (journal/D-001).
 | `docs/plan/etape-4-reglages-systeme.md` | plan de l'étape 4 : réglages système, calibration, persistance (lots 4a–4f) |
 | `docs/plan/etape-3b-sonde.md` | plan du lot 3b (sonde live) et relevé détaillé des mesures sur module |
 | `docs/plan/etape-6-ratchet.md` | plan de l'étape 6 : applet Ratchet (D-032) |
+| `docs/plan/etape-7-chemin-audio.md` | plan de l'étape 7 : chemin audio, DAC à 48 kHz (D-033) |
 | `docs/plan/panique-persistante.md` | préparé, non décidé : garder le message d'une panique à travers un redémarrage (D-018) |
 | `docs/plan/etape-5-gfx.md` | plan de l'étape 5 : primitives graphiques et applet de démo (D-030) |
 | `docs/plan/etape-3c-cadence.md` | plan du lot 3c (D-023 option C+) |
@@ -47,6 +48,19 @@ comportemental (`oc-core`, D-002). Les applets musicaux sont la suite.
 | **3** — assainissement, sonde live, cadence (2026-11-16 → 11-17) | ✅ dette de revue (0.2.0) ; sonde live `oc-probe` (D-029) : profil au cycle, flux, sorties forcées, capture, redémarrage ; niveau 9 (CV, triggers, rebouclage, multimètre) ; D-023 adoptée en **C+** : fronts des triggers capturés (0,94 ms : 960 / 960), écran une page par tick (1 000 ticks/s au lieu de ≈ 947). Réserves : `signal_tick` / `ui_tick` reporté à l'option A ; DAC8565 simultané non vérifié ; entrées à ≈ 20 mV près | [etape-3.md](docs/plan/avancement/etape-3.md) |
 | **4** — réglages système, calibration, persistance (2026-11-16) | ✅ écran `SETUP` et gestes de démarrage façon Phazerville (D-026) ; conversion dans `oc-core`, valeurs d'usine de Phazerville, assistant de calibration (D-027) ; réglages dans la flash du Teensy par l'API ROM, fichier (sim), patch (Rack) (D-028) ; seuil de présence 50 mV mesuré (D-024). Version **0.3.0**. Réserve : C++ Rack non compilé | [etape-4.md](docs/plan/avancement/etape-4.md) |
 | **5** — primitives graphiques et applet de démo (2026-11-17) | ✅ texte par colonnes (Diagnostic 646 → 88 µs), six polices en paramètre ; `oc_core::gfx` (bases en octets, contrôles, courbes, motifs) ; applet `GFX DEMO` ; `embedded-graphics` en dépendance de test (D-030). Version **0.4.0** (avec l'étape 3 ; plugin Rack 2.4.0) | [etape-5.md](docs/plan/avancement/etape-5.md) |
+
+### Étape 7 — chemin audio : DAC à 48 kHz (en cours)
+
+Demandée le 2026-11-17 (D-033) : générer des sons sur les sorties. Choix de l'utilisateur : 48 kHz, les quatre
+sorties, une applet `TONE` de test d'abord. Plan : [etape-7-chemin-audio.md](docs/plan/etape-7-chemin-audio.md).
+
+| Lot | Contenu | État |
+|---|---|---|
+| **7a** — DAC rapide, encore à 1 kHz | `DAC_CS` en PCS0, OLED sur PCS3, DAC à 22 MHz, OLED à 22 ou 8 MHz, voies écrites au changement ; écriture du DAC mesurée | en cours |
+| **7b** — cœur audio | voix entière dans `oc-core`, paramètres par tick, applet `TONE`, Rack et simulateur | à faire |
+| **7c** — interruption à 48 kHz | PIT, NVIC ; DAC chaque période et tronçons d'OLED ; profil de l'interruption | à faire |
+| **7d** — module | écoute, oscilloscope, accordeur, écran en marche | à faire |
+| **7e** — DMA | seulement si 7d le demande | éventuel |
 
 ### Étape 6 — premier applet musical : Ratchet (en cours)
 
@@ -134,3 +148,4 @@ Valeurs seules ; le raisonnement est dans `journal/`.
 | graphisme | `oc_core::gfx` : bases en octets entiers, contrôles, courbes, motifs ; trigonométrie entière ; applet de démo dans le menu | D-030 |
 | outils web | page statique Chromium : sonde par Web Serial, flash par WebHID depuis l'ELF validé ou un HEX (vérification réduite) ; cœur wasm sans E/S (`oc-image`, `oc-halfkay`, `oc-web`), `cargo xtask web` ; essayé sur le module (sonde et flash) | D-031 |
 | applet Ratchet | A copie de TR1, B rafale ; nombre ou gate, `SHAPE` signé (accélère / ralentit), placement `FIRST` ou `SPAN`, `PROB`, `PASSTHRU`, `SYNC` sur le tempo de TR1 ; triggers 5 V / 5 ms ; entrée au choix par réglage (suit / s'ajoute) | D-032 |
+| chemin audio | interruption PIT à 48 kHz, priorité la plus haute ; les quatre sorties ; `DAC_CS` en PCS0 matériel, DAC à 22 MHz (plafond 25 MHz en 3,3 V) ; l'interruption possède le bus et cède des tronçons à l'OLED ; voix séparée du contrôle ; applet `TONE` ; DMA seulement si la mesure le demande | D-033 |

@@ -27,7 +27,7 @@
 | Étape | Contenu pressenti | Dépend de |
 |---|---|---|
 | 6 — premiers applets musicaux | Ratchet (D-032, plan `etape-6-ratchet.md`), puis une seconde à décrire ; à 1 kHz (D-023 C+) | D-019, D-023, D-032 |
-| 7 — chemin audio | DAC d'abord : horloge SPI par périphérique (DAC rapide, OLED lent), DAC en DMA double tampon, priorités NVIC ; supersaw PolyBLEP (`docs/supersaw/` § 12–14) ; l'ADC plus tard | D-023 (option B, pistes du 2026-11-17), D-010 |
+| 7 — chemin audio | **en cours** (D-033, plan `etape-7-chemin-audio.md`) : 48 kHz, quatre sorties, `DAC_CS` en PCS0, horloge par périphérique, interruption PIT possédant le bus, applet `TONE` ; DMA si la mesure le demande ; supersaw PolyBLEP ensuite (`docs/supersaw/` § 12–14) ; l'ADC plus tard | D-023 (option B), D-010, D-033 |
 | ? — seconde carte | Teensy 4.1 / O.R.N.8 (notes locales non suivies) | D-003, D-007 |
 
 ## Questions ouvertes
