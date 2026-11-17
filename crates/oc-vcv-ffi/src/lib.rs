@@ -39,6 +39,7 @@ use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::ptr;
 
 use oc_core::Engine;
+use oc_core::audio::Voice;
 use oc_core::framebuffer::LEN as FRAMEBUFFER_LEN;
 use oc_core::platform::{
     BUTTONS, Button, CV_CHANNELS, CvChannel, ENCODERS, MilliVolts, TRIGGER_CHANNELS, TriggerChannel,
@@ -78,7 +79,13 @@ pub struct OcEngine {
     /// pulse between two ticks must still reach it, as the module's edge
     /// capture does (journal/D-019).
     trigger_seen: [bool; TRIGGER_CHANNELS],
+    /// Renders the engine's output parameters at Rack's sample rate
+    /// (journal/D-033): [`oc_engine_audio`].
+    voice: Voice,
 }
+
+/// The voice's rate until [`oc_engine_audio`] gives Rack's.
+const DEFAULT_SAMPLE_RATE_HZ: u32 = 48_000;
 
 /// Builds a fresh host engine with every input at rest.
 fn new_host_engine() -> HostEngine {
@@ -114,6 +121,7 @@ pub extern "C" fn oc_engine_new() -> *mut OcEngine {
         framebuffer: [0; FRAMEBUFFER_LEN],
         trigger_levels: [false; TRIGGER_CHANNELS],
         trigger_seen: [false; TRIGGER_CHANNELS],
+        voice: Voice::new(DEFAULT_SAMPLE_RATE_HZ),
     });
     built.map_or(ptr::null_mut(), |engine| Box::into_raw(Box::new(engine)))
 }
@@ -291,6 +299,7 @@ pub unsafe extern "C" fn oc_engine_reset(engine: *mut OcEngine) {
         engine.cv_out = [0; CV_CHANNELS];
         engine.framebuffer = [0; FRAMEBUFFER_LEN];
         engine.trigger_seen = engine.trigger_levels;
+        engine.voice = Voice::new(engine.voice.rate_hz());
     }));
 }
 
@@ -337,7 +346,37 @@ pub unsafe extern "C" fn oc_engine_tick(engine: *mut OcEngine, now_micros: u64) 
     }));
 }
 
-/// Reads the CV output level written by the most recent [`oc_engine_tick`].
+/// Renders one sample of every output at `sample_rate_hz` from the
+/// parameters of the most recent [`oc_engine_tick`], and caches it for
+/// [`oc_engine_cv_out`] (journal/D-033).
+///
+/// The plugin calls it once per `process()`, after its ticks: a tone then
+/// plays at Rack's sample rate, while a held level reads back as the tick
+/// wrote it. A tone keeps its phase across ticks and rate changes. A rate of
+/// zero is taken as one.
+///
+/// A null `engine` is a no-op.
+///
+/// # Safety
+///
+/// `engine`, if non-null, must point to a live [`OcEngine`].
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn oc_engine_audio(engine: *mut OcEngine, sample_rate_hz: u32) {
+    let _ = catch_unwind(AssertUnwindSafe(move || {
+        // SAFETY: see the function's own safety contract.
+        let Some(engine) = (unsafe { as_mut(engine) }) else {
+            return;
+        };
+        if engine.voice.rate_hz() != sample_rate_hz.max(1) {
+            engine.voice.set_rate(sample_rate_hz);
+        }
+        engine.voice.set_params(engine.engine.params());
+        engine.cv_out = engine.voice.next_sample();
+    }));
+}
+
+/// Reads the CV output level written by the most recent [`oc_engine_tick`]
+/// or [`oc_engine_audio`].
 ///
 /// A null `engine` or a channel index outside `0..4` returns `0`, the same
 /// level a freshly created, never-ticked engine reports.

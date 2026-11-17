@@ -13,6 +13,10 @@ générer des sons sur les sorties du module. Choix : 48 kHz, les quatre sorties
 | **7d** — module | niveau 9 : `TONE` à l'oreille (clics), à l'oscilloscope, à l'accordeur (justesse en V/oct) ; écran en marche pendant l'écoute | aucun tic lié à l'écran ; justesse à quelques cents ; décision sur le DMA |
 | **7e** — DMA (si 7d le demande) | DAC en DMA déclenché par le PIT, double tampon, cache | 7d repassé sans défaut |
 
+État (2026-11-17) : 7a mesuré sur le module (écran propre à 22 MHz, sorties justes, `outputs` 3,0 µs en moyenne,
+page d'OLED 49 µs ; D-033, révision) ; 7b fait sur l'hôte (le firmware joue `TONE` échantillonné à 1 kHz jusqu'au
+lot 7c ; Rack non compilé faute de SDK sur cette machine).
+
 Ordre : 7a → 7b (indépendant du matériel, peut avancer en parallèle) → 7c → 7d → 7e éventuel.
 
 ## Risques

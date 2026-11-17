@@ -245,6 +245,11 @@ struct Alambic : Module {
             }
         }
 
+        // One sample per process(), at Rack's own rate, from what the last
+        // tick asked of each output: a tone plays at audio rate, a held
+        // level reads back as the tick wrote it (journal/D-033).
+        oc_engine_audio(engine, static_cast<uint32_t>(std::lround(args.sampleRate)));
+
         for (int channel = 0; channel < kCvChannels; ++channel) {
             const int32_t millivolts = oc_engine_cv_out(engine, static_cast<uint8_t>(channel));
             outputs[A_OUTPUT + channel].setVoltage(static_cast<float>(millivolts) / 1000.f);

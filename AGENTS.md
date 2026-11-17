@@ -95,15 +95,16 @@ engineering foundation rather than a musically rich firmware: cross-compiled
 firmware, a native simulator, a VCV Rack 2 module, and a safe flashing tool,
 all sharing one behavioural core. Several applets can be hosted and picked
 from a front-panel menu, but *musically rich* applets are explicitly out of
-scope for now: four are shipped: a diagnostic I/O screen, a scope, a
-demonstration of the graphics primitives (`GFX DEMO`, journal/D-030) and the
-first musical one, `RATCHET` (trigger bursts, journal/D-032).
+scope for now: five are shipped: a diagnostic I/O screen, a scope, a
+demonstration of the graphics primitives (`GFX DEMO`, journal/D-030), the
+first musical one, `RATCHET` (trigger bursts, journal/D-032), and `TONE`, a
+test tone for the audio path (journal/D-033).
 
 ## Workspace layout
 
 | Crate                | `no_std` | `unsafe` policy            | Role |
 |-----------------------|----------|-----------------------------|------|
-| `crates/oc-core`      | yes      | `forbid(unsafe_code)`       | **All** behaviour: platform traits, `Engine::tick`, the applets (`DiagnosticApp`, `ScopeApp`, `GfxDemoApp`, `RatchetApp`) and the app menu, the graphics primitives (`gfx`, `text`), button debouncing and chord arbitration, calibration, quadrature decoding, framebuffer. Knows nothing about registers or an OS. |
+| `crates/oc-core`      | yes      | `forbid(unsafe_code)`       | **All** behaviour: platform traits, `Engine::tick`, the applets (`DiagnosticApp`, `ScopeApp`, `GfxDemoApp`, `RatchetApp`, `ToneApp`) and the app menu, the output parameters and the voice that renders them (`audio`), the graphics primitives (`gfx`, `text`), button debouncing and chord arbitration, calibration, quadrature decoding, framebuffer. Knows nothing about registers or an OS. |
 | `crates/oc-drivers`   | yes      | `forbid(unsafe_code)`       | Peripheral protocols (DAC8565, SH1106/SSD1306/SSD1309, triggers, shared SPI bus) over `embedded-hal` 1.0 only; tested on the host against recording mock buses. |
 | `crates/oc-firmware`  | yes (bin)| `deny(unsafe_code)`; `unsafe` only in `flash_store.rs` (boot ROM calls) and `reboot.rs` (bootloader hand-over) | Pure wiring: turns `teensy4-bsp`/`imxrt-hal` resources into the `oc-core` platform traits, runs the 1 kHz loop. The one crate that cannot be tested on the host. |
 | `crates/oc-protocol`  | yes      | `forbid(unsafe_code)`       | Messages between the firmware and the host probe (`Request`, `Reply`), `postcard` + COBS framing, `FrameReader`; tested on the host (journal/D-029). |
@@ -193,6 +194,16 @@ lives in `oc-core` and is tested once, on the host.
   of each 20 ms frame); no page is ever sent half-redrawn.
 
 ## Signal representation
+
+* **An applet publishes what each output carries, not a sample**
+  (`oc_core::audio::Params`, journal/D-033): a level held, or a tone (shape,
+  frequency in millihertz, peak level). A `Voice` renders them one sample
+  at a time at a fixed rate, keeping each output's 32-bit phase across
+  changes. The engine runs its own voice at the tick rate (1 kHz) and writes
+  that sample, so CV applets behave exactly as before; a backend with an
+  audio context runs another voice at its own rate from `Engine::params`
+  (VCV Rack: `oc_engine_audio` once per `process()`; the firmware's 48 kHz
+  interrupt from lot 7c).
 
 * **Internal unit: millivolts, `i32`** (`oc_core::platform::MilliVolts`).
   No floating point in the firmware's signal path; `f32` appears only at the
@@ -365,6 +376,8 @@ Full protocol, per level, with exact commands and what each proves: see
 | The main control loop                             | `crates/oc-core/src/engine.rs` |
 | The diagnostic applet's logic and rendering       | `crates/oc-core/src/apps/diagnostic.rs` |
 | The scope applet                                  | `crates/oc-core/src/apps/scope.rs` |
+| The `TONE` test applet (four waveforms, V/oct)    | `crates/oc-core/src/apps/tone.rs` |
+| Output parameters, the voice, the waveforms (sine table built at compile time) | `crates/oc-core/src/audio/mod.rs`, `audio/wave.rs` (journal/D-033) |
 | The app registry and dispatch (`AppId`, `AppHost`) | `crates/oc-core/src/apps/mod.rs` |
 | The app menu (`up`+`down`) and its rendering      | `crates/oc-core/src/menu.rs` |
 | The system settings screen (`SETUP`, boot gestures) | `crates/oc-core/src/system.rs` (routing in `engine.rs`) |

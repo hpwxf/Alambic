@@ -227,6 +227,24 @@ fn ratchet_shows_the_input_being_chosen() {
 }
 
 #[test]
+fn tone_plays_its_note_raised_by_cv1() {
+    let simulator = replay("tone");
+    assert_eq!(simulator.current_app(), AppId::Tone);
+    let tone = simulator.tone();
+    assert_eq!(tone.note(), 72, "C5");
+    assert_eq!(tone.amplitude(), 1_500);
+    // Half an octave above C5 (523.25 Hz): 739.99 Hz, CV1 as the module's
+    // converter reads 500 mV.
+    assert!(
+        tone.frequency().abs_diff(739_989) < 1_000,
+        "{}",
+        tone.frequency()
+    );
+    let mut simulator = simulator;
+    assert_screen_matches(&mut simulator, "tone");
+}
+
+#[test]
 fn the_graphics_demo_shows_each_of_its_pages() {
     use oc_core::apps::gfx_demo::Page;
     for (name, page) in [
@@ -319,6 +337,7 @@ fn every_scenario_file_has_a_test_and_a_snapshot() {
         "ratchet",
         "ratchet_inputs",
         "ratchet_tempo",
+        "tone",
     ];
 
     let mut found: Vec<String> = std::fs::read_dir(scenario_dir())

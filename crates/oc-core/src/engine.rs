@@ -16,6 +16,7 @@
 use crate::apps::diagnostic::DiagnosticApp;
 use crate::apps::{AppHost, AppId};
 use crate::apps::{InputSnapshot, TickContext};
+use crate::audio::{Params, Voice};
 use crate::buttons::{ButtonEvents, ButtonReader};
 use crate::calibration::Calibration;
 use crate::framebuffer::FrameBuffer;
@@ -45,6 +46,10 @@ const MAX_REPORTED_DURATION_MICROS: u32 = 1_000_000;
 /// more than about sixty frames per second, so the firmware raises this to
 /// spend its 1 kHz budget on the signal path instead.
 pub const DEFAULT_RENDER_INTERVAL: u32 = 1;
+
+/// Ticks a second on every backend, the rate of the engine's own
+/// [`Voice`]: a tone it renders is sampled once a tick.
+pub const TICK_RATE_HZ: u32 = 1_000;
 
 /// Outcome of one tick.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -118,6 +123,10 @@ pub struct Engine<A, O, D, C, K, S> {
     previous_fine: Option<u32>,
     /// Levels a host probe holds on the outputs (journal/D-029).
     forced_outputs: [Option<MilliVolts>; CV_CHANNELS],
+    /// What the outputs carry since the last tick (journal/D-033).
+    params: Params,
+    /// Renders [`Self::params`] once a tick, for the outputs it writes.
+    voice: Voice,
     screen: Screen,
     tick_count: u64,
     previous_micros: Option<u64>,
@@ -169,6 +178,8 @@ where
             profile,
             previous_fine: None,
             forced_outputs: [None; CV_CHANNELS],
+            params: Params::REST,
+            voice: Voice::new(TICK_RATE_HZ),
             screen: Screen::Splash,
             tick_count: 0,
             previous_micros: None,
@@ -251,20 +262,7 @@ where
             snapshot.silence_controls();
         }
         let mark = self.clock.fine_count();
-        let mut outputs = match self.screen {
-            Screen::System => [0; CV_CHANNELS],
-            Screen::Calibration => [self.wizard.output_level(); CV_CHANNELS],
-            Screen::App | Screen::Menu | Screen::Splash => self.apps.update(&snapshot),
-        };
-        // The wizard measures the outputs it drives: a forced level would
-        // calibrate against the wrong voltage.
-        if self.screen != Screen::Calibration {
-            for (output, forced) in outputs.iter_mut().zip(self.forced_outputs) {
-                if let Some(level) = forced {
-                    *output = level;
-                }
-            }
-        }
+        let outputs = self.render_params(&snapshot);
         self.record_since(Stage::Update, mark);
 
         let mark = self.clock.fine_count();
@@ -324,6 +322,28 @@ where
         }
     }
 
+    /// What the outputs carry on this tick, from the screen in charge, then
+    /// the levels a probe holds; renders it once through the engine's voice.
+    fn render_params(&mut self, snapshot: &InputSnapshot) -> [MilliVolts; CV_CHANNELS] {
+        let mut params = match self.screen {
+            Screen::System => Params::REST,
+            Screen::Calibration => Params::levels([self.wizard.output_level(); CV_CHANNELS]),
+            Screen::App | Screen::Menu | Screen::Splash => self.apps.update(snapshot),
+        };
+        // The wizard measures the outputs it drives: a forced level would
+        // calibrate against the wrong voltage.
+        if self.screen != Screen::Calibration {
+            for (index, forced) in self.forced_outputs.into_iter().enumerate() {
+                if let Some(level) = forced {
+                    params.hold(index, level);
+                }
+            }
+        }
+        self.params = params;
+        self.voice.set_params(&params);
+        self.voice.next_sample()
+    }
+
     /// Runs one tick of the boot animation.
     ///
     /// Control input is drained so it is not replayed in one lump once the
@@ -336,6 +356,7 @@ where
         self.splash.advance(elapsed);
 
         let outputs = [0; CV_CHANNELS];
+        self.params = Params::REST;
         self.write_outputs(&outputs);
 
         let mark = self.clock.fine_count();
@@ -381,6 +402,8 @@ where
         self.previous_micros = None;
         self.previous_fine = None;
         self.forced_outputs = [None; CV_CHANNELS];
+        self.params = Params::REST;
+        self.voice = Voice::new(TICK_RATE_HZ);
         self.last_duration_micros = 0;
         self.ticks_since_render = 0;
         self.next_page = None;
@@ -407,6 +430,15 @@ where
     /// it sets itself. [`Self::reset`] releases every output.
     pub const fn force_output(&mut self, channel: CvChannel, level: Option<MilliVolts>) {
         self.forced_outputs[channel.index()] = level;
+    }
+
+    /// What the outputs carry since the last tick, levels held by the probe
+    /// included: what a backend's own [`Voice`] renders at its audio rate
+    /// (journal/D-033). The engine renders it once a tick for the outputs it
+    /// writes itself.
+    #[must_use]
+    pub const fn params(&self) -> &Params {
+        &self.params
     }
 
     /// The levels held by [`Self::force_output`].

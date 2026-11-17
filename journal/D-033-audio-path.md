@@ -5,7 +5,7 @@
 | **Identifiant** | D-033 |
 | **Date** | 2026-11-17 |
 | **Auteur** | Pascal Havé |
-| **Statut** | adoptée |
+| **Statut** | adoptée, révisée |
 | **Commits** | ce commit (ADR, plan) ; implémentation dans les lots de l'étape 7 (`docs/plan/etape-7-chemin-audio.md`) |
 | **Relations** | met en œuvre l'option B de D-023 (pistes du 2026-11-17) ; révisera D-008 (une interruption à côté de la boucle, lot 7c), D-010 (CS matériel et horloge par périphérique, lot 7a ; bus possédé par l'interruption, lot 7c) et D-009 (envoi de l'écran par tronçons, lot 7c) ; garde D-005 (pas de flottant) et D-027 (conversion par la calibration) |
 
@@ -114,9 +114,40 @@ premier livrable. Le reste, proposé par l'assistant :
 
 * Des clics ou une gigue audibles malgré la priorité et la FIFO : DAC en DMA déclenché par le PIT (DMAMUX), tampons
   hors cache ou maintenance du cache.
-* Un DAC qui ne tient pas 30 MHz sur la nappe : horloge plus basse, au plus 16 µs de bus par période en comptant
+* Un DAC qui ne tiendrait pas 22 MHz sur la nappe d’un autre module : horloge plus basse, au plus 16 µs de bus par période en comptant
   l'OLED.
 * Une interruption qui ne tient pas dans sa période avec une voix réelle (supersaw) : calcul par blocs (quelques
   échantillons d'avance, FIFO plus profonde ou DMA).
 * Un écran visiblement dégradé : tronçons plus longs, ou trame partielle (D-009, pistes notées).
 * Le besoin de lire les CV à la cadence audio : ADC en DMA (D-023, pistes de l'ADC).
+
+## Révision du 2026-11-17 — lot 7a mesuré, forme de la voix (lot 7b)
+
+**Lot 7a, sur le module** (firmware `b293d6a`, une seule horloge de 22 MHz) : écran propre sur toutes les applets ;
+sorties à −3 V et +5 V justes au multimètre sur les quatre voies (−3,000 / +4,997 V sur A et D, −2,999 V sur B et C
+à −3 V) ; étape `outputs` 3,0 µs en moyenne, 8,0 µs au plus (≈ 16 µs avant), une page d'OLED 49 µs (≈ 145 µs à
+8 MHz), tick le plus long 130 µs. Une horloge unique est donc gardée par défaut ; `oled-spi-8mhz` reste le repli
+d'un module dont la nappe ou l'écran ne tiendrait pas 22 MHz. Ce sont des observations sur un module, pas des
+constantes du code.
+
+**Forme de la voix**, tranchée par l'assistant pour le lot 7b :
+
+* une applet ne rend plus des niveaux mais des **paramètres de sortie** (`oc_core::audio::Params`) : pour chaque
+  voie, un niveau tenu ou une **tonalité** (forme, fréquence en millihertz, amplitude crête en millivolts, centrée
+  sur 0 V). Les applets existantes rendent leurs niveaux tenus ; le moteur applique par-dessus l'écran des réglages,
+  l'assistant de calibration et les niveaux tenus par la sonde, comme avant ;
+* la **voix** (`oc_core::audio::Voice`) est l'objet qui tournera dans l'interruption : une cadence fixée à la
+  construction, une phase de 32 bits par voie gardée quand les paramètres changent (pas de clic au changement de
+  note), un échantillon en millivolts par appel, sans division ni allocation par échantillon ;
+* le **moteur** garde sa propre voix, à la cadence du tick (1 kHz sur tous les backends), et en écrit
+  l'échantillon comme aujourd'hui : rien ne change pour le firmware avant le lot 7c, ni pour les applets de CV et
+  les écrans dorés. `Engine::params` donne les derniers paramètres à un backend qui fait tourner sa voix à sa
+  cadence : Rack au lot 7b (`oc_engine_audio`, une voix à la fréquence d'échantillonnage de Rack, appelée à
+  chaque `process()`), le firmware au lot 7c ;
+* le **sinus** vient d'une table d'un quart de période (257 points, 15 bits) calculée à la compilation en
+  entiers (série de Taylor en virgule fixe), interpolée linéairement : erreur sous le millivolt, vérifiée contre
+  `f64` dans les tests ; triangle, scie et carré se déduisent de la phase ;
+* **`TONE`** : A sinus, B triangle, C scie, D carré, à la même fréquence ; encodeur gauche, la note (C1 à C8,
+  A4 = 440 Hz par défaut), encodeur droit, l'amplitude (0 à 3 V crête, défaut 1 V) ; CV1 en V/oct s'ajoute à la
+  note (`fixed::exp2`). Le menu des applets perd la ligne vide sous son titre pour accueillir une cinquième
+  applet ; au-delà, il faudra le faire défiler.

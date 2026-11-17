@@ -31,9 +31,22 @@ Architectural decisions behind each change are in `journal/` (French).
   (adds it), chosen by a click on the right encoder; inputs are sampled at
   the edge, and a new edge restarts the burst.
 - `oc_core::fixed`: base-2 logarithm and exponential in 16.16 fixed point.
+- **`TONE`**, a test applet for the audio path (journal/D-033): one pitch on
+  the four outputs, a sine, a triangle, a sawtooth and a square; the note on
+  the left encoder (C1 to C8), the peak level on the right one (0 to 3 V),
+  `CV1` at one volt per octave. VCV Rack plays it at its sample rate.
+- `oc_core::audio`: the output parameters an applet publishes (a held level
+  or a tone per output, `Engine::params`) and the `Voice` that renders them
+  at a fixed rate with 32-bit phases; `oc_engine_audio` in the Rack ABI.
 
 ### Changed
 
+- The DAC's chip select is LPSPI4's own (PCS0), the shared bus picks the chip
+  select and the clock of each device before each transfer, and the DAC and
+  the OLED run at 22 MHz (`oled-spi-8mhz` puts the OLED back at 8 MHz); a DAC
+  channel is written only when its code changes (journal/D-010, D-033).
+- The app menu lists its entries right under its title, to fit a fifth
+  applet.
 - `oc-probe`'s command line is behind a default `cli` feature;
   `render::screen_grey` gives the screen's pixels to any output.
 - `rust-toolchain.toml` also provisions `wasm32-unknown-unknown`.

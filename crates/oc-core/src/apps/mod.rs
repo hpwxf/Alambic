@@ -15,12 +15,19 @@
 //! This module also carries the contract every applet is written against —
 //! [`InputSnapshot`] and [`TickContext`] — so that one applet never has to
 //! import another just to describe what it is fed. Each applet itself lives in
-//! its own submodule ([`diagnostic`], [`scope`]).
+//! its own submodule ([`diagnostic`], [`scope`], [`gfx_demo`], [`ratchet`],
+//! [`tone`]).
+//!
+//! An applet's `update` returns what the outputs carry as
+//! [`Params`](crate::audio::Params): the CV applets hold levels, `TONE`
+//! asks for tones that a [`Voice`](crate::audio::Voice) renders
+//! (journal/D-033).
 
 pub mod diagnostic;
 pub mod gfx_demo;
 pub mod ratchet;
 pub mod scope;
+pub mod tone;
 
 use serde::{Deserialize, Serialize};
 
@@ -28,6 +35,8 @@ use crate::apps::diagnostic::DiagnosticApp;
 use crate::apps::gfx_demo::GfxDemoApp;
 use crate::apps::ratchet::RatchetApp;
 use crate::apps::scope::ScopeApp;
+use crate::apps::tone::ToneApp;
+use crate::audio::Params;
 use crate::buttons::ButtonEvents;
 use crate::framebuffer::FrameBuffer;
 use crate::platform::{
@@ -107,11 +116,19 @@ pub enum AppId {
     /// Each new applet comes last, so a startup applet saved before it
     /// existed still reads back.
     Ratchet,
+    /// A test tone in four waveforms on A to D (journal/D-033).
+    Tone,
 }
 
 impl AppId {
     /// Every app, in the order the menu lists them.
-    pub const ALL: [Self; 4] = [Self::Diagnostic, Self::Scope, Self::Gfx, Self::Ratchet];
+    pub const ALL: [Self; 5] = [
+        Self::Diagnostic,
+        Self::Scope,
+        Self::Gfx,
+        Self::Ratchet,
+        Self::Tone,
+    ];
 
     /// Zero-based index of this app.
     #[must_use]
@@ -137,6 +154,7 @@ impl AppId {
             Self::Scope => "SCOPE",
             Self::Gfx => "GFX DEMO",
             Self::Ratchet => "RATCHET",
+            Self::Tone => "TONE",
         }
     }
 }
@@ -148,6 +166,7 @@ pub struct AppHost {
     scope: ScopeApp,
     gfx: GfxDemoApp,
     ratchet: RatchetApp,
+    tone: ToneApp,
     current: AppId,
 }
 
@@ -160,6 +179,7 @@ impl AppHost {
             scope: ScopeApp::new(),
             gfx: GfxDemoApp::new(),
             ratchet: RatchetApp::new(),
+            tone: ToneApp::new(),
             current: AppId::default(),
         }
     }
@@ -178,13 +198,14 @@ impl AppHost {
         self.current = id;
     }
 
-    /// Runs one tick of the current applet.
-    pub fn update(&mut self, input: &InputSnapshot) -> [MilliVolts; CV_CHANNELS] {
+    /// Runs one tick of the current applet: what the outputs carry.
+    pub fn update(&mut self, input: &InputSnapshot) -> Params {
         match self.current {
-            AppId::Diagnostic => self.diagnostic.update(input),
-            AppId::Scope => self.scope.update(input),
-            AppId::Gfx => self.gfx.update(input),
-            AppId::Ratchet => self.ratchet.update(input),
+            AppId::Diagnostic => self.diagnostic.update(input).into(),
+            AppId::Scope => self.scope.update(input).into(),
+            AppId::Gfx => self.gfx.update(input).into(),
+            AppId::Ratchet => self.ratchet.update(input).into(),
+            AppId::Tone => self.tone.update(input),
         }
     }
 
@@ -195,6 +216,7 @@ impl AppHost {
             AppId::Scope => self.scope.render(frame, context),
             AppId::Gfx => self.gfx.render(frame, context),
             AppId::Ratchet => self.ratchet.render(frame, context),
+            AppId::Tone => self.tone.render(frame, context),
         }
     }
 
@@ -221,6 +243,12 @@ impl AppHost {
     pub const fn ratchet(&self) -> &RatchetApp {
         &self.ratchet
     }
+
+    /// The `TONE` applet, running or not.
+    #[must_use]
+    pub const fn tone(&self) -> &ToneApp {
+        &self.tone
+    }
 }
 
 impl Default for AppHost {
@@ -233,6 +261,7 @@ impl Default for AppHost {
 mod tests {
     use super::InputSnapshot;
     use super::{AppHost, AppId};
+    use crate::audio::{Channel, Params};
     use crate::platform::{CV_CHANNELS, MilliVolts};
 
     fn snapshot(cv1: MilliVolts, cv2: MilliVolts) -> InputSnapshot {
@@ -277,14 +306,16 @@ mod tests {
         let mut host = AppHost::new();
         let diagnostic = host.update(&snapshot(1_000, 2_000));
         assert_eq!(
-            diagnostic[1], 2_000,
+            diagnostic.channels[1],
+            Channel::Level(2_000),
             "the diagnostic applet mirrors channel by channel"
         );
 
         host.select(AppId::Scope);
         let scope = host.update(&snapshot(1_000, 2_000));
         assert_eq!(
-            scope, [1_000; CV_CHANNELS],
+            scope,
+            Params::levels([1_000; CV_CHANNELS]),
             "the scope buffers CV1 to every output, which no output mode can do"
         );
     }
