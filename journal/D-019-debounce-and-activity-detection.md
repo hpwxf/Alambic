@@ -103,8 +103,10 @@ n'est pas tenu. Le retrait du filtre temporel (révision précédente) était n�
   d'échantillonnage ; le C++ ne change pas. Le simulateur fournit des niveaux par tick et n'a rien à faire.
 * **Contrat** : `DigitalIn::trigger_state` dit désormais qu'un backend qui capture les fronts signale ainsi une
   impulsion déjà retombée ; le cœur, la détection de front sur un échantillon et les applets ne changent pas.
-* Risque accepté, à vérifier sur module : le détecteur voit un parasite de quelques µs que l'échantillonnage
-  ratait ; l'hystérésis des pads (D-007) est active.
+* Risque accepté : le détecteur voit un parasite de quelques µs que l'échantillonnage ratait ; l'hystérésis des
+  pads (D-007) est active.
+* **Vérifié sur le module TLM** (Pamela's Pro Workout, 32 Hz, 30 s) : 960 / 960 à 0,94 ms (588 avant), 960 / 960 à
+  15,6 ms, 0 au repos câble branché. Détail : `docs/plan/etape-3c-cadence.md`.
 
 ## Voir aussi
 

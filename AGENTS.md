@@ -305,7 +305,8 @@ Full protocol, per level, with exact commands and what each proves: see
   their period, so the loop runs below 1 kHz (journal/D-023, lot 3c); and
   trigger pulses shorter than about 3 ms were missed (39 % of 0.94 ms
   pulses) while triggers were only sampled: the GPIO edge detector now
-  latches them (journal/D-019, lot 3c1), not yet checked on the module. OLED overrides for other builds go through the
+  latches them (journal/D-019, lot 3c1; 960 of 960 such pulses counted on the
+  module, none at rest). OLED overrides for other builds go through the
   normal gate: `cargo xtask build|size|hex|flash --features ssd1306` (or
   `ssd1309`).
 
