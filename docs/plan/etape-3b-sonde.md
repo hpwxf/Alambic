@@ -125,3 +125,14 @@ codes (A) ou 405 / 413 (D) aux mêmes tensions sur les quatre voies, signe d'une
 ou puce DAC8565). Le rebouclage ne sépare pas sortie et entrée : il faut une référence extérieure (multimètre sur
 la sortie). Rappel : l'assistant ne règle que −3 V et +5 V par sortie puis interpole, là où Phazerville règle
 chaque octave (point ouvert de l'étape 4). Valeurs indicatives.
+
+**Sortie seule au multimètre** (`cargo probe out A`, câble de rebouclage débranché) : −3,003 / −0,001 / 2,999 /
+6,001 V pour −3 / 0 / +3 / +6 V demandés, soit ≤ 3 mV d'écart, de l'ordre de la précision du multimètre, y compris
+à +6 V, hors des deux points réglés par l'assistant. **L'erreur du rebouclage vient donc de l'entrée** : la sortie
+A est juste, CV1 lit −23 mV à +3 V et −66 mV à +6 V. Deux composantes : (1) un gain unique, mesuré sur CV1 entre
++1 V et +3 V puis appliqué aux quatre entrées (d'où l'erreur plate entre ces deux points et une pente qui croît en
+s'en éloignant, et D/CV4 qui s'écarte des autres) ; (2) des marches d'≈ 20 mV aux mêmes tensions sur les quatre
+voies, non-linéarité de la conversion d'entrée commune aux voies. 20 mV ≈ 24 cents en 1 V/oct : sans effet sur le
+diagnostic et le scope, à reprendre si une applet suit une hauteur (quantificateur). Pistes, non engagées :
+gain par entrée, table d'entrée par morceaux comme celle du DAC. Point ouvert pour l'étape 4. Valeurs indicatives,
+un module.
