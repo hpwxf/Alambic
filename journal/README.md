@@ -97,3 +97,4 @@ une section datée en fin de fichier) au lieu d'en ouvrir une nouvelle. Les num�
 | [D-029](D-029-live-probe.md) | sonde live : profilage dans `oc-core`, second port USB CDC binaire (`postcard` COBS), crates `oc-protocol` et `oc-probe` | adoptée, révisée |
 | [D-030](D-030-graphics-primitives-and-demo.md) | primitives graphiques `oc_core::gfx` (bases en octets, contrôles, courbes, motifs) et applet de démonstration dans le menu ; `embedded-graphics` en dépendance de test | adoptée, révisée |
 | [D-031](D-031-browser-host-tools.md) | outils hôte dans le navigateur : sonde par Web Serial, flash par WebHID (HalfKay), cœur sans E/S en WebAssembly, crates `oc-image`, `oc-halfkay`, `oc-web` | adoptée, révisée |
+| [D-032](D-032-ratchet-applet.md) | applet Ratchet : A copie de TR1, B rafale (nombre ou gate, `SHAPE` signé, placement `FIRST` / `SPAN`, probabilité, synchronisation sur TR1), triggers de 5 ms sur le DAC, entrées CV au choix | adoptée |
