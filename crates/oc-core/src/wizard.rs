@@ -41,6 +41,7 @@ use crate::fmt::TextBuf;
 use crate::framebuffer::{FrameBuffer, ROW_HEIGHT};
 use crate::platform::{Button, CV_CHANNELS, MilliVolts};
 use crate::settings::Settings;
+use crate::text::fonts::FONT_5X8;
 use crate::text::{self, TextStyle};
 
 /// Table point of the low DAC step: −3 V, the first octave.
@@ -493,7 +494,12 @@ impl CalibrationWizard {
 
         for (row, line) in lines.iter().enumerate() {
             let y = i32::try_from(row).unwrap_or(0) * ROW_HEIGHT;
-            text::draw(frame, line.as_str(), Point::new(0, y), TextStyle::LIT);
+            text::draw(
+                frame,
+                line.as_str(),
+                Point::new(0, y),
+                TextStyle::lit(&FONT_5X8),
+            );
         }
     }
 

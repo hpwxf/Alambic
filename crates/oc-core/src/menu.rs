@@ -18,6 +18,7 @@ use crate::buttons::ButtonEvents;
 use crate::framebuffer::{FrameBuffer, WIDTH_I32};
 use crate::framebuffer::{ROW_HEIGHT, ROWS};
 use crate::platform::Button;
+use crate::text::fonts::FONT_5X8;
 use crate::text::{self, TextStyle};
 
 /// Title shown above the list.
@@ -150,7 +151,7 @@ impl Menu {
     /// Draws the title and the app list, with the highlight in inverse video.
     pub fn render(&self, frame: &mut FrameBuffer) {
         frame.clear();
-        text::draw(frame, TITLE, Point::zero(), TextStyle::LIT);
+        text::draw(frame, TITLE, Point::zero(), TextStyle::lit(&FONT_5X8));
 
         for index in 0..ENTRIES {
             let label = match MenuEntry::at(index) {
@@ -173,9 +174,9 @@ impl Menu {
                     .draw(frame);
             }
             let style = if highlighted {
-                TextStyle::DARK
+                TextStyle::dark(&FONT_5X8)
             } else {
-                TextStyle::LIT
+                TextStyle::lit(&FONT_5X8)
             };
             text::draw(frame, label, Point::new(TEXT_INSET, top_left.y), style);
         }

@@ -41,6 +41,7 @@ use crate::platform::{
 };
 use crate::presence::{CvPresence, Presence};
 use crate::signal::DEFAULT_ACTIVITY_THRESHOLD_MV;
+use crate::text::fonts::FONT_5X8;
 use crate::text::{self, TextStyle};
 
 /// Offset change per encoder detent, in millivolts.
@@ -278,7 +279,7 @@ impl DiagnosticApp {
 
         let mut draw = |line: &TextBuf<26>, row: i32| {
             let top_left = Point::new(0, row * ROW_HEIGHT);
-            text::draw(frame, line.as_str(), top_left, TextStyle::LIT);
+            text::draw(frame, line.as_str(), top_left, TextStyle::lit(&FONT_5X8));
         };
 
         let _ = write!(line, "{}{:>5}us", crate::BANNER, context.duration_micros);

@@ -48,6 +48,10 @@ Architectural decisions behind each change are in `journal/` (French).
   drawing falls from 15.7 to 2.8 us on the host (criterion,
   `cargo bench -p oc-core -- text`) and from about 646 to 88 us on the
   module, so the redraw tick is no longer the loop's tightest (journal/D-009).
+  The font is part of the `TextStyle`: `oc_core::text::fonts` carries six
+  `embedded-graphics` ASCII fonts (4x6 to 10x20) as generated column tables
+  (`UPDATE_FONTS=1 cargo test -p oc-core --test fonts`), each checked pixel
+  for pixel against its source; an applet picks its own.
 
 ### Fixed
 

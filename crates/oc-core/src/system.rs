@@ -27,6 +27,7 @@ use crate::fmt::TextBuf;
 use crate::framebuffer::{FrameBuffer, ROW_HEIGHT, ROWS, WIDTH_I32};
 use crate::platform::Button;
 use crate::settings::{DisplaySettings, Settings};
+use crate::text::fonts::FONT_5X8;
 use crate::text::{self, Alignment, TextStyle};
 
 /// Contrast change per detent of the right encoder.
@@ -276,13 +277,13 @@ impl SystemScreen {
     /// Draws the title and the visible lines, the highlight in inverse video.
     pub fn render(&self, frame: &mut FrameBuffer) {
         frame.clear();
-        text::draw(frame, "SETUP", Point::zero(), TextStyle::LIT);
+        text::draw(frame, "SETUP", Point::zero(), TextStyle::lit(&FONT_5X8));
         if self.safe_mode {
             text::draw(
                 frame,
                 "SAFE MODE",
                 Point::new(WIDTH_I32 - 1, 0),
-                TextStyle::LIT.aligned(Alignment::Right),
+                TextStyle::lit(&FONT_5X8).aligned(Alignment::Right),
             );
         }
 
@@ -304,9 +305,9 @@ impl SystemScreen {
                     .draw(frame);
             }
             let style = if highlighted {
-                TextStyle::DARK
+                TextStyle::dark(&FONT_5X8)
             } else {
-                TextStyle::LIT
+                TextStyle::lit(&FONT_5X8)
             };
             text::draw(frame, line.label(), Point::new(TEXT_INSET, top), style);
             let mut value = TextBuf::<12>::new();

@@ -121,3 +121,22 @@ par caractère, police rangée par lignes, framebuffer par colonnes).
   645,5 → **87,8 µs** (÷ 7,4) ; pire tick 671 → 169 µs, ≈ 0,46 ms échantillonnage compris : la marge du tick le
   plus chargé passe d'≈ 40 à ≈ 540 µs, et ce sont désormais les ticks d'envoi d'une page, plus le dessin, qui
   sont les plus longs ; périodes 997,6 – 1 002,3 µs.
+
+## Révision (2026-11-17) — la police devient un paramètre
+
+Remarque de l'utilisateur : l'alignement sur les pages (`ROW_HEIGHT`) et la police 5×8 sont des choix d'affichage du
+Diagnostic, pas des contraintes ; une applet doit pouvoir choisir son affichage. L'alignement n'était déjà pas
+imposé (hors grille, une colonne est posée en deux moitiés décalées) ; la police l'était (table `GLYPHS` 5×8, un
+octet par colonne). Corrigé :
+
+* **`ColumnFont`** : largeur, hauteur, espacement, ligne de base, et colonnes de ⌈hauteur / 8⌉ octets ; la police
+  fait partie du `TextStyle` (`TextStyle::lit(&fonts::FONT_6X10)`), chaque applet choisit la sienne ;
+* **`text::fonts`**, généré : `FONT_4X6`, `FONT_5X8`, `FONT_6X10`, `FONT_7X13`, `FONT_9X15`, `FONT_10X20` (un à trois
+  octets par colonne), extraits des polices ASCII d'`embedded-graphics` par `tests/fonts.rs`
+  (`UPDATE_FONTS=1 cargo test -p oc-core --test fonts`, sur le modèle des écrans dorés) ; le même test compare les
+  pixels pour chaque police, glyphe, couleur, alignement, ligne de base et position, et échoue si le fichier n'est
+  plus à jour. Une police qu'aucun code n'utilise n'entre pas dans l'image ;
+* `embedded-graphics` reste utilisable tel quel pour toute autre police et tout autre dessin.
+
+Coût de la généralité (hôte, criterion, indicatif) : un écran de texte 1,06 → 1,72 µs ; `applet/render` ≈ 2,6 µs,
+inchangé à la mesure près.

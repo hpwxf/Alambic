@@ -11,6 +11,7 @@ use embedded_graphics::prelude::{Point, Primitive as _, Size};
 use embedded_graphics::primitives::{PrimitiveStyleBuilder, Rectangle};
 
 use crate::framebuffer::{FrameBuffer, HEIGHT_I32, WIDTH_I32};
+use crate::text::fonts::FONT_5X8;
 use crate::text::{self, Alignment, TextStyle};
 
 /// How long a message stays up, in microseconds.
@@ -85,7 +86,7 @@ impl Toast {
             .into_styled(style)
             .draw(frame);
 
-        let centred = TextStyle::LIT.aligned(Alignment::Center);
+        let centred = TextStyle::lit(&FONT_5X8).aligned(Alignment::Center);
         for (index, line) in self.outcome.lines().into_iter().enumerate() {
             let y = top_left.y + 5 + i32::try_from(index).unwrap_or(0) * 10;
             text::draw(frame, line, Point::new(WIDTH_I32 / 2, y), centred);

@@ -17,6 +17,7 @@
 use embedded_graphics::prelude::Point;
 
 use crate::framebuffer::{FrameBuffer, HEIGHT_I32, WIDTH_I32};
+use crate::text::fonts::FONT_5X8;
 use crate::text::{self, Alignment, Baseline, TextStyle};
 
 /// Duration of the boot animation, in microseconds.
@@ -102,7 +103,7 @@ impl SplashScreen {
     pub fn render(&self, frame: &mut FrameBuffer) {
         frame.clear();
 
-        let centred = TextStyle::LIT
+        let centred = TextStyle::lit(&FONT_5X8)
             .aligned(Alignment::Center)
             .with_baseline(Baseline::Middle);
         // With a build identifier, the two lines straddle the centre; without
@@ -131,7 +132,7 @@ impl SplashScreen {
             frame,
             GESTURE_HINT,
             Point::new(WIDTH_I32 / 2, GESTURE_HINT_Y),
-            TextStyle::LIT.aligned(Alignment::Center),
+            TextStyle::lit(&FONT_5X8).aligned(Alignment::Center),
         );
 
         draw_border(frame, self.lit_border_pixels());

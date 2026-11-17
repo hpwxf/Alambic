@@ -24,7 +24,7 @@ use oc_core::framebuffer::FrameBuffer;
 use oc_core::menu::Menu;
 use oc_core::platform::{Button, ControlEvents, CvChannel, TriggerChannel};
 use oc_core::testing::mock_engine;
-use oc_core::text::{self, TextStyle};
+use oc_core::text::{self, TextStyle, fonts};
 
 /// A screenful of text, as the diagnostic applet draws it.
 const SCREEN_TEXT: [&str; 8] = [
@@ -164,7 +164,7 @@ fn text(criterion: &mut Criterion) {
                     &mut frame,
                     black_box(line),
                     Point::new(0, row * 8),
-                    TextStyle::LIT,
+                    TextStyle::lit(&fonts::FONT_5X8),
                 );
             }
             black_box(frame.lit_pixels())

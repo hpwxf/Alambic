@@ -63,6 +63,7 @@ cargo run -p oc-sim                         # native simulator (ratatui TUI)
 cargo run -p oc-sim -- run --record bug.scn # record a simulator scenario
 cargo run -p oc-sim -- replay bug.scn       # replay one headless
 UPDATE_SCREENS=1 cargo test -p oc-sim --test scenarios   # regen golden .screen snapshots after an intentional render change
+UPDATE_FONTS=1 cargo test -p oc-core --test fonts         # regen the text font tables from embedded-graphics
 
 cargo xtask build                           # cross-compile firmware (thumbv7em-none-eabihf, release)
 cargo xtask size                            # section table + linker-layout checklist
@@ -357,7 +358,7 @@ Full protocol, per level, with exact commands and what each proves: see
 | The Rack stand-in for the `up`+`down` chord       | `vcv/OrnamentCrimeAlambic/src/Alambic.cpp` (`appendContextMenu`) |
 | Button debouncing and the `up`+`down` chord       | `crates/oc-core/src/buttons.rs` |
 | The boot splash screen (name/version, progressive border) | `crates/oc-core/src/splash.rs` |
-| Text drawing (the 5x8 font as column bytes; same pixels as `embedded-graphics`) | `crates/oc-core/src/text.rs` |
+| Text drawing (fonts as column bytes, the font in the style; same pixels as `embedded-graphics`) | `crates/oc-core/src/text/mod.rs`; generated fonts `text/fonts.rs` (`UPDATE_FONTS=1 cargo test -p oc-core --test fonts`) |
 | ADC/DAC unit conversion and calibration           | `crates/oc-core/src/calibration.rs` |
 | Input presence derived from the signal (defaults for unused inputs) | `crates/oc-core/src/presence.rs` |
 | Where the loop's time goes (stages, period jitter; the module's cycle counter) | `crates/oc-core/src/profile.rs` (firmware log lines: `crates/oc-firmware/src/profile_log.rs`) |

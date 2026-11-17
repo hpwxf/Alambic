@@ -21,6 +21,7 @@ use crate::calibration::{CV_OUT_MAX_MV, CV_OUT_MIN_MV};
 use crate::fmt::{TextBuf, write_volts};
 use crate::framebuffer::{FrameBuffer, WIDTH};
 use crate::platform::{CV_CHANNELS, MilliVolts};
+use crate::text::fonts::FONT_5X8;
 use crate::text::{self, TextStyle};
 
 /// Columns of history: one per screen pixel column.
@@ -130,7 +131,12 @@ impl ScopeApp {
         let mut line = TextBuf::<26>::new();
         let _ = write!(line, "SCOPE CV1 ");
         let _ = write_volts(&mut line, self.level, 3);
-        text::draw(frame, line.as_str(), Point::zero(), TextStyle::LIT);
+        text::draw(
+            frame,
+            line.as_str(),
+            Point::zero(),
+            TextStyle::lit(&FONT_5X8),
+        );
 
         for column in 0..TRACE_LEN {
             let Some(row) = self.column(column) else {
