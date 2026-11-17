@@ -40,6 +40,13 @@ Architectural decisions behind each change are in `journal/` (French).
 
 ### Fixed
 
+- **Every redraw stalled the loop for about 2 ms.** The tick that drew
+  the screen also sent the whole frame, longer than a period, so the
+  module ran at about 947 ticks a second. The engine now draws in one tick
+  and sends one page per following tick (`Display::page_count`,
+  `Display::present_page`; one page by default, so the simulator and Rack
+  are unchanged).
+
 - **Short trigger pulses were missed.** Triggers were sampled once per
   tick, so a pulse that started and ended between two samples was never
   seen (39 % of 0.94 ms pulses on the module). The GPIO edge detector now

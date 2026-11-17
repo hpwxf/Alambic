@@ -215,6 +215,25 @@ pub trait Display {
     /// Sends the framebuffer to the screen.
     fn present(&mut self);
 
+    /// How many parts [`Self::present_page`] sends the frame in.
+    ///
+    /// One, the default, means the frame goes out whole in the tick that
+    /// drew it, as a host's screen wants. The module's panel answers its
+    /// eight pages: a whole frame costs about as much as a tick, so the
+    /// engine sends one page per tick after the one that drew it
+    /// (journal/D-023, option C+).
+    fn page_count(&self) -> usize {
+        1
+    }
+
+    /// Sends part `page` of the frame, `0..page_count()`; by default the whole
+    /// frame, for the single page.
+    fn present_page(&mut self, page: usize) {
+        if page == 0 {
+            self.present();
+        }
+    }
+
     /// Sets the panel contrast, 0 to 255 (journal/D-026).
     ///
     /// The engine calls it only when the setting changes. A host without a

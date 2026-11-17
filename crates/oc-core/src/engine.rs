@@ -52,7 +52,8 @@ pub struct TickReport {
     pub tick_count: u64,
     /// Levels written to the CV outputs during this tick.
     pub cv_out: [MilliVolts; CV_CHANNELS],
-    /// Whether the screen was redrawn and presented during this tick.
+    /// Whether the screen was redrawn during this tick. A one-page display
+    /// was also sent the frame; a paged one gets it over the next ticks.
     pub rendered: bool,
 }
 
@@ -116,6 +117,8 @@ pub struct Engine<A, O, D, C, K, S> {
     last_duration_micros: u32,
     render_interval: u32,
     ticks_since_render: u32,
+    /// The page of the last drawn frame still to send, on a paged display.
+    next_page: Option<usize>,
 }
 
 impl<A, O, D, C, K, S> Engine<A, O, D, C, K, S>
@@ -165,6 +168,7 @@ where
             last_duration_micros: 0,
             render_interval: DEFAULT_RENDER_INTERVAL,
             ticks_since_render: 0,
+            next_page: None,
         }
     }
 
@@ -258,8 +262,18 @@ where
         self.write_outputs(&outputs);
         self.record_since(Stage::Outputs, mark);
 
-        self.ticks_since_render += 1;
-        let rendered = self.ticks_since_render >= self.render_interval;
+        // A tick either draws the screen or sends one page of it, never both:
+        // drawing and a whole frame together outlast a period (journal/D-023,
+        // option C+). The next frame waits for the last page.
+        self.ticks_since_render = self.ticks_since_render.saturating_add(1);
+        let sending = self.next_page.is_some();
+        if let Some(page) = self.next_page {
+            let mark = self.clock.fine_count();
+            self.display.present_page(page);
+            self.record_since(Stage::Page, mark);
+            self.next_page = Some(page + 1).filter(|&next| next < self.display.page_count());
+        }
+        let rendered = !sending && self.ticks_since_render >= self.render_interval;
         if rendered {
             self.ticks_since_render = 0;
             let context = TickContext {
@@ -279,7 +293,12 @@ where
                 }
             }
             self.record_since(Stage::Render, mark);
-            self.present();
+            self.prepare_frame();
+            if self.display.page_count() > 1 {
+                self.next_page = Some(0);
+            } else {
+                self.send_frame();
+            }
         }
 
         let duration = clamp_duration(self.clock.now_micros().wrapping_sub(started));
@@ -313,7 +332,10 @@ where
         let mark = self.clock.fine_count();
         self.splash.render(self.display.frame_mut());
         self.record_since(Stage::Render, mark);
-        self.present();
+        // Whole, on every tick: the splash keeps the outputs at rest, so its
+        // long ticks hold nothing back.
+        self.prepare_frame();
+        self.send_frame();
 
         let duration = clamp_duration(self.clock.now_micros().wrapping_sub(started));
         self.last_duration_micros = duration;
@@ -352,6 +374,7 @@ where
         self.forced_outputs = [None; CV_CHANNELS];
         self.last_duration_micros = 0;
         self.ticks_since_render = 0;
+        self.next_page = None;
     }
 
     /// Where the time of the ticks went since the boot splash ended or the
@@ -362,7 +385,7 @@ where
     }
 
     /// The profile, for a backend to add its own stages
-    /// ([`Stage::Sample`], [`Stage::Usb`], [`Stage::Page`]), set the
+    /// ([`Stage::Sample`], [`Stage::Usb`]), set the
     /// expected period or clear it.
     pub const fn profile_mut(&mut self) -> &mut Profile {
         &mut self.profile
@@ -548,10 +571,11 @@ where
         }
     }
 
-    /// Sends the frame, after the screen preferences: the contrast when it
-    /// changed, then the shift and the half turn, applied to the pixels in
-    /// the core so every backend and controller shows the same picture.
-    fn present(&mut self) {
+    /// Readies the drawn frame for sending, after the screen preferences: the
+    /// contrast when it changed, then the shift and the half turn, applied to
+    /// the pixels in the core so every backend and controller shows the same
+    /// picture.
+    fn prepare_frame(&mut self) {
         let display = self.settings.display;
         if self.applied_contrast != Some(display.contrast) {
             self.display.set_contrast(display.contrast);
@@ -565,6 +589,10 @@ where
             frame.rotate_half_turn();
         }
         frame.shift_columns(i32::from(display.column_shift));
+    }
+
+    /// Sends the whole frame at once.
+    fn send_frame(&mut self) {
         let mark = self.clock.fine_count();
         self.display.present();
         self.record_since(Stage::Present, mark);
@@ -881,6 +909,73 @@ mod tests {
         engine.reset();
         assert_eq!(engine.current_app(), AppId::Scope);
         assert_eq!(engine.settings(), &settings);
+    }
+
+    /// A booted engine whose display sends its frame in `pages` parts.
+    fn paged_engine(pages: usize, render_interval: u32) -> crate::testing::MockEngine {
+        let mut engine = mock_engine_at_boot(0);
+        engine.parts_mut().4.pages = pages;
+        engine.skip_splash();
+        engine.set_render_interval(render_interval);
+        engine
+    }
+
+    #[test]
+    fn a_paged_display_gets_one_page_per_tick_after_the_drawing() {
+        let mut engine = paged_engine(8, 20);
+        let rendered: [bool; 40] = core::array::from_fn(|_| engine.tick().rendered);
+        // Drawn on the 20th tick and every 20 after; the pages follow it.
+        let mut drawn = (0..40).filter(|&tick| rendered[tick]);
+        assert_eq!(
+            (drawn.next(), drawn.next(), drawn.next()),
+            (Some(19), Some(39), None)
+        );
+        let display = &engine.parts_mut().4;
+        assert_eq!(
+            display.pages_sent(),
+            [0, 1, 2, 3, 4, 5, 6, 7].map(Some),
+            "eight pages, in order, one per tick"
+        );
+        assert_eq!(display.presents, 0, "never the whole frame at once");
+    }
+
+    #[test]
+    fn no_frame_is_drawn_while_the_last_one_is_being_sent() {
+        // Asked to redraw on every tick, a paged display still needs eight
+        // ticks per frame: drawing over half-sent pixels would tear it.
+        let mut engine = paged_engine(4, 1);
+        let rendered: [bool; 10] = core::array::from_fn(|_| engine.tick().rendered);
+        assert_eq!(
+            rendered,
+            [
+                true, false, false, false, false, true, false, false, false, false
+            ]
+        );
+        assert_eq!(
+            engine.parts_mut().4.pages_sent(),
+            [0, 1, 2, 3, 0, 1, 2, 3].map(Some)
+        );
+    }
+
+    #[test]
+    fn a_one_page_display_is_sent_the_frame_it_was_drawn() {
+        let mut engine = paged_engine(1, 3);
+        let rendered: [bool; 6] = core::array::from_fn(|_| engine.tick().rendered);
+        assert_eq!(rendered, [false, false, true, false, false, true]);
+        let display = &engine.parts_mut().4;
+        assert_eq!(display.presents, 2);
+        assert_eq!(display.pages_sent(), &[] as &[Option<usize>]);
+    }
+
+    #[test]
+    fn the_splash_sends_whole_frames_even_to_a_paged_display() {
+        let mut engine = mock_engine_at_boot(0);
+        engine.parts_mut().4.pages = 8;
+        engine.tick();
+        engine.tick();
+        let display = &engine.parts_mut().4;
+        assert_eq!(display.presents, 2);
+        assert_eq!(display.pages_sent(), &[] as &[Option<usize>]);
     }
 
     #[test]

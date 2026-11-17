@@ -5,7 +5,7 @@
 | **Identifiant** | D-010 |
 | **Date** | 2026-11-16 (rétrospective ; décision prise le 2026-08-01, complétée le 2026-08-02) |
 | **Auteur** | Pascal Havé |
-| **Statut** | adoptée (rétrospective) |
+| **Statut** | adoptée (rétrospective), révisée |
 | **Commits** | `ec140ed` (`shared_bus.rs`, `SPI_CLOCK_HZ`), `3f50a42` (tronçons de 512 octets, `flush` avant relâchement du CS) |
 
 ## 1. Contexte
@@ -50,3 +50,10 @@ avant de relâcher son CS.
 Note : `docs/supersaw/` § 13 rapporte que le firmware Squares-and-Circles, sur ce même module et avec ce même bus
 partagé, produit de l'audio sans tic lié à l'écran. Le partage est donc soluble en logiciel ; la manière n'est pas
 connue (code fermé).
+
+## Révision (2026-11-17, lot 3c2) — une page OLED par tick sur le bus
+
+Le partage reste celui décrit plus haut (`SharedBus`, CS en GPIO, 8 MHz). Ce qui change est la taille des
+transactions OLED dans la boucle : une page (≈ 145 µs mesurées, indicatif) par tick au lieu d'une trame (≈ 1,16 ms),
+D-009 et D-023 (option C+). L'écriture du DAC n'attend donc plus jamais une trame entière, sauf pendant l'écran de
+démarrage, où les sorties sont au repos.

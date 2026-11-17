@@ -262,6 +262,13 @@ pub struct MockDisplay {
     pub presents: u32,
     /// Last contrast the engine set, `None` before the first.
     pub contrast: Option<u8>,
+    /// Parts the frame is sent in; one unless a test sets it, like the
+    /// module's eight pages.
+    pub pages: usize,
+    /// Pages sent one at a time, in order, oldest first, up to the capacity.
+    pub pages_sent: [Option<usize>; 32],
+    /// Entries used in [`Self::pages_sent`].
+    pub pages_sent_len: usize,
 }
 
 impl MockDisplay {
@@ -272,7 +279,16 @@ impl MockDisplay {
             frame: FrameBuffer::new(),
             presents: 0,
             contrast: None,
+            pages: 1,
+            pages_sent: [None; 32],
+            pages_sent_len: 0,
         }
+    }
+
+    /// The pages sent one at a time so far, in order.
+    #[must_use]
+    pub fn pages_sent(&self) -> &[Option<usize>] {
+        &self.pages_sent[..self.pages_sent_len]
     }
 
     /// The framebuffer as last drawn.
@@ -289,6 +305,19 @@ impl Display for MockDisplay {
 
     fn present(&mut self) {
         self.presents = self.presents.saturating_add(1);
+    }
+
+    fn page_count(&self) -> usize {
+        self.pages
+    }
+
+    fn present_page(&mut self, page: usize) {
+        if self.pages == 1 {
+            self.present();
+        } else if let Some(slot) = self.pages_sent.get_mut(self.pages_sent_len) {
+            *slot = Some(page);
+            self.pages_sent_len += 1;
+        }
     }
 
     fn set_contrast(&mut self, contrast: u8) {

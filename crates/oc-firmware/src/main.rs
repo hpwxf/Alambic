@@ -47,11 +47,11 @@ mod clock;
 mod cv_in;
 mod delay;
 mod flash_store;
+mod paged_panel;
 mod profile_log;
 mod reboot;
 #[cfg(feature = "settings-stress")]
 mod stress;
-mod timed_panel;
 mod usb;
 mod usb_log;
 
@@ -84,7 +84,7 @@ use crate::clock::SystemClock;
 use crate::cv_in::CvInputs;
 use crate::delay::CycleDelay;
 use crate::flash_store::SettingsFlash;
-use crate::timed_panel::TimedPanel;
+use crate::paged_panel::PagedPanel;
 use crate::usb::Usb;
 
 /// How long to spin-poll USB after bringing the CDC backend up, so a host that
@@ -236,7 +236,7 @@ fn main() -> ! {
         triggers,
         panel,
         SystemClock::new(gpt1, &mut cortex.DCB, &mut cortex.DWT),
-        TimedPanel::new(display),
+        PagedPanel::new(display),
     );
     engine.set_render_interval(board::RENDER_INTERVAL_TICKS);
     engine
@@ -325,12 +325,6 @@ fn main() -> ! {
         record_since(&mut engine, Stage::Sample, mark);
         let report = engine.tick();
         probe.after_tick(&report, &mut engine);
-        let (.., panel) = engine.parts_mut();
-        if let Some(pages) = panel.take_page_times() {
-            for cycles in pages {
-                engine.profile_mut().record(Stage::Page, cycles);
-            }
-        }
         if engine.take_save_request() {
             // Blocks for an erase now and then (tens of milliseconds); only
             // ever after an explicit SAVE on the settings screen.

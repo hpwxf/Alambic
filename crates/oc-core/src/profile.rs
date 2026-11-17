@@ -2,9 +2,8 @@
 //! (journal/D-029).
 //!
 //! The engine times its own stages ([`Stage::Tick`] down to
-//! [`Stage::Present`]) and the period between two ticks; a backend adds what
-//! happens outside the engine ([`Stage::Sample`], [`Stage::Usb`]) or below it
-//! ([`Stage::Page`], one display page sent) through
+//! [`Stage::Page`]) and the period between two ticks; a backend adds what
+//! happens outside the engine ([`Stage::Sample`], [`Stage::Usb`]) through
 //! [`crate::Engine::profile_mut`]. On the module the fine counter is the
 //! core's cycle counter, so a stage costs a few cycles to time and is known
 //! to 1.7 ns; a clock without a fine counter leaves the profile empty.
@@ -28,9 +27,10 @@ pub enum Stage {
     Outputs,
     /// Drawing the frame, on the ticks that redraw.
     Render,
-    /// Sending the frame to the display.
+    /// Sending the whole frame at once: a one-page display, or the splash.
     Present,
-    /// Sending one display page (backend).
+    /// Sending one page of the frame, one per tick after the drawing, on a
+    /// paged display (journal/D-023).
     Page,
     /// Sampling the inputs before the tick (backend).
     Sample,

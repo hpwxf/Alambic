@@ -55,6 +55,22 @@ Premier essai sur le module : seules ≈ 8 lignes de pixels semblaient vivantes.
 SH1106 ; `ssd1306` et `ssd1309` deviennent des features. Le même commit découpe les écritures SPI sous le plafond de
 trame LPSPI de 512 octets (D-010). `2deca8a` relaie `--features` à travers `cargo xtask build|size|hex|flash`.
 
+## Révision (2026-11-17, lot 3c2) — la trame part une page par tick
+
+D-023 (option C+) : dessiner et envoyer la trame entière dans le même tick coûtait ≈ 0,63 + 1,16 ms, au-delà de la
+période (mesure du lot 3b, indicative). Le framebuffer et le pilote ne changent pas ; ce qui change est **qui
+découpe l'envoi** :
+
+* `Display` gagne `page_count` (1 par défaut) et `present_page` (par défaut, la trame entière pour la page 0) ;
+* l'`Engine` dessine dans un tick (toast, rotation, décalage compris), puis envoie **une page par tick suivant** ;
+  il ne redessine qu'après la dernière page, si bien qu'un intervalle de rendu plus court que le nombre de pages
+  ne déchire jamais l'image ;
+* un écran d'une page (simulateur, Rack, tests) reçoit la trame dans le tick qui la dessine, comme avant : les
+  écrans dorés ne bougent pas ;
+* l'écran de démarrage envoie toujours la trame entière à chaque tick (sorties au repos, rien à protéger) ;
+* le firmware n'enveloppe plus le pilote pour chronométrer (`TimedPanel` devient `PagedPanel`) : l'`Engine` mesure
+  chaque page (`Stage::Page`), `Stage::Present` ne couvre plus que les envois entiers.
+
 ## Points ouverts (revue du 2026-11-16)
 
 * Les features `ssd1306` et `ssd1309` sont mutuellement exclusives, mais rien ne l'impose : avec les deux,
