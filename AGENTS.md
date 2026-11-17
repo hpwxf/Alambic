@@ -77,7 +77,8 @@ cargo xtask vcv install --rack-dir <path>   # build + drop into the Rack user pl
 cargo xtask vcv clean                       # wipe plugin + oc-vcv-ffi build artefacts
 cargo probe stats                           # live profile of a running module (oc-probe; also stream, out, screen, reboot)
 
-cargo bench                                 # criterion benchmarks (crates/oc-core/benches/engine.rs)
+cargo bench                                 # criterion benchmarks; HTML report in target/criterion/report/index.html
+cargo bench -p oc-core --bench graphics     # text and shapes against embedded-graphics, demo pages (benches/graphics.rs)
 ```
 
 `cargo fw`, `cargo sim` and `cargo probe` (aliases in `.cargo/config.toml`)
@@ -305,8 +306,10 @@ Full protocol, per level, with exact commands and what each proves: see
   stay a pure function over bytes (`validate_image(&[u8]) -> Result<...>`)
   reachable from tests via `xtask/src/lib.rs` — do not fold that logic back
   into `main.rs`.
-* `criterion` benchmarks (`crates/oc-core/benches/engine.rs`) are a
-  regression guard, not a hardware measurement: rendering costs roughly
+* `criterion` benchmarks (`crates/oc-core/benches/engine.rs` for the tick,
+  applets and conversions, `benches/graphics.rs` for text and shapes against
+  `embedded-graphics` and the demo pages; HTML report under
+  `target/criterion/report/`) are a regression guard, not a hardware measurement: rendering costs roughly
   three orders of magnitude more than the state update on the host, which is
   why `Engine::set_render_interval` decouples screen redraw from the 1 kHz
   signal path (`RENDER_INTERVAL_TICKS` in `board.rs`). The hardware

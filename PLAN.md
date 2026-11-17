@@ -44,8 +44,9 @@ comportemental (`oc-core`, D-002). Les applets musicaux sont la suite.
 | **2** — plusieurs applets (2026-08-19 → 09-05) | ✅ menu par accord haut + bas, applets résidents, `ScopeApp`, haut / bas au relâchement (D-021) ; module Rack renommé `Alambic` (D-015) ; étude supersaw (base de D-023). Réserve : CI rouge avec `--all-features` depuis l'ajout de la feature `octant` (D-013) | [etape-2.md](docs/plan/avancement/etape-2.md) |
 | **3** — assainissement, sonde live, cadence (2026-11-16 → 11-17) | ✅ dette de revue (0.2.0) ; sonde live `oc-probe` (D-029) : profil au cycle, flux, sorties forcées, capture, redémarrage ; niveau 9 (CV, triggers, rebouclage, multimètre) ; D-023 adoptée en **C+** : fronts des triggers capturés (0,94 ms : 960 / 960), écran une page par tick (1 000 ticks/s au lieu de ≈ 947). Réserves : `signal_tick` / `ui_tick` reporté à l'option A ; DAC8565 simultané non vérifié ; entrées à ≈ 20 mV près | [etape-3.md](docs/plan/avancement/etape-3.md) |
 | **4** — réglages système, calibration, persistance (2026-11-16) | ✅ écran `SETUP` et gestes de démarrage façon Phazerville (D-026) ; conversion dans `oc-core`, valeurs d'usine de Phazerville, assistant de calibration (D-027) ; réglages dans la flash du Teensy par l'API ROM, fichier (sim), patch (Rack) (D-028) ; seuil de présence 50 mV mesuré (D-024). Version **0.3.0**. Réserve : C++ Rack non compilé | [etape-4.md](docs/plan/avancement/etape-4.md) |
+| **5** — primitives graphiques et applet de démo (2026-11-17) | ✅ texte par colonnes (Diagnostic 646 → 88 µs), six polices en paramètre ; `oc_core::gfx` (bases en octets, contrôles, courbes, motifs) ; applet `GFX DEMO` ; `embedded-graphics` en dépendance de test (D-030) | [etape-5.md](docs/plan/avancement/etape-5.md) |
 
-### Étape 5 — primitives graphiques et applet de démonstration (en cours)
+### Étape 5 — primitives graphiques et applet de démonstration (terminée)
 
 Demandée le 2026-11-17 (D-030) : primitives tirées des écrans de Squares-and-Circles, applet de démo à quatre
 pages. Plan : [etape-5-gfx.md](docs/plan/etape-5-gfx.md).
@@ -55,7 +56,7 @@ pages. Plan : [etape-5-gfx.md](docs/plan/etape-5-gfx.md).
 | **5a** — bases | ✅ `oc_core::gfx` : rectangles, lignes droites, zone inversée en octets (mêmes pixels qu'`embedded-graphics`) ; ligne, cercle, disque, pointillés ; `Ink::{Lit, Dark, Invert}` ; sinus entier | fait |
 | **5b** — contrôles et motifs | ✅ `gfx::controls` (potentiomètre, sélecteur, valeur encadrée, légende, barres, bandeau), `gfx::plots` (`Area`, trace, min / max, histogramme, échelle à aiguille), `gfx::patterns` (cases, points, anneau euclidien, mini-clavier) ; `Ratio` ; tests par propriétés | fait |
 | **5c** — applet de démo | ✅ `AppId::Gfx` (« GFX DEMO »), cinq pages (polices, potentiomètres, courbes, séquenceur, mesures), sorties simulées, écrans dorés par page, banc par page | fait |
-| **5d** — mesure | `render` par page sur le module | à faire |
+| **5d** — mesure | ✅ courbes 105 µs de dessin, périodes inchangées ; pages validées à l'œil ; banc `graphics.rs` et rapports HTML | fait |
 
 ### Étape 3 — assainissement, puis choix de la cadence (terminée)
 

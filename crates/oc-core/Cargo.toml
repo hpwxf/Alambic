@@ -26,5 +26,9 @@ proptest.workspace = true
 name = "engine"
 harness = false
 
+[[bench]]
+name = "graphics"
+harness = false
+
 [lints]
 workspace = true

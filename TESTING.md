@@ -138,9 +138,14 @@ cargo bench -p oc-core
 ```
 
 `crates/oc-core/benches/engine.rs` benchmarks `engine/tick_idle`,
-`engine/tick_busy`, `applet/update`, `applet/render`,
+`engine/tick_busy`, `applet/update`, `applet/render`, `menu/render`,
 `conversions/adc_code_to_millivolts` and
-`conversions/millivolts_to_dac_code`. The firmware runs `Engine::tick` at
+`conversions/millivolts_to_dac_code`. `crates/oc-core/benches/graphics.rs`
+compares `oc_core::text` and `oc_core::gfx` with `embedded-graphics`, each
+comparison a group of two (`<name>/embedded_graphics`, `<name>/oc_core`),
+and times each page of the graphics demonstration (`gfx_demo/<page>`).
+Criterion writes an HTML report to `target/criterion/report/index.html`
+(`html_reports` feature). The firmware runs `Engine::tick` at
 1 kHz on a 600 MHz Cortex-M7, i.e. a one-millisecond budget; host timings are
 not that number, but a sudden change in relative cost is a real regression
 signal. As found during Step 2, rendering costs roughly three orders of

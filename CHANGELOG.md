@@ -49,6 +49,11 @@ Architectural decisions behind each change are in `journal/` (French).
   trigger intervals are real time, since a tick that redraws the screen
   lasts longer than the others.
 
+- **`benches/graphics.rs`**: text and shape drawing against
+  `embedded-graphics`, each comparison a group of two, and the demo pages;
+  criterion now also writes an HTML report
+  (`target/criterion/report/index.html`).
+
 ### Changed
 
 - **Text is drawn about ten times faster.** `oc_core::text` lays each glyph
@@ -57,7 +62,7 @@ Architectural decisions behind each change are in `journal/` (French).
   `embedded-graphics`; the pixels are the same, checked glyph by glyph
   against `embedded-graphics` in the tests. The diagnostic screen's
   drawing falls from 15.7 to 2.8 us on the host (criterion,
-  `cargo bench -p oc-core -- text`) and from about 646 to 88 us on the
+  `cargo bench -p oc-core --bench graphics`) and from about 646 to 88 us on the
   module, so the redraw tick is no longer the loop's tightest (journal/D-009).
   The font is part of the `TextStyle`: `oc_core::text::fonts` carries six
   `embedded-graphics` ASCII fonts (4x6 to 10x20) as generated column tables

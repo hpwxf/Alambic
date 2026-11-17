@@ -12,6 +12,7 @@
 | 2 — plusieurs applets | 2026-08-19 → 2026-09-05 | `83be36f` → `0b0fe3b` | aucun ; rationale dans les messages de `a839a03`, `8bdd9bc` |
 | 3 — assainissement, sonde live, cadence | 2026-11-16 → 2026-11-17 | `c6c2192` → `bc42378`, `706410a` → ce commit | `revue-decisions-2026-11-16.md`, `etape-3b-sonde.md`, `etape-3c-cadence.md` |
 | 4 — réglages système, calibration, persistance | 2026-11-16 | `92ab189` → `v0.3.0` | `etape-4-reglages-systeme.md` |
+| 5 — primitives graphiques et applet de démo | 2026-11-17 | `53ee310` → ce commit | `etape-5-gfx.md` |
 
 ## Étape 3 — critères d'acceptation, tenus
 
@@ -25,7 +26,6 @@
 
 | Étape | Contenu pressenti | Dépend de |
 |---|---|---|
-| 5 — primitives graphiques et applet de démo | `oc_core::gfx`, applet de démonstration (D-030), plan `etape-5-gfx.md` | D-009, D-030 |
 | 6 — premier applet musical | quantizer ou générateur d'enveloppes / LFO, à 1 kHz (D-023 C+) ; précision des entrées si l'applet suit une hauteur | D-006, D-023 |
 | 7 — chemin audio | échantillonnage non bloquant, supersaw PolyBLEP, DAC en DMA, priorités NVIC (`docs/supersaw/` § 12–14) | D-023 (option B) |
 | ? — seconde carte | Teensy 4.1 / O.R.N.8 (notes locales non suivies) | D-003, D-007 |

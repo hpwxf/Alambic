@@ -4,47 +4,21 @@
 //! 600 MHz Cortex-M7, which is a budget of one millisecond. These benchmarks
 //! measure the host, so the absolute numbers are not the target; what matters
 //! is catching a regression that makes the tick or the screen rendering
-//! dramatically more expensive.
+//! dramatically more expensive. Text and shape drawing, against
+//! `embedded-graphics`, have their own bench: `benches/graphics.rs`.
 
 use criterion::{Criterion, criterion_group, criterion_main};
-use embedded_graphics::Drawable as _;
-use embedded_graphics::mono_font::MonoTextStyle;
-use embedded_graphics::mono_font::ascii::FONT_5X8;
-use embedded_graphics::pixelcolor::BinaryColor;
-use embedded_graphics::prelude::{Point as EgPoint, Primitive as _, Size};
-use embedded_graphics::primitives::{PrimitiveStyle, Rectangle};
-use embedded_graphics::text::{Baseline, Text};
 use std::hint::black_box;
 
 use oc_core::apps::AppId;
 use oc_core::apps::diagnostic::DiagnosticApp;
-use oc_core::apps::gfx_demo::GfxDemoApp;
 use oc_core::apps::{InputSnapshot, TickContext};
 use oc_core::buttons::ButtonReader;
 use oc_core::calibration::{CvInputCalibration, CvOutputCalibration};
-#[path = "../tests/common/mod.rs"]
-mod common;
-
-use common::Reference;
 use oc_core::framebuffer::FrameBuffer;
-use oc_core::gfx::Point;
-use oc_core::gfx::{self, Ink};
 use oc_core::menu::Menu;
 use oc_core::platform::{Button, ControlEvents, CvChannel, TriggerChannel};
 use oc_core::testing::mock_engine;
-use oc_core::text::{self, TextStyle, fonts};
-
-/// A screenful of text, as the diagnostic applet draws it.
-const SCREEN_TEXT: [&str; 8] = [
-    "OC-RUST 0.3.0  987us",
-    ">1 -2.500V P~H    3",
-    " 2 +0.000V .-l    0",
-    " 3 +1.234V P~H   12",
-    " 4 +4.800V P-l    0",
-    "MODE OFFSET OFS +0.000V",
-    "OUT -2.5 +0.0 +1.2 +4.8",
-    "TICKS 123456",
-];
 
 /// A snapshot with all four inputs and all four triggers busy.
 fn busy_snapshot() -> InputSnapshot {
@@ -143,99 +117,6 @@ fn menu(criterion: &mut Criterion) {
     group.finish();
 }
 
-/// Text laid column by column (`oc_core::text`) against the
-/// `embedded-graphics` path it replaced, which draws the same pixels one at a
-/// time: the ratio is what the module's redraw tick gained (journal/D-009).
-fn text(criterion: &mut Criterion) {
-    let mut group = criterion.benchmark_group("text");
-
-    group.bench_function("screen_embedded_graphics", |bencher| {
-        let style = MonoTextStyle::new(&FONT_5X8, BinaryColor::On);
-        let mut frame = FrameBuffer::new();
-        bencher.iter(|| {
-            frame.clear();
-            for (row, line) in (0..).zip(SCREEN_TEXT) {
-                let at = EgPoint::new(0, row * 8);
-                let _ = Text::with_baseline(black_box(line), at, style, Baseline::Top)
-                    .draw(&mut Reference(&mut frame));
-            }
-            black_box(frame.lit_pixels())
-        });
-    });
-
-    group.bench_function("screen_columns", |bencher| {
-        let mut frame = FrameBuffer::new();
-        bencher.iter(|| {
-            frame.clear();
-            for (row, line) in (0..).zip(SCREEN_TEXT) {
-                text::draw(
-                    &mut frame,
-                    black_box(line),
-                    Point::new(0, row * 8),
-                    TextStyle::lit(&fonts::FONT_5X8),
-                );
-            }
-            black_box(frame.lit_pixels())
-        });
-    });
-
-    group.finish();
-}
-
-/// The byte-wise bases of `oc_core::gfx` against `embedded-graphics`, which
-/// lights the same pixels one at a time (journal/D-030).
-fn shapes(criterion: &mut Criterion) {
-    let mut group = criterion.benchmark_group("gfx");
-
-    group.bench_function("fill_rect_embedded_graphics", |bencher| {
-        let mut frame = FrameBuffer::new();
-        let style = PrimitiveStyle::with_fill(BinaryColor::On);
-        bencher.iter(|| {
-            let area = Rectangle::new(EgPoint::new(black_box(3), 5), Size::new(100, 40));
-            let _ = area.into_styled(style).draw(&mut Reference(&mut frame));
-            black_box(frame.lit_pixels())
-        });
-    });
-
-    group.bench_function("fill_rect_bytes", |bencher| {
-        let mut frame = FrameBuffer::new();
-        bencher.iter(|| {
-            gfx::fill_rect(&mut frame, black_box(3), 5, 100, 40, Ink::Lit);
-            black_box(frame.lit_pixels())
-        });
-    });
-
-    group.finish();
-}
-
-/// Each page of the graphics demonstration: the drawing loads the module's
-/// profile will show per page (journal/D-030).
-fn gfx_demo(criterion: &mut Criterion) {
-    let mut group = criterion.benchmark_group("gfx_demo");
-    let mut app = GfxDemoApp::new();
-    let turn = InputSnapshot {
-        controls: ControlEvents {
-            encoder_delta: [1, 0],
-            button_down: [false; 4],
-        },
-        elapsed_micros: 1_000,
-        ..InputSnapshot::default()
-    };
-    for _ in 0..5 {
-        let name = format!("{:?}", app.page()).to_lowercase();
-        let page = app.clone();
-        group.bench_function(name, |bencher| {
-            let mut frame = FrameBuffer::new();
-            bencher.iter(|| {
-                page.render(&mut frame, &TickContext::default());
-                black_box(frame.lit_pixels())
-            });
-        });
-        app.update(&turn);
-    }
-    group.finish();
-}
-
 fn conversions(criterion: &mut Criterion) {
     let mut group = criterion.benchmark_group("conversions");
     let input = CvInputCalibration::FACTORY;
@@ -264,14 +145,5 @@ fn conversions(criterion: &mut Criterion) {
     group.finish();
 }
 
-criterion_group!(
-    benches,
-    engine_tick,
-    applet,
-    menu,
-    text,
-    shapes,
-    gfx_demo,
-    conversions
-);
+criterion_group!(benches, engine_tick, applet, menu, conversions);
 criterion_main!(benches);

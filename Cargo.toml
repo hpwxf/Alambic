@@ -78,7 +78,8 @@ ratatui = { version = "0.30", default-features = false, features = [
 ] }
 
 # Test & bench tooling
-criterion = "0.7"
+# `html_reports`: `cargo bench` also writes target/criterion/report/index.html.
+criterion = { version = "0.7", features = ["html_reports"] }
 proptest = "1.7"
 
 [workspace.lints.rust]

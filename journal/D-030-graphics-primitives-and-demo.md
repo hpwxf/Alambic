@@ -5,7 +5,7 @@
 | **Identifiant** | D-030 |
 | **Date** | 2026-11-17 |
 | **Auteur** | Pascal Havé |
-| **Statut** | adoptée, révisée |
+| **Statut** | adoptée, révisée ; étape 5 close le 2026-11-17 |
 | **Commits** | ce commit (ADR, plan) ; implémentation à l'étape 5 (lots 5a à 5d) |
 | **Relations** | prolonge D-009 (framebuffer, texte par colonnes, police en paramètre) ; ajoute une applet à D-021 ; respecte D-005 (pas de flottant dans `oc-core`) ; mesurée par D-029 |
 
@@ -79,8 +79,8 @@ cercle du point milieu, disque en lignes horizontales), parce que toute forme do
 couvre (`Ink::Invert`, l'aiguille d'un potentiomètre sur une zone allumée), ce qu'`embedded-graphics` ne fait pas ;
 chaque point est encré une seule fois, si bien qu'inverser deux fois rend l'image d'origine (testé). Les formes
 droites (`fill_rect`, `hline`, `vline`, `rect`) écrivent des octets par masque et allument les mêmes pixels
-qu'`embedded-graphics` (testé, bords et coupures compris) ; banc `gfx/` : un rectangle de 100 × 40, 4,36 → 0,43 µs
-sur l'hôte (indicatif). Sinus entier au 1/256 de tour, à une unité près du sinus réel (`tests/trig.rs`).
+qu'`embedded-graphics` (testé, bords et coupures compris) ; banc : un rectangle de 100 × 40, 4,36 → 0,43 µs
+sur l'hôte (indicatif ; mesure qui comptait aussi les pixels allumés, corrigée plus bas). Sinus entier au 1/256 de tour, à une unité près du sinus réel (`tests/trig.rs`).
 
 ## Révision (2026-11-17, lots 5b et 5c) — cinq pages, sorties simulées
 
@@ -103,10 +103,35 @@ gardé comme référence, donc seulement pour les tests.
   bandes de surbrillance du menu et du SETUP et le cadre du message de sauvegarde passent par `gfx::fill_rect` /
   `gfx::rect` ; le firmware d'essai `settings-stress` écrit par `text::draw`.
 * `FrameBuffer` n'implémente plus `DrawTarget`. Les tests et le banc dessinent la référence par un adaptateur,
-  `tests/common/mod.rs` (`Reference`), partagé avec `benches/engine.rs` ; les comparaisons de formes sont devenues
+  `tests/common/mod.rs` (`Reference`), partagé avec les bancs ; les comparaisons de formes sont devenues
   des tests d'intégration (`tests/gfx.rs`), les tests de texte l'étaient déjà (`tests/fonts.rs`,
   `tests/diagnostic.rs`).
 * Effet mesuré sur le firmware (`cargo xtask size`) : `.text` 114 932 → 113 980 octets (−952), `.rodata` 25 872 →
   25 536 (−336). `embedded-graphics` n'est plus compilé pour le firmware, le simulateur ni le module Rack.
 * Une applet qui voudrait `embedded-graphics` le rajouterait derrière une feature, avec un `DrawTarget` pour
   `FrameBuffer` ; rien ne le demande aujourd'hui.
+
+## Révision (2026-11-17, clôture de l'étape 5) — un banc pour le graphisme
+
+Demande de l'utilisateur : isoler dans un seul banc tout ce qui touche à `gfx` et `text` face à
+`embedded-graphics`. `benches/graphics.rs` : chaque comparaison est un groupe de deux (`embedded_graphics`,
+`oc_core`), plus les pages de la démo ; `benches/engine.rs` ne dépend plus d'`embedded-graphics`. Rapports HTML de
+criterion activés (feature `html_reports`, `target/criterion/report/index.html`). Mesure propre (sans le comptage
+des pixels que faisaient les premiers bancs), hôte, indicatif :
+
+| Comparaison | `embedded-graphics` | `oc_core` |
+|---|---|---|
+| écran de texte 5×8 | 13,29 µs | 1,32 µs |
+| même texte hors grille des pages | 12,13 µs | 1,35 µs |
+| texte 10×20 | 5,50 µs | 0,72 µs |
+| rectangle plein 100 × 40 | 3,69 µs | 0,041 µs |
+| contour 100 × 40 | 357 ns | 51 ns |
+| 16 lignes en éventail | 6,14 µs | 4,98 µs |
+| cercle, rayon 10 | 432 ns | 205 ns |
+| disque, rayon 10 | 491 ns | 274 ns |
+
+Les lignes quelconques restent posées pixel par pixel des deux côtés (≈ × 1,2) : la seule forme où rien n'est gagné,
+sans conséquence tant qu'aucune page n'en trace beaucoup.
+
+**Étape 5 close** : pages de `GFX DEMO` validées à l'œil par l'utilisateur sur le module, page des courbes à
+105 µs de dessin, périodes inchangées (`docs/plan/avancement/etape-5.md`).
