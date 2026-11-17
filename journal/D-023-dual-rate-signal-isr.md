@@ -111,3 +111,8 @@ Ce qui ferait passer à A ou B (remplace le § 5) : un applet qui demande une ca
 (enveloppes de l'ordre de la milliseconde, triggers datés à mieux qu'un tick) ⇒ A, précédée de l'échantillonnage
 non bloquant ; un chemin audio (étape 5) ⇒ B. Dans les deux cas, C+ en est la première marche : capture des
 fronts, envoi par pages et scission du tick restent.
+
+**Vérifié sur le module TLM (2026-11-17, lots 3c1 et 3c2)**, valeurs indicatives : triggers de 0,94 ms comptés
+960 / 960 (588 avant) ; 1 000 ticks par seconde (≈ 947 avant), toutes les périodes à moins de 4 µs de la cible sur
+les écrans Diagnostic, Scope et SETUP ; pire tick de dessin ≈ 0,96 ms échantillonnage compris (Diagnostic). Détail :
+`docs/plan/etape-3c-cadence.md`.

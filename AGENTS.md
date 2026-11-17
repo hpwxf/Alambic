@@ -301,8 +301,10 @@ Full protocol, per level, with exact commands and what each proves: see
   the CV outputs (multimeter), the trigger inputs and the output-to-input
   loopback (`docs/plan/avancement/etape-3.md`). **Not** checked: the DAC8565
   simultaneous update. Known limits measured there: the inputs read within
-  about 20 mV only (one gain shared by the four inputs); render ticks overrun
-  their period, so the loop runs below 1 kHz (journal/D-023, lot 3c); and
+  about 20 mV only (one gain shared by the four inputs); the redraw tick,
+  which no longer sends the frame (one page per tick follows it), has about
+  40 us of margin on the diagnostic screen, the costliest to draw
+  (journal/D-023, lot 3c2); and
   trigger pulses shorter than about 3 ms were missed (39 % of 0.94 ms
   pulses) while triggers were only sampled: the GPIO edge detector now
   latches them (journal/D-019, lot 3c1; 960 of 960 such pulses counted on the
