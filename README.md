@@ -399,6 +399,27 @@ reset handler: 0x60001031
 elf sha256: 9566627c35083fb8...
 ```
 
+### ELF or HEX
+
+The build produces an **ELF**,
+`target/thumbv7em-none-eabihf/release/oc-firmware`; `cargo xtask hex` turns
+it into an **Intel HEX** file, `dist/oc-firmware.hex`, with the toolchain's
+own `llvm-objcopy`. The HEX is the format PJRC's tools read: the Teensy
+Loader application and `teensy_loader_cli`. Use it to install without this
+repository's tooling, or to hand a firmware to someone who uses PJRC's
+loader; CI uploads it as a build artefact. `cargo xtask flash` writes the
+same HEX itself before invoking the loader, so running `cargo xtask hex`
+first is never needed.
+
+The checks above need the ELF: a HEX holds only addresses and bytes, so
+neither the architecture, nor the entry point, nor the vector table can be
+verified from it. That is why the browser flasher ([In the
+browser](#in-the-browser)) takes the ELF, and why a firmware released for
+people who install it from the page must ship as an ELF, not only as a HEX
+(journal/D-031). The flash contents the page derives from the ELF are the
+HEX's byte for byte (`real_firmware_matches_its_hex_when_present`,
+`TESTING.md`).
+
 ## Memory layout and boot
 
 The memory map and the i.MX RT boot sections (FlexSPI Configuration Block,
