@@ -31,12 +31,7 @@
 
 use core::fmt::Write as _;
 
-use embedded_graphics::Drawable as _;
-use embedded_graphics::mono_font::MonoTextStyle;
-use embedded_graphics::mono_font::ascii::FONT_5X8;
-use embedded_graphics::pixelcolor::BinaryColor;
 use embedded_graphics::prelude::Point;
-use embedded_graphics::text::{Baseline, Text};
 
 use crate::buttons::ButtonEvents;
 use crate::calibration::{
@@ -46,6 +41,7 @@ use crate::fmt::TextBuf;
 use crate::framebuffer::{FrameBuffer, ROW_HEIGHT};
 use crate::platform::{Button, CV_CHANNELS, MilliVolts};
 use crate::settings::Settings;
+use crate::text::{self, TextStyle};
 
 /// Table point of the low DAC step: −3 V, the first octave.
 pub const LOW_POINT: usize = 0;
@@ -495,11 +491,9 @@ impl CalibrationWizard {
             Notice::GainIncomplete => "NOW THE OTHER LEVEL",
         });
 
-        let style = MonoTextStyle::new(&FONT_5X8, BinaryColor::On);
         for (row, line) in lines.iter().enumerate() {
             let y = i32::try_from(row).unwrap_or(0) * ROW_HEIGHT;
-            let _ = Text::with_baseline(line.as_str(), Point::new(0, y), style, Baseline::Top)
-                .draw(frame);
+            text::draw(frame, line.as_str(), Point::new(0, y), TextStyle::LIT);
         }
     }
 

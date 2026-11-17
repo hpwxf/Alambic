@@ -17,12 +17,9 @@
 //! very screen that fixes it unusable.
 
 use embedded_graphics::Drawable as _;
-use embedded_graphics::mono_font::MonoTextStyle;
-use embedded_graphics::mono_font::ascii::FONT_5X8;
 use embedded_graphics::pixelcolor::BinaryColor;
 use embedded_graphics::prelude::{Point, Primitive as _, Size};
 use embedded_graphics::primitives::{PrimitiveStyle, Rectangle};
-use embedded_graphics::text::{Alignment, Baseline, Text, TextStyleBuilder};
 
 use crate::apps::AppId;
 use crate::buttons::ButtonEvents;
@@ -30,6 +27,7 @@ use crate::fmt::TextBuf;
 use crate::framebuffer::{FrameBuffer, ROW_HEIGHT, ROWS, WIDTH_I32};
 use crate::platform::Button;
 use crate::settings::{DisplaySettings, Settings};
+use crate::text::{self, Alignment, TextStyle};
 
 /// Contrast change per detent of the right encoder.
 pub const CONTRAST_STEP: u8 = 16;
@@ -278,16 +276,14 @@ impl SystemScreen {
     /// Draws the title and the visible lines, the highlight in inverse video.
     pub fn render(&self, frame: &mut FrameBuffer) {
         frame.clear();
-        let lit = MonoTextStyle::new(&FONT_5X8, BinaryColor::On);
-        let dark = MonoTextStyle::new(&FONT_5X8, BinaryColor::Off);
-        let _ = Text::with_baseline("SETUP", Point::zero(), lit, Baseline::Top).draw(frame);
+        text::draw(frame, "SETUP", Point::zero(), TextStyle::LIT);
         if self.safe_mode {
-            let right = TextStyleBuilder::new()
-                .alignment(Alignment::Right)
-                .baseline(Baseline::Top)
-                .build();
-            let _ = Text::with_text_style("SAFE MODE", Point::new(WIDTH_I32 - 1, 0), lit, right)
-                .draw(frame);
+            text::draw(
+                frame,
+                "SAFE MODE",
+                Point::new(WIDTH_I32 - 1, 0),
+                TextStyle::LIT.aligned(Alignment::Right),
+            );
         }
 
         let first = self.first_visible();
@@ -307,23 +303,15 @@ impl SystemScreen {
                     .into_styled(PrimitiveStyle::with_fill(BinaryColor::On))
                     .draw(frame);
             }
-            let style = if highlighted { dark } else { lit };
-            let _ = Text::with_baseline(
-                line.label(),
-                Point::new(TEXT_INSET, top),
-                style,
-                Baseline::Top,
-            )
-            .draw(frame);
+            let style = if highlighted {
+                TextStyle::DARK
+            } else {
+                TextStyle::LIT
+            };
+            text::draw(frame, line.label(), Point::new(TEXT_INSET, top), style);
             let mut value = TextBuf::<12>::new();
             self.value(line, &mut value);
-            let _ = Text::with_baseline(
-                value.as_str(),
-                Point::new(VALUE_COLUMN, top),
-                style,
-                Baseline::Top,
-            )
-            .draw(frame);
+            text::draw(frame, value.as_str(), Point::new(VALUE_COLUMN, top), style);
         }
     }
 }

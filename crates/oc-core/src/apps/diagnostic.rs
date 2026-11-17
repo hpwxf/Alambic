@@ -27,12 +27,7 @@
 
 use core::fmt::Write as _;
 
-use embedded_graphics::Drawable as _;
-use embedded_graphics::mono_font::MonoTextStyle;
-use embedded_graphics::mono_font::ascii::FONT_5X8;
-use embedded_graphics::pixelcolor::BinaryColor;
 use embedded_graphics::prelude::Point;
-use embedded_graphics::text::{Baseline, Text};
 
 use crate::apps::{InputSnapshot, TickContext};
 use crate::buttons::ButtonEvents;
@@ -46,6 +41,7 @@ use crate::platform::{
 };
 use crate::presence::{CvPresence, Presence};
 use crate::signal::DEFAULT_ACTIVITY_THRESHOLD_MV;
+use crate::text::{self, TextStyle};
 
 /// Offset change per encoder detent, in millivolts.
 pub const OFFSET_STEP_MV: MilliVolts = 100;
@@ -278,12 +274,11 @@ impl DiagnosticApp {
     /// Draws the diagnostic screen.
     pub fn render(&self, frame: &mut FrameBuffer, context: &TickContext) {
         frame.clear();
-        let style = MonoTextStyle::new(&FONT_5X8, BinaryColor::On);
         let mut line = TextBuf::<26>::new();
 
         let mut draw = |line: &TextBuf<26>, row: i32| {
             let top_left = Point::new(0, row * ROW_HEIGHT);
-            let _ = Text::with_baseline(line.as_str(), top_left, style, Baseline::Top).draw(frame);
+            text::draw(frame, line.as_str(), top_left, TextStyle::LIT);
         };
 
         let _ = write!(line, "{}{:>5}us", crate::BANNER, context.duration_micros);

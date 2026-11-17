@@ -50,6 +50,7 @@ pub mod signal;
 pub mod splash;
 pub mod system;
 pub mod testing;
+pub mod text;
 pub mod toast;
 pub mod wizard;
 

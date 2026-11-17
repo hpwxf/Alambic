@@ -7,6 +7,12 @@
 //! dramatically more expensive.
 
 use criterion::{Criterion, criterion_group, criterion_main};
+use embedded_graphics::Drawable as _;
+use embedded_graphics::mono_font::MonoTextStyle;
+use embedded_graphics::mono_font::ascii::FONT_5X8;
+use embedded_graphics::pixelcolor::BinaryColor;
+use embedded_graphics::prelude::Point;
+use embedded_graphics::text::{Baseline, Text};
 use std::hint::black_box;
 
 use oc_core::apps::AppId;
@@ -18,6 +24,19 @@ use oc_core::framebuffer::FrameBuffer;
 use oc_core::menu::Menu;
 use oc_core::platform::{Button, ControlEvents, CvChannel, TriggerChannel};
 use oc_core::testing::mock_engine;
+use oc_core::text::{self, TextStyle};
+
+/// A screenful of text, as the diagnostic applet draws it.
+const SCREEN_TEXT: [&str; 8] = [
+    "OC-RUST 0.3.0  987us",
+    ">1 -2.500V P~H    3",
+    " 2 +0.000V .-l    0",
+    " 3 +1.234V P~H   12",
+    " 4 +4.800V P-l    0",
+    "MODE OFFSET OFS +0.000V",
+    "OUT -2.5 +0.0 +1.2 +4.8",
+    "TICKS 123456",
+];
 
 /// A snapshot with all four inputs and all four triggers busy.
 fn busy_snapshot() -> InputSnapshot {
@@ -116,6 +135,45 @@ fn menu(criterion: &mut Criterion) {
     group.finish();
 }
 
+/// Text laid column by column (`oc_core::text`) against the
+/// `embedded-graphics` path it replaced, which draws the same pixels one at a
+/// time: the ratio is what the module's redraw tick gained (journal/D-009).
+fn text(criterion: &mut Criterion) {
+    let mut group = criterion.benchmark_group("text");
+
+    group.bench_function("screen_embedded_graphics", |bencher| {
+        let style = MonoTextStyle::new(&FONT_5X8, BinaryColor::On);
+        let mut frame = FrameBuffer::new();
+        bencher.iter(|| {
+            frame.clear();
+            for (row, line) in (0..).zip(SCREEN_TEXT) {
+                let at = Point::new(0, row * 8);
+                let _ =
+                    Text::with_baseline(black_box(line), at, style, Baseline::Top).draw(&mut frame);
+            }
+            black_box(frame.lit_pixels())
+        });
+    });
+
+    group.bench_function("screen_columns", |bencher| {
+        let mut frame = FrameBuffer::new();
+        bencher.iter(|| {
+            frame.clear();
+            for (row, line) in (0..).zip(SCREEN_TEXT) {
+                text::draw(
+                    &mut frame,
+                    black_box(line),
+                    Point::new(0, row * 8),
+                    TextStyle::LIT,
+                );
+            }
+            black_box(frame.lit_pixels())
+        });
+    });
+
+    group.finish();
+}
+
 fn conversions(criterion: &mut Criterion) {
     let mut group = criterion.benchmark_group("conversions");
     let input = CvInputCalibration::FACTORY;
@@ -144,5 +202,5 @@ fn conversions(criterion: &mut Criterion) {
     group.finish();
 }
 
-criterion_group!(benches, engine_tick, applet, menu, conversions);
+criterion_group!(benches, engine_tick, applet, menu, text, conversions);
 criterion_main!(benches);

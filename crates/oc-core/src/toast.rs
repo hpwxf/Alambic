@@ -6,14 +6,12 @@
 //! matching message for [`DURATION_MICROS`] on top of the screen in use.
 
 use embedded_graphics::Drawable as _;
-use embedded_graphics::mono_font::MonoTextStyle;
-use embedded_graphics::mono_font::ascii::FONT_5X8;
 use embedded_graphics::pixelcolor::BinaryColor;
 use embedded_graphics::prelude::{Point, Primitive as _, Size};
 use embedded_graphics::primitives::{PrimitiveStyleBuilder, Rectangle};
-use embedded_graphics::text::{Alignment, Baseline, Text, TextStyleBuilder};
 
 use crate::framebuffer::{FrameBuffer, HEIGHT_I32, WIDTH_I32};
+use crate::text::{self, Alignment, TextStyle};
 
 /// How long a message stays up, in microseconds.
 pub const DURATION_MICROS: u32 = 1_500_000;
@@ -87,15 +85,10 @@ impl Toast {
             .into_styled(style)
             .draw(frame);
 
-        let text = MonoTextStyle::new(&FONT_5X8, BinaryColor::On);
-        let centred = TextStyleBuilder::new()
-            .alignment(Alignment::Center)
-            .baseline(Baseline::Top)
-            .build();
+        let centred = TextStyle::LIT.aligned(Alignment::Center);
         for (index, line) in self.outcome.lines().into_iter().enumerate() {
             let y = top_left.y + 5 + i32::try_from(index).unwrap_or(0) * 10;
-            let _ = Text::with_text_style(line, Point::new(WIDTH_I32 / 2, y), text, centred)
-                .draw(frame);
+            text::draw(frame, line, Point::new(WIDTH_I32 / 2, y), centred);
         }
     }
 }

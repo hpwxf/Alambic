@@ -14,14 +14,10 @@
 // below are proven safe rather than accidental narrowing.
 #![allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
 
-use embedded_graphics::Drawable as _;
-use embedded_graphics::mono_font::MonoTextStyle;
-use embedded_graphics::mono_font::ascii::FONT_5X8;
-use embedded_graphics::pixelcolor::BinaryColor;
 use embedded_graphics::prelude::Point;
-use embedded_graphics::text::{Alignment, Baseline, Text, TextStyleBuilder};
 
 use crate::framebuffer::{FrameBuffer, HEIGHT_I32, WIDTH_I32};
+use crate::text::{self, Alignment, Baseline, TextStyle};
 
 /// Duration of the boot animation, in microseconds.
 ///
@@ -106,11 +102,9 @@ impl SplashScreen {
     pub fn render(&self, frame: &mut FrameBuffer) {
         frame.clear();
 
-        let style = MonoTextStyle::new(&FONT_5X8, BinaryColor::On);
-        let text_style = TextStyleBuilder::new()
-            .alignment(Alignment::Center)
-            .baseline(Baseline::Middle)
-            .build();
+        let centred = TextStyle::LIT
+            .aligned(Alignment::Center)
+            .with_baseline(Baseline::Middle);
         // With a build identifier, the two lines straddle the centre; without
         // one, the banner sits on it as before.
         let banner_y = if self.build_id.is_empty() {
@@ -118,34 +112,27 @@ impl SplashScreen {
         } else {
             HEIGHT_I32 / 2 - BUILD_ID_GAP / 2
         };
-        let _ = Text::with_text_style(
+        text::draw(
+            frame,
             crate::BANNER,
             Point::new(WIDTH_I32 / 2, banner_y),
-            style,
-            text_style,
-        )
-        .draw(frame);
+            centred,
+        );
         if !self.build_id.is_empty() {
-            let _ = Text::with_text_style(
+            text::draw(
+                frame,
                 self.build_id,
                 Point::new(WIDTH_I32 / 2, banner_y + BUILD_ID_GAP),
-                style,
-                text_style,
-            )
-            .draw(frame);
+                centred,
+            );
         }
 
-        let hint = TextStyleBuilder::new()
-            .alignment(Alignment::Center)
-            .baseline(Baseline::Top)
-            .build();
-        let _ = Text::with_text_style(
+        text::draw(
+            frame,
             GESTURE_HINT,
             Point::new(WIDTH_I32 / 2, GESTURE_HINT_Y),
-            style,
-            hint,
-        )
-        .draw(frame);
+            TextStyle::LIT.aligned(Alignment::Center),
+        );
 
         draw_border(frame, self.lit_border_pixels());
     }

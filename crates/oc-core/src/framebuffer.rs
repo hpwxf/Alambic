@@ -149,6 +149,41 @@ impl FrameBuffer {
         }
     }
 
+    /// Lights (`on`) or darkens the pixels set in `bits` of column `x`, bit
+    /// `r` being the pixel `top + r`; the pixels clear in `bits` are left as
+    /// they are. Anything outside the screen is dropped.
+    ///
+    /// This is how [`crate::text`] lays a glyph column: a whole byte when
+    /// `top` falls on a page, two shifted halves otherwise, instead of eight
+    /// pixels set one at a time.
+    pub const fn paint_column(&mut self, x: i32, top: i32, bits: u8, on: bool) {
+        if x < 0 || x >= WIDTH_I32 || bits == 0 {
+            return;
+        }
+        let page = top.div_euclid(8);
+        let shift = top.rem_euclid(8) as u32;
+        // The part of the column in `page`, then the part spilling into the
+        // page below.
+        self.paint_byte(page, x, bits << shift, on);
+        if shift != 0 {
+            self.paint_byte(page + 1, x, bits >> (8 - shift), on);
+        }
+    }
+
+    /// Lights or darkens the pixels set in `mask` at column `x` of `page`, if
+    /// that page is on the screen.
+    const fn paint_byte(&mut self, page: i32, x: i32, mask: u8, on: bool) {
+        if page < 0 || page >= PAGES as i32 || mask == 0 {
+            return;
+        }
+        let index = page as usize * WIDTH + x as usize;
+        if on {
+            self.data[index] |= mask;
+        } else {
+            self.data[index] &= !mask;
+        }
+    }
+
     /// Byte index of a pixel, or `None` when it falls outside the screen.
     const fn index_of(x: i32, y: i32) -> Option<usize> {
         if x < 0 || y < 0 || x >= WIDTH_I32 || y >= HEIGHT_I32 {

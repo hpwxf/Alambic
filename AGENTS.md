@@ -359,6 +359,7 @@ Full protocol, per level, with exact commands and what each proves: see
 | The Rack stand-in for the `up`+`down` chord       | `vcv/OrnamentCrimeAlambic/src/Alambic.cpp` (`appendContextMenu`) |
 | Button debouncing and the `up`+`down` chord       | `crates/oc-core/src/buttons.rs` |
 | The boot splash screen (name/version, progressive border) | `crates/oc-core/src/splash.rs` |
+| Text drawing (the 5x8 font as column bytes; same pixels as `embedded-graphics`) | `crates/oc-core/src/text.rs` |
 | ADC/DAC unit conversion and calibration           | `crates/oc-core/src/calibration.rs` |
 | Input presence derived from the signal (defaults for unused inputs) | `crates/oc-core/src/presence.rs` |
 | Where the loop's time goes (stages, period jitter; the module's cycle counter) | `crates/oc-core/src/profile.rs` (firmware log lines: `crates/oc-firmware/src/profile_log.rs`) |

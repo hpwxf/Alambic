@@ -38,6 +38,17 @@ Architectural decisions behind each change are in `journal/` (French).
   trigger intervals are real time, since a tick that redraws the screen
   lasts longer than the others.
 
+### Changed
+
+- **Text is drawn about ten times faster.** `oc_core::text` lays each glyph
+  of the 5x8 font as five column bytes straight into the framebuffer's
+  page layout, instead of setting its pixels one at a time through
+  `embedded-graphics`; the pixels are the same, checked glyph by glyph
+  against `embedded-graphics` in the tests. The diagnostic screen's
+  drawing falls from 15.7 to 2.8 us on the host (criterion,
+  `cargo bench -p oc-core -- text`), which widens the margin of the
+  module's redraw tick (journal/D-009).
+
 ### Fixed
 
 - **Every redraw stalled the loop for about 2 ms.** The tick that drew

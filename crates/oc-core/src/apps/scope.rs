@@ -14,18 +14,14 @@
 
 use core::fmt::Write as _;
 
-use embedded_graphics::Drawable as _;
-use embedded_graphics::mono_font::MonoTextStyle;
-use embedded_graphics::mono_font::ascii::FONT_5X8;
-use embedded_graphics::pixelcolor::BinaryColor;
 use embedded_graphics::prelude::Point;
-use embedded_graphics::text::{Baseline, Text};
 
 use crate::apps::{InputSnapshot, TickContext};
 use crate::calibration::{CV_OUT_MAX_MV, CV_OUT_MIN_MV};
 use crate::fmt::{TextBuf, write_volts};
 use crate::framebuffer::{FrameBuffer, WIDTH};
 use crate::platform::{CV_CHANNELS, MilliVolts};
+use crate::text::{self, TextStyle};
 
 /// Columns of history: one per screen pixel column.
 pub const TRACE_LEN: usize = WIDTH;
@@ -131,11 +127,10 @@ impl ScopeApp {
     /// Draws the title line and the trace.
     pub fn render(&self, frame: &mut FrameBuffer, _context: &TickContext) {
         frame.clear();
-        let style = MonoTextStyle::new(&FONT_5X8, BinaryColor::On);
         let mut line = TextBuf::<26>::new();
         let _ = write!(line, "SCOPE CV1 ");
         let _ = write_volts(&mut line, self.level, 3);
-        let _ = Text::with_baseline(line.as_str(), Point::zero(), style, Baseline::Top).draw(frame);
+        text::draw(frame, line.as_str(), Point::zero(), TextStyle::LIT);
 
         for column in 0..TRACE_LEN {
             let Some(row) = self.column(column) else {

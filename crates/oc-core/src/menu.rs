@@ -9,18 +9,16 @@
 //! module only knows how to move a highlight and draw a list.
 
 use embedded_graphics::Drawable as _;
-use embedded_graphics::mono_font::MonoTextStyle;
-use embedded_graphics::mono_font::ascii::FONT_5X8;
 use embedded_graphics::pixelcolor::BinaryColor;
 use embedded_graphics::prelude::{Point, Primitive as _, Size};
 use embedded_graphics::primitives::{PrimitiveStyle, Rectangle};
-use embedded_graphics::text::{Baseline, Text};
 
 use crate::apps::AppId;
 use crate::buttons::ButtonEvents;
 use crate::framebuffer::{FrameBuffer, WIDTH_I32};
 use crate::framebuffer::{ROW_HEIGHT, ROWS};
 use crate::platform::Button;
+use crate::text::{self, TextStyle};
 
 /// Title shown above the list.
 ///
@@ -152,9 +150,7 @@ impl Menu {
     /// Draws the title and the app list, with the highlight in inverse video.
     pub fn render(&self, frame: &mut FrameBuffer) {
         frame.clear();
-        let lit = MonoTextStyle::new(&FONT_5X8, BinaryColor::On);
-        let dark = MonoTextStyle::new(&FONT_5X8, BinaryColor::Off);
-        let _ = Text::with_baseline(TITLE, Point::zero(), lit, Baseline::Top).draw(frame);
+        text::draw(frame, TITLE, Point::zero(), TextStyle::LIT);
 
         for index in 0..ENTRIES {
             let label = match MenuEntry::at(index) {
@@ -176,9 +172,12 @@ impl Menu {
                     .into_styled(PrimitiveStyle::with_fill(BinaryColor::On))
                     .draw(frame);
             }
-            let style = if highlighted { dark } else { lit };
-            let text_at = Point::new(TEXT_INSET, top_left.y);
-            let _ = Text::with_baseline(label, text_at, style, Baseline::Top).draw(frame);
+            let style = if highlighted {
+                TextStyle::DARK
+            } else {
+                TextStyle::LIT
+            };
+            text::draw(frame, label, Point::new(TEXT_INSET, top_left.y), style);
         }
     }
 }

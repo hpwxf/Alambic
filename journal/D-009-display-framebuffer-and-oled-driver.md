@@ -99,3 +99,22 @@ Deux gains distincts, à ne pas confondre :
   aligné sur les pages (police de 8 pixels, `ROW_HEIGHT`) : une colonne de glyphe tient dans un octet et pourrait
   être copiée telle quelle au lieu d'être posée pixel par pixel. Transparent pour ce que les applets affichent ;
   hypothèse à mesurer avant d'écrire quoi que ce soit (exploration ouverte le 2026-11-17).
+
+## Révision (2026-11-17) — le texte posé colonne par colonne (`oc_core::text`)
+
+La seconde piste ci-dessus, mesurée puis faite. Mesure d'abord (hôte, criterion, indicatif) : le texte prenait
+≈ 96 % du dessin de l'écran Diagnostic ; `embedded-graphics` pose chaque pixel de glyphe à part (≈ 40 itérations
+par caractère, police rangée par lignes, framebuffer par colonnes).
+
+* **`oc_core::text`** : `FONT_5X8` en table de colonnes (`GLYPHS`, 96 glyphes × 5 octets, extraits de
+  `embedded-graphics`) ; `text::draw` pose chaque colonne d'un coup (`FrameBuffer::paint_column` : un octet sur la
+  grille des pages, deux moitiés décalées sinon). Couleur (allumé, éteint), alignement, ligne de base, lignes
+  multiples et glyphe de remplacement comme `embedded-graphics`.
+* **Mêmes pixels** : les tests comparent les deux tracés pour chaque glyphe, dans les deux couleurs, sur et hors
+  de la grille des pages et aux bords, et pour chaque alignement et ligne de base ; écrans dorés inchangés.
+  `embedded-graphics` reste la référence des tests et sert toujours aux lignes et rectangles.
+* **Tous les textes** passent par `text::draw` (Diagnostic, Scope, menu, SETUP, assistant, écran de démarrage,
+  message de sauvegarde) ; les applets ne changent que l'appel.
+* **Gain** (hôte, criterion, indicatif) : `applet/render` 15,7 → 2,8 µs (−82 %), `menu/render` 4,6 → 2,0 µs,
+  un écran de texte 13,4 → 1,06 µs (`text/` dans `benches/engine.rs`, qui garde les deux tracés). Sur le module,
+  à mesurer (`cargo probe stats`, étape `render`).
