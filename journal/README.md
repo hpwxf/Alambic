@@ -96,3 +96,4 @@ une section datée en fin de fichier) au lieu d'en ouvrir une nouvelle. Les num�
 | [D-028](D-028-settings-persistence.md) | persistance : `postcard` + `sequential-storage` sur `embedded-storage`, flash du Teensy 4.0 par l'API ROM, fichier (sim), JSON du patch (Rack) | adoptée, révisée |
 | [D-029](D-029-live-probe.md) | sonde live : profilage dans `oc-core`, second port USB CDC binaire (`postcard` COBS), crates `oc-protocol` et `oc-probe` | adoptée, révisée |
 | [D-030](D-030-graphics-primitives-and-demo.md) | primitives graphiques `oc_core::gfx` (bases en octets, contrôles, courbes, motifs) et applet de démonstration dans le menu ; `embedded-graphics` en dépendance de test | adoptée, révisée |
+| [D-031](D-031-browser-host-tools.md) | outils hôte dans le navigateur : sonde par Web Serial, flash par WebHID (HalfKay), cœur sans E/S en WebAssembly, crates `oc-image`, `oc-halfkay`, `oc-web` | adoptée, révisée |

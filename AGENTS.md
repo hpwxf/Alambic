@@ -75,6 +75,7 @@ cargo xtask flash                           # validate, show SHA-256 digest, con
 cargo xtask vcv build --rack-dir <path>     # build the VCV Rack 2 plugin (needs a downloaded Rack SDK)
 cargo xtask vcv install --rack-dir <path>   # build + drop into the Rack user plugin folder
 cargo xtask vcv clean                       # wipe plugin + oc-vcv-ffi build artefacts
+cargo xtask web                             # browser probe + flasher into dist/web/ (needs the wasm-bindgen CLI at the pinned version)
 cargo probe stats                           # live profile of a running module (oc-probe; also stream, out, screen, reboot)
 
 cargo bench                                 # criterion benchmarks; HTML report in target/criterion/report/index.html
@@ -105,6 +106,9 @@ demonstration of the graphics primitives (`GFX DEMO`, journal/D-030).
 | `crates/oc-firmware`  | yes (bin)| `deny(unsafe_code)`; `unsafe` only in `flash_store.rs` (boot ROM calls) and `reboot.rs` (bootloader hand-over) | Pure wiring: turns `teensy4-bsp`/`imxrt-hal` resources into the `oc-core` platform traits, runs the 1 kHz loop. The one crate that cannot be tested on the host. |
 | `crates/oc-protocol`  | yes      | `forbid(unsafe_code)`       | Messages between the firmware and the host probe (`Request`, `Reply`), `postcard` + COBS framing, `FrameReader`; tested on the host (journal/D-029). |
 | `crates/oc-probe`     | no       | ordinary                    | Host tool over the module's probe port (`serialport`, without `libudev`): a `Client` over any byte stream, tested against the real `oc_protocol::server` through an in-memory loopback on a mock engine; CLI `stats`, `stream`, `out`, `screen`, `reboot` (journal/D-029). |
+| `crates/oc-image`     | no       | ordinary                    | The pre-flash gate (`validate`, moved from `xtask`, which re-exports it as `xtask::validate`) and `flash::flash_image`, the flash contents laid out from a validated ELF's `PT_LOAD` segments (byte for byte what `llvm-objcopy -O ihex` gives); `hex` and `boot` read an Intel HEX file and check the boot header (FCB, IVT, boot data), the reduced checks a HEX allows; `flash::firmware_image` picks the path by format; pure over bytes, no OS dependency (journal/D-031). |
+| `crates/oc-halfkay`   | yes      | `forbid(unsafe_code)`       | The Teensy bootloader's write protocol as reports (64-byte address header + 1 KiB block, then a boot request), transport-free; what `teensy_loader_cli --mcu=TEENSY40` sends (journal/D-031). |
+| `crates/oc-web`       | no       | ordinary                    | WebAssembly core of the browser tool (`wasm-bindgen`, pinned exactly): probe requests and a `ProbeReader` without I/O, the gate and HalfKay reports for an ELF or a HEX; no `JsValue`, so host-tested. The page itself is `web/` (plain JS, no build tool), built by `cargo xtask web` into `dist/web/` (journal/D-031). |
 | `crates/oc-sim`       | no       | ordinary                    | Host backend + ratatui TUI + deterministic virtual clock; runs the real `oc-core` engine. |
 | `crates/oc-vcv-ffi`   | no       | ordinary (defensive C ABI)  | `staticlib`/`rlib` exposing a defensive C ABI over `oc-core` (`oc_engine_*`), linked into the VCV Rack 2 module. Every function tolerates a null pointer or an out-of-range index and never lets a Rust panic unwind across the boundary (`catch_unwind`). |
 | `vcv/OrnamentCrimeAlambic` | n/a (C++) | n/a | The Rack SDK plugin shim: module/port declaration, a widget reading the ABI's framebuffer, no behaviour of its own. Built by `cargo xtask vcv build\|install`, not by hand. |
@@ -121,7 +125,7 @@ lives in `oc-core` and is tested once, on the host.
 * **Target:** `thumbv7em-none-eabihf`. Toolchain pinned by
   `rust-toolchain.toml` (**1.100.0**, bumped deliberately by hand;
   `rust-src` + `llvm-tools` components,
-  that target); `rustup` provisions everything on first build.
+  that target and `wasm32-unknown-unknown` for `oc-web`); `rustup` provisions everything on first build.
 * **`oc-firmware` is excluded from `default-members`** in the root
   `Cargo.toml`. A bare `cargo build`/`cargo test`/`cargo clippy` therefore
   never touches ARM code and operates on host crates only. Build, inspect and
@@ -305,7 +309,11 @@ Full protocol, per level, with exact commands and what each proves: see
   memory; it does not require a firmware build, and `xtask::validate` must
   stay a pure function over bytes (`validate_image(&[u8]) -> Result<...>`)
   reachable from tests via `xtask/src/lib.rs` — do not fold that logic back
-  into `main.rs`.
+  into `main.rs`. It lives in `oc-image` so the browser flasher runs the
+  same gate; keep that crate free of OS dependencies.
+* `oc-probe`'s command line (`serialport`, `clap`, `png`, the `port` module)
+  sits behind its default `cli` feature; the client and the text rendering
+  must stay buildable without it, `oc-web` depends on them that way.
 * `criterion` benchmarks (`crates/oc-core/benches/engine.rs` for the tick,
   applets and conversions, `benches/graphics.rs` for text and shapes against
   `embedded-graphics` and the demo pages; HTML report under
@@ -374,7 +382,9 @@ Full protocol, per level, with exact commands and what each proves: see
 | Deterministic mocks used by every `oc-core` test  | `crates/oc-core/src/testing.rs` |
 | The pinout (the only file allowed to name a pin)  | `crates/oc-firmware/src/board.rs` (rule test: `xtask/tests/pin_rule.rs`) |
 | Memory map / boot sections rationale              | `crates/oc-firmware/MEMORY.md` |
-| Pre-flash validation logic                        | `xtask/src/validate.rs` |
+| Pre-flash validation logic                        | `crates/oc-image/src/validate.rs` (re-exported as `xtask::validate`) |
+| Flash contents from an ELF or a HEX; HalfKay reports | `crates/oc-image/src/flash.rs` (`hex.rs`, `boot.rs`); `crates/oc-halfkay/src/lib.rs` |
+| The browser probe and flasher                     | `crates/oc-web/src/lib.rs` (wasm core), `web/` (page), `xtask/src/web.rs` (build) |
 | Flash orchestration (confirm, invoke loader)       | `xtask/src/flash.rs` |
 | The C ABI linked into VCV Rack                    | `crates/oc-vcv-ffi/src/lib.rs` |
 | VCV plugin build/install orchestration            | `xtask/src/vcv.rs` |

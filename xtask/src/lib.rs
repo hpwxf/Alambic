@@ -7,7 +7,11 @@
 //! rejection messages straightforward to assert on.
 
 pub mod size_check;
-pub mod validate;
+
+// The gate moved to `oc-image` so the browser flasher runs the very same
+// checks (journal/D-031); `xtask::validate` stays its path for the CLI and
+// the tests.
+pub use oc_image::validate;
 
 /// Compilation target of the firmware binary.
 pub const FIRMWARE_TARGET: &str = "thumbv7em-none-eabihf";

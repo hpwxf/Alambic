@@ -9,17 +9,29 @@ repository.workspace = true
 authors.workspace = true
 publish = false
 
+[features]
+default = ["cli"]
+# The command line and what only it needs: the host's serial ports, argument
+# parsing, PNG output. Without it the crate is the client and the rendering
+# alone, with no operating-system dependency, which is what the browser tool
+# reuses (`oc-web`, journal/D-031).
+cli = ["dep:anyhow", "dep:clap", "dep:serialport", "dep:png"]
+
+[[bin]]
+name = "oc-probe"
+required-features = ["cli"]
+
 [dependencies]
 oc-core.workspace = true
 oc-protocol.workspace = true
-anyhow.workspace = true
-clap.workspace = true
+anyhow = { workspace = true, optional = true }
+clap = { workspace = true, optional = true }
 # The standard cross-platform serial port crate. Its default `libudev`
 # feature needs the system's libudev headers on Linux; without it the tool
 # simply tries every port instead of filtering them by USB identifiers.
-serialport = { version = "4.10", default-features = false }
+serialport = { version = "4.10", default-features = false, optional = true }
 # Writes `oc-probe screen --png`.
-png = "0.18"
+png = { version = "0.18", optional = true }
 
 [lints]
 workspace = true

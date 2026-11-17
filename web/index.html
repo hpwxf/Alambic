@@ -1,0 +1,173 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Alambic module tool</title>
+  <link rel="stylesheet" href="style.css">
+  <script type="module" src="app.js"></script>
+</head>
+<body>
+  <header>
+    <h1>Alambic module tool</h1>
+    <p class="sub">Look inside an Ornament &amp; Crime module running the Alambic firmware, and
+      install a new firmware on it. Connect the module to this computer with a USB cable; use
+      Chrome or Edge on a desktop computer.</p>
+    <p id="support" class="banner" hidden></p>
+  </header>
+
+  <main>
+    <section id="probe">
+      <h2>Look inside the module</h2>
+      <div class="row">
+        <button id="connect">Connect…</button>
+        <button id="disconnect" disabled>Disconnect</button>
+        <button class="needs-probe" id="reboot" disabled>Restart into install mode</button>
+        <span id="probe-status" class="status">not connected</span>
+      </div>
+      <p class="hint">The browser lists the module twice under the same name: pick the
+        <strong>second</strong> one. If the page says it is the wrong one, click Connect again and
+        pick the other. <em>Restart into install mode</em> does what the PROGRAM button does: the
+        module stops and waits for a firmware (see below); installing one, or switching the module off and on, brings
+        it back.</p>
+      <details class="dev">
+        <summary>For developers</summary>
+        <p>This is <code>cargo probe</code> in the browser: the module's second USB serial port
+          (the first carries the text log), opened through Web Serial. Any baud rate works except
+          134, which restarts the module into its bootloader. <em>Restart into install mode</em>
+          is <code>cargo probe reboot</code>.</p>
+      </details>
+
+      <div class="grid">
+        <div class="panel">
+          <h3>Screen</h3>
+          <canvas id="screen" width="512" height="256"></canvas>
+          <div class="row">
+            <button class="needs-probe" id="screen-once" disabled>Capture</button>
+            <label><input type="checkbox" class="needs-probe" id="screen-live" disabled> live</label>
+          </div>
+          <p class="hint">A copy of what the module's display shows. With <em>live</em>, it
+            refreshes about ten times a second.</p>
+          <details class="dev">
+            <summary>For developers</summary>
+            <p><code>cargo probe screen</code> (as text; <code>--png screen.png</code> for an
+              image).</p>
+          </details>
+        </div>
+
+        <div class="panel">
+          <h3>Set an output</h3>
+          <div class="row">
+            <select id="out-channel" class="needs-probe" disabled>
+              <option value="0">A</option><option value="1">B</option>
+              <option value="2">C</option><option value="3">D</option>
+            </select>
+            <input id="out-mv" type="number" step="1" min="-3000" max="7000" value="1000"> mV
+            <button class="needs-probe" id="out-set" disabled>Hold</button>
+            <button class="needs-probe" id="out-release" disabled>Release</button>
+          </div>
+          <p class="hint">Holds the chosen output at a fixed voltage, whatever the running app
+            does: handy to check a cable or tune an oscillator. 1000 mV is 1 V; the outputs go
+            from −3 V to +7 V. <em>Release</em> gives the output back to the app; disconnecting
+            releases every output.</p>
+          <details class="dev">
+            <summary>For developers</summary>
+            <p><code>cargo probe out A 1000</code> holds the output until Enter, printing the
+              inputs meanwhile. The value goes through the module's own calibration, as the
+              app's values do.</p>
+          </details>
+        </div>
+      </div>
+
+      <div class="panel">
+        <h3>Timing</h3>
+        <div class="row">
+          <button class="needs-probe" id="profile" disabled>Read</button>
+          <button class="needs-probe" id="profile-clear" disabled>Clear</button>
+          <span id="profile-status" class="status"></span>
+        </div>
+        <p class="hint">How busy the module is. It does its work in a cycle repeated every
+          millisecond; the table shows, for each part of that cycle, how many times it ran and how
+          long it took, in microseconds (shortest, average, longest). To measure one thing: click
+          <em>Clear</em>, do it on the module (change app, turn a knob), then click
+          <em>Read</em>.</p>
+        <details class="dev">
+          <summary>For developers</summary>
+          <p><code>cargo probe stats</code> (<code>--fresh 5</code> clears, waits 5 s, then
+            reads; <code>--watch 2</code> repeats). The rows are the
+            stages of <code>oc_core::profile::Stage</code>, timed on the core's cycle counter;
+            <em>period</em> is the time between two ticks and the jitter table its spread around
+            1 ms. See “The loop and the screen” in <code>AGENTS.md</code>.</p>
+        </details>
+        <pre id="profile-out"></pre>
+      </div>
+
+      <div class="panel">
+        <h3>Live values</h3>
+        <div class="row">
+          every <input id="stream-every" type="number" min="1" max="65535" value="100"> ms
+          <button class="needs-probe" id="stream-start" disabled>Start</button>
+          <button class="needs-probe" id="stream-stop" disabled>Stop</button>
+        </div>
+        <p class="hint">Prints a line at the chosen interval with the four CV inputs and the four
+          outputs, in millivolts, and the triggers that are high (a dot for a low one). 100 ms
+          gives ten lines a second.</p>
+        <details class="dev">
+          <summary>For developers</summary>
+          <p><code>cargo probe stream --every 100</code>. The interval counts ticks of the
+            1 kHz loop; <em>codes</em> are the raw ADC readings before calibration.</p>
+        </details>
+        <pre id="stream-out"></pre>
+      </div>
+    </section>
+
+    <section id="flash">
+      <h2>Install a firmware</h2>
+      <ol class="steps">
+        <li>Choose the firmware file you were given or downloaded: either the file named
+          <code>oc-firmware</code>, without extension (preferred: the page can check it fully),
+          or a <code>.hex</code> file.</li>
+        <li>The page checks it before anything is written and shows its <em>fingerprint</em>.
+          Compare it with the one published with the firmware: if they differ, do not install.</li>
+        <li>Tick the box under the fingerprint, then click <em>Install</em>. If the module is connected above, it
+          switches to install mode by itself; otherwise press the small <strong>PROGRAM</strong>
+          button on the Teensy board first.</li>
+        <li>In install mode the module shows up as another USB device, the Teensy's installer
+          (<strong>HalfKay</strong>, 16c0:0478). The first time only, Chrome asks whether this
+          page may use it: pick it in Chrome's list (it is not a file). Keep the cable plugged
+          until the page says it is done; the module then restarts on the new firmware.</li>
+      </ol>
+      <div class="row">
+        <input id="elf" type="file">
+      </div>
+      <pre id="image-out"></pre>
+      <div class="row">
+        <label><input type="checkbox" id="confirm" disabled> The fingerprint matches; install
+          this firmware</label>
+      </div>
+      <div class="row">
+        <button id="flash-go" disabled>Install…</button>
+        <progress id="flash-progress" value="0" max="1"></progress>
+        <span id="flash-status" class="status"></span>
+      </div>
+      <p class="hint">This cannot damage the module: the Teensy's installer lives on a separate
+        chip that a firmware cannot erase, and the PROGRAM button always brings it back. If an
+        install fails, press PROGRAM and try again.</p>
+      <details class="dev">
+        <summary>For developers</summary>
+        <p>The preferred file is the firmware <strong>ELF</strong>,
+          <code>target/thumbv7em-none-eabihf/release/oc-firmware</code> after
+          <code>cargo xtask build</code>: the page runs on it the same checks as
+          <code>cargo xtask flash</code> (<code>xtask::validate</code>), and the fingerprint is
+          the ELF's SHA-256 (<code>elf sha256</code>). An <strong>Intel HEX</strong> file
+          (<code>cargo xtask hex</code>, the CI artefact, or another Teensy 4.0 firmware) gets
+          reduced checks: valid records and checksums, an end record, every byte inside the
+          application flash and none twice, and the boot header the boot ROM reads (FCB, IVT,
+          boot data); its fingerprint is the <code>.hex</code> file's SHA-256 (<code>hex
+          sha256</code>). The page then writes the flash through the HalfKay bootloader (USB
+          16c0:0478) over WebHID, as <code>teensy_loader_cli</code> does.</p>
+      </details>
+    </section>
+  </main>
+</body>
+</html>

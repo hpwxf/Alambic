@@ -25,6 +25,9 @@ behaviour runs on hardware, in a native simulator, and inside VCV Rack 2.
 | `crates/oc-firmware` | Teensy 4.0 binary; the only crate that touches registers           |
 | `crates/oc-protocol` | `no_std` messages and server of the live probe (postcard over COBS) |
 | `crates/oc-probe`    | Host tool talking to a running module over its probe port          |
+| `crates/oc-image`    | Pre-flash image gate; the flash contents of a validated ELF or HEX |
+| `crates/oc-halfkay`  | The Teensy bootloader's write protocol, as reports to send          |
+| `crates/oc-web`, `web/` | Browser probe and flasher: WebAssembly core and a static page   |
 | `crates/oc-sim`      | Native backend and terminal UI, with a deterministic virtual clock |
 | `crates/oc-vcv-ffi`  | `staticlib` exposing a C ABI to the VCV Rack 2 module              |
 | `vcv/OrnamentCrimeAlambic` | The Rack SDK plugin shim: module declaration and widget only, no behaviour |
@@ -306,6 +309,31 @@ module's probe port by itself (`--port` to name it); it is the second of the
 module's two USB serial ports, the first being the text log. Closing the tool
 ends the session, which releases every held output.
 
+### In the browser
+
+The same probe, and a flasher, run in a web page (journal/D-031), for anyone
+without the Rust toolchain:
+
+```sh
+cargo xtask web                              # builds dist/web/
+python3 -m http.server -d dist/web 8000      # then open http://localhost:8000
+```
+
+It needs Chrome or Edge on a desktop (Web Serial and WebHID; neither Firefox
+nor Safari has them) and a secure context: `localhost` or https. The probe
+side does what `cargo probe` does: screen capture (live too), profile, sample
+stream, held outputs. The flash side takes the firmware **ELF**, with the
+same checks as `cargo xtask flash`, or an Intel **HEX** (the CI artefact,
+say) with reduced checks ([ELF or HEX](#elf-or-hex)); it shows the file's
+SHA-256 and writes it through the bootloader (HalfKay) after an explicit
+confirmation; with the probe
+connected it restarts the module into the bootloader itself. `cargo xtask
+web` needs the `wasm-bindgen` command line at the version `Cargo.lock` pins
+(it says which, and how to install it). Both sides have been tried on a
+module from Chrome on macOS; `cargo xtask flash` stays the reference for
+development. After rebuilding the page, reload it without the cache
+(Cmd+Shift+R): Chrome otherwise keeps the previous `app.js`.
+
 ## Requirements
 
 The toolchain is pinned by `rust-toolchain.toml`; `rustup` installs everything
@@ -373,6 +401,30 @@ initial SP: 0x20004000
 reset handler: 0x60001031
 elf sha256: 9566627c35083fb8...
 ```
+
+### ELF or HEX
+
+The build produces an **ELF**,
+`target/thumbv7em-none-eabihf/release/oc-firmware`; `cargo xtask hex` turns
+it into an **Intel HEX** file, `dist/oc-firmware.hex`, with the toolchain's
+own `llvm-objcopy`. The HEX is the format PJRC's tools read: the Teensy
+Loader application and `teensy_loader_cli`. Use it to install without this
+repository's tooling, or to hand a firmware to someone who uses PJRC's
+loader; CI uploads it as a build artefact. `cargo xtask flash` writes the
+same HEX itself before invoking the loader, so running `cargo xtask hex`
+first is never needed.
+
+The checks above need the ELF: a HEX holds only addresses and bytes, so
+neither the architecture, nor the target, nor the vector table can be
+verified from it. The browser flasher ([In the browser](#in-the-browser))
+therefore prefers the ELF, and gives a HEX reduced checks: valid records
+and checksums, an end record (a truncated download is refused), every byte
+inside the application flash and none written twice, and the boot header
+the boot ROM reads (FlexSPI Configuration Block, Image Vector Table, boot
+data), which every Teensy 4.0 firmware carries (journal/D-031). The flash
+contents the page derives from the ELF and from its HEX are the same, byte
+for byte (`real_firmware_matches_its_hex_when_present`,
+`real_firmware_hex_reads_as_its_elf_when_present`, `TESTING.md`).
 
 ## Memory layout and boot
 

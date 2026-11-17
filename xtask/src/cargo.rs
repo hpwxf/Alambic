@@ -46,7 +46,7 @@ pub(crate) fn firmware_build_args(profile: Profile, features: &[String]) -> Vec<
 }
 
 /// The `cargo` executable currently driving the build.
-fn cargo_binary() -> String {
+pub(crate) fn cargo_binary() -> String {
     std::env::var("CARGO").unwrap_or_else(|_| "cargo".to_owned())
 }
 

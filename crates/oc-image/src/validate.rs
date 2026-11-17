@@ -111,11 +111,11 @@ const ELFDATA2LSB: u8 = 1;
 const EV_CURRENT: u8 = 1;
 const ET_EXEC: u16 = 2;
 const EM_ARM: u16 = 0x28;
-const PT_LOAD: u32 = 1;
+pub(crate) const PT_LOAD: u32 = 1;
 
 /// Minimum bytes needed to read an ELF32 header.
 const ELF32_HEADER_LEN: usize = 52;
-const ELF32_PHDR_LEN: usize = 32;
+pub(crate) const ELF32_PHDR_LEN: usize = 32;
 const ELF32_SHDR_LEN: usize = 40;
 
 /// ARM EABI version 5 encoded in `e_flags` (bits 24–31).
@@ -780,7 +780,8 @@ const DTCM_END: u32 = DTCM.end;
 const OCRAM_START: u32 = OCRAM.start;
 const OCRAM_END: u32 = OCRAM.end;
 
-fn address_plausible(addr: u32) -> bool {
+/// Whether `addr` falls in a memory of the part a pointer may target.
+pub(crate) fn address_plausible(addr: u32) -> bool {
     ITCM.contains(&addr) || DTCM.contains(&addr) || OCRAM.contains(&addr) || FLEXSPI.contains(&addr)
 }
 
@@ -795,11 +796,11 @@ fn machine_name(machine: u16) -> &'static str {
     }
 }
 
-fn read_u16_le(bytes: &[u8], offset: usize) -> u16 {
+pub(crate) fn read_u16_le(bytes: &[u8], offset: usize) -> u16 {
     u16::from_le_bytes([bytes[offset], bytes[offset + 1]])
 }
 
-fn read_u32_le(bytes: &[u8], offset: usize) -> u32 {
+pub(crate) fn read_u32_le(bytes: &[u8], offset: usize) -> u32 {
     u32::from_le_bytes([
         bytes[offset],
         bytes[offset + 1],

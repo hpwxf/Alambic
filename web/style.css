@@ -1,0 +1,107 @@
+:root {
+  --bg: #f7f7f5;
+  --fg: #1d1d1f;
+  --muted: #66666b;
+  --panel: #ffffff;
+  --line: #d9d9dc;
+  --accent: #2b6cb0;
+  --warn-bg: #fff4d6;
+  --warn-fg: #6b4e00;
+  color-scheme: light dark;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #18181a;
+    --fg: #e8e8ea;
+    --muted: #9a9aa0;
+    --panel: #222225;
+    --line: #38383c;
+    --accent: #7fb2ec;
+    --warn-bg: #3a3014;
+    --warn-fg: #f2d68a;
+  }
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font: 15px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+
+header, main { max-width: 980px; margin: 0 auto; padding: 0 16px; }
+header { padding-top: 24px; }
+h1 { margin: 0 0 4px; font-size: 1.6rem; }
+h2 { margin: 28px 0 8px; font-size: 1.25rem; }
+h3 { margin: 0 0 8px; font-size: 1rem; }
+.sub, .hint { color: var(--muted); margin: 4px 0 8px; }
+.hint { font-size: 0.88rem; }
+
+.banner {
+  background: var(--warn-bg);
+  color: var(--warn-fg);
+  padding: 8px 12px;
+  border-radius: 6px;
+}
+
+.panel {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 12px;
+  margin: 12px 0;
+}
+
+.grid { display: grid; grid-template-columns: auto 1fr; gap: 12px; }
+.grid .panel { margin: 0; }
+@media (max-width: 760px) { .grid { grid-template-columns: 1fr; } }
+
+.row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 6px 0; }
+.status { color: var(--muted); }
+
+button, select, input {
+  font: inherit;
+  color: inherit;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 4px 10px;
+}
+button:not(:disabled) { cursor: pointer; border-color: var(--accent); }
+button:disabled { opacity: 0.5; }
+input[type="number"] { width: 7em; }
+input[type="checkbox"] { padding: 0; }
+
+canvas {
+  display: block;
+  width: 100%;
+  max-width: 512px;
+  height: auto;
+  image-rendering: pixelated;
+  background: #000;
+  border-radius: 4px;
+}
+
+pre {
+  margin: 8px 0 0;
+  padding: 8px;
+  max-height: 320px;
+  overflow: auto;
+  background: var(--bg);
+  border-radius: 6px;
+  font: 12.5px/1.35 ui-monospace, "SF Mono", Menlo, monospace;
+  white-space: pre;
+}
+pre:empty { display: none; }
+
+details.dev { margin: 4px 0 8px; font-size: 0.88rem; color: var(--muted); }
+details.dev summary { cursor: pointer; }
+details.dev p { margin: 4px 0 0; }
+.steps { margin: 4px 0 8px; padding-left: 1.4em; }
+.steps li { margin: 2px 0; }
+
+progress { width: 200px; }
+code { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 0.9em; }
