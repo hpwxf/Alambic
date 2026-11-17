@@ -11,7 +11,7 @@ use embedded_graphics::Drawable as _;
 use embedded_graphics::mono_font::MonoTextStyle;
 use embedded_graphics::mono_font::ascii::FONT_5X8;
 use embedded_graphics::pixelcolor::BinaryColor;
-use embedded_graphics::prelude::{Point, Primitive as _, Size};
+use embedded_graphics::prelude::{Point as EgPoint, Primitive as _, Size};
 use embedded_graphics::primitives::{PrimitiveStyle, Rectangle};
 use embedded_graphics::text::{Baseline, Text};
 use std::hint::black_box;
@@ -22,7 +22,12 @@ use oc_core::apps::gfx_demo::GfxDemoApp;
 use oc_core::apps::{InputSnapshot, TickContext};
 use oc_core::buttons::ButtonReader;
 use oc_core::calibration::{CvInputCalibration, CvOutputCalibration};
+#[path = "../tests/common/mod.rs"]
+mod common;
+
+use common::Reference;
 use oc_core::framebuffer::FrameBuffer;
+use oc_core::gfx::Point;
 use oc_core::gfx::{self, Ink};
 use oc_core::menu::Menu;
 use oc_core::platform::{Button, ControlEvents, CvChannel, TriggerChannel};
@@ -150,9 +155,9 @@ fn text(criterion: &mut Criterion) {
         bencher.iter(|| {
             frame.clear();
             for (row, line) in (0..).zip(SCREEN_TEXT) {
-                let at = Point::new(0, row * 8);
-                let _ =
-                    Text::with_baseline(black_box(line), at, style, Baseline::Top).draw(&mut frame);
+                let at = EgPoint::new(0, row * 8);
+                let _ = Text::with_baseline(black_box(line), at, style, Baseline::Top)
+                    .draw(&mut Reference(&mut frame));
             }
             black_box(frame.lit_pixels())
         });
@@ -186,8 +191,8 @@ fn shapes(criterion: &mut Criterion) {
         let mut frame = FrameBuffer::new();
         let style = PrimitiveStyle::with_fill(BinaryColor::On);
         bencher.iter(|| {
-            let area = Rectangle::new(Point::new(black_box(3), 5), Size::new(100, 40));
-            let _ = area.into_styled(style).draw(&mut frame);
+            let area = Rectangle::new(EgPoint::new(black_box(3), 5), Size::new(100, 40));
+            let _ = area.into_styled(style).draw(&mut Reference(&mut frame));
             black_box(frame.lit_pixels())
         });
     });

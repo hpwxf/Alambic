@@ -360,7 +360,7 @@ Full protocol, per level, with exact commands and what each proves: see
 | Button debouncing and the `up`+`down` chord       | `crates/oc-core/src/buttons.rs` |
 | The boot splash screen (name/version, progressive border) | `crates/oc-core/src/splash.rs` |
 | Graphics primitives (byte-wise shapes, `Ink::Invert`, integer trigonometry) | `crates/oc-core/src/gfx/` (journal/D-030) |
-| Text drawing (fonts as column bytes, the font in the style; same pixels as `embedded-graphics`) | `crates/oc-core/src/text/mod.rs`; generated fonts `text/fonts.rs` (`UPDATE_FONTS=1 cargo test -p oc-core --test fonts`) |
+| Text drawing (fonts as column bytes, the font in the style; same pixels as `embedded-graphics`, a test-only dependency whose adapter is `crates/oc-core/tests/common/mod.rs`) | `crates/oc-core/src/text/mod.rs`; generated fonts `text/fonts.rs` (`UPDATE_FONTS=1 cargo test -p oc-core --test fonts`) |
 | ADC/DAC unit conversion and calibration           | `crates/oc-core/src/calibration.rs` |
 | Input presence derived from the signal (defaults for unused inputs) | `crates/oc-core/src/presence.rs` |
 | Where the loop's time goes (stages, period jitter; the module's cycle counter) | `crates/oc-core/src/profile.rs` (firmware log lines: `crates/oc-firmware/src/profile_log.rs`) |

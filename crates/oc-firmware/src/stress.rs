@@ -19,16 +19,11 @@
 
 use core::fmt::Write as _;
 
-use embedded_graphics::Drawable as _;
-use embedded_graphics::mono_font::MonoTextStyle;
-use embedded_graphics::mono_font::ascii::FONT_5X8;
-use embedded_graphics::pixelcolor::BinaryColor;
-use embedded_graphics::prelude::Point;
-use embedded_graphics::text::{Baseline, Text};
-
 use oc_core::fmt::TextBuf;
+use oc_core::gfx::Point;
 use oc_core::platform::Display;
 use oc_core::settings::{Settings, SettingsStore};
+use oc_core::text::{self, TextStyle, fonts::FONT_5X8};
 
 use crate::flash_store::SettingsFlash;
 
@@ -118,7 +113,11 @@ pub(crate) fn run(
 fn show(display: &mut impl Display, line: &TextBuf<40>) {
     let frame = display.frame_mut();
     frame.clear();
-    let style = MonoTextStyle::new(&FONT_5X8, BinaryColor::On);
-    let _ = Text::with_baseline(line.as_str(), Point::new(0, 28), style, Baseline::Top).draw(frame);
+    text::draw(
+        frame,
+        line.as_str(),
+        Point::new(0, 28),
+        TextStyle::lit(&FONT_5X8),
+    );
     display.present();
 }

@@ -27,7 +27,7 @@
 
 use core::fmt::Write as _;
 
-use embedded_graphics::prelude::Point;
+use crate::gfx::Point;
 
 use crate::apps::{InputSnapshot, TickContext};
 use crate::buttons::ButtonEvents;

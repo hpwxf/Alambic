@@ -10,7 +10,6 @@ authors.workspace = true
 
 [dependencies]
 embassy-futures.workspace = true
-embedded-graphics.workspace = true
 embedded-storage-async.workspace = true
 postcard.workspace = true
 sequential-storage.workspace = true
@@ -18,6 +17,9 @@ serde.workspace = true
 
 [dev-dependencies]
 criterion.workspace = true
+# The reference the text and shape drawing is checked against; not used at
+# run time (journal/D-030).
+embedded-graphics.workspace = true
 proptest.workspace = true
 
 [[bench]]

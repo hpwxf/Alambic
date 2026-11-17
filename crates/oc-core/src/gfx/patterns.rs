@@ -1,7 +1,6 @@
 //! Patterns: what a sequencer shows (journal/D-030).
 
-use embedded_graphics::prelude::Point;
-
+use super::Point;
 use super::trig::{TURN, polar};
 use super::{Ink, circle, fill_circle, fill_rect, rect, vline};
 use crate::framebuffer::FrameBuffer;

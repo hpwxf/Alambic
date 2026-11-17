@@ -14,16 +14,37 @@
 //! column off the grid is laid as two shifted halves). The pixels are the
 //! ones `embedded-graphics` draws, alignment, baseline, line breaks and the
 //! replacement glyph included; `tests/fonts.rs` checks that for every font,
-//! glyph and placement. Anything else (another font, shapes) is drawn with
-//! `embedded-graphics` directly, which [`FrameBuffer`] keeps supporting.
+//! glyph and placement. `embedded-graphics` is only a test dependency: the
+//! reference these fonts and rules are checked against.
 
 pub mod fonts;
 
-use embedded_graphics::pixelcolor::BinaryColor;
-use embedded_graphics::prelude::Point;
-pub use embedded_graphics::text::{Alignment, Baseline};
-
 use crate::framebuffer::FrameBuffer;
+use crate::gfx::{Ink, Point};
+
+/// Which end of a line its position marks, as in `embedded-graphics`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum Alignment {
+    /// The first column.
+    Left,
+    /// The middle column, rounded left.
+    Center,
+    /// The last column.
+    Right,
+}
+
+/// Which row of the glyphs a position marks, as in `embedded-graphics`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum Baseline {
+    /// The top row.
+    Top,
+    /// The bottom row.
+    Bottom,
+    /// The middle row, rounded up.
+    Middle,
+    /// The row letters stand on.
+    Alphabetic,
+}
 
 /// A monospace font as glyph columns: glyph `g`, column `c`, band `b` (rows
 /// `8b` to `8b + 7`, the top one in bit 0) is byte
@@ -145,9 +166,9 @@ impl ColumnFont {
 pub struct TextStyle {
     /// The font.
     pub font: &'static ColumnFont,
-    /// `On` lights the glyph pixels, `Off` darkens them (text over a lit
-    /// area); the pixels between strokes are left as they are.
-    pub color: BinaryColor,
+    /// What the glyph pixels get: lit, darkened (text over a lit area) or
+    /// inverted; the pixels between strokes are left as they are.
+    pub color: Ink,
     /// Which end of the text the position marks.
     pub alignment: Alignment,
     /// Which row of the glyphs the position marks.
@@ -160,7 +181,7 @@ impl TextStyle {
     pub const fn lit(font: &'static ColumnFont) -> Self {
         Self {
             font,
-            color: BinaryColor::On,
+            color: Ink::Lit,
             alignment: Alignment::Left,
             baseline: Baseline::Top,
         }
@@ -170,7 +191,7 @@ impl TextStyle {
     #[must_use]
     pub const fn dark(font: &'static ColumnFont) -> Self {
         Self {
-            color: BinaryColor::Off,
+            color: Ink::Dark,
             ..Self::lit(font)
         }
     }
@@ -192,7 +213,7 @@ impl TextStyle {
 pub fn draw(frame: &mut FrameBuffer, text: &str, position: Point, style: TextStyle) {
     let font = style.font;
     let bands = font.bands;
-    let on = style.color.is_on();
+    let ink = style.color;
     let mut top = position.y - font.baseline_offset(style.baseline);
     for line in text.split('\n') {
         // Where `embedded-graphics` puts the left edge: the position marks
@@ -211,14 +232,14 @@ pub fn draw(frame: &mut FrameBuffer, text: &str, position: Point, style: TextSty
             if bands == 1 {
                 // Fonts up to eight rows: one byte per column.
                 for &bits in glyph {
-                    frame.paint_column(x, top, bits, on);
+                    frame.paint_column(x, top, bits, ink);
                     x += 1;
                 }
             } else {
                 for column in glyph.chunks_exact(bands) {
                     let mut band_top = top;
                     for &bits in column {
-                        frame.paint_column(x, band_top, bits, on);
+                        frame.paint_column(x, band_top, bits, ink);
                         band_top += 8;
                     }
                     x += 1;

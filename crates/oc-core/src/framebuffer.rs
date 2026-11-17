@@ -16,12 +16,7 @@
     clippy::cast_sign_loss
 )]
 
-use core::convert::Infallible;
-
-use embedded_graphics::Pixel;
-use embedded_graphics::draw_target::DrawTarget;
-use embedded_graphics::geometry::{OriginDimensions, Size};
-use embedded_graphics::pixelcolor::BinaryColor;
+use crate::gfx::Ink;
 
 /// Screen width in pixels.
 pub const WIDTH: usize = 128;
@@ -149,14 +144,14 @@ impl FrameBuffer {
         }
     }
 
-    /// Lights (`on`) or darkens the pixels set in `bits` of column `x`, bit
-    /// `r` being the pixel `top + r`; the pixels clear in `bits` are left as
-    /// they are. Anything outside the screen is dropped.
+    /// Inks the pixels set in `bits` of column `x`, bit `r` being the pixel
+    /// `top + r`; the pixels clear in `bits` are left as they are. Anything
+    /// outside the screen is dropped.
     ///
     /// This is how [`crate::text`] lays a glyph column: a whole byte when
     /// `top` falls on a page, two shifted halves otherwise, instead of eight
     /// pixels set one at a time.
-    pub const fn paint_column(&mut self, x: i32, top: i32, bits: u8, on: bool) {
+    pub const fn paint_column(&mut self, x: i32, top: i32, bits: u8, ink: Ink) {
         if x < 0 || x >= WIDTH_I32 || bits == 0 {
             return;
         }
@@ -164,24 +159,20 @@ impl FrameBuffer {
         let shift = top.rem_euclid(8) as u32;
         // The part of the column in `page`, then the part spilling into the
         // page below.
-        self.paint_byte(page, x, bits << shift, on);
+        self.paint_byte(page, x, bits << shift, ink);
         if shift != 0 {
-            self.paint_byte(page + 1, x, bits >> (8 - shift), on);
+            self.paint_byte(page + 1, x, bits >> (8 - shift), ink);
         }
     }
 
-    /// Lights or darkens the pixels set in `mask` at column `x` of `page`, if
-    /// that page is on the screen.
-    const fn paint_byte(&mut self, page: i32, x: i32, mask: u8, on: bool) {
+    /// Inks the pixels set in `mask` at column `x` of `page`, if that page is
+    /// on the screen.
+    const fn paint_byte(&mut self, page: i32, x: i32, mask: u8, ink: Ink) {
         if page < 0 || page >= PAGES as i32 || mask == 0 {
             return;
         }
         let index = page as usize * WIDTH + x as usize;
-        if on {
-            self.data[index] |= mask;
-        } else {
-            self.data[index] &= !mask;
-        }
+        ink.apply(&mut self.data[index], mask);
     }
 
     /// Byte index of a pixel, or `None` when it falls outside the screen.
@@ -209,47 +200,9 @@ impl core::fmt::Debug for FrameBuffer {
     }
 }
 
-impl OriginDimensions for FrameBuffer {
-    fn size(&self) -> Size {
-        Size::new(WIDTH as u32, HEIGHT as u32)
-    }
-}
-
-impl DrawTarget for FrameBuffer {
-    type Color = BinaryColor;
-    /// Drawing can never fail: out-of-bounds pixels are dropped.
-    type Error = Infallible;
-
-    fn draw_iter<I>(&mut self, pixels: I) -> Result<(), Self::Error>
-    where
-        I: IntoIterator<Item = Pixel<Self::Color>>,
-    {
-        for Pixel(point, color) in pixels {
-            self.set_pixel(point.x, point.y, color.is_on());
-        }
-        Ok(())
-    }
-
-    fn clear(&mut self, color: Self::Color) -> Result<(), Self::Error> {
-        if color.is_on() {
-            FrameBuffer::fill(self);
-        } else {
-            FrameBuffer::clear(self);
-        }
-        Ok(())
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::{FrameBuffer, HEIGHT, HEIGHT_I32, LEN, WIDTH, WIDTH_I32};
-
-    use embedded_graphics::mono_font::MonoTextStyle;
-    use embedded_graphics::mono_font::ascii::FONT_6X10;
-    use embedded_graphics::pixelcolor::BinaryColor;
-    use embedded_graphics::prelude::*;
-    use embedded_graphics::primitives::{PrimitiveStyle, Rectangle};
-    use embedded_graphics::text::Text;
 
     #[test]
     fn a_new_buffer_is_dark() {
@@ -297,44 +250,6 @@ mod tests {
         assert_eq!(frame.lit_pixels() as usize, WIDTH * HEIGHT);
         frame.clear();
         assert_eq!(frame.lit_pixels(), 0);
-    }
-
-    #[test]
-    fn embedded_graphics_primitives_draw_into_the_buffer() {
-        let mut frame = FrameBuffer::new();
-        Rectangle::new(Point::new(2, 2), Size::new(10, 4))
-            .into_styled(PrimitiveStyle::with_fill(BinaryColor::On))
-            .draw(&mut frame)
-            .unwrap();
-        assert_eq!(frame.lit_pixels(), 40);
-        assert!(frame.pixel(2, 2));
-        assert!(!frame.pixel(12, 2));
-    }
-
-    #[test]
-    fn text_rendering_is_deterministic() {
-        let render = || {
-            let mut frame = FrameBuffer::new();
-            let style = MonoTextStyle::new(&FONT_6X10, BinaryColor::On);
-            Text::new("O&C", Point::new(0, 8), style)
-                .draw(&mut frame)
-                .unwrap();
-            frame
-        };
-        let first = render();
-        let second = render();
-        assert_eq!(first.as_bytes(), second.as_bytes());
-        assert!(first.lit_pixels() > 0);
-    }
-
-    #[test]
-    fn clearing_through_the_draw_target_matches_the_inherent_method() {
-        let mut a = FrameBuffer::new();
-        a.fill();
-        DrawTarget::clear(&mut a, BinaryColor::Off).unwrap();
-
-        let b = FrameBuffer::new();
-        assert_eq!(a, b);
     }
 
     #[test]

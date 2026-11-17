@@ -4,8 +4,7 @@
 //! `range.0` lands on the bottom row, `range.1` on the top one, anything
 //! outside is clamped to the box.
 
-use embedded_graphics::prelude::Point;
-
+use super::Point;
 use super::{Ink, Ratio, fill_rect, hline, polyline, vline};
 use crate::framebuffer::FrameBuffer;
 

@@ -92,3 +92,21 @@ sur l'hôte (indicatif). Sinus entier au 1/256 de tour, à une unité près du s
 * Contrôles : `gfx::controls`, `gfx::plots` (`Area`), `gfx::patterns`, valeurs sur une plage par `Ratio` ;
   `polyline` encre une fois chaque point partagé (inversible). Écrans dorés : `gfx_*.scn`, un par page. Coût de
   dessin par page sur l'hôte (criterion, indicatif) : 1,5 à 3,1 µs, l'ordre du Diagnostic (2,6 µs).
+
+## Révision (2026-11-17) — `embedded-graphics` devient une dépendance de test
+
+Proposition de l'utilisateur, une fois `gfx` et `text` en place : nos primitives partout, `embedded-graphics`
+gardé comme référence, donc seulement pour les tests.
+
+* `oc-core` n'en dépend plus à l'exécution : `gfx::Point` (mêmes conventions), `text::Alignment` et
+  `text::Baseline` (mêmes variantes), et `Ink` comme couleur du texte (allumé, éteint, et désormais inversé) ; les
+  bandes de surbrillance du menu et du SETUP et le cadre du message de sauvegarde passent par `gfx::fill_rect` /
+  `gfx::rect` ; le firmware d'essai `settings-stress` écrit par `text::draw`.
+* `FrameBuffer` n'implémente plus `DrawTarget`. Les tests et le banc dessinent la référence par un adaptateur,
+  `tests/common/mod.rs` (`Reference`), partagé avec `benches/engine.rs` ; les comparaisons de formes sont devenues
+  des tests d'intégration (`tests/gfx.rs`), les tests de texte l'étaient déjà (`tests/fonts.rs`,
+  `tests/diagnostic.rs`).
+* Effet mesuré sur le firmware (`cargo xtask size`) : `.text` 114 932 → 113 980 octets (−952), `.rodata` 25 872 →
+  25 536 (−336). `embedded-graphics` n'est plus compilé pour le firmware, le simulateur ni le module Rack.
+* Une applet qui voudrait `embedded-graphics` le rajouterait derrière une feature, avec un `DrawTarget` pour
+  `FrameBuffer` ; rien ne le demande aujourd'hui.

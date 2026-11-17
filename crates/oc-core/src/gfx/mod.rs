@@ -18,9 +18,31 @@ pub mod patterns;
 pub mod plots;
 pub mod trig;
 
-use embedded_graphics::prelude::Point;
-
 use crate::framebuffer::{FrameBuffer, HEIGHT_I32, PAGES, WIDTH, WIDTH_I32};
+
+/// A pixel position: columns to the right, rows down from the top-left
+/// corner, the same convention `embedded-graphics` uses.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Hash)]
+pub struct Point {
+    /// Column.
+    pub x: i32,
+    /// Row.
+    pub y: i32,
+}
+
+impl Point {
+    /// The point at column `x`, row `y`.
+    #[must_use]
+    pub const fn new(x: i32, y: i32) -> Self {
+        Self { x, y }
+    }
+
+    /// The top-left corner.
+    #[must_use]
+    pub const fn zero() -> Self {
+        Self { x: 0, y: 0 }
+    }
+}
 
 /// A value within `0..=max`, as a knob or a bar shows it; values outside are
 /// clamped, and a `max` of zero or less reads as empty.
@@ -65,7 +87,7 @@ pub enum Ink {
 
 impl Ink {
     /// Applies the ink to the pixels set in `mask` of one byte.
-    const fn apply(self, byte: &mut u8, mask: u8) {
+    pub(crate) const fn apply(self, byte: &mut u8, mask: u8) {
         match self {
             Self::Lit => *byte |= mask,
             Self::Dark => *byte &= !mask,
@@ -274,193 +296,5 @@ pub fn fill_circle(frame: &mut FrameBuffer, center: Point, radius: i32, ink: Ink
             dx += 1;
         }
         hline(frame, center.x - dx, center.y + dy, 2 * dx + 1, ink);
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use embedded_graphics::Drawable as _;
-    use embedded_graphics::pixelcolor::BinaryColor;
-    use embedded_graphics::prelude::{Point, Primitive as _, Size};
-    use embedded_graphics::primitives::{PrimitiveStyle, Rectangle};
-
-    use super::{Ink, circle, dotted_hline, fill_circle, fill_rect, hline, line, rect, vline};
-    use crate::framebuffer::{FrameBuffer, HEIGHT_I32, WIDTH_I32};
-
-    /// A busy background, so that darkening and inverting show.
-    fn background() -> FrameBuffer {
-        let mut frame = FrameBuffer::new();
-        let mut seed = 0x5A_u8;
-        for byte in frame.as_mut_bytes() {
-            seed = seed.wrapping_mul(37).wrapping_add(11);
-            *byte = seed;
-        }
-        frame
-    }
-
-    /// `embedded-graphics`' rectangle, filled or stroked.
-    fn reference_rect(
-        x: i32,
-        y: i32,
-        width: i32,
-        height: i32,
-        color: BinaryColor,
-        filled: bool,
-    ) -> FrameBuffer {
-        let mut frame = background();
-        let size = Size::new(width.max(0).unsigned_abs(), height.max(0).unsigned_abs());
-        let style = if filled {
-            PrimitiveStyle::with_fill(color)
-        } else {
-            PrimitiveStyle::with_stroke(color, 1)
-        };
-        let _ = Rectangle::new(Point::new(x, y), size)
-            .into_styled(style)
-            .draw(&mut frame);
-        frame
-    }
-
-    /// Rectangles across page boundaries, on the edges and partly off screen.
-    const RECTANGLES: [(i32, i32, i32, i32); 9] = [
-        (0, 0, 128, 64),
-        (3, 5, 10, 1),
-        (3, 5, 1, 10),
-        (10, 6, 20, 12),
-        (-4, -3, 9, 9),
-        (120, 60, 20, 20),
-        (40, 8, 30, 8),
-        (64, 31, 2, 2),
-        (5, 5, 0, 7),
-    ];
-
-    #[test]
-    fn filled_rectangles_light_and_darken_what_embedded_graphics_does() {
-        for (x, y, width, height) in RECTANGLES {
-            for (ink, color) in [(Ink::Lit, BinaryColor::On), (Ink::Dark, BinaryColor::Off)] {
-                let mut ours = background();
-                fill_rect(&mut ours, x, y, width, height, ink);
-                assert!(
-                    ours == reference_rect(x, y, width, height, color, true),
-                    "fill {x},{y} {width}x{height} {ink:?}"
-                );
-            }
-        }
-    }
-
-    #[test]
-    fn outlines_light_what_embedded_graphics_strokes() {
-        for (x, y, width, height) in RECTANGLES {
-            for (ink, color) in [(Ink::Lit, BinaryColor::On), (Ink::Dark, BinaryColor::Off)] {
-                let mut ours = background();
-                rect(&mut ours, x, y, width, height, ink);
-                assert!(
-                    ours == reference_rect(x, y, width, height, color, false),
-                    "outline {x},{y} {width}x{height} {ink:?}"
-                );
-            }
-        }
-    }
-
-    #[test]
-    fn inverting_flips_exactly_the_covered_pixels() {
-        for (x, y, width, height) in RECTANGLES {
-            let mut frame = background();
-            fill_rect(&mut frame, x, y, width, height, Ink::Invert);
-            for row in 0..HEIGHT_I32 {
-                for column in 0..WIDTH_I32 {
-                    let inside = column >= x && column < x + width && row >= y && row < y + height;
-                    assert_eq!(
-                        frame.pixel(column, row),
-                        background().pixel(column, row) ^ inside,
-                        "{column},{row} for {x},{y} {width}x{height}"
-                    );
-                }
-            }
-            // Twice is nothing, outlines included (no pixel inked twice).
-            fill_rect(&mut frame, x, y, width, height, Ink::Invert);
-            rect(&mut frame, x, y, width, height, Ink::Invert);
-            rect(&mut frame, x, y, width, height, Ink::Invert);
-            assert_eq!(frame, background());
-        }
-    }
-
-    #[test]
-    fn straight_lines_are_one_pixel_rectangles() {
-        let mut ours = FrameBuffer::new();
-        hline(&mut ours, 2, 9, 7, Ink::Lit);
-        vline(&mut ours, 30, 4, 20, Ink::Lit);
-        let mut reference = FrameBuffer::new();
-        fill_rect(&mut reference, 2, 9, 7, 1, Ink::Lit);
-        fill_rect(&mut reference, 30, 4, 1, 20, Ink::Lit);
-        assert_eq!(ours, reference);
-        assert_eq!(ours.lit_pixels(), 27);
-    }
-
-    #[test]
-    fn a_dotted_line_lights_one_pixel_per_step() {
-        let mut frame = FrameBuffer::new();
-        dotted_hline(&mut frame, 0, 3, 10, 3, Ink::Lit);
-        assert_eq!(frame.lit_pixels(), 4);
-        assert!(frame.pixel(9, 3) && !frame.pixel(8, 3));
-    }
-
-    #[test]
-    fn a_line_joins_its_ends_one_pixel_per_step() {
-        for (from, to) in [
-            (Point::new(0, 0), Point::new(127, 63)),
-            (Point::new(10, 50), Point::new(14, 2)),
-            (Point::new(5, 5), Point::new(5, 5)),
-            (Point::new(100, 20), Point::new(20, 22)),
-        ] {
-            let mut frame = FrameBuffer::new();
-            line(&mut frame, from, to, Ink::Lit);
-            assert!(frame.pixel(from.x, from.y) && frame.pixel(to.x, to.y));
-            let steps = (to.x - from.x).abs().max((to.y - from.y).abs());
-            assert_eq!(i64::from(frame.lit_pixels()), i64::from(steps) + 1);
-        }
-    }
-
-    #[test]
-    fn a_circle_is_symmetric_and_at_its_radius() {
-        for radius in 0..12 {
-            let center = Point::new(64, 32);
-            let mut frame = FrameBuffer::new();
-            circle(&mut frame, center, radius, Ink::Lit);
-            for dy in -radius..=radius {
-                for dx in -radius..=radius {
-                    let lit = frame.pixel(center.x + dx, center.y + dy);
-                    assert_eq!(lit, frame.pixel(center.x - dx, center.y + dy));
-                    assert_eq!(lit, frame.pixel(center.x + dy, center.y + dx));
-                    if lit {
-                        let distance = dx * dx + dy * dy;
-                        assert!(
-                            (distance - radius * radius).abs() <= radius + 1,
-                            "r={radius} {dx},{dy}"
-                        );
-                    }
-                }
-            }
-            // Inverting twice restores: every point was inked once.
-            circle(&mut frame, center, radius, Ink::Invert);
-            assert_eq!(frame.lit_pixels(), 0, "radius {radius}");
-        }
-    }
-
-    #[test]
-    fn a_disc_covers_its_circle() {
-        for radius in 0..12 {
-            let center = Point::new(20, 40);
-            let mut outline = FrameBuffer::new();
-            circle(&mut outline, center, radius, Ink::Lit);
-            let mut disc = FrameBuffer::new();
-            fill_circle(&mut disc, center, radius, Ink::Lit);
-            for row in 0..HEIGHT_I32 {
-                for column in 0..WIDTH_I32 {
-                    if outline.pixel(column, row) {
-                        assert!(disc.pixel(column, row), "r={radius} {column},{row}");
-                    }
-                }
-            }
-        }
     }
 }

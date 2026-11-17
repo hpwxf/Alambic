@@ -16,10 +16,7 @@
 //! whatever their reversal setting, so that a wrong setting cannot make the
 //! very screen that fixes it unusable.
 
-use embedded_graphics::Drawable as _;
-use embedded_graphics::pixelcolor::BinaryColor;
-use embedded_graphics::prelude::{Point, Primitive as _, Size};
-use embedded_graphics::primitives::{PrimitiveStyle, Rectangle};
+use crate::gfx::{self, Ink, Point};
 
 use crate::apps::AppId;
 use crate::buttons::ButtonEvents;
@@ -293,16 +290,8 @@ impl SystemScreen {
             let top = row * ROW_HEIGHT;
             let highlighted = line.index() == self.cursor;
             if highlighted {
-                let band = Rectangle::new(
-                    Point::new(0, top),
-                    Size::new(
-                        u32::try_from(WIDTH_I32).unwrap_or(0),
-                        u32::try_from(ROW_HEIGHT).unwrap_or(0),
-                    ),
-                );
-                let _ = band
-                    .into_styled(PrimitiveStyle::with_fill(BinaryColor::On))
-                    .draw(frame);
+                let at: Point = Point::new(0, top);
+                gfx::fill_rect(frame, at.x, at.y, WIDTH_I32, ROW_HEIGHT, Ink::Lit);
             }
             let style = if highlighted {
                 TextStyle::dark(&FONT_5X8)

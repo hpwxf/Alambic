@@ -5,10 +5,7 @@
 //! outcome to the engine ([`crate::Engine::report_save`]), which shows the
 //! matching message for [`DURATION_MICROS`] on top of the screen in use.
 
-use embedded_graphics::Drawable as _;
-use embedded_graphics::pixelcolor::BinaryColor;
-use embedded_graphics::prelude::{Point, Primitive as _, Size};
-use embedded_graphics::primitives::{PrimitiveStyleBuilder, Rectangle};
+use crate::gfx::{self, Ink, Point};
 
 use crate::framebuffer::{FrameBuffer, HEIGHT_I32, WIDTH_I32};
 use crate::text::fonts::FONT_5X8;
@@ -75,16 +72,9 @@ impl Toast {
 
     /// Draws a framed box in the middle of `frame`, over what is there.
     pub fn draw(&self, frame: &mut FrameBuffer) {
-        let size = Size::new(96, 28);
         let top_left = Point::new((WIDTH_I32 - 96) / 2, (HEIGHT_I32 - 28) / 2);
-        let style = PrimitiveStyleBuilder::new()
-            .fill_color(BinaryColor::Off)
-            .stroke_color(BinaryColor::On)
-            .stroke_width(1)
-            .build();
-        let _ = Rectangle::new(top_left, size)
-            .into_styled(style)
-            .draw(frame);
+        gfx::fill_rect(frame, top_left.x, top_left.y, 96, 28, Ink::Dark);
+        gfx::rect(frame, top_left.x, top_left.y, 96, 28, Ink::Lit);
 
         let centred = TextStyle::lit(&FONT_5X8).aligned(Alignment::Center);
         for (index, line) in self.outcome.lines().into_iter().enumerate() {

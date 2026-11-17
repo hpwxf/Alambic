@@ -5,8 +5,7 @@
 //! font tops a value), drawn with the bases of [`super`] and [`crate::text`].
 //! Every control takes its fonts from the caller's [`TextStyle`]s.
 
-use embedded_graphics::prelude::Point;
-
+use super::Point;
 use super::trig::{TURN, polar};
 use super::{Ink, Ratio, circle, fill_rect, hline, line, pixel, rect, vline};
 use crate::framebuffer::{FrameBuffer, WIDTH_I32};
@@ -172,11 +171,7 @@ pub fn header(
     height + 3
 }
 
-/// The ink a text style's colour stands for.
+/// The ink a text style draws with, for the shapes beside its text.
 const fn ink_of(style: TextStyle) -> Ink {
-    if style.color.is_on() {
-        Ink::Lit
-    } else {
-        Ink::Dark
-    }
+    style.color
 }

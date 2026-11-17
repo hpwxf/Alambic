@@ -4,7 +4,7 @@
 //! Angles are in 1/256 of a turn, counter-clockwise from three o'clock as in
 //! mathematics; screen rows grow downwards, which [`polar`] accounts for.
 
-use embedded_graphics::prelude::Point;
+use super::Point;
 
 /// One full turn.
 pub const TURN: i32 = 256;
@@ -55,9 +55,7 @@ pub fn polar(center: Point, radius: i32, angle: i32) -> Point {
 
 #[cfg(test)]
 mod tests {
-    use embedded_graphics::prelude::Point;
-
-    use super::{ONE, TURN, cos, polar, sin};
+    use super::{ONE, Point, TURN, cos, polar, sin};
 
     #[test]
     fn the_cardinal_angles_are_exact() {

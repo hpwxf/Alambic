@@ -12,13 +12,16 @@
 use std::fmt::Write as _;
 use std::path::Path;
 
+mod common;
+
+use common::{Reference, background};
 use embedded_graphics::Drawable as _;
 use embedded_graphics::mono_font::{MonoFont, MonoTextStyle, ascii};
 use embedded_graphics::pixelcolor::BinaryColor;
-use embedded_graphics::prelude::Point;
-use embedded_graphics::text::{Alignment, Baseline, Text, TextStyleBuilder};
+use embedded_graphics::text::{Text, TextStyleBuilder};
 use oc_core::framebuffer::{FrameBuffer, WIDTH};
-use oc_core::text::{ColumnFont, TextStyle, draw, fonts};
+use oc_core::gfx::Point;
+use oc_core::text::{Alignment, Baseline, ColumnFont, TextStyle, draw, fonts};
 
 /// The fonts `src/text/fonts.rs` provides, by the name they keep there.
 const SOURCES: [(&str, &MonoFont<'static>); 6] = [
@@ -40,7 +43,13 @@ fn glyph_columns(font: &MonoFont<'static>, code: u8) -> Vec<u8> {
     let style = MonoTextStyle::new(font, BinaryColor::On);
     let mut buffer = [0; 4];
     let text = char::from(code).encode_utf8(&mut buffer);
-    let _ = Text::with_baseline(text, Point::zero(), style, Baseline::Top).draw(&mut frame);
+    let _ = Text::with_baseline(
+        text,
+        embedded_graphics::prelude::Point::zero(),
+        style,
+        embedded_graphics::text::Baseline::Top,
+    )
+    .draw(&mut Reference(&mut frame));
     let width = font.character_size.width as usize;
     let bands = (font.character_size.height as usize).div_ceil(8);
     let bytes = frame.as_bytes();
@@ -128,17 +137,6 @@ fn source(name: &str) -> &'static MonoFont<'static> {
         .map_or_else(|| panic!("{name} has no source font"), |(_, font)| *font)
 }
 
-/// A busy background, so that darkening and leaving pixels alone show.
-fn background() -> FrameBuffer {
-    let mut frame = FrameBuffer::new();
-    let mut seed = 0x5A_u8;
-    for byte in frame.as_mut_bytes() {
-        seed = seed.wrapping_mul(37).wrapping_add(11);
-        *byte = seed;
-    }
-    frame
-}
-
 /// Draws `text` both ways and compares the frames.
 fn assert_same(name: &str, font: &'static ColumnFont, text: &str, at: Point, style: TextStyle) {
     let style = TextStyle { font, ..style };
@@ -146,12 +144,13 @@ fn assert_same(name: &str, font: &'static ColumnFont, text: &str, at: Point, sty
     draw(&mut ours, text, at, style);
 
     let mut reference = background();
-    let character = MonoTextStyle::new(source(name), style.color);
+    let character = MonoTextStyle::new(source(name), common::color(style.color));
     let layout = TextStyleBuilder::new()
-        .alignment(style.alignment)
-        .baseline(style.baseline)
+        .alignment(common::alignment(style.alignment))
+        .baseline(common::baseline(style.baseline))
         .build();
-    let _ = Text::with_text_style(text, at, character, layout).draw(&mut reference);
+    let _ = Text::with_text_style(text, common::point(at), character, layout)
+        .draw(&mut Reference(&mut reference));
 
     assert!(
         ours == reference,

@@ -14,7 +14,7 @@
 
 use core::fmt::Write as _;
 
-use embedded_graphics::prelude::Point;
+use crate::gfx::Point;
 
 use crate::apps::{InputSnapshot, TickContext};
 use crate::calibration::{CV_OUT_MAX_MV, CV_OUT_MIN_MV};

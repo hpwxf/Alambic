@@ -8,10 +8,7 @@
 //! opens or closes — that is [`Engine::tick`](crate::Engine)'s job — so this
 //! module only knows how to move a highlight and draw a list.
 
-use embedded_graphics::Drawable as _;
-use embedded_graphics::pixelcolor::BinaryColor;
-use embedded_graphics::prelude::{Point, Primitive as _, Size};
-use embedded_graphics::primitives::{PrimitiveStyle, Rectangle};
+use crate::gfx::{self, Ink, Point};
 
 use crate::apps::AppId;
 use crate::buttons::ButtonEvents;
@@ -162,16 +159,8 @@ impl Menu {
             let top_left = Point::new(0, row * ROW_HEIGHT);
             let highlighted = index == self.selected;
             if highlighted {
-                let band = Rectangle::new(
-                    top_left,
-                    Size::new(
-                        u32::try_from(WIDTH_I32).unwrap_or(0),
-                        u32::try_from(ROW_HEIGHT).unwrap_or(0),
-                    ),
-                );
-                let _ = band
-                    .into_styled(PrimitiveStyle::with_fill(BinaryColor::On))
-                    .draw(frame);
+                let at: Point = top_left;
+                gfx::fill_rect(frame, at.x, at.y, WIDTH_I32, ROW_HEIGHT, Ink::Lit);
             }
             let style = if highlighted {
                 TextStyle::dark(&FONT_5X8)

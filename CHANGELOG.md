@@ -63,6 +63,11 @@ Architectural decisions behind each change are in `journal/` (French).
   `embedded-graphics` ASCII fonts (4x6 to 10x20) as generated column tables
   (`UPDATE_FONTS=1 cargo test -p oc-core --test fonts`), each checked pixel
   for pixel against its source; an applet picks its own.
+- **`embedded-graphics` is a test dependency only.** `oc-core` draws with its
+  own `gfx` and `text` (`gfx::Point`, `text::Alignment`, `text::Baseline`,
+  `Ink` as the text colour) and `FrameBuffer` no longer implements
+  `DrawTarget`; the tests and benchmarks check against `embedded-graphics`
+  through an adapter. The firmware image shrinks by about 1.3 KiB.
 
 ### Fixed
 

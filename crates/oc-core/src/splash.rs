@@ -14,7 +14,7 @@
 // below are proven safe rather than accidental narrowing.
 #![allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
 
-use embedded_graphics::prelude::Point;
+use crate::gfx::Point;
 
 use crate::framebuffer::{FrameBuffer, HEIGHT_I32, WIDTH_I32};
 use crate::text::fonts::FONT_5X8;

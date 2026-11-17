@@ -3,6 +3,9 @@
 //! These run the exact code the firmware runs; only the platform backend is
 //! replaced by the deterministic mocks from [`oc_core::testing`].
 
+mod common;
+
+use common::Reference;
 use embedded_graphics::Drawable as _;
 use embedded_graphics::mono_font::MonoTextStyle;
 use embedded_graphics::mono_font::ascii::FONT_5X8;
@@ -50,7 +53,7 @@ fn reference_row(text: &str, row: i32) -> FrameBuffer {
     let mut frame = FrameBuffer::new();
     let style = MonoTextStyle::new(&FONT_5X8, BinaryColor::On);
     Text::with_baseline(text, Point::new(0, row * ROW_HEIGHT), style, Baseline::Top)
-        .draw(&mut frame)
+        .draw(&mut Reference(&mut frame))
         .expect("drawing into a framebuffer is infallible");
     frame
 }

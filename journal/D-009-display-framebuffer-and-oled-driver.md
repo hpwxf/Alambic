@@ -136,7 +136,8 @@ octet par colonne). Corrigé :
   (`UPDATE_FONTS=1 cargo test -p oc-core --test fonts`, sur le modèle des écrans dorés) ; le même test compare les
   pixels pour chaque police, glyphe, couleur, alignement, ligne de base et position, et échoue si le fichier n'est
   plus à jour. Une police qu'aucun code n'utilise n'entre pas dans l'image ;
-* `embedded-graphics` reste utilisable tel quel pour toute autre police et tout autre dessin.
+* `embedded-graphics` reste la référence des tests ; à l'exécution, il a été retiré ensuite (D-030, révision du
+  2026-11-17).
 
 Coût de la généralité (hôte, criterion, indicatif) : un écran de texte 1,06 → 1,72 µs ; `applet/render` ≈ 2,6 µs,
 inchangé à la mesure près.
