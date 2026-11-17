@@ -685,6 +685,32 @@ screen stayed clean at 22 MHz, the four outputs read −3.000/−2.999 V and
 +4.997 V, `outputs` took 3.0 µs on average and 8.0 µs at most, one OLED page
 49 µs (about 145 µs at 8 MHz). An observation on one module, not a target.
 
+### 9.3e — Audio interrupt (journal/D-033, lot 7c)
+
+From this firmware on, a 48 kHz interrupt writes the DAC and sends the
+screen; the 1 kHz loop no longer touches the bus. `cargo xtask flash`, then:
+
+1. The splash plays and every applet draws normally, as in 9.3d step 1.
+2. `cargo probe stats` on `DIAGNOSTIC`, then on `TONE`:
+   * `audio_period`: mean 20.8 µs (48 000 a second), max under 2 × 20.8 µs
+     — a longer one is a missed sample;
+   * `audio`: the interrupt's own time; record mean and max with `TONE`
+     (four channels written each period) and with `DIAGNOSTIC` at rest (no
+     DAC words);
+   * `frame`: well under 20 ms (one frame drawn every 20 ticks);
+   * `period` still 1 000 µs on average and `tick` + `sample` + `usb`
+     well under a period: the loop keeps its rate with the interrupt
+     taking its share.
+3. The outputs are right: 9.3d step 2 again (`cargo probe sweep`,
+   `cargo probe out` with a multimeter).
+4. Settings: `SETUP` → `SAVE` still saves (toast), the outputs drop to 0 V
+   during it and come back.
+5. `TONE`, by ear only for now (lot 7d does the oscilloscope and the
+   tuner): every note from C1 to C8 sounds at its own pitch, C5 and above
+   included.
+
+Record the values; with `oled-spi-8mhz`, repeat 1 and 2 (`frame` longer).
+
 ### 9.4 — Calibration
 
 This step measures how far the module is from the factory calibration, then

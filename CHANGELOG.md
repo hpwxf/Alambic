@@ -41,6 +41,16 @@ Architectural decisions behind each change are in `journal/` (French).
 
 ### Changed
 
+- **The outputs and the screen belong to a 48 kHz interrupt** (journal/D-033,
+  lot 7c): GPT2 on the 24 MHz crystal writes the DAC channels that changed
+  every period, computes the next sample of the engine's output parameters,
+  then sends a piece of the screen; the 1 kHz loop publishes the parameters
+  and hands its frames over. `cargo probe stats` shows the interrupt
+  (`audio`, `audio_period`, `frame`). The outputs rest at 0 V while the
+  settings are saved.
+- `oc_drivers::ssd130x::FrameStream` (a frame in chunks),
+  `dac8565::ChangedCodes` and `fifo::words`, for a sender without a
+  blocking bus; `Ssd130x::release`; `Profile::merge`.
 - The DAC's chip select is LPSPI4's own (PCS0), the shared bus picks the chip
   select and the clock of each device before each transfer, and the DAC and
   the OLED run at 22 MHz (`oled-spi-8mhz` puts the OLED back at 8 MHz); a DAC

@@ -22,6 +22,9 @@ teensy4-panic = { version = "0.3", features = ["log"] }
 # `critical-section-single-core` provides the critical-section impl that
 # `imxrt-log` needs on a bare-metal single-core target.
 cortex-m = { version = "0.7", features = ["critical-section-single-core"] }
+# The state the 1 kHz loop and the audio interrupt share (journal/D-033),
+# behind cortex-m's implementation above.
+critical-section = "1"
 embedded-hal.workspace = true
 # USB: two CDC serial ports, the text log and the probe (journal/D-029),
 # polled from the main loop with interrupts off. The BSP re-exports the

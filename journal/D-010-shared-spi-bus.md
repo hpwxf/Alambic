@@ -78,3 +78,11 @@ Préalable du chemin audio (D-033). Trois changements :
 
 Le `RefCell` reste correct : le firmware est encore mono-contexte. L'arbitrage à deux contextes (§ 5) vient avec
 l'interruption audio (D-033, lot 7c). Le DAC n'envoie plus que les voies dont le code a changé.
+
+## Révision du 2026-11-17 — le bus possédé par l'interruption (D-033, lot 7c)
+
+Après l'initialisation de l'écran (bloquante, par `SharedBus`), le bus passe à l'interruption audio, qui est seule
+à s'en servir : plus de `RefCell` partagé à l'exécution. Elle sérialise elle-même le DAC et l'OLED à chaque période
+(le DAC d'abord, puis un tronçon d'écran), en attendant la fin de chaque transfert avant de toucher le CS de l'OLED.
+Le PCS3 sans broche et l'horloge par périphérique du lot 7a restent ; le délai entre deux mots du DAC est porté à
+45 ns au moins (SYNC haut, fiche du DAC8565).

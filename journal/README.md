@@ -73,7 +73,7 @@ une section datée en fin de fichier) au lieu d'en ouvrir une nouvelle. Les num�
 | [D-005](D-005-millivolt-signal-unit.md) | unité de signal interne : millivolts `i32`, flottant seulement à la frontière VCV | adoptée (rétrospective) |
 | [D-006](D-006-signed-slope-calibration.md) | calibration affine à pente signée ; étages inverseurs = pente négative ; constantes provisoires | adoptée (rétrospective), révisée |
 | [D-007](D-007-pinout-in-board-rs.md) | brochage centralisé dans `board.rs`, dérivé du firmware de référence | adoptée (rétrospective), révisée |
-| [D-008](D-008-cooperative-1khz-loop.md) | boucle coopérative à 1 kHz, sans RTOS ni interruption ; rendu découplé (1 tick sur 20) | adoptée (rétrospective) |
+| [D-008](D-008-cooperative-1khz-loop.md) | boucle coopérative à 1 kHz, sans RTOS ni interruption ; rendu découplé (1 tick sur 20) | adoptée (rétrospective), révisée |
 | [D-009](D-009-display-framebuffer-and-oled-driver.md) | écran : framebuffer 1 bpp dans l'ordre du contrôleur, pilote maison, SH1106 par défaut | adoptée (rétrospective), révisée |
 | [D-010](D-010-shared-spi-bus.md) | bus SPI partagé DAC / OLED : `SharedBus` sur `RefCell`, CS en GPIO, 8 MHz, tronçons ≤ 512 octets | adoptée (rétrospective), révisée |
 | [D-011](D-011-no-uart-usb-cdc-diagnostics.md) | aucun UART ; diagnostic par USB CDC sondé et LED de démarrage | adoptée (rétrospective), révisée |

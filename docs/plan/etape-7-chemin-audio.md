@@ -15,7 +15,9 @@ générer des sons sur les sorties du module. Choix : 48 kHz, les quatre sorties
 
 État (2026-11-17) : 7a mesuré sur le module (écran propre à 22 MHz, sorties justes, `outputs` 3,0 µs en moyenne,
 page d'OLED 49 µs ; D-033, révision) ; 7b fait sur l'hôte (le firmware joue `TONE` échantillonné à 1 kHz jusqu'au
-lot 7c ; Rack non compilé faute de SDK sur cette machine).
+lot 7c ; Rack non compilé faute de SDK sur cette machine). 7c écrit : GPT2 sur le quartz de 24 MHz plutôt que le PIT
+(PERCLK à 1 MHz : 48 kHz n'y tombe pas juste), l'interruption attend les mots du DAC avant le tronçon d'OLED, délai
+entre deux mots du DAC porté à 45 ns ; mesure sur le module à faire (TESTING 9.3e).
 
 Ordre : 7a → 7b (indépendant du matériel, peut avancer en parallèle) → 7c → 7d → 7e éventuel.
 

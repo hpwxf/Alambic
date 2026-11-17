@@ -78,7 +78,7 @@ use teensy4_bsp::board::{LPSPI_FREQUENCY, LpspiPins};
 use teensy4_bsp::hal::adc::{Adc, AnalogInput};
 use teensy4_bsp::hal::gpio::{Input, Output, Port, Trigger};
 use teensy4_bsp::hal::iomuxc::{self, Config, Hysteresis, PullKeeper};
-use teensy4_bsp::hal::lpspi::{Lpspi, Pcs};
+use teensy4_bsp::hal::lpspi::{ClockConfigs, Lpspi, Pcs};
 use teensy4_bsp::pins::imxrt_iomuxc::Iomuxc;
 use teensy4_bsp::pins::t40::{
     P0, P1, P2, P3, P4, P5, P6, P7, P8, P9, P10, P11, P12, P13, P14, P15, P16, P17, P18, P19, P20,
@@ -105,30 +105,97 @@ pub(crate) const OLED_SPI_HZ: u32 = if cfg!(feature = "oled-spi-8mhz") {
     22_000_000
 };
 
-/// Readies the shared bus for the DAC: its own chip select, PCS0, which the
-/// controller asserts for each 24-bit word, and its clock.
-pub(crate) fn select_dac(spi: &mut Lpspi) {
-    spi.set_pcs(Pcs::Pcs0);
-    set_clock(spi, DAC_SPI_HZ);
-}
+/// The chip select of the DAC: LPSPI4's PCS0, which the controller asserts
+/// for each 24-bit word.
+pub(crate) const DAC_PCS: Pcs = Pcs::Pcs0;
 
-/// Readies the shared bus for the OLED: a chip select no pad carries, so its
-/// transactions never assert the DAC's (the OLED's own is a GPIO), and its
-/// clock.
+/// The chip select of the OLED's transactions: one no pad carries, so they
+/// never assert the DAC's (the OLED's own is a GPIO).
+pub(crate) const OLED_PCS: Pcs = Pcs::Pcs3;
+
+/// Readies the bus for the OLED's blocking initialisation, before the audio
+/// interrupt takes the bus over (journal/D-033).
 pub(crate) fn select_oled(spi: &mut Lpspi) {
-    spi.set_pcs(Pcs::Pcs3);
-    set_clock(spi, OLED_SPI_HZ);
+    spi.set_pcs(OLED_PCS);
 }
 
-/// Sets the bus clock when the two devices differ; the drivers flush before
-/// releasing the bus, so it is idle here.
-fn set_clock(spi: &mut Lpspi, hz: u32) {
-    if DAC_SPI_HZ != OLED_SPI_HZ {
-        spi.disabled(|spi| spi.set_clock_hz(LPSPI_FREQUENCY, hz));
-    }
+/// Shortest time the DAC's chip select stays high between two words, in
+/// cycles of LPSPI4's 132 MHz clock, as the `DBT` field counts them (plus
+/// two): 6 cycles, 45 ns, over the DAC8565's 40 ns (SYNC high, SBAS411C).
+/// At 22 MHz `imxrt-hal` leaves 4 (30 ns), which only the gaps between
+/// blocking writes made up for; the interrupt queues the words back to back.
+const MIN_DBT: u8 = 4;
+
+/// The bus timings of the two devices, computed once.
+#[derive(Clone, Copy)]
+pub(crate) struct BusClocks {
+    /// The DAC's clock and delays.
+    pub(crate) dac: ClockConfigs,
+    /// The OLED's.
+    pub(crate) oled: ClockConfigs,
 }
+
+/// Computes the timings of the DAC and the OLED on `spi`, and leaves the
+/// OLED's in force.
+pub(crate) fn bus_clocks(spi: &mut Lpspi) -> BusClocks {
+    let clocks = BusClocks {
+        dac: timing(spi, DAC_SPI_HZ),
+        oled: timing(spi, OLED_SPI_HZ),
+    };
+    spi.disabled(|spi| spi.set_clock_configs(clocks.oled));
+    clocks
+}
+
+/// The timing `imxrt-hal` derives for `hz`, the gap between words widened to
+/// [`MIN_DBT`].
+fn timing(spi: &mut Lpspi, hz: u32) -> ClockConfigs {
+    spi.disabled(|spi| spi.set_clock_hz(LPSPI_FREQUENCY, hz));
+    let mut configs = spi.clock_configs();
+    configs.dbt = configs.dbt.max(MIN_DBT);
+    configs
+}
+
+/// Audio samples a second on the four outputs (journal/D-033).
+pub(crate) const AUDIO_RATE_HZ: u32 = 48_000;
+
+/// The audio timer's clock: GPT2 on the 24 MHz crystal, undivided. The BSP
+/// runs the PIT and the GPTs' peripheral clock at 1 MHz, which 48 kHz does
+/// not divide.
+pub(crate) const AUDIO_TIMER_CLOCK_HZ: u32 = 24_000_000;
+
+const _: () = assert!(
+    AUDIO_TIMER_CLOCK_HZ.is_multiple_of(AUDIO_RATE_HZ),
+    "the audio rate must be a whole number of timer counts"
+);
+
+/// What a piece of the screen may take on the bus each audio period, in
+/// nanoseconds: about half the 20.8 µs, the DAC's words and the
+/// interrupt's own work taking most of the rest.
+const OLED_CHUNK_BUDGET_NS: u64 = 10_000;
+
+/// The most pixel bytes sent to the OLED each audio period: what goes out in
+/// [`OLED_CHUNK_BUDGET_NS`] at its clock, in whole FIFO words of four bytes,
+/// and at most 14 words so that the chunk and its command fit LPSPI4's
+/// 16-word transmit FIFO.
+#[allow(clippy::cast_possible_truncation)]
+// A few dozen bytes at most, by the clamp.
+pub(crate) const OLED_CHUNK_BYTES: usize = {
+    let bytes = OLED_CHUNK_BUDGET_NS * OLED_SPI_HZ as u64 / 8_000_000_000;
+    let words = bytes / 4;
+    let words = if words < 1 {
+        1
+    } else if words > 14 {
+        14
+    } else {
+        words
+    };
+    words as usize * 4
+};
 
 /// Nominal period of the main loop, in microseconds.
+///
+/// The loop no longer touches the outputs or the screen: the audio
+/// interrupt does (journal/D-033).
 pub(crate) const TICK_PERIOD_MICROS: u32 = 1_000;
 
 /// Redraw the screen once every this many ticks, i.e. about 50 Hz.
@@ -394,7 +461,7 @@ pub(crate) struct DacPins {
 /// The DAC8565 control lines.
 pub(crate) struct DacLines {
     /// Chip select, active low, muxed to LPSPI4's PCS0: the controller frames
-    /// each 24-bit word itself ([`select_dac`]). Held here so nothing else can
+    /// each 24-bit word itself ([`DAC_PCS`]). Held here so nothing else can
     /// claim the pad.
     _cs: P10,
     /// Reset, active low.

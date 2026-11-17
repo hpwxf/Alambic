@@ -30,24 +30,33 @@
 //!
 //! # Unsafe code
 //!
-//! `deny(unsafe_code)` holds everywhere but two modules, each with its own
+//! `deny(unsafe_code)` holds everywhere but three modules, each with its own
 //! `allow` and a `SAFETY:` comment on every block: [`flash_store`] (the boot
-//! ROM's flash driver) and [`reboot`] (a fuse read and the breakpoint that
-//! hands over to the bootloader). Other register access is confined to
+//! ROM's flash driver), [`reboot`] (a fuse read and the breakpoint that
+//! hands over to the bootloader) and [`audio_irq`] (the audio interrupt's
+//! handler and NVIC line). Other register access is confined to
 //! `teensy4-bsp` and `imxrt-hal`.
+//!
+//! # The audio interrupt
+//!
+//! From the end of the start-up on, a 48 kHz interrupt owns the SPI bus: it
+//! writes the DAC every period and sends the screen in pieces between two
+//! samples ([`audio`], journal/D-033). The 1 kHz loop below runs the engine
+//! and hands it what the outputs carry and what the screen shows.
 
 #![no_std]
 #![no_main]
 #![deny(unsafe_code)]
 #![warn(missing_docs)]
 
+mod audio;
+mod audio_irq;
 mod board;
 mod boot_led;
 mod clock;
 mod cv_in;
 mod delay;
 mod flash_store;
-mod paged_panel;
 mod reboot;
 #[cfg(feature = "settings-stress")]
 mod stress;
@@ -65,14 +74,12 @@ use teensy4_panic as _;
 use bsp::board as bsp_board;
 
 use oc_core::Engine;
-use oc_core::calibration::CvOutputCalibration;
 use oc_core::platform::{CV_CHANNELS, Clock as _, CvChannel};
 use oc_core::profile::Stage;
 use oc_core::settings::SettingsStore;
 use oc_core::toast::SaveOutcome;
-use oc_drivers::dac8565::Dac8565;
 use oc_drivers::panel::Panel;
-use oc_drivers::shared_bus::{ControllerChipSelect, SharedBus};
+use oc_drivers::shared_bus::SharedBus;
 use oc_drivers::ssd130x::Ssd130x;
 use oc_drivers::triggers::Triggers;
 use oc_protocol::server::{Identity, Server};
@@ -82,7 +89,6 @@ use crate::clock::SystemClock;
 use crate::cv_in::CvInputs;
 use crate::delay::CycleDelay;
 use crate::flash_store::SettingsFlash;
-use crate::paged_panel::PagedPanel;
 use crate::usb::Usb;
 
 /// How long to spin-poll USB after bringing the CDC backend up, so a host that
@@ -117,6 +123,7 @@ fn main() -> ! {
         lpspi4,
         adc1,
         gpt1,
+        gpt2,
         usb: usb_instances,
         ..
     } = bsp_board::t40(bsp_board::instances());
@@ -172,9 +179,9 @@ fn main() -> ! {
 
     // ---- shared SPI bus -----------------------------------------------------
     // The DAC and the OLED share data and clock and are told apart by their
-    // chip selects: the DAC's is the controller's PCS0, the OLED's a GPIO its
-    // driver owns. Each handle selects its device before each transaction
-    // (journal/D-033).
+    // chip selects: the DAC's is the controller's PCS0, the OLED's a GPIO.
+    // The OLED is initialised over a blocking handle first; then the audio
+    // interrupt takes the bus over (journal/D-033).
     let bus = RefCell::new(bsp_board::lpspi(
         lpspi4,
         pins.spi.with_clock(pins.led_sck),
@@ -184,11 +191,6 @@ fn main() -> ! {
     usb.poll();
 
     let dac_lines = pins.dac.claim(&mut gpio2);
-    let dac = Dac8565::new(
-        SharedBus::with_select(&bus, board::select_dac),
-        ControllerChipSelect,
-        CvOutputCalibration::FACTORY.to_code(0),
-    );
     let oled_lines = pins.oled.claim(&mut gpio2);
     let mut display = Ssd130x::new(
         SharedBus::with_select(&bus, board::select_oled),
@@ -214,6 +216,19 @@ fn main() -> ! {
     }
     usb.poll();
 
+    // ---- audio interrupt: the bus, the DAC and the screen from here on ----
+    // The reset line stays held here, high, for good.
+    let (_, oled_cs, oled_dc, _oled_reset) = display.release();
+    let mut spi = bus.into_inner();
+    let clocks = board::bus_clocks(&mut spi);
+    audio::start(spi, oled_cs, oled_dc, gpt2, clocks, board::OLED_CONTROLLER);
+    log::info!(
+        "audio interrupt at {} Hz, {} screen bytes a period",
+        board::AUDIO_RATE_HZ,
+        board::OLED_CHUNK_BYTES
+    );
+    usb.poll();
+
     // ---- panel controls -----------------------------------------------------
     // Encoders and buttons short to ground; `claim` applies the pull-up without
     // which neither detents nor presses ever reach the engine.
@@ -228,11 +243,11 @@ fn main() -> ! {
 
     let mut engine = Engine::new(
         cv_inputs,
-        dac,
+        audio::MutedOutputs,
         triggers,
         panel,
         SystemClock::new(gpt1, &mut cortex.DCB, &mut cortex.DWT),
-        PagedPanel::new(display),
+        audio::MailboxDisplay::new(),
     );
     engine.set_render_interval(board::RENDER_INTERVAL_TICKS);
     engine
@@ -303,10 +318,15 @@ fn main() -> ! {
         }
         record_since(&mut engine, Stage::Sample, mark);
         let report = engine.tick();
+        audio::publish(engine.params(), &engine.calibration().outputs);
+        audio::drain_stats(engine.profile_mut());
         probe.after_tick(&report, &mut engine);
         if engine.take_save_request() {
             // Blocks for an erase now and then (tens of milliseconds); only
-            // ever after an explicit SAVE on the settings screen.
+            // ever after an explicit SAVE on the settings screen. The boot
+            // ROM masks the audio interrupt meanwhile: the outputs rest
+            // rather than freeze on a sample (journal/D-033).
+            audio::rest_outputs(&engine.calibration().outputs);
             let saved = settings_store
                 .as_mut()
                 .map(|store| store.save(engine.settings()));
@@ -401,6 +421,7 @@ fn restart_into_loader<A, O, D, C, K, S>(
         usb.serve(probe, engine);
         delay.delay_ms(1);
     }
+    audio::stop();
     reboot::to_loader();
 }
 

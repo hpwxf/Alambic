@@ -2653,6 +2653,7 @@ name = "oc-firmware"
 version = "0.4.0"
 dependencies = [
  "cortex-m",
+ "critical-section",
  "embedded-hal 1.0.0",
  "embedded-storage-async",
  "log",

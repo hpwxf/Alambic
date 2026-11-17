@@ -25,6 +25,11 @@
 //!
 //! The driver is generic over any `embedded-hal` 1.0 SPI bus and chip-select
 //! pin, which keeps it independent of the pinout and testable on the host.
+//!
+//! A sender that frames the words itself, such as the firmware's audio
+//! interrupt queueing them into the SPI controller (journal/D-033), uses
+//! [`channel_word`] and [`ChangedCodes`] instead: the same words, the same
+//! rule of writing only what changed, without a blocking bus.
 
 use embedded_hal::digital::OutputPin;
 use embedded_hal::spi::SpiBus;
@@ -44,6 +49,77 @@ mod command {
     pub(super) const WRITE_AND_UPDATE_ALL: u8 = 0b0010_0000;
     /// Bit position of the two channel-select bits.
     pub(super) const CHANNEL_SHIFT: u8 = 1;
+}
+
+/// The bytes of one command word, in the order they go out.
+fn word_bytes(mode: u8, channel: CvChannel, code: u16) -> [u8; 3] {
+    let selector = u8::try_from(channel.index()).unwrap_or(0) << command::CHANNEL_SHIFT;
+    let [high, low] = code.to_be_bytes();
+    [mode | selector, high, low]
+}
+
+/// The 24-bit word that writes `code` to `channel` and moves that output at
+/// once ([`UpdateMode::PerChannel`]), right-aligned in a `u32`: what a
+/// controller framing 24 bits shifts out, most significant bit first.
+#[must_use]
+pub fn channel_word(channel: CvChannel, code: u16) -> u32 {
+    let [mode, high, low] = word_bytes(command::WRITE_AND_UPDATE_ONE, channel, code);
+    u32::from_be_bytes([0, mode, high, low])
+}
+
+/// The words of the channels whose code changed, at most one per channel.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ChannelWords {
+    words: [u32; CV_CHANNELS],
+    len: usize,
+}
+
+impl ChannelWords {
+    /// The words, in channel order.
+    #[must_use]
+    pub fn as_slice(&self) -> &[u32] {
+        &self.words[..self.len]
+    }
+}
+
+/// The codes last sent, so only the channels that change are written again:
+/// at a constant level the bus and the converter stay quiet.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct ChangedCodes {
+    /// `None` until the first send, which writes every channel.
+    sent: Option<[u16; CV_CHANNELS]>,
+}
+
+impl ChangedCodes {
+    /// Nothing sent yet: the first codes go out on every channel.
+    #[must_use]
+    pub const fn new() -> Self {
+        Self { sent: None }
+    }
+
+    /// The words for the channels of `codes` that differ from those last
+    /// sent, which `codes` then become.
+    pub fn words(&mut self, codes: &[u16; CV_CHANNELS]) -> ChannelWords {
+        let mut words = ChannelWords {
+            words: [0; CV_CHANNELS],
+            len: 0,
+        };
+        for channel in CvChannel::ALL {
+            let code = codes[channel.index()];
+            if self.sent.is_some_and(|sent| sent[channel.index()] == code) {
+                continue;
+            }
+            words.words[words.len] = channel_word(channel, code);
+            words.len += 1;
+        }
+        self.sent = Some(*codes);
+        words
+    }
+
+    /// Forgets what was sent: the next codes go out on every channel.
+    pub const fn forget(&mut self) {
+        self.sent = None;
+    }
 }
 
 /// Every channel's bit in [`Dac8565::pending`].
@@ -163,12 +239,7 @@ where
 
     /// Sends one 24-bit command word.
     fn write_word(&mut self, mode: u8, channel: CvChannel, code: u16) -> Result<(), Dac8565Error> {
-        let selector = u8::try_from(channel.index()).unwrap_or(0) << command::CHANNEL_SHIFT;
-        let word = [
-            mode | selector,
-            u8::try_from(code >> 8).unwrap_or(0),
-            u8::try_from(code & 0xFF).unwrap_or(0),
-        ];
+        let word = word_bytes(mode, channel, code);
 
         self.chip_select
             .set_low()
@@ -223,7 +294,7 @@ mod tests {
 
     use oc_core::platform::{AnalogOut, CV_CHANNELS, CvChannel};
 
-    use super::{Dac8565, Dac8565Error, UpdateMode};
+    use super::{ChangedCodes, Dac8565, Dac8565Error, UpdateMode, channel_word};
 
     /// An SPI bus that records every byte written.
     #[derive(Debug, Default)]
@@ -439,5 +510,35 @@ mod tests {
             dac.chip_select.highs, 1,
             "the chip select is released even when the transfer fails"
         );
+    }
+
+    #[test]
+    fn a_channel_word_is_the_blocking_driver_s_bytes() {
+        let mut dac = dac();
+        dac.write_code(CvChannel::Three, 0x1234);
+        dac.flush();
+        // The first flush sends the four channels in order: C is the third.
+        let bytes = &dac.spi.written[6..9];
+        let word = channel_word(CvChannel::Three, 0x1234);
+        assert_eq!(word.to_be_bytes()[1..], *bytes);
+        assert_eq!(word >> 24, 0, "24 bits, right-aligned");
+    }
+
+    #[test]
+    fn only_the_codes_that_change_are_sent_again() {
+        let mut changed = ChangedCodes::new();
+        let codes = [1, 2, 3, 4];
+        assert_eq!(changed.words(&codes).as_slice().len(), 4, "all at first");
+        assert_eq!(changed.words(&codes).as_slice(), [] as [u32; 0]);
+        let words = changed.words(&[1, 9, 3, 7]);
+        assert_eq!(
+            words.as_slice(),
+            [
+                channel_word(CvChannel::Two, 9),
+                channel_word(CvChannel::Four, 7)
+            ]
+        );
+        changed.forget();
+        assert_eq!(changed.words(&[1, 9, 3, 7]).as_slice().len(), 4);
     }
 }

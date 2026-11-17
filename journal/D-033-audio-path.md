@@ -151,3 +151,40 @@ constantes du code.
   A4 = 440 Hz par défaut), encodeur droit, l'amplitude (0 à 3 V crête, défaut 1 V) ; CV1 en V/oct s'ajoute à la
   note (`fixed::exp2`). Le menu des applets perd la ligne vide sous son titre pour accueillir une cinquième
   applet ; au-delà, il faudra le faire défiler.
+
+## Révision du 2026-11-17 — lot 7c, l'interruption
+
+Écarts et précisions tranchés par l'assistant en écrivant l'interruption :
+
+* **Timer : GPT2, pas le PIT.** La BSP cadence le PIT et les GPT sur PERCLK à 1 MHz (`PERCLK_FREQUENCY`) : 48 kHz
+  n'y est pas un nombre entier de coups (20,8 ; 21 donnerait 47,6 kHz). GPT2, libre (GPT1 fait l'horloge en µs),
+  prend directement le quartz de 24 MHz : 500 coups, **48 000 Hz exacts**, en mode `Restart` sur `OCR1`. Priorité
+  NVIC la plus haute (0).
+* **Déroulé d'une période** : attendre que le tronçon d'OLED précédent soit sorti (il a eu toute la période),
+  relever le CS de l'OLED ; déposer les mots des voies qui changent (TCR de 24 bits, PCS0, réception masquée) ;
+  pendant leur envoi, relever la boîte aux lettres et calculer l'échantillon suivant ; attendre la fin des mots du
+  DAC ; puis, si l'écran a quelque chose à envoyer, placer D/C, baisser le CS de l'OLED et déposer un tronçon
+  (TCR de `8 × n` bits sur PCS3, octets regroupés par quatre dans les mots de la FIFO, comme le fait `imxrt-hal`).
+  L'échantillon calculé en période *n* sort en période *n + 1* : un échantillon de latence, sans gigue de calcul.
+  L'interruption attend donc le DAC (≈ 4,5 µs pour quatre voies à 22 MHz) : c'est le prix de la simplicité
+  (une seule interruption, pas d'IRQ de LPSPI) ; le profil le mesure, et une IRQ de fin de transfert reste la
+  piste si la boucle en souffre.
+* **Tronçon d'OLED** : au plus ce qui sort en ≈ 10 µs à l'horloge de l'OLED, arrondi à quatre octets (24 octets
+  à 22 MHz, 8 à 8 MHz), et 14 mots de FIFO au plus. Une trame (≈ 1 050 octets avec les commandes) sort en ≈ 52
+  périodes à 22 MHz (≈ 1,1 ms), ≈ 140 à 8 MHz (≈ 2,9 ms).
+* **Écart entre deux mots du DAC** : le contrôleur enchaîne les trames ; à 22 MHz, `imxrt-hal` laisse PCS relevé
+  4 cycles de 132 MHz (30 ns), sous les 40 ns de SYNC haut de la fiche. Le délai entre transferts (`DBT`) est
+  porté à 6 cycles au moins (45 ns).
+* **Ce que la boucle fait encore** : le moteur garde son `AnalogOut`, mais le firmware y branche une sortie
+  muette ; après chaque tick, la boucle publie `Engine::params` et la calibration des sorties dans une boîte aux
+  lettres (section critique courte). L'écran du moteur devient une boîte aux lettres lui aussi : `present` copie
+  la trame (la dernière gagne), `set_contrast` dépose la commande ; l'interruption les prend entre deux trames.
+  Le moteur ne pagine plus l'écran (une page par trame : `present` ne coûte qu'une copie de 1 Kio).
+* **Profil** : trois étapes de plus, remplies par l'interruption et versées dans le profil à chaque tick
+  (`Profile::merge`) : `audio` (durée de l'interruption), `audio_period` (temps entre deux interruptions, 20,8 µs
+  attendus), `frame` (envoi d'une trame entière).
+* **Sauvegarde** : avant d'appeler la ROM, la boucle publie des sorties au repos et attend trois périodes qu'elles
+  soient sorties ; après, le tick suivant republie les paramètres. Avant de passer la main au bootloader, la
+  boucle coupe l'interruption.
+* **`unsafe`** : un module à part (`audio.rs`), pour l'inscription du gestionnaire et le démasquage NVIC, un
+  commentaire `SAFETY:` par bloc. L'état de l'interruption vit dans des `critical_section::Mutex`.

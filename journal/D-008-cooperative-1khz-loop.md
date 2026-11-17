@@ -5,7 +5,7 @@
 | **Identifiant** | D-008 |
 | **Date** | 2026-11-16 (rétrospective ; décision prise le 2026-08-01) |
 | **Auteur** | Pascal Havé |
-| **Statut** | adoptée (rétrospective) |
+| **Statut** | adoptée (rétrospective), révisée |
 | **Commits** | `555f492` (`Engine::set_render_interval`, bancs), `ec140ed` (boucle de `main.rs`, `TICK_PERIOD_MICROS`, `RENDER_INTERVAL_TICKS`) |
 
 ## 1. Contexte
@@ -55,3 +55,10 @@ bus SPI, D-010), et D-002 garde le comportement indépendant de ce choix.
   acceptable pour un diagnostic, pas pour le premier applet musical.
 * Le modèle est en voie d'être remplacé (D-023, `proposée`) : tant que D-023 n'est pas tranchée, aucun applet ne
   devrait dépendre d'une cadence supérieure à 1 kHz.
+
+## Révision du 2026-11-17 — une interruption à côté de la boucle (D-033, lot 7c)
+
+La boucle à 1 kHz reste le contexte de contrôle (entrées, panneau, applets, dessin, USB). Une interruption de
+timer à 48 kHz, priorité la plus haute, s'y ajoute : elle seule écrit le DAC et envoie l'écran. La boucle lui
+passe les paramètres des sorties et la trame dessinée par des boîtes aux lettres sous section critique ; la gigue
+de la boucle ne touche plus les sorties.

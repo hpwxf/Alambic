@@ -58,7 +58,7 @@ sorties, une applet `TONE` de test d'abord. Plan : [etape-7-chemin-audio.md](doc
 |---|---|---|
 | **7a** — DAC rapide, encore à 1 kHz | `DAC_CS` en PCS0, OLED sur PCS3, DAC à 22 MHz, OLED à 22 ou 8 MHz (feature `oled-spi-8mhz`), voies écrites au changement (révision de D-010) ; mesuré sur le module : écran propre à 22 MHz, sorties justes, `outputs` 3,0 µs en moyenne (≈ 16 µs avant), page d'OLED 49 µs (≈ 145 µs) | ✅ |
 | **7b** — cœur audio | `oc_core::audio` : paramètres de sortie (niveau tenu ou tonalité), `Voice` à phases de 32 bits, sinus en table calculée à la compilation ; le moteur rend sa voix à 1 kHz ; applet `TONE` (A sinus, B triangle, C scie, D carré, note C1–C8, niveau 0–3 V, CV1 en V/oct) ; Rack à sa fréquence d'échantillonnage (`oc_engine_audio`) ; menu sans ligne vide sous le titre ; révision de D-033 | fait (Rack non compilé ici, sans SDK) |
-| **7c** — interruption à 48 kHz | PIT, NVIC ; DAC chaque période et tronçons d'OLED ; profil de l'interruption | à faire |
+| **7c** — interruption à 48 kHz | GPT2 sur le quartz (le PIT est à 1 MHz) ; l'interruption possède le bus : mots du DAC qui changent, échantillon suivant, tronçon d'OLED (`FrameStream`, 24 octets à 22 MHz) ; boîtes aux lettres sous section critique ; profil `audio`, `audio_period`, `frame` ; sorties au repos pendant SAVE ; révisions de D-008, D-009, D-010, D-033 ; reste la mesure sur le module (TESTING 9.3e) | fait, à mesurer |
 | **7d** — module | écoute, oscilloscope, accordeur, écran en marche | à faire |
 | **7e** — DMA | seulement si 7d le demande | éventuel |
 
