@@ -49,6 +49,7 @@ the chord is unreachable with a mouse, so right-click the module and choose
 |--------------|----------------------------------------------------------|
 | `DIAGNOSTIC` | the I/O diagnostic screen the module boots into          |
 | `SCOPE`      | a scrolling view of `CV1`, buffered to all four outputs  |
+| `GFX DEMO`   | the graphics primitives on five pages (fonts, knobs, curves, sequencer, meters); left encoder turns the pages, right encoder the value, `up`/`down` the focused knob; outputs A–D carry the simulated LFO, gate, knob and needle |
 
 Because holding both buttons is a deliberate gesture, `up` and `down` fire
 their own action on **release**, and not at all when the chord formed while they

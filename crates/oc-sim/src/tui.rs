@@ -572,6 +572,11 @@ impl Tui {
                 self.simulator.diagnostic().selected() + 1
             ),
             AppId::Scope => format!("cv1 {}mV", self.simulator.scope().level()),
+            AppId::Gfx => format!(
+                "page {:?}   knobs {:?}",
+                self.simulator.gfx().page(),
+                self.simulator.gfx().knobs()
+            ),
         };
         let menu = if self.simulator.menu_is_open() {
             "   [MENU]"

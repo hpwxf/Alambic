@@ -14,6 +14,7 @@ use std::path::{Path, PathBuf};
 use oc_core::TickReport;
 use oc_core::apps::AppId;
 use oc_core::apps::diagnostic::DiagnosticApp;
+use oc_core::apps::gfx_demo::GfxDemoApp;
 use oc_core::apps::scope::ScopeApp;
 use oc_core::debounce::DEFAULT_STABLE_SAMPLES;
 use oc_core::framebuffer::FrameBuffer;
@@ -382,6 +383,12 @@ impl Simulator {
     #[must_use]
     pub const fn scope(&self) -> &ScopeApp {
         self.engine.apps().scope()
+    }
+
+    /// The graphics demonstration's observable state, running or not.
+    #[must_use]
+    pub const fn gfx(&self) -> &GfxDemoApp {
+        self.engine.apps().gfx()
     }
 
     /// The applet currently driving the outputs and the screen.

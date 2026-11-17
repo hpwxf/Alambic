@@ -81,3 +81,14 @@ chaque point est encré une seule fois, si bien qu'inverser deux fois rend l'ima
 droites (`fill_rect`, `hline`, `vline`, `rect`) écrivent des octets par masque et allument les mêmes pixels
 qu'`embedded-graphics` (testé, bords et coupures compris) ; banc `gfx/` : un rectangle de 100 × 40, 4,36 → 0,43 µs
 sur l'hôte (indicatif). Sinus entier au 1/256 de tour, à une unité près du sinus réel (`tests/trig.rs`).
+
+## Révision (2026-11-17, lots 5b et 5c) — cinq pages, sorties simulées
+
+* **Cinq pages** au lieu de quatre : séquenceur et accordeur ne tenaient pas ensemble sous le bandeau (128 × 53
+  pixels utiles). Polices, potentiomètres, courbes, séquenceur, mesures.
+* **Les sorties portent les signaux simulés** (A le LFO, B la porte euclidienne, C le premier potentiomètre, D
+  l'aiguille de l'accordeur) : un scope sur le module les suit.
+* **`AppId::Gfx` en dernier** : un réglage de démarrage enregistré avant elle se relit (énumération sérialisée).
+* Contrôles : `gfx::controls`, `gfx::plots` (`Area`), `gfx::patterns`, valeurs sur une plage par `Ratio` ;
+  `polyline` encre une fois chaque point partagé (inversible). Écrans dorés : `gfx_*.scn`, un par page. Coût de
+  dessin par page sur l'hôte (criterion, indicatif) : 1,5 à 3,1 µs, l'ordre du Diagnostic (2,6 µs).

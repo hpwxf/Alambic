@@ -18,11 +18,13 @@
 //! its own submodule ([`diagnostic`], [`scope`]).
 
 pub mod diagnostic;
+pub mod gfx_demo;
 pub mod scope;
 
 use serde::{Deserialize, Serialize};
 
 use crate::apps::diagnostic::DiagnosticApp;
+use crate::apps::gfx_demo::GfxDemoApp;
 use crate::apps::scope::ScopeApp;
 use crate::buttons::ButtonEvents;
 use crate::framebuffer::FrameBuffer;
@@ -97,11 +99,14 @@ pub enum AppId {
     Diagnostic,
     /// A scrolling view of `CV1`, buffered to every output.
     Scope,
+    /// The graphics primitives on show (journal/D-030). Last, so that a
+    /// startup applet saved before it existed still reads back.
+    Gfx,
 }
 
 impl AppId {
     /// Every app, in the order the menu lists them.
-    pub const ALL: [Self; 2] = [Self::Diagnostic, Self::Scope];
+    pub const ALL: [Self; 3] = [Self::Diagnostic, Self::Scope, Self::Gfx];
 
     /// Zero-based index of this app.
     #[must_use]
@@ -125,6 +130,7 @@ impl AppId {
         match self {
             Self::Diagnostic => "DIAGNOSTIC",
             Self::Scope => "SCOPE",
+            Self::Gfx => "GFX DEMO",
         }
     }
 }
@@ -134,6 +140,7 @@ impl AppId {
 pub struct AppHost {
     diagnostic: DiagnosticApp,
     scope: ScopeApp,
+    gfx: GfxDemoApp,
     current: AppId,
 }
 
@@ -144,6 +151,7 @@ impl AppHost {
         Self {
             diagnostic: DiagnosticApp::new(),
             scope: ScopeApp::new(),
+            gfx: GfxDemoApp::new(),
             current: AppId::default(),
         }
     }
@@ -167,6 +175,7 @@ impl AppHost {
         match self.current {
             AppId::Diagnostic => self.diagnostic.update(input),
             AppId::Scope => self.scope.update(input),
+            AppId::Gfx => self.gfx.update(input),
         }
     }
 
@@ -175,6 +184,7 @@ impl AppHost {
         match self.current {
             AppId::Diagnostic => self.diagnostic.render(frame, context),
             AppId::Scope => self.scope.render(frame, context),
+            AppId::Gfx => self.gfx.render(frame, context),
         }
     }
 
@@ -188,6 +198,12 @@ impl AppHost {
     #[must_use]
     pub const fn scope(&self) -> &ScopeApp {
         &self.scope
+    }
+
+    /// The graphics demonstration, running or not.
+    #[must_use]
+    pub const fn gfx(&self) -> &GfxDemoApp {
+        &self.gfx
     }
 }
 

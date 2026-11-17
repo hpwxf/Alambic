@@ -196,6 +196,23 @@ fn the_app_menu_switches_to_the_scope() {
 }
 
 #[test]
+fn the_graphics_demo_shows_each_of_its_pages() {
+    use oc_core::apps::gfx_demo::Page;
+    for (name, page) in [
+        ("gfx_fonts", Page::Fonts),
+        ("gfx_knobs", Page::Knobs),
+        ("gfx_curves", Page::Curves),
+        ("gfx_sequencer", Page::Sequencer),
+        ("gfx_meters", Page::Meters),
+    ] {
+        let mut simulator = replay(name);
+        assert_eq!(simulator.current_app(), AppId::Gfx, "{name}");
+        assert_eq!(simulator.gfx().page(), page, "{name}");
+        assert_screen_matches(&mut simulator, name);
+    }
+}
+
+#[test]
 fn every_scenario_replays_identically_twice() {
     for name in [
         "cv_passthrough",
@@ -203,6 +220,8 @@ fn every_scenario_replays_identically_twice() {
         "encoder_offset",
         "mode_cycle",
         "app_menu",
+        "gfx_curves",
+        "gfx_meters",
     ] {
         let mut first = replay(name);
         let mut second = replay(name);
@@ -261,6 +280,11 @@ fn every_scenario_file_has_a_test_and_a_snapshot() {
         "app_menu",
         "setup_menu",
         "calibration_wizard",
+        "gfx_fonts",
+        "gfx_knobs",
+        "gfx_curves",
+        "gfx_sequencer",
+        "gfx_meters",
     ];
 
     let mut found: Vec<String> = std::fs::read_dir(scenario_dir())

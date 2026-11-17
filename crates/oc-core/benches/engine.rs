@@ -18,6 +18,7 @@ use std::hint::black_box;
 
 use oc_core::apps::AppId;
 use oc_core::apps::diagnostic::DiagnosticApp;
+use oc_core::apps::gfx_demo::GfxDemoApp;
 use oc_core::apps::{InputSnapshot, TickContext};
 use oc_core::buttons::ButtonReader;
 use oc_core::calibration::{CvInputCalibration, CvOutputCalibration};
@@ -202,6 +203,34 @@ fn shapes(criterion: &mut Criterion) {
     group.finish();
 }
 
+/// Each page of the graphics demonstration: the drawing loads the module's
+/// profile will show per page (journal/D-030).
+fn gfx_demo(criterion: &mut Criterion) {
+    let mut group = criterion.benchmark_group("gfx_demo");
+    let mut app = GfxDemoApp::new();
+    let turn = InputSnapshot {
+        controls: ControlEvents {
+            encoder_delta: [1, 0],
+            button_down: [false; 4],
+        },
+        elapsed_micros: 1_000,
+        ..InputSnapshot::default()
+    };
+    for _ in 0..5 {
+        let name = format!("{:?}", app.page()).to_lowercase();
+        let page = app.clone();
+        group.bench_function(name, |bencher| {
+            let mut frame = FrameBuffer::new();
+            bencher.iter(|| {
+                page.render(&mut frame, &TickContext::default());
+                black_box(frame.lit_pixels())
+            });
+        });
+        app.update(&turn);
+    }
+    group.finish();
+}
+
 fn conversions(criterion: &mut Criterion) {
     let mut group = criterion.benchmark_group("conversions");
     let input = CvInputCalibration::FACTORY;
@@ -237,6 +266,7 @@ criterion_group!(
     menu,
     text,
     shapes,
+    gfx_demo,
     conversions
 );
 criterion_main!(benches);

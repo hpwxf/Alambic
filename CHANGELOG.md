@@ -9,6 +9,17 @@ Architectural decisions behind each change are in `journal/` (French).
 
 ### Added
 
+- **Graphics primitives** (`oc_core::gfx`, journal/D-030): byte-wise
+  rectangles, straight lines and inverted areas (the same pixels as
+  `embedded-graphics`), lines, circles and discs that can also invert,
+  integer trigonometry; controls (knob, selector, inverted value box,
+  caption, bars, title bar), plots (trace, min/max waveform, histogram,
+  needle scale) and sequencer patterns (steps, dots, Euclidean ring,
+  one-octave keyboard), after the screens of Squares-and-Circles.
+- **`GFX DEMO`**, a third applet showing them on five pages: fonts, knobs,
+  curves, sequencer and meters, animated from the ticks' time; its outputs
+  carry the simulated signals.
+
 - **Loop profile.** `oc_core::profile` times each stage of `Engine::tick`
   (acquire, update, outputs, render, present) and the period between ticks,
   with a jitter histogram, on the new `Clock::fine_count` (journal/D-029).
