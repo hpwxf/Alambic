@@ -543,7 +543,8 @@ step and compare it with the expected count. `cargo probe triggers
 --seconds N` counts the rising edges of all four inputs from a sample of
 every tick, independently of the screen's counters, with the time between
 edges on the module's clock (a steady clock keeps them within about a
-tick's length of each other); it says `INEXACT` if the host lost samples,
+tick's length of each other) and how long each pulse stayed high, to a
+tick (which tells the width a source really sends); it says `INEXACT` if the host lost samples,
 in which case run it again:
 
 4. **Exact count.** Send a known number of 1 ms triggers (a sequencer or

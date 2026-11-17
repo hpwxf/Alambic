@@ -31,7 +31,8 @@ Architectural decisions behind each change are in `journal/` (French).
   triggers), `out` (hold an output, watch the inputs), `screen` (text or
   PNG, as the module shows it), `reboot` (into the bootloader).
   For level 9: `inputs` (spread of every input), `triggers` (rising edges
-  from a sample of every tick, flagged when samples were lost), `sweep`
+  from a sample of every tick, with the pulse widths, flagged when samples
+  were lost), `sweep`
   (an output stepped through levels into a patched input).
   Samples carry the module's clock (protocol version 2): durations and
   trigger intervals are real time, since a tick that redraws the screen

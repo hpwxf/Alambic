@@ -73,13 +73,17 @@ pub struct EdgeCount {
     /// steady clock keeps them within a tick's length of each other, a
     /// bounce shows as a short one, a missed edge as one twice as long.
     pub intervals: [Intervals; TRIGGER_CHANNELS],
+    /// How long each pulse stayed high, from the first sample that saw it
+    /// high to the first that saw it low, in microseconds: the pulse width
+    /// to a tick's length, enough to tell which width a source really sends.
+    pub high: [Intervals; TRIGGER_CHANNELS],
 }
 
-/// Microseconds between successive rising edges of one trigger, as the
-/// module's clock read them at the start of each tick.
+/// Durations of one trigger in microseconds (between rising edges, or high),
+/// as the module's clock read them at the start of each tick.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct Intervals {
-    /// Intervals measured (one fewer than the edges).
+    /// Durations measured.
     pub count: u64,
     /// Shortest, microseconds.
     pub min: u64,
@@ -102,7 +106,7 @@ impl Intervals {
         self.total += micros;
     }
 
-    /// The mean interval in microseconds, `None` with fewer than two edges.
+    /// The mean duration in microseconds, `None` when none was measured.
     #[must_use]
     pub const fn mean(&self) -> Option<u64> {
         self.total.checked_div(self.count)
@@ -112,8 +116,8 @@ impl Intervals {
 /// Counts the rising edges of every trigger over `samples`, which must be
 /// one per tick (`stream --every 1`); a gap in the tick numbers means samples
 /// were lost, and is reported rather than guessed over. An edge is dated by
-/// the tick that first saw the input high, so intervals are known to one
-/// tick's length.
+/// the tick that first saw the input change, so intervals and widths are
+/// known to one tick's length; a pulse still high at the end is not timed.
 #[must_use]
 pub fn count_edges(samples: &[Sample]) -> EdgeCount {
     let mut count = EdgeCount::default();
@@ -122,10 +126,12 @@ pub fn count_edges(samples: &[Sample]) -> EdgeCount {
     };
     let mut previous = first;
     let mut last_edge: [Option<u64>; TRIGGER_CHANNELS] = [None; TRIGGER_CHANNELS];
+    let mut risen_at: [Option<u64>; TRIGGER_CHANNELS] = [None; TRIGGER_CHANNELS];
     for sample in &samples[1..] {
         let step = sample.tick.saturating_sub(previous.tick);
         count.missed_ticks += step.saturating_sub(1);
         let rose = sample.triggers & !previous.triggers;
+        let fell = previous.triggers & !sample.triggers;
         for (index, edges) in count.rising.iter_mut().enumerate() {
             if rose & (1 << index) != 0 {
                 *edges += 1;
@@ -133,6 +139,12 @@ pub fn count_edges(samples: &[Sample]) -> EdgeCount {
                     count.intervals[index].record(sample.micros.saturating_sub(last));
                 }
                 last_edge[index] = Some(sample.micros);
+                risen_at[index] = Some(sample.micros);
+            }
+            if fell & (1 << index) != 0
+                && let Some(risen) = risen_at[index].take()
+            {
+                count.high[index].record(sample.micros.saturating_sub(risen));
             }
         }
         previous = sample;
@@ -246,6 +258,15 @@ mod tests {
         );
         assert_eq!(count.micros, 4_000);
         assert_eq!(count.intervals[1].count, 0);
+        // TR1 high for ticks 2..4 then 5..; TR2 for 3..4.
+        assert_eq!(
+            (count.high[0].count, count.high[0].mean()),
+            (1, Some(2_000))
+        );
+        assert_eq!(
+            (count.high[1].count, count.high[1].mean()),
+            (1, Some(1_000))
+        );
         assert_eq!((count.missed_ticks, count.ticks), (0, 4));
     }
 
