@@ -302,9 +302,10 @@ Full protocol, per level, with exact commands and what each proves: see
   loopback (`docs/plan/avancement/etape-3.md`). **Not** checked: the DAC8565
   simultaneous update. Known limits measured there: the inputs read within
   about 20 mV only (one gain shared by the four inputs); render ticks overrun
-  their period, so the loop runs below 1 kHz; and trigger pulses shorter than
-  about 3 ms can be missed (39 % of 0.94 ms pulses), since triggers are
-  sampled, not captured (journal/D-023, lot 3c). OLED overrides for other builds go through the
+  their period, so the loop runs below 1 kHz (journal/D-023, lot 3c); and
+  trigger pulses shorter than about 3 ms were missed (39 % of 0.94 ms
+  pulses) while triggers were only sampled: the GPIO edge detector now
+  latches them (journal/D-019, lot 3c1), not yet checked on the module. OLED overrides for other builds go through the
   normal gate: `cargo xtask build|size|hex|flash --features ssd1306` (or
   `ssd1309`).
 

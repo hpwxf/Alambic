@@ -71,6 +71,13 @@ pub struct OcEngine {
     engine: HostEngine,
     cv_out: [MilliVolts; CV_CHANNELS],
     framebuffer: [u8; FRAMEBUFFER_LEN],
+    /// Each trigger's latest level, as Rack last set it.
+    trigger_levels: [bool; TRIGGER_CHANNELS],
+    /// Whether each trigger was high at any point since the previous tick:
+    /// Rack sets levels at its sample rate, the engine ticks at 1 kHz, and a
+    /// pulse between two ticks must still reach it, as the module's edge
+    /// capture does (journal/D-019).
+    trigger_seen: [bool; TRIGGER_CHANNELS],
 }
 
 /// Builds a fresh host engine with every input at rest.
@@ -105,6 +112,8 @@ pub extern "C" fn oc_engine_new() -> *mut OcEngine {
         },
         cv_out: [0; CV_CHANNELS],
         framebuffer: [0; FRAMEBUFFER_LEN],
+        trigger_levels: [false; TRIGGER_CHANNELS],
+        trigger_seen: [false; TRIGGER_CHANNELS],
     });
     built.map_or(ptr::null_mut(), |engine| Box::into_raw(Box::new(engine)))
 }
@@ -159,7 +168,8 @@ pub unsafe extern "C" fn oc_engine_set_cv_in(engine: *mut OcEngine, channel: u8,
 }
 
 /// Sets one trigger input's raw level for the next call to
-/// [`oc_engine_tick`].
+/// [`oc_engine_tick`], which sees it high if it was high at any call since
+/// the previous tick: a pulse shorter than a tick is not lost.
 ///
 /// A null `engine` or a channel index outside `0..4` is a no-op.
 ///
@@ -176,8 +186,12 @@ pub unsafe extern "C" fn oc_engine_set_trigger(engine: *mut OcEngine, channel: u
         let Some(channel) = TriggerChannel::from_index(usize::from(channel)) else {
             return;
         };
+        let index = channel.index();
+        engine.trigger_levels[index] = high;
+        engine.trigger_seen[index] |= high;
+        let seen = engine.trigger_seen[index];
         let (_, _, digital_in, ..) = engine.engine.parts_mut();
-        digital_in.set(channel, high);
+        digital_in.set(channel, seen);
     }));
 }
 
@@ -276,6 +290,7 @@ pub unsafe extern "C" fn oc_engine_reset(engine: *mut OcEngine) {
         engine.engine.reset();
         engine.cv_out = [0; CV_CHANNELS];
         engine.framebuffer = [0; FRAMEBUFFER_LEN];
+        engine.trigger_seen = engine.trigger_levels;
     }));
 }
 
@@ -313,6 +328,12 @@ pub unsafe extern "C" fn oc_engine_tick(engine: *mut OcEngine, now_micros: u64) 
         }
         engine.cv_out = report.cv_out;
         engine.framebuffer = *engine.engine.frame().as_bytes();
+        // The next tick starts from the level as it stands.
+        engine.trigger_seen = engine.trigger_levels;
+        let (_, _, digital_in, ..) = engine.engine.parts_mut();
+        for channel in TriggerChannel::ALL {
+            digital_in.set(channel, engine.trigger_levels[channel.index()]);
+        }
     }));
 }
 
@@ -539,7 +560,7 @@ mod tests {
         oc_engine_set_cv_in, oc_engine_set_trigger, oc_engine_tick, oc_engine_trigger_channels,
     };
     use oc_core::framebuffer::LEN;
-    use oc_core::platform::{BUTTONS, CV_CHANNELS, ENCODERS, TRIGGER_CHANNELS};
+    use oc_core::platform::{BUTTONS, CV_CHANNELS, ENCODERS, TRIGGER_CHANNELS, TriggerChannel};
     use oc_core::splash::DURATION_MICROS;
 
     /// Ticks `engine` comfortably past the end of the boot splash screen, so
@@ -648,6 +669,37 @@ mod tests {
         unsafe {
             oc_engine_set_trigger(engine, 0, true);
             oc_engine_tick(engine, 1_000);
+            oc_engine_free(engine);
+        }
+    }
+
+    #[test]
+    fn a_pulse_between_two_ticks_is_counted_once() {
+        let engine = oc_engine_new();
+        skip_boot(engine);
+        let mut now = (u64::from(DURATION_MICROS / 1_000) + 2) * 1_000;
+        // SAFETY: `engine` is live for the duration of this test.
+        unsafe {
+            // Up and down again at Rack's sample rate, between two ticks.
+            oc_engine_set_trigger(engine, 1, true);
+            oc_engine_set_trigger(engine, 1, false);
+            for _ in 0..3 {
+                now += 1_000;
+                oc_engine_set_trigger(engine, 1, false);
+                oc_engine_tick(engine, now);
+            }
+            // A gate held across several ticks is one edge too.
+            for _ in 0..3 {
+                now += 1_000;
+                oc_engine_set_trigger(engine, 1, true);
+                oc_engine_tick(engine, now);
+            }
+            let count = as_mut(engine)
+                .unwrap()
+                .engine
+                .diagnostic()
+                .trigger_count(TriggerChannel::Two);
+            assert_eq!(count, 2);
             oc_engine_free(engine);
         }
     }

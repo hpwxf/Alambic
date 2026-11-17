@@ -164,7 +164,14 @@ pub trait AnalogOut {
 
 /// Reads the trigger inputs.
 pub trait DigitalIn {
-    /// Raw, undebounced level of one trigger input.
+    /// Raw, undebounced level of one trigger input, as sampled for this
+    /// tick.
+    ///
+    /// A backend that captures edges (the module's GPIO edge detector, Rack
+    /// between two ticks) also reports `true` for a gate that rose since the
+    /// previous sample and has already fallen, for that one sample: the core
+    /// then sees one rising edge for a pulse shorter than a tick, instead of
+    /// none (journal/D-019).
     fn trigger_state(&self, channel: TriggerChannel) -> bool;
 }
 

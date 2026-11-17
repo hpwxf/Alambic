@@ -75,10 +75,10 @@ use oc_core::calibration::{CV_IN_MAX_MV, CV_IN_MIN_MV, CV_OUT_MAX_MV, CV_OUT_MIN
 use oc_core::platform::{BUTTONS, CV_CHANNELS, ENCODERS, TRIGGER_CHANNELS};
 use oc_drivers::panel::EncoderPins;
 use oc_drivers::ssd130x::Controller;
-use oc_drivers::triggers::Polarity;
+use oc_drivers::triggers::{EdgeCapture, Polarity};
 use teensy4_bsp::board::LpspiPins;
 use teensy4_bsp::hal::adc::{Adc, AnalogInput};
-use teensy4_bsp::hal::gpio::{Input, Output, Port};
+use teensy4_bsp::hal::gpio::{Input, Output, Port, Trigger};
 use teensy4_bsp::hal::iomuxc::{self, Config, Hysteresis, PullKeeper};
 use teensy4_bsp::pins::imxrt_iomuxc::Iomuxc;
 use teensy4_bsp::pins::t40::{
@@ -243,6 +243,47 @@ impl CvPins {
     }
 }
 
+/// One trigger input, with the GPIO edge detector watching the edge where
+/// the gate at the jack rises (journal/D-019, D-023).
+///
+/// The detector latches the edge in the port's status register whatever the
+/// pulse width; its interrupt line stays closed in the NVIC, so nothing runs
+/// in an interrupt: the loop takes the latch once per tick. Enabling that line
+/// without a handler would land in the default handler.
+pub(crate) struct TriggerPin(Input);
+
+impl embedded_hal::digital::ErrorType for TriggerPin {
+    type Error = core::convert::Infallible;
+}
+
+impl embedded_hal::digital::InputPin for TriggerPin {
+    fn is_high(&mut self) -> Result<bool, Self::Error> {
+        Ok(self.0.is_set())
+    }
+
+    fn is_low(&mut self) -> Result<bool, Self::Error> {
+        Ok(!self.0.is_set())
+    }
+}
+
+impl EdgeCapture for TriggerPin {
+    fn take_active_edge(&mut self) -> bool {
+        let edge = self.0.is_triggered();
+        if edge {
+            self.0.clear_triggered();
+        }
+        edge
+    }
+}
+
+/// The pin edge that is a rising gate at the jack.
+const fn active_pin_edge(polarity: Polarity) -> Trigger {
+    match polarity {
+        Polarity::ActiveLow => Trigger::FallingEdge,
+        Polarity::ActiveHigh => Trigger::RisingEdge,
+    }
+}
+
 /// The trigger input pads, `TR1..TR4`.
 pub(crate) struct TriggerPins {
     tr1: P0,
@@ -252,24 +293,40 @@ pub(crate) struct TriggerPins {
 }
 
 impl TriggerPins {
-    /// Claims the four pads as pulled-up GPIO inputs, in `TR1..TR4` order.
+    /// Claims the four pads as pulled-up GPIO inputs, in `TR1..TR4` order,
+    /// each with its edge detector set for [`TRIGGER_POLARITY`] and cleared.
     ///
-    /// `Port::input` fails only when a pin does not belong to the port, so each
-    /// `expect` documents a fact of the table above.
-    pub(crate) fn claim(self, gpio1: &mut Port, gpio4: &mut Port) -> [Input; TRIGGER_CHANNELS] {
+    /// `Port::input` and `Port::set_interrupt` fail only when a pin does not
+    /// belong to the port, so each `expect` documents a fact of the table
+    /// above.
+    pub(crate) fn claim(
+        self,
+        gpio1: &mut Port,
+        gpio4: &mut Port,
+    ) -> [TriggerPin; TRIGGER_CHANNELS] {
+        let watch = |port: &mut Port, input: Input| {
+            port.set_interrupt(&input, Some(active_pin_edge(TRIGGER_POLARITY)))
+                .expect("the input was claimed from this port");
+            input.clear_triggered();
+            TriggerPin(input)
+        };
+        let tr1 = gpio1
+            .input(with_pullup(self.tr1))
+            .expect("P0 is a GPIO1 pin");
+        let tr2 = gpio1
+            .input(with_pullup(self.tr2))
+            .expect("P1 is a GPIO1 pin");
+        let tr3 = gpio4
+            .input(with_pullup(self.tr3))
+            .expect("P2 is a GPIO4 pin");
+        let tr4 = gpio4
+            .input(with_pullup(self.tr4))
+            .expect("P3 is a GPIO4 pin");
         [
-            gpio1
-                .input(with_pullup(self.tr1))
-                .expect("P0 is a GPIO1 pin"),
-            gpio1
-                .input(with_pullup(self.tr2))
-                .expect("P1 is a GPIO1 pin"),
-            gpio4
-                .input(with_pullup(self.tr3))
-                .expect("P2 is a GPIO4 pin"),
-            gpio4
-                .input(with_pullup(self.tr4))
-                .expect("P3 is a GPIO4 pin"),
+            watch(gpio1, tr1),
+            watch(gpio1, tr2),
+            watch(gpio4, tr3),
+            watch(gpio4, tr4),
         ]
     }
 }

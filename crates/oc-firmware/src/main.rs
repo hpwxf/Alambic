@@ -319,7 +319,7 @@ fn main() -> ! {
         {
             let (cv_inputs, _, triggers, panel, _) = engine.parts_mut();
             cv_inputs.sample();
-            triggers.sample();
+            triggers.sample_capturing();
             panel.sample();
         }
         record_since(&mut engine, Stage::Sample, mark);

@@ -5,6 +5,14 @@
 //! polarity is therefore configurable rather than assumed: getting it wrong
 //! would invert every gate on the module, and the diagnostic applet is what
 //! makes that immediately visible.
+//!
+//! Sampling the level once per tick misses a pulse that starts and ends
+//! between two samples; on the module, a third of the 1 ms triggers were lost
+//! that way (journal/D-023, D-019). A pin that also latches its edge in
+//! hardware ([`EdgeCapture`]) closes the gap: [`Triggers::sample_capturing`]
+//! reports a gate that rose since the previous sample even if it has already
+//! fallen, for one sample, so the core sees one rising edge for it whatever
+//! its width.
 
 use embedded_hal::digital::InputPin;
 
@@ -30,6 +38,16 @@ impl Polarity {
             Self::ActiveHigh => pin_is_high,
         }
     }
+}
+
+/// A pin whose hardware remembers its active edge (the one where the gate at
+/// the jack rises: a falling pin behind an inverting buffer) until read.
+///
+/// On the i.MX RT this is the GPIO edge detector's status bit, which latches
+/// with no interrupt taken; the firmware configures which edge it watches.
+pub trait EdgeCapture {
+    /// Whether the active edge came since the previous call; clears it.
+    fn take_active_edge(&mut self) -> bool;
 }
 
 /// The four trigger inputs.
@@ -74,6 +92,26 @@ where
         }
     }
 
+    /// Samples all four pins like [`Self::sample`], and also reports as
+    /// active any gate whose edge the hardware latched since the previous
+    /// sample: a pulse shorter than a tick is seen once instead of never.
+    ///
+    /// A long pulse is not counted twice. Its edge either comes before this
+    /// sample, which then also reads it high, or after the level was read, in
+    /// which case the next sample takes the latch while the level is still
+    /// high (or reports the pulse one more sample if it has ended).
+    pub fn sample_capturing(&mut self)
+    where
+        P: EdgeCapture,
+    {
+        self.sample();
+        for (level, pin) in self.levels.iter_mut().zip(&mut self.pins) {
+            if pin.take_active_edge() {
+                *level = true;
+            }
+        }
+    }
+
     /// Number of failed pin reads since boot; zero on healthy hardware.
     #[must_use]
     pub const fn read_failures(&self) -> u32 {
@@ -99,13 +137,23 @@ mod tests {
 
     use oc_core::platform::{DigitalIn, TRIGGER_CHANNELS, TriggerChannel};
 
-    use super::{Polarity, Triggers};
+    use std::vec::Vec;
+
+    use super::{EdgeCapture, Polarity, Triggers};
 
     /// An input pin whose level, and failure behaviour, the test controls.
     #[derive(Debug, Default)]
     struct FakePin {
         high: bool,
         fail: bool,
+        /// The latched active edge, as the hardware would hold it.
+        edge: bool,
+    }
+
+    impl EdgeCapture for FakePin {
+        fn take_active_edge(&mut self) -> bool {
+            core::mem::take(&mut self.edge)
+        }
     }
 
     impl ErrorType for FakePin {
@@ -179,6 +227,68 @@ mod tests {
         );
         triggers.sample();
         assert!(triggers.trigger_state(TriggerChannel::One));
+    }
+
+    /// Rising edges the core would count over successive samples.
+    fn rising_edges(states: &[bool]) -> usize {
+        states.windows(2).filter(|pair| !pair[0] && pair[1]).count()
+    }
+
+    #[test]
+    fn a_pulse_between_two_samples_is_seen_once() {
+        let mut triggers = triggers(Polarity::ActiveHigh);
+        let mut states = Vec::new();
+        triggers.sample_capturing();
+        states.push(triggers.trigger_state(TriggerChannel::One));
+        // Rose and fell between two samples: only the latch knows.
+        triggers.pins[0].edge = true;
+        for _ in 0..3 {
+            triggers.sample_capturing();
+            states.push(triggers.trigger_state(TriggerChannel::One));
+        }
+        assert_eq!(states, [false, true, false, false]);
+        assert_eq!(rising_edges(&states), 1);
+    }
+
+    #[test]
+    fn a_long_pulse_is_not_counted_twice() {
+        let mut triggers = triggers(Polarity::ActiveHigh);
+        let mut states = Vec::new();
+        triggers.sample_capturing();
+        states.push(triggers.trigger_state(TriggerChannel::One));
+        // The edge lands after this sample read the level: the latch is only
+        // taken by the next one, while the gate is still high.
+        triggers.pins[0].high = true;
+        triggers.sample_capturing();
+        states.push(triggers.trigger_state(TriggerChannel::One));
+        triggers.pins[0].edge = true;
+        for _ in 0..2 {
+            triggers.sample_capturing();
+            states.push(triggers.trigger_state(TriggerChannel::One));
+        }
+        // Same, but the gate ended before the latch was taken.
+        triggers.pins[0].high = false;
+        triggers.pins[0].edge = true;
+        triggers.sample_capturing();
+        states.push(triggers.trigger_state(TriggerChannel::One));
+        triggers.sample_capturing();
+        states.push(triggers.trigger_state(TriggerChannel::One));
+        assert_eq!(states, [false, true, true, true, true, false]);
+        assert_eq!(rising_edges(&states), 1);
+    }
+
+    #[test]
+    fn a_latched_edge_counts_with_an_inverting_buffer_too() {
+        let mut triggers = triggers(Polarity::ActiveLow);
+        for pin in &mut triggers.pins {
+            pin.high = true;
+        }
+        triggers.sample_capturing();
+        assert!(!triggers.trigger_state(TriggerChannel::Four));
+        triggers.pins[3].edge = true;
+        triggers.sample_capturing();
+        assert!(triggers.trigger_state(TriggerChannel::Four));
+        assert!(!triggers.trigger_state(TriggerChannel::Three));
     }
 
     #[test]

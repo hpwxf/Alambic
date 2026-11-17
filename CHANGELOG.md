@@ -40,6 +40,13 @@ Architectural decisions behind each change are in `journal/` (French).
 
 ### Fixed
 
+- **Short trigger pulses were missed.** Triggers were sampled once per
+  tick, so a pulse that started and ended between two samples was never
+  seen (39 % of 0.94 ms pulses on the module). The GPIO edge detector now
+  latches each trigger's edge, read once per tick with no interrupt taken;
+  the VCV module applies the same rule between two ticks
+  (`oc_drivers::triggers::EdgeCapture`, journal/D-019).
+
 - **The firmware loop ran at about 775 Hz, not 1 kHz.** The deadline was
   taken after the input sampling, which stretched every period by its
   cost; the period now starts before it, and periods follow a fixed

@@ -6,7 +6,7 @@
 | **Date** | 2026-11-16 (rétrospective ; décision prise le 2026-08-01) |
 | **Auteur** | Pascal Havé |
 | **Statut** | adoptée (rétrospective), révisée |
-| **Commits** | `555f492` (`debounce.rs`, `signal.rs`), `ec140ed` (`is_patched` toujours vrai sur le firmware), `a839a03` (`ButtonReader` centralise l'anti-rebond des boutons), lot 3a (triggers sans filtre temporel ; `is_patched` retiré) |
+| **Commits** | `555f492` (`debounce.rs`, `signal.rs`), `ec140ed` (`is_patched` toujours vrai sur le firmware), `a839a03` (`ButtonReader` centralise l'anti-rebond des boutons), lot 3a (triggers sans filtre temporel ; `is_patched` retiré), lot 3c1 (fronts capturés) |
 
 ## 1. Contexte
 
@@ -82,6 +82,29 @@ que le firmware ne pouvait jamais afficher. Un futur applet qui voudrait la pré
 signal, comme sur le module. Prix accepté : dans Rack, on perd une information exacte ; une entrée branchée mais
 statique et une entrée débranchée sont indiscernables, comme sur le module. L'ABI C change sans compatibilité :
 rien n'est distribué.
+
+## Révision (2026-11-17, lot 3c1) — fronts des triggers capturés par le matériel
+
+Mesure du lot 3b (Pamela's Pro Workout, 32 Hz, D-023) : échantillonnés une fois par tick, 39 % des triggers de
+0,94 ms sont perdus, 3,9 % à 1,56 ms, 0,7 % à 2,5 ms ; le critère « une impulsion de 1 ms comptée » de l'étape 3
+n'est pas tenu. Le retrait du filtre temporel (révision précédente) était nécessaire, pas suffisant.
+
+* **Firmware** : le détecteur de front des GPIO du RT1062 surveille, pour chaque trigger, le front où le gate monte
+  au jack (front descendant de la broche, derrière le buffer inverseur) ; le bit d'état reste à 1 jusqu'à ce que la
+  boucle le lise et l'efface, une fois par tick. La ligne du NVIC reste fermée : aucune interruption n'est prise
+  (D-008 tient). `imxrt-hal` le fait sans `unsafe` (`Port::set_interrupt`, `Input::is_triggered`,
+  `clear_triggered`) ; la configuration est dans `board.rs` (`TriggerPin`), dérivée de `TRIGGER_POLARITY`.
+* **Pilote** (`oc-drivers`) : trait `EdgeCapture` ; `Triggers::sample_capturing` lit « haut maintenant **ou**
+  monté depuis la lecture précédente ». Une impulsion plus courte qu'un tick est vue pendant un tick, donc comptée
+  une fois ; une impulsion longue n'est pas comptée deux fois (le bit pris au tick suivant tombe sur un niveau
+  encore haut, ou prolonge l'impulsion d'un tick). Deux fronts dans le même tick n'en font qu'un : accepté, sans
+  usage musical à moins d'1 ms d'écart.
+* **Rack** (`oc-vcv-ffi`) : même règle entre deux ticks, sur les niveaux que Rack donne à sa fréquence
+  d'échantillonnage ; le C++ ne change pas. Le simulateur fournit des niveaux par tick et n'a rien à faire.
+* **Contrat** : `DigitalIn::trigger_state` dit désormais qu'un backend qui capture les fronts signale ainsi une
+  impulsion déjà retombée ; le cœur, la détection de front sur un échantillon et les applets ne changent pas.
+* Risque accepté, à vérifier sur module : le détecteur voit un parasite de quelques µs que l'échantillonnage
+  ratait ; l'hystérésis des pads (D-007) est active.
 
 ## Voir aussi
 

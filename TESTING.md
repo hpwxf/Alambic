@@ -556,10 +556,16 @@ in which case run it again:
 6. **Idle noise.** Leave a cable plugged in but undriven, or driven by a
    steady 0 V, for one minute next to busy modules. The counter must stay
    at zero.
-7. **Short pulses (informative).** If the source can, send 0.5 ms
-   triggers. Some may be missed: pulses shorter than one 1 kHz tick fall
-   between samples, a known limit that only edge capture can lift (D-023).
-   Record the ratio; it is not a failure.
+7. **Short pulses.** The firmware captures trigger edges in the GPIO edge
+   detector (journal/D-019), so a pulse shorter than a tick must still be
+   counted exactly once. A clock source with a known rate and an adjustable
+   width does it without counting by hand: at 120 BPM ×16 (31.25 ms), `cargo
+   probe triggers --seconds 30` must report 960 rising edges (±1 for the
+   window) at every width, down to the shortest the source sends, with a
+   longest interval of about one period; twice the period means a lost
+   pulse. Before edge capture, 39 % of 0.94 ms pulses were lost that way
+   (`docs/plan/etape-3b-sonde.md`). Repeat at the widest setting: no edge
+   may be counted twice.
 
 A failure in 4 to 6 is a reason to add a short re-trigger hold-off after
 each rising edge (accept the edge at once, ignore further rising edges for
