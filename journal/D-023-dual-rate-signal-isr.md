@@ -124,3 +124,32 @@ l'échantillonnage non bloquant.
 
 Note (2026-11-17, clôture de l'étape 3) : la feuille de route a été renumérotée, l'étape 4 ayant servi aux réglages
 système ; « premier applet musical » devient l'étape 5, « chemin audio » l'étape 6.
+
+## Pistes pour aller au-delà de C+ (2026-11-17) — ADC en attente, DAC prioritaire
+
+Après l'étape 5, l'échantillonnage bloquant est le premier poste d'un tick (≈ 288 µs, ≈ 29 %) ; l'utilisateur met
+l'ADC **en attente** : le Teensy 4.0 en limite les ambitions, et c'est le **DAC** qui compte pour générer du son.
+
+**ADC** (mesuré et lu, non engagé). `teensy4-bsp` crée l'ADC1 sur l'horloge ADACK divisée par 8 ; avec la vitesse
+« Medium » et 4 moyennes matérielles de `cv_in.rs`, une voie coûte ≈ 72 µs. Trois voies, de la moins à la plus
+coûteuse :
+
+1. horloge plus rapide (ADACK sans diviseur ou IPG), lecture encore bloquante mais de l'ordre de 20 à 40 µs pour
+   les quatre voies ; à vérifier : bruit (`cargo probe inputs`), justesse (`sweep`), recalibration ;
+2. conversions lancées par la boucle et terminées pendant l'attente de fin de tick (où l'USB est déjà servi) :
+   les 288 µs sortent du tick, au prix d'un tick de latence sur les CV ;
+3. chaîne matérielle timer → ADC_ETC → DMA : conversions sans le processeur, préalable de l'option A ; pas de
+   pilote ADC_ETC dans `imxrt-hal`, registres et `unsafe` confinés à écrire.
+
+**DAC pour l'audio** (option B). À 48 kHz la période est de 20,8 µs ; écrire les quatre voies prend ≈ 16 µs
+mesurées (12 octets à 8 MHz plus les CS), parce que le bus partagé tourne à la vitesse de l'OLED alors que le
+DAC8565 accepte 50 MHz. Pistes, dans l'ordre où elles se cumulent :
+
+1. **horloge SPI par périphérique** : le DAC à 30–50 MHz (≈ 2–3 µs pour quatre voies), l'OLED à 8 MHz ; révise
+   D-010 (une seule horloge pour le bus) ;
+2. **DAC en DMA double tampon déclenché par timer** : l'audio ne dépend plus de la ponctualité du code ;
+3. priorité d'interruption de l'audio au plus haut, tampons DMA hors cache (ou maintenance de cache) ;
+4. l'envoi OLED intercalé entre deux écritures du DAC (page, demi-page ou DMA), D-009.
+
+Étude de fond : `docs/supersaw/supersaw-sur-ornament-and-crime.md` § 12–14. Index matériel (non versionné) :
+`HARDWARE.md`.

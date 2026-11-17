@@ -27,12 +27,13 @@
 | Étape | Contenu pressenti | Dépend de |
 |---|---|---|
 | 6 — premier applet musical | quantizer ou générateur d'enveloppes / LFO, à 1 kHz (D-023 C+) ; précision des entrées si l'applet suit une hauteur | D-006, D-023 |
-| 7 — chemin audio | échantillonnage non bloquant, supersaw PolyBLEP, DAC en DMA, priorités NVIC (`docs/supersaw/` § 12–14) | D-023 (option B) |
+| 7 — chemin audio | DAC d'abord : horloge SPI par périphérique (DAC rapide, OLED lent), DAC en DMA double tampon, priorités NVIC ; supersaw PolyBLEP (`docs/supersaw/` § 12–14) ; l'ADC plus tard | D-023 (option B, pistes du 2026-11-17), D-010 |
 | ? — seconde carte | Teensy 4.1 / O.R.N.8 (notes locales non suivies) | D-003, D-007 |
 
 ## Questions ouvertes
 
 * Cadence : C+ à 1 kHz retenue ; A (16 666 Hz) ou B (48 kHz + DMA) le jour où un applet le demande (D-023)
+* ADC non bloquant : en attente (Teensy 4.0) ; trois voies notées dans D-023, de l'horloge plus rapide à la chaîne timer → ADC_ETC → DMA
 * Comment Squares-and-Circles partage-t-il le bus SPI sans tic sur ce module ? (D-010, `docs/supersaw/` § 13)
 * ~~Plage réelle des entrées CV de la carte TLM T4~~ : ≈ −3,33 à +6,67 V, fixée par l'étage analogique (lot 3b5)
 * `overflow-checks` en release au-delà des applets de diagnostic ? (D-018)

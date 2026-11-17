@@ -53,18 +53,16 @@
 //!
 //! # What has been checked on a real module
 //!
-//! Verified on the TLM build while bringing the firmware up: the OLED rows
-//! (SH1106, pins 6 to 8 and the shared bus), the boot LED, and the encoder and
-//! button rows (pins 4, 5 and 14 to 16, 21 to 23, which needed the pad pull-up
-//! of [`DIGITAL_INPUT_CONFIG`]).
+//! Verified on the TLM build: the OLED rows (SH1106, pins 6 to 8 and the
+//! shared bus), the boot LED, the encoder and button rows (pins 4, 5 and 14
+//! to 16, 21 to 23, which needed the pad pull-up of [`DIGITAL_INPUT_CONFIG`]);
+//! and, with the probe at `TESTING.md` Level 9 (step 3), the CV input rows (17
+//! to 20, channel order included), the trigger rows (0 to 3) and the DAC rows
+//! (9 and 10, outputs checked with a multimeter).
 //!
-//! Still derived from source, not measured — treat as provisional until
-//! `TESTING.md` Level 9 has been run:
-//!
-//! * the CV input rows (17 to 20), the trigger rows (0 to 3) and the DAC rows
-//!   (9 and 10);
-//! * the OLED controller on other builds. SH1106 is the default; SSD1306 and
-//!   SSD1309 are opt-in features.
+//! Still derived from source, not measured: the OLED controller on other
+//! builds (SH1106 is the default; SSD1306 and SSD1309 are opt-in features) and
+//! the DAC8565's simultaneous update mode.
 //!
 //! The ADC and DAC calibration is not board data any more: the conversion,
 //! the factory calibration (which expresses that both analog stages invert)
