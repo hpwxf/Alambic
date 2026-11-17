@@ -285,7 +285,13 @@ describes (segments at their load address, erased gaps, refusal of a
 segment outside the flash or overlapping another) and, when `cargo xtask hex`
 has left a firmware ELF and a HEX no older than it,
 `real_firmware_matches_its_hex_when_present` checks they hold the same bytes:
-what the browser flasher writes is what `teensy_loader_cli` writes.
+what the browser flasher writes is what `teensy_loader_cli` writes. Its
+`hex_image` tests read synthetic Intel HEX files (gaps, CRLF, record types,
+refusal of a bad checksum, a missing end record, data outside the flash or
+written twice) and check the boot header (FCB, IVT, boot data, a
+Teensyduino-style header accepted), and
+`real_firmware_hex_reads_as_its_elf_when_present` reads the real HEX into the
+same flash contents as its ELF.
 `cargo test -p oc-halfkay` checks the bootloader reports cut from it, and
 `cargo test -p oc-web` the browser core (journal/D-031).
 
@@ -512,8 +518,10 @@ the running one, check its fingerprint (the ELF's SHA-256) against
 `cargo xtask flash --dry-run`, confirm and install: the module restarts into
 the bootloader by itself, the
 page lists HalfKay, the progress bar fills, and the module boots with the new
-build identifier on its splash. Record the result in the step's progress file;
-a pass moves D-031 to `adoptée`.
+build identifier on its splash. Install once more from `dist/oc-firmware.hex`
+(`cargo xtask hex`): the page says *Intel HEX*, the fingerprint is the `hex
+sha256` of `cargo xtask flash --dry-run`, and the module boots. Record the
+result in the step's progress file; a pass moves D-031 to `adoptée`.
 
 ### 9.2 — CV inputs
 

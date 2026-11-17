@@ -116,3 +116,37 @@ La page a aussi été réécrite pour un utilisateur qui n'est pas développeur,
 chaque fonction restant dans un encart « For developers ».
 
 Statut : **adoptée**. `cargo xtask flash` reste le chemin de référence des développeurs.
+
+## 7. Révision du 2026-11-17 — le HEX accepté, avec une vérification réduite
+
+**Contexte.** La CI publie `dist/oc-firmware.hex` en artefact (D-016, D-017), et le HEX est le format de tout
+l'écosystème Teensy : Teensyduino, l'application Teensy Loader, les autres firmwares O&C (Phazerville). La section 5
+prévoyait ce cas. Choix de l'utilisateur : la page accepte aussi le HEX, dans la même PR.
+
+**Ce qu'on vérifie d'un HEX.** Un HEX ne porte que des adresses et des octets : ni l'architecture, ni la cible, ni
+la table des sections. La page vérifie donc :
+
+* la syntaxe Intel HEX (enregistrements 00, 01, 02, 04, 03 et 05 tolérés), chaque somme de contrôle, et la présence
+  de l'enregistrement de fin, qui distingue un fichier complet d'un téléchargement tronqué ;
+* que chaque octet tombe dans la flash applicative (`FLEXSPI_BASE`..`RESERVED_FLASH_START`) et qu'aucune adresse
+  n'est écrite deux fois ;
+* l'**en-tête de démarrage** tel que la ROM le lit, commun à tout firmware Teensy 4.0 (relevé sur ce firmware, et
+  écrit de la même façon par Teensyduino, `bootdata.c`) : le FCB (`FCFB`) à `0x6000_0000` ; l'IVT à
+  `0x6000_1000` (tag `0xD1`, longueur `0x0020`, version `0x4x`, champ `self` égal à `0x6000_1000`, point d'entrée
+  dans une mémoire du composant) ; les boot data qu'elle désigne, dans la flash, commençant à `0x6000_0000`, de
+  taille au plus 1984 Kio.
+
+L'empreinte affichée est le SHA-256 du fichier `.hex`, celle que `cargo xtask flash` imprime (`hex sha256`) et que
+la CI journalise. La page dit clairement que la vérification est réduite. Le chemin ELF ne change pas : il garde la
+porte complète de D-016, et reste le format recommandé.
+
+**Forme.** `oc-image` gagne la lecture du HEX et le contrôle de l'en-tête de démarrage, sur l'image flash et non
+sur l'ELF, et un point d'entrée qui reconnaît le format (signature ELF, `:` initial d'un HEX) ; `FlashImage` ne
+porte plus les faits propres à l'ELF mais le format, l'empreinte, le point d'entrée et les avertissements.
+
+**Essai.** Le HEX publié par la CI, installé depuis la page sur le module : accepté (« Intel HEX »), écrit, et le
+module a redémarré dessus. Le HEX réel de `cargo xtask hex` donne la même image flash que son ELF, octet pour octet
+(test `real_firmware_hex_reads_as_its_elf_when_present`). Un HEX produit par Teensyduino n'a pas encore été essayé.
+
+**Ce qui nous ferait changer d'avis.** Un HEX de Teensyduino ou de Phazerville refusé à tort par le contrôle de
+l'en-tête : ce contrôle serait alors à assouplir, pas à contourner.

@@ -124,7 +124,9 @@
     <section id="flash">
       <h2>Install a firmware</h2>
       <ol class="steps">
-        <li>Choose the firmware file you were given or downloaded.</li>
+        <li>Choose the firmware file you were given or downloaded: either the file named
+          <code>oc-firmware</code>, without extension (preferred: the page can check it fully),
+          or a <code>.hex</code> file.</li>
         <li>The page checks it before anything is written and shows its <em>fingerprint</em>.
           Compare it with the one published with the firmware: if they differ, do not install.</li>
         <li>Tick the box under the fingerprint, then click <em>Install</em>. If the module is connected above, it
@@ -153,13 +155,17 @@
         install fails, press PROGRAM and try again.</p>
       <details class="dev">
         <summary>For developers</summary>
-        <p>The file is the firmware <strong>ELF</strong>, not the HEX:
+        <p>The preferred file is the firmware <strong>ELF</strong>,
           <code>target/thumbv7em-none-eabihf/release/oc-firmware</code> after
-          <code>cargo xtask build</code>. The page runs the same checks as
-          <code>cargo xtask flash</code> (<code>xtask::validate</code>); the fingerprint is the
-          ELF's SHA-256, the one <code>cargo xtask flash</code> prints. It then writes the flash
-          through the HalfKay bootloader (USB 16c0:0478) over WebHID, as
-          <code>teensy_loader_cli</code> does.</p>
+          <code>cargo xtask build</code>: the page runs on it the same checks as
+          <code>cargo xtask flash</code> (<code>xtask::validate</code>), and the fingerprint is
+          the ELF's SHA-256 (<code>elf sha256</code>). An <strong>Intel HEX</strong> file
+          (<code>cargo xtask hex</code>, the CI artefact, or another Teensy 4.0 firmware) gets
+          reduced checks: valid records and checksums, an end record, every byte inside the
+          application flash and none twice, and the boot header the boot ROM reads (FCB, IVT,
+          boot data); its fingerprint is the <code>.hex</code> file's SHA-256 (<code>hex
+          sha256</code>). The page then writes the flash through the HalfKay bootloader (USB
+          16c0:0478) over WebHID, as <code>teensy_loader_cli</code> does.</p>
       </details>
     </section>
   </main>

@@ -6,7 +6,7 @@
 
 use std::path::PathBuf;
 
-use oc_image::flash::{ERASED, flash_image};
+use oc_image::flash::{ERASED, Format, flash_image};
 use oc_image::validate::{FCB_TAG, FLEXSPI_BASE, RESERVED_FLASH_START};
 
 const PT_LOAD: u32 = 1;
@@ -85,7 +85,7 @@ fn segments_land_at_their_load_address_with_erased_gaps() {
     assert_eq!(&bytes[..8], fcb().as_slice());
     assert!(bytes[8..0x100].iter().all(|&byte| byte == ERASED));
     assert_eq!(&bytes[0x100..], &[0xAB; 3]);
-    assert_eq!(image.facts.loadable_size, 11);
+    assert_eq!(image.format, Format::Elf);
 }
 
 #[test]

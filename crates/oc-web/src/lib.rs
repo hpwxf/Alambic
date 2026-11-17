@@ -20,7 +20,7 @@ use wasm_bindgen::prelude::wasm_bindgen;
 
 use oc_core::framebuffer::LEN;
 use oc_halfkay::Report;
-use oc_image::flash::{FlashImage, flash_image};
+use oc_image::flash::{FlashImage, Format, firmware_image};
 use oc_probe::client::ProbeError;
 use oc_probe::render;
 use oc_protocol::{Error, FrameReader, MAX_FRAME, Reply, Request, VERSION, decode, encode};
@@ -280,15 +280,16 @@ pub struct Firmware {
 
 #[wasm_bindgen]
 impl Firmware {
-    /// Runs every check `cargo xtask flash` runs on `elf`, then lays it out
+    /// Checks `file`, a firmware ELF (every check `cargo xtask flash` runs)
+    /// or an Intel HEX file (its records and boot header), then lays it out
     /// as flash contents and cuts them into `HalfKay` reports.
     ///
     /// # Errors
     ///
     /// Every problem found, one per line.
     #[wasm_bindgen(constructor)]
-    pub fn new(elf: &[u8]) -> Result<Firmware, String> {
-        let image = flash_image(elf).map_err(|rejections| {
+    pub fn new(file: &[u8]) -> Result<Firmware, String> {
+        let image = firmware_image(file).map_err(|rejections| {
             rejections
                 .iter()
                 .map(ToString::to_string)
@@ -301,18 +302,20 @@ impl Firmware {
         Ok(Self { image, reports })
     }
 
-    /// The SHA-256 of the ELF, as `cargo xtask flash` prints it.
+    /// The SHA-256 of the file, as `cargo xtask flash` prints it (`elf
+    /// sha256` or `hex sha256`).
     #[wasm_bindgen(getter)]
     #[must_use]
     pub fn sha256(&self) -> String {
-        self.image.facts.sha256_hex()
+        self.image.sha256_hex()
     }
 
-    /// Bytes the ELF's loadable segments hold.
+    /// Whether the file got the whole gate (an ELF) rather than the reduced
+    /// checks of a HEX file.
     #[wasm_bindgen(getter)]
     #[must_use]
-    pub fn loadable_size(&self) -> u32 {
-        u32::try_from(self.image.facts.loadable_size).unwrap_or(u32::MAX)
+    pub fn fully_checked(&self) -> bool {
+        self.image.format == Format::Elf
     }
 
     /// Bytes of flash written, from the start of the flash.
@@ -326,14 +329,14 @@ impl Firmware {
     #[wasm_bindgen(getter)]
     #[must_use]
     pub fn entry(&self) -> u32 {
-        self.image.facts.entry
+        self.image.entry
     }
 
     /// Soft findings that did not stop the image.
     #[wasm_bindgen(getter)]
     #[must_use]
     pub fn warnings(&self) -> Vec<String> {
-        self.image.facts.warnings.clone()
+        self.image.warnings.clone()
     }
 
     /// Reports in all, the final boot request included.
@@ -467,7 +470,12 @@ mod tests {
 
     #[test]
     fn an_image_that_fails_the_gate_is_refused_with_every_reason() {
+        let error = Firmware::new(b"PK\x03\x04").unwrap_err();
+        assert!(
+            error.contains("neither a firmware ELF nor an Intel HEX"),
+            "{error}"
+        );
         let error = Firmware::new(b":020000040000FA\n").unwrap_err();
-        assert!(error.contains("not an ELF"), "{error}");
+        assert!(error.contains("no end record"), "{error}");
     }
 }

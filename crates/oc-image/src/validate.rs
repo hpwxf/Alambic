@@ -780,7 +780,8 @@ const DTCM_END: u32 = DTCM.end;
 const OCRAM_START: u32 = OCRAM.start;
 const OCRAM_END: u32 = OCRAM.end;
 
-fn address_plausible(addr: u32) -> bool {
+/// Whether `addr` falls in a memory of the part a pointer may target.
+pub(crate) fn address_plausible(addr: u32) -> bool {
     ITCM.contains(&addr) || DTCM.contains(&addr) || OCRAM.contains(&addr) || FLEXSPI.contains(&addr)
 }
 

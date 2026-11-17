@@ -242,6 +242,7 @@ async function loadImage(file) {
   }
   const lines = [
     `file:        ${file.name}`,
+    `kind:        ${firmware.fully_checked ? "firmware ELF, fully checked" : "Intel HEX"}`,
     `fingerprint: ${firmware.sha256}`,
     `size:        ${Math.ceil(firmware.flash_size / 1024)} KiB to write`,
     ...firmware.warnings.map((warning) => `warning: ${warning}`),

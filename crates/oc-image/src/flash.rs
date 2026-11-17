@@ -4,23 +4,42 @@
 //! derives from the ELF's loadable segments; the browser flasher has neither
 //! tool, so it takes the same segments from the ELF itself. Keeping the ELF as
 //! the input means the whole gate of [`validate_image`] still runs before a
-//! single byte is written (journal/D-031).
+//! single byte is written (journal/D-031). A HEX file is accepted too, with
+//! the reduced checks [`crate::hex`] and [`crate::boot`] can make.
 
+use crate::boot::check_boot_header;
+use crate::hex::{is_hex, read_hex};
 use crate::validate::{
-    ELF32_PHDR_LEN, FLEXSPI_BASE, ImageFacts, PT_LOAD, RESERVED_FLASH_START, Rejection,
-    read_u16_le, read_u32_le, validate_image,
+    ELF32_PHDR_LEN, FLEXSPI_BASE, PT_LOAD, RESERVED_FLASH_START, Rejection, hex_encode,
+    read_u16_le, read_u32_le, sha256_digest, validate_image,
 };
 
 /// What erased flash reads as. Gaps between segments keep this value, as
 /// they do when a HEX file leaves them out.
 pub const ERASED: u8 = 0xFF;
 
+/// The kind of file an image came from, which says how far it was checked.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Format {
+    /// An ELF, through the whole gate of [`validate_image`].
+    Elf,
+    /// An Intel HEX file: its records and the boot header only, since it
+    /// does not say what it was built for.
+    Hex,
+}
+
 /// The flash a loader writes, from [`FLEXSPI_BASE`] up to the end of the
-/// last loadable byte, with the facts of the image it came from.
+/// last loadable byte, with what checking the file found.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FlashImage {
-    /// What validating the ELF found, its digest included.
-    pub facts: ImageFacts,
+    /// The kind of file it came from.
+    pub format: Format,
+    /// SHA-256 of the file, as `cargo xtask flash` prints it for that kind.
+    pub sha256: [u8; 32],
+    /// Where the image starts: the ELF's entry point, or the boot header's.
+    pub entry: u32,
+    /// Soft findings that did not stop the image.
+    pub warnings: Vec<String>,
     bytes: Vec<u8>,
 }
 
@@ -30,6 +49,52 @@ impl FlashImage {
     pub fn bytes(&self) -> &[u8] {
         &self.bytes
     }
+
+    /// Lower-case hex rendering of [`Self::sha256`].
+    #[must_use]
+    pub fn sha256_hex(&self) -> String {
+        hex_encode(&self.sha256)
+    }
+}
+
+/// Recognises `file` as an ELF or an Intel HEX file and lays it out, after
+/// the checks that kind allows.
+///
+/// # Errors
+///
+/// Every rejection those checks find, or a single one for a file of
+/// neither kind.
+pub fn firmware_image(file: &[u8]) -> Result<FlashImage, Vec<Rejection>> {
+    if file.starts_with(b"\x7fELF") {
+        flash_image(file)
+    } else if is_hex(file) {
+        hex_image(file)
+    } else {
+        Err(vec![Rejection::new(
+            "neither a firmware ELF nor an Intel HEX file",
+        )])
+    }
+}
+
+/// Reads an Intel HEX file and checks the boot header it holds.
+///
+/// # Errors
+///
+/// What [`read_hex`] or [`check_boot_header`] reject.
+pub fn hex_image(file: &[u8]) -> Result<FlashImage, Vec<Rejection>> {
+    let bytes = read_hex(file)?;
+    let header = check_boot_header(&bytes)?;
+    Ok(FlashImage {
+        format: Format::Hex,
+        sha256: sha256_digest(file),
+        entry: header.entry,
+        warnings: vec![
+            "reduced checks: a HEX file does not say what it was built for; \
+             only its records and its boot header were checked"
+                .to_owned(),
+        ],
+        bytes,
+    })
 }
 
 /// Validates `elf` and lays its loadable segments out as flash contents.
@@ -57,7 +122,13 @@ pub fn flash_image(elf: &[u8]) -> Result<FlashImage, Vec<Rejection>> {
     for segment in &segments {
         bytes[segment.start..segment.start + segment.data.len()].copy_from_slice(segment.data);
     }
-    Ok(FlashImage { facts, bytes })
+    Ok(FlashImage {
+        format: Format::Elf,
+        sha256: facts.sha256,
+        entry: facts.entry,
+        warnings: facts.warnings,
+        bytes,
+    })
 }
 
 /// One segment's bytes and where they go, as an offset into the flash.

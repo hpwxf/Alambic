@@ -12,10 +12,11 @@ Architectural decisions behind each change are in `journal/` (French).
 - **Browser probe and flasher** (journal/D-031, tried on a module):
   `cargo xtask web` builds a static page into `dist/web/` that talks to the
   module from Chrome or Edge — the probe over Web Serial (screen, profile,
-  stream, held outputs) and the flash over WebHID, from the firmware ELF,
-  behind the same gate as `cargo xtask flash`.
+  stream, held outputs) and the flash over WebHID, from the firmware ELF
+  behind the same gate as `cargo xtask flash`, or from an Intel HEX file
+  with reduced checks (records, flash range, the boot header).
 - `oc-image` (the pre-flash gate, moved from `xtask`, and the flash contents
-  of a validated ELF), `oc-halfkay` (the bootloader's reports), `oc-web`
+  of a validated ELF or HEX), `oc-halfkay` (the bootloader's reports), `oc-web`
   (their WebAssembly bindings).
 
 ### Changed

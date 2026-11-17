@@ -25,7 +25,7 @@ behaviour runs on hardware, in a native simulator, and inside VCV Rack 2.
 | `crates/oc-firmware` | Teensy 4.0 binary; the only crate that touches registers           |
 | `crates/oc-protocol` | `no_std` messages and server of the live probe (postcard over COBS) |
 | `crates/oc-probe`    | Host tool talking to a running module over its probe port          |
-| `crates/oc-image`    | Pre-flash image gate and the flash contents of a validated ELF     |
+| `crates/oc-image`    | Pre-flash image gate; the flash contents of a validated ELF or HEX |
 | `crates/oc-halfkay`  | The Teensy bootloader's write protocol, as reports to send          |
 | `crates/oc-web`, `web/` | Browser probe and flasher: WebAssembly core and a static page   |
 | `crates/oc-sim`      | Native backend and terminal UI, with a deterministic virtual clock |
@@ -322,9 +322,11 @@ python3 -m http.server -d dist/web 8000      # then open http://localhost:8000
 It needs Chrome or Edge on a desktop (Web Serial and WebHID; neither Firefox
 nor Safari has them) and a secure context: `localhost` or https. The probe
 side does what `cargo probe` does: screen capture (live too), profile, sample
-stream, held outputs. The flash side takes the firmware **ELF**, runs the same
-checks as `cargo xtask flash`, shows its SHA-256, and writes it through the
-bootloader (HalfKay) after an explicit confirmation; with the probe
+stream, held outputs. The flash side takes the firmware **ELF**, with the
+same checks as `cargo xtask flash`, or an Intel **HEX** (the CI artefact,
+say) with reduced checks ([ELF or HEX](#elf-or-hex)); it shows the file's
+SHA-256 and writes it through the bootloader (HalfKay) after an explicit
+confirmation; with the probe
 connected it restarts the module into the bootloader itself. `cargo xtask
 web` needs the `wasm-bindgen` command line at the version `Cargo.lock` pins
 (it says which, and how to install it). Both sides have been tried on a
@@ -413,13 +415,16 @@ same HEX itself before invoking the loader, so running `cargo xtask hex`
 first is never needed.
 
 The checks above need the ELF: a HEX holds only addresses and bytes, so
-neither the architecture, nor the entry point, nor the vector table can be
-verified from it. That is why the browser flasher ([In the
-browser](#in-the-browser)) takes the ELF, and why a firmware released for
-people who install it from the page must ship as an ELF, not only as a HEX
-(journal/D-031). The flash contents the page derives from the ELF are the
-HEX's byte for byte (`real_firmware_matches_its_hex_when_present`,
-`TESTING.md`).
+neither the architecture, nor the target, nor the vector table can be
+verified from it. The browser flasher ([In the browser](#in-the-browser))
+therefore prefers the ELF, and gives a HEX reduced checks: valid records
+and checksums, an end record (a truncated download is refused), every byte
+inside the application flash and none written twice, and the boot header
+the boot ROM reads (FlexSPI Configuration Block, Image Vector Table, boot
+data), which every Teensy 4.0 firmware carries (journal/D-031). The flash
+contents the page derives from the ELF and from its HEX are the same, byte
+for byte (`real_firmware_matches_its_hex_when_present`,
+`real_firmware_hex_reads_as_its_elf_when_present`, `TESTING.md`).
 
 ## Memory layout and boot
 
