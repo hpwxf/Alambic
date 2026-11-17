@@ -13,11 +13,44 @@
 //! clipped. Sizes are `i32` like `embedded-graphics` coordinates; a size of
 //! zero or less draws nothing.
 
+pub mod controls;
+pub mod patterns;
+pub mod plots;
 pub mod trig;
 
 use embedded_graphics::prelude::Point;
 
 use crate::framebuffer::{FrameBuffer, HEIGHT_I32, PAGES, WIDTH, WIDTH_I32};
+
+/// A value within `0..=max`, as a knob or a bar shows it; values outside are
+/// clamped, and a `max` of zero or less reads as empty.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Ratio {
+    /// The value.
+    pub value: i32,
+    /// The full scale.
+    pub max: i32,
+}
+
+impl Ratio {
+    /// `value` out of `max`.
+    #[must_use]
+    pub const fn new(value: i32, max: i32) -> Self {
+        Self { value, max }
+    }
+
+    /// The share of `length` this ratio covers, rounded down, clamped to
+    /// `0..=length`.
+    #[must_use]
+    pub fn of(self, length: i32) -> i32 {
+        if self.max <= 0 {
+            return 0;
+        }
+        let value = i64::from(self.value.clamp(0, self.max));
+        let share = value * i64::from(length) / i64::from(self.max);
+        i32::try_from(share).unwrap_or(0)
+    }
+}
 
 /// What a shape does to the pixels it covers.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -144,6 +177,12 @@ pub fn pixel(frame: &mut FrameBuffer, x: i32, y: i32, ink: Ink) {
 
 /// A straight line between two points, both included (Bresenham).
 pub fn line(frame: &mut FrameBuffer, from: Point, to: Point, ink: Ink) {
+    segment(frame, from, to, ink, true);
+}
+
+/// A line from `from` to `to`, `from` itself only when `with_start`: joined
+/// segments then ink their shared ends once, which [`Ink::Invert`] needs.
+fn segment(frame: &mut FrameBuffer, from: Point, to: Point, ink: Ink, with_start: bool) {
     let dx = (to.x - from.x).abs();
     let dy = -(to.y - from.y).abs();
     let step_x = if from.x < to.x { 1 } else { -1 };
@@ -151,7 +190,9 @@ pub fn line(frame: &mut FrameBuffer, from: Point, to: Point, ink: Ink) {
     let mut error = dx + dy;
     let mut at = from;
     loop {
-        pixel(frame, at.x, at.y, ink);
+        if with_start || at != from {
+            pixel(frame, at.x, at.y, ink);
+        }
         if at == to {
             return;
         }
@@ -204,6 +245,19 @@ pub fn circle(frame: &mut FrameBuffer, center: Point, radius: i32, ink: Ink) {
             x -= 1;
             error += 2 * (y - x) + 1;
         }
+    }
+}
+
+/// Joins `points` with straight lines, each point inked once.
+pub fn polyline(frame: &mut FrameBuffer, points: impl IntoIterator<Item = Point>, ink: Ink) {
+    let mut previous: Option<Point> = None;
+    for point in points {
+        match previous {
+            None => pixel(frame, point.x, point.y, ink),
+            Some(from) if from != point => segment(frame, from, point, ink, false),
+            Some(_) => {}
+        }
+        previous = Some(point);
     }
 }
 

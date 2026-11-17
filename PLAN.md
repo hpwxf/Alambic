@@ -53,7 +53,7 @@ pages. Plan : [etape-5-gfx.md](docs/plan/etape-5-gfx.md).
 | Lot | Contenu | État |
 |---|---|---|
 | **5a** — bases | ✅ `oc_core::gfx` : rectangles, lignes droites, zone inversée en octets (mêmes pixels qu'`embedded-graphics`) ; ligne, cercle, disque, pointillés ; `Ink::{Lit, Dark, Invert}` ; sinus entier | fait |
-| **5b** — contrôles et motifs | potentiomètre, valeurs, barres, courbes, motifs de séquenceur, bandeau | à faire |
+| **5b** — contrôles et motifs | ✅ `gfx::controls` (potentiomètre, sélecteur, valeur encadrée, légende, barres, bandeau), `gfx::plots` (`Area`, trace, min / max, histogramme, échelle à aiguille), `gfx::patterns` (cases, points, anneau euclidien, mini-clavier) ; `Ratio` ; tests par propriétés | fait |
 | **5c** — applet de démo | `AppId::Gfx`, quatre pages, écrans dorés | à faire |
 | **5d** — mesure | `render` par page sur le module | à faire |
 
