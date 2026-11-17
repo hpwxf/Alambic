@@ -76,6 +76,10 @@ Architectural decisions behind each change are in `journal/` (French).
 
 ### Fixed
 
+- The loop profile counted the last boot-splash tick as its first period
+  (about 1.5 ms on the module), since only the statistics were cleared when
+  the splash ended, not the start of that tick.
+
 - **The first log lines never reached a terminal.** The log was sent as
   soon as the host enumerated the module, before any program opened the
   port. It now waits for a terminal (DTR), so the boot lines are the first

@@ -75,3 +75,31 @@ fn the_profile_starts_when_the_splash_ends() {
         "{ticks} ticks profiled: the splash was not dropped"
     );
 }
+
+#[test]
+fn the_first_period_after_the_splash_is_not_a_splash_tick() {
+    // The splash sends whole frames: its ticks run long. Once it ends and the
+    // profile is cleared, no period may still span one of them.
+    let mut engine = mock_engine_at_boot(0);
+    engine.profile_mut().set_expected_period_micros(1_000);
+    let mut splash_ticks = 0;
+    loop {
+        engine.tick();
+        engine.clock().advance(2_000);
+        splash_ticks += 1;
+        if splash_ticks > 1 && engine.profile().stage(Stage::Tick).count() == 0 {
+            break;
+        }
+    }
+    for _ in 0..10 {
+        engine.tick();
+        engine.clock().advance(1_000);
+    }
+    let period = engine.profile().period();
+    assert_eq!(
+        period.max(),
+        Some(1_000),
+        "a splash tick leaked into the profile"
+    );
+    assert_eq!(period.count(), 9);
+}

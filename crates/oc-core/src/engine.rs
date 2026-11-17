@@ -223,8 +223,10 @@ where
             if self.splash.is_done() {
                 self.screen = self.after_boot();
                 // The splash redraws on every tick; the profile describes
-                // the module running, from here on.
+                // the module running, from here on. The period too: the
+                // next one must not span this long splash tick.
                 self.profile.clear();
+                self.previous_fine = None;
             }
             return report;
         }
