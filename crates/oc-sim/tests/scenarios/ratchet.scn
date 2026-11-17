@@ -1,0 +1,20 @@
+# oc-sim scenario v1
+# The Ratchet applet (journal/D-032): open the app menu, move the highlight down
+# three times to RATCHET, launch it, then send one 2 ms trigger on TR1. The
+# snapshot is taken during the burst: the trigger light 1 is off, the
+# settings show their defaults (4 repeats, 100 ms, shape 0.0, 100 %).
+ticks 400
+20  button up down
+60  button down down
+70  button up up
+70  button down up
+90  button down down
+100 button down up
+110 button down down
+120 button down up
+130 button down down
+140 button down up
+160 button left down
+166 button left up
+200 trigger 1 high
+202 trigger 1 low

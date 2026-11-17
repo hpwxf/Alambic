@@ -1,0 +1,26 @@
+# oc-sim scenario v1
+# RATCHET against TR1's rate (journal/D-032): launched as in ratchet.scn,
+# then three triggers 200 ticks apart: 248 ms on the simulator's clock, which
+# charges each tick its two clock reads, so the title shows 242 BPM. The
+# default burst has four even repeats, 100 ms apart: on the timeline the last
+# two, at 300 and 400 ms, fall past the dotted line where the next trigger is
+# due, and are drawn short: the restart would cut them.
+ticks 700
+20  button up down
+60  button down down
+70  button up up
+70  button down up
+90  button down down
+100 button down up
+110 button down down
+120 button down up
+130 button down down
+140 button down up
+160 button left down
+166 button left up
+200 trigger 1 high
+202 trigger 1 low
+400 trigger 1 high
+402 trigger 1 low
+600 trigger 1 high
+602 trigger 1 low

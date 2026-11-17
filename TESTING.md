@@ -625,6 +625,33 @@ C and D into their own inputs (`--out B --in 2`, …), which also checks the
 channel order of the outputs. Nothing is held once the command ends,
 whether it finished or failed.
 
+### 9.3c — Ratchet (trigger bursts)
+
+Open `RATCHET` from the app menu (journal/D-032). Patch output A into `TR2`
+and output B into `TR3`, and a clock (or the `up` button) into `TR1`:
+
+```sh
+cargo probe triggers --seconds 10
+```
+
+With the defaults (`MODE FIRST`, 4 repeats, 100 ms, `SHAPE 0.0`, `PROB
+100%`, `PASSTHRU ON`) and one trigger every second on `TR1`: `TR2` counts one
+edge per trigger, `TR3` five, 100 ms apart (to a tick). With `SHAPE -1.0` the
+gaps read about 100, 80, 63, 50 ms, with `+1.0` 100, 126, 159, 200. `MODE
+SPAN` with `SYNC ON` and `SPAN ×1`: the repeats sit within each step, evenly
+at `0.0`, crowding towards its end below 0, towards its start above; compare
+both modes by ear. Then check `GATE` (repeats only while `TR1` stays high),
+`PASSTHRU OFF` (four edges on `TR3`), `PROB 50%` (about half the repeats, on
+their places), and an input: click the right encoder on `FIRST`, turn to
+`CV2+`, click again, then put a volt on `CV2` (intervals halved). With a
+steady clock on `TR1`, the title bar shows its rate (120 BPM for a trigger
+every 500 ms); set `SYNC ON` and `FIRST` to `/4`: the repeats on `TR3` come a
+quarter of the clock's period apart from the second trigger on. On the
+timeline, a dotted line marks where the next trigger is due: with a clock
+faster than the burst, the repeats past it are drawn short and are indeed
+cut on `TR3`. If `TR2` and `TR3` count nothing, the 5 V triggers do not cross the inputs' threshold: note it, it
+decides whether the trigger level has to change.
+
 ### 9.4 — Calibration
 
 This step measures how far the module is from the factory calibration, then
