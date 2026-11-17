@@ -90,7 +90,7 @@ Ce que ces chiffres changent aux options :
 * A et B demandent d'abord un **échantillonnage non bloquant** (≈ 72 µs par voie en conversion bloquante, plus
   qu'une période de 60 µs) et un **envoi OLED en DMA ou en morceaux** sous la période ; ce sont deux chantiers à
   part entière, pas des détails de A ;
-* aucun applet audio n'est prévu avant l'étape 5 de la feuille de route ; le prochain (étape 4 : quantizer,
+* aucun applet audio n'est prévu avant l'étape « chemin audio » de la feuille de route ; le prochain (quantizer,
   enveloppes, LFO) vit à 1 kHz ;
 * le défaut que l'utilisateur voit aujourd'hui (triggers courts perdus, trou de 2 ms) se corrige à 1 kHz.
 
@@ -109,10 +109,18 @@ Plan : [`docs/plan/etape-3c-cadence.md`](../docs/plan/etape-3c-cadence.md) (lots
 
 Ce qui ferait passer à A ou B (remplace le § 5) : un applet qui demande une cadence de contrôle au-delà de 1 kHz
 (enveloppes de l'ordre de la milliseconde, triggers datés à mieux qu'un tick) ⇒ A, précédée de l'échantillonnage
-non bloquant ; un chemin audio (étape 5) ⇒ B. Dans les deux cas, C+ en est la première marche : capture des
+non bloquant ; un chemin audio ⇒ B. Dans les deux cas, C+ en est la première marche : capture des
 fronts, envoi par pages et scission du tick restent.
 
 **Vérifié sur le module TLM (2026-11-17, lots 3c1 et 3c2)**, valeurs indicatives : triggers de 0,94 ms comptés
 960 / 960 (588 avant) ; 1 000 ticks par seconde (≈ 947 avant), toutes les périodes à moins de 4 µs de la cible sur
 les écrans Diagnostic, Scope et SETUP ; pire tick de dessin ≈ 0,96 ms échantillonnage compris (Diagnostic). Détail :
 `docs/plan/etape-3c-cadence.md`.
+
+**Lot 3c3 reporté (utilisateur, 2026-11-17)** : la scission `signal_tick` / `ui_tick` (point 3 de la décision C+,
+§ 4.3) n'est pas faite. C+ tourne sans elle, et sa bonne forme dépend de ce que A partagera entre l'ISR et la boucle
+(atomiques, paramètres, état des applets), qui n'est pas conçu. Elle devient le premier lot de A, après
+l'échantillonnage non bloquant.
+
+Note (2026-11-17, clôture de l'étape 3) : la feuille de route a été renumérotée, l'étape 4 ayant servi aux réglages
+système ; « premier applet musical » devient l'étape 5, « chemin audio » l'étape 6.
