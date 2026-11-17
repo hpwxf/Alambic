@@ -11,7 +11,8 @@ use embedded_graphics::Drawable as _;
 use embedded_graphics::mono_font::MonoTextStyle;
 use embedded_graphics::mono_font::ascii::FONT_5X8;
 use embedded_graphics::pixelcolor::BinaryColor;
-use embedded_graphics::prelude::Point;
+use embedded_graphics::prelude::{Point, Primitive as _, Size};
+use embedded_graphics::primitives::{PrimitiveStyle, Rectangle};
 use embedded_graphics::text::{Baseline, Text};
 use std::hint::black_box;
 
@@ -21,6 +22,7 @@ use oc_core::apps::{InputSnapshot, TickContext};
 use oc_core::buttons::ButtonReader;
 use oc_core::calibration::{CvInputCalibration, CvOutputCalibration};
 use oc_core::framebuffer::FrameBuffer;
+use oc_core::gfx::{self, Ink};
 use oc_core::menu::Menu;
 use oc_core::platform::{Button, ControlEvents, CvChannel, TriggerChannel};
 use oc_core::testing::mock_engine;
@@ -174,6 +176,32 @@ fn text(criterion: &mut Criterion) {
     group.finish();
 }
 
+/// The byte-wise bases of `oc_core::gfx` against `embedded-graphics`, which
+/// lights the same pixels one at a time (journal/D-030).
+fn shapes(criterion: &mut Criterion) {
+    let mut group = criterion.benchmark_group("gfx");
+
+    group.bench_function("fill_rect_embedded_graphics", |bencher| {
+        let mut frame = FrameBuffer::new();
+        let style = PrimitiveStyle::with_fill(BinaryColor::On);
+        bencher.iter(|| {
+            let area = Rectangle::new(Point::new(black_box(3), 5), Size::new(100, 40));
+            let _ = area.into_styled(style).draw(&mut frame);
+            black_box(frame.lit_pixels())
+        });
+    });
+
+    group.bench_function("fill_rect_bytes", |bencher| {
+        let mut frame = FrameBuffer::new();
+        bencher.iter(|| {
+            gfx::fill_rect(&mut frame, black_box(3), 5, 100, 40, Ink::Lit);
+            black_box(frame.lit_pixels())
+        });
+    });
+
+    group.finish();
+}
+
 fn conversions(criterion: &mut Criterion) {
     let mut group = criterion.benchmark_group("conversions");
     let input = CvInputCalibration::FACTORY;
@@ -202,5 +230,13 @@ fn conversions(criterion: &mut Criterion) {
     group.finish();
 }
 
-criterion_group!(benches, engine_tick, applet, menu, text, conversions);
+criterion_group!(
+    benches,
+    engine_tick,
+    applet,
+    menu,
+    text,
+    shapes,
+    conversions
+);
 criterion_main!(benches);

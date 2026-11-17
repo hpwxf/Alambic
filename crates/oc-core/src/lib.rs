@@ -41,6 +41,7 @@ pub mod encoder;
 pub mod engine;
 pub mod fmt;
 pub mod framebuffer;
+pub mod gfx;
 pub mod menu;
 pub mod platform;
 pub mod presence;

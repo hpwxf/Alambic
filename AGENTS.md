@@ -358,6 +358,7 @@ Full protocol, per level, with exact commands and what each proves: see
 | The Rack stand-in for the `up`+`down` chord       | `vcv/OrnamentCrimeAlambic/src/Alambic.cpp` (`appendContextMenu`) |
 | Button debouncing and the `up`+`down` chord       | `crates/oc-core/src/buttons.rs` |
 | The boot splash screen (name/version, progressive border) | `crates/oc-core/src/splash.rs` |
+| Graphics primitives (byte-wise shapes, `Ink::Invert`, integer trigonometry) | `crates/oc-core/src/gfx/` (journal/D-030) |
 | Text drawing (fonts as column bytes, the font in the style; same pixels as `embedded-graphics`) | `crates/oc-core/src/text/mod.rs`; generated fonts `text/fonts.rs` (`UPDATE_FONTS=1 cargo test -p oc-core --test fonts`) |
 | ADC/DAC unit conversion and calibration           | `crates/oc-core/src/calibration.rs` |
 | Input presence derived from the signal (defaults for unused inputs) | `crates/oc-core/src/presence.rs` |

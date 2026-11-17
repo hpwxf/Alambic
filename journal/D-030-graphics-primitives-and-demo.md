@@ -5,7 +5,7 @@
 | **Identifiant** | D-030 |
 | **Date** | 2026-11-17 |
 | **Auteur** | Pascal Havé |
-| **Statut** | adoptée |
+| **Statut** | adoptée, révisée |
 | **Commits** | ce commit (ADR, plan) ; implémentation à l'étape 5 (lots 5a à 5d) |
 | **Relations** | prolonge D-009 (framebuffer, texte par colonnes, police en paramètre) ; ajoute une applet à D-021 ; respecte D-005 (pas de flottant dans `oc-core`) ; mesurée par D-029 |
 
@@ -71,3 +71,13 @@ Trigonométrie entière (règle du dépôt). Le plan des lots est `docs/plan/eta
 * Un contrôle que deux applets veulent différemment : il devient paramétrable ou retourne dans l'applet ; `gfx` ne
   garde que ce qui sert à plusieurs.
 * Le besoin d'un rendu anticrénelé ou en niveaux de gris : hors de portée d'un écran monochrome, à ne pas imiter.
+
+## Révision (2026-11-17, lot 5a) — lignes et cercles écrits ici, pour pouvoir inverser
+
+Le § 3 prévoyait la ligne quelconque et le cercle par `embedded-graphics`. Ils sont écrits dans `gfx` (Bresenham,
+cercle du point milieu, disque en lignes horizontales), parce que toute forme doit pouvoir **inverser** ce qu'elle
+couvre (`Ink::Invert`, l'aiguille d'un potentiomètre sur une zone allumée), ce qu'`embedded-graphics` ne fait pas ;
+chaque point est encré une seule fois, si bien qu'inverser deux fois rend l'image d'origine (testé). Les formes
+droites (`fill_rect`, `hline`, `vline`, `rect`) écrivent des octets par masque et allument les mêmes pixels
+qu'`embedded-graphics` (testé, bords et coupures compris) ; banc `gfx/` : un rectangle de 100 × 40, 4,36 → 0,43 µs
+sur l'hôte (indicatif). Sinus entier au 1/256 de tour, à une unité près du sinus réel (`tests/trig.rs`).
