@@ -428,6 +428,7 @@ and whether the panel is SH1106 (stock), SSD1306, or SSD1309. Follow it in order
    oled init ok (…)   # or: oled init failed: Bus|Pin
    panel ok; entering 1 kHz loop
    settings: Loaded            # or Empty, Failed(…); a warning if the flash is unavailable
+   boot done; this log now shows events only, live data: cargo probe (stats, stream, inputs)
    ```
 
    After that the log only carries events: a settings save

@@ -275,6 +275,12 @@ fn main() -> ! {
         });
     }
 
+    // The log stops here until an event: say where the live data is
+    // (journal/D-029).
+    log::info!(
+        "boot done; this log now shows events only, live data: cargo probe (stats, stream, inputs)"
+    );
+
     let probe = PROBE.take();
     probe.set_can_reboot(reboot::is_supported());
 

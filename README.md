@@ -485,8 +485,8 @@ Setting either port to 134 baud restarts the module into its bootloader
 (Teensyduino's convention): `stty -f /dev/cu.usbmodem…1 134` with macOS's own `stty` (`/bin/stty`), or `stty -F …` with GNU coreutils.
 
 Expect lines such as `oc-firmware 0.3.0 (a1b2c3d) starting (oled=…)`, the
-boot stages down to `entering 1 kHz loop`, `settings: Loaded`, then nothing
-until an event (`TESTING.md` 9.1). Early boot also blinks the onboard
+boot stages down to `entering 1 kHz loop`, `settings: Loaded`, a last line
+pointing to `cargo probe` for live data, then nothing until an event (`TESTING.md` 9.1). Early boot also blinks the onboard
 LED (pin 13) in stage groups **before** SPI claims that pad: 1 = `main`
 reached, 2 = ADC mapped, 3 = triggers mapped / about to take SPI. A Morse SOS
 (9 flashes) is still the panic handler, not a boot stage.
