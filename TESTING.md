@@ -690,9 +690,15 @@ screen stayed clean at 22 MHz, the four outputs read −3.000/−2.999 V and
 From this firmware on, a 48 kHz interrupt writes the DAC and sends the
 screen; the 1 kHz loop no longer touches the bus. `cargo xtask flash`, then:
 
-1. The splash plays and every applet draws normally, as in 9.3d step 1.
+0. The boot log has `audio interrupt on Crystal at 48000 Hz` or
+   `on Perclk at 47619 Hz` (the fallback when GPT2's crystal input does
+   not start), and about 95 runs in 2 ms; 0 runs, or far more, says where
+   it stops (counter, compare flag, NVIC line on the same line).
+1. The splash plays and every applet draws normally, as in 9.3d step 1,
+   `TONE` included: it writes the DAC every period, which is what showed
+   the OLED taking DAC bits when a transfer's end was misread.
 2. `cargo probe stats` on `DIAGNOSTIC`, then on `TONE`:
-   * `audio_period`: mean 20.8 µs (48 000 a second), max under 2 × 20.8 µs
+   * `audio_period`: mean 20.8 µs (21.0 on PERCLK), max under twice that
      — a longer one is a missed sample;
    * `audio`: the interrupt's own time; record mean and max with `TONE`
      (four channels written each period) and with `DIAGNOSTIC` at rest (no
@@ -710,6 +716,11 @@ screen; the 1 kHz loop no longer touches the bus. `cargo xtask flash`, then:
    included.
 
 Record the values; with `oled-spi-8mhz`, repeat 1 and 2 (`frame` longer).
+
+On the TLM module this was written against (2026-11-18): PERCLK, 92 runs
+in 2 ms; in `TONE`, `audio` 12.5 µs mean and 14.9 µs max, `audio_period`
+17.9 to 24.0 µs, `frame` 1.18 ms, the loop at 1 000 µs; every screen
+stable, the four tones audible.
 
 ### 9.4 — Calibration
 

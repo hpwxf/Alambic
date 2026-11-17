@@ -28,6 +28,14 @@ pub(crate) fn enable() {
     unsafe { NVIC::unmask(interrupt::GPT2) };
 }
 
+/// Whether GPT2's line is enabled, and whether it is pending.
+pub(crate) fn line_state() -> (bool, bool) {
+    (
+        NVIC::is_enabled(interrupt::GPT2),
+        NVIC::is_pending(interrupt::GPT2),
+    )
+}
+
 /// Blocks GPT2's interrupt again.
 pub(crate) fn disable() {
     NVIC::mask(interrupt::GPT2);

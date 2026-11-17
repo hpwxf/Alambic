@@ -188,3 +188,32 @@ constantes du code.
   boucle coupe l'interruption.
 * **`unsafe`** : un module à part (`audio.rs`), pour l'inscription du gestionnaire et le démasquage NVIC, un
   commentaire `SAFETY:` par bloc. L'état de l'interruption vit dans des `critical_section::Mutex`.
+
+## Révision du 2026-11-18 — lot 7c sur le module
+
+Quatre essais sur le module ont corrigé l'interruption (premier firmware : `21cdbb6`) :
+
+* **L'entrée quartz de GPT2 ne démarre pas**, même dans l'ordre du manuel (source, remise à zéro logicielle, puis le
+  reste) : sans comparaison, pas d'interruption, écran noir. Les deux autres entrées de GPT2 sont PERCLK (1 MHz),
+  pas l'IPG à 150 MHz qu'annonce le nom `PeripheralClock` : l'interruption y tournait à 320 Hz. Le firmware essaie
+  désormais le quartz (une comparaison doit tomber en 25 µs) et, à défaut, **compte 21 coups de PERCLK : 47 619 Hz**,
+  la voix construite à cette cadence (hauteurs justes à 1 ppm près). Le journal de démarrage dit laquelle, avec un
+  auto-test de 2 ms (passages, compteur, drapeau, ligne NVIC). Sur ce module : PERCLK, 92 passages en 2 ms.
+* **Le drapeau de comparaison s'efface dans le domaine de 1 MHz** : quelques µs avant que l'effacement prenne ; une
+  interruption courte ressortait avant et repartait aussitôt (153 passages en 2 ms au lieu de 95, boucle ralentie).
+  Elle attend l'effacement, dans la limite d'une demi-période.
+* **La fin d'un envoi se lit dans l'écho reçu.** `BUSY` avec une FIFO d'émission vide, puis le drapeau de fin de
+  transfert (qui se relève dès qu'on l'efface au repos), répondaient pendant que le dernier mot du DAC sortait
+  encore : l'OLED, sélectionné trop tôt, prenait des bits du DAC pour des commandes (écran décalé, puis éteint, dans
+  `TONE` seulement, la seule applet qui écrit le DAC à chaque période). La réception n'est plus masquée : l'attente
+  compte un mot reçu par mot envoyé, comme les écritures bloquantes d'`imxrt-hal`. Le relâchement du CS de l'OLED
+  (GPIO2) est aussi confirmé par barrière et relecture avant les mots du DAC (LPSPI4), deux bus qui n'ordonnent pas
+  leurs écritures.
+* **Mesures** (`TONE`, profil) : `audio` 12,5 µs en moyenne, 14,9 µs au plus (≈ 60 % du processeur) ;
+  `audio_period` 20,9 µs en moyenne, 17,9 à 24 µs : environ ±3 µs de gigue sur l'instant d'écriture du DAC, due
+  aux sections critiques de la boucle et à la durée variable de l'interruption ; `frame` 1,18 ms ; boucle à
+  1 000 µs, gigue de 8 à 16 µs (1 à 4 µs avant). Écran stable dans toutes les applets. Observations sur un module.
+* **Suites** : la gigue et le coût de l'attente du DAC sont les arguments du lot 7e (DMA déclenché par le timer :
+  instant d'écriture fixé par le matériel, l'interruption ne calcule plus que l'échantillon) ; le quartz reste à
+  comprendre (horloge `ipg_clk_24M` à ouvrir côté CCM ?).
+

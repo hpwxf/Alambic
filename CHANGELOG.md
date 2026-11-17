@@ -42,7 +42,8 @@ Architectural decisions behind each change are in `journal/` (French).
 ### Changed
 
 - **The outputs and the screen belong to a 48 kHz interrupt** (journal/D-033,
-  lot 7c): GPT2 on the 24 MHz crystal writes the DAC channels that changed
+  lot 7c): GPT2 on the 24 MHz crystal, or at 47 619 Hz on PERCLK when that
+  input does not start (the boot log says which), writes the DAC channels that changed
   every period, computes the next sample of the engine's output parameters,
   then sends a piece of the screen; the 1 kHz loop publishes the parameters
   and hands its frames over. `cargo probe stats` shows the interrupt

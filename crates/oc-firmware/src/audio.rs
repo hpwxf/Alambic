@@ -34,7 +34,7 @@ use critical_section::Mutex;
 
 use teensy4_bsp::hal::gpio::Output;
 use teensy4_bsp::hal::gpt::{ClockSource, Gpt, Mode, OutputCompareRegister};
-use teensy4_bsp::hal::lpspi::{ClockConfigs, Lpspi, Status, Transaction};
+use teensy4_bsp::hal::lpspi::{ClockConfigs, Direction, Lpspi, Status, Transaction};
 
 use oc_core::audio::{Params, Voice};
 use oc_core::calibration::CvOutputCalibration;
@@ -46,6 +46,7 @@ use oc_drivers::fifo;
 use oc_drivers::ssd130x::{ChunkKind, Controller, FrameStream};
 
 use crate::board::{self, BusClocks};
+use crate::delay::CORE_CLOCK_HZ;
 
 /// What the loop leaves for the interrupt, and what the interrupt measured.
 struct Mailbox {
@@ -115,11 +116,83 @@ struct AudioState {
     last_entry: Option<u32>,
     /// Cycle count when the frame going out was taken.
     frame_started: Option<u32>,
+    /// Words queued since the bus was last seen idle, each echoed in the
+    /// receive FIFO once its last bit is out.
+    in_flight: u16,
+}
+
+/// Which input GPT2 counts, and so the audio rate.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum TimerInput {
+    /// The 24 MHz crystal: [`board::AUDIO_RATE_HZ`] exactly.
+    Crystal,
+    /// PERCLK, 1 MHz, if the crystal input did not start:
+    /// [`board::AUDIO_PERCLK_COUNTS`] counts a period.
+    Perclk,
+}
+
+impl TimerInput {
+    /// Samples a second.
+    pub(crate) const fn rate_hz(self) -> u32 {
+        match self {
+            Self::Crystal => board::AUDIO_RATE_HZ,
+            Self::Perclk => board::AUDIO_PERCLK_HZ / board::AUDIO_PERCLK_COUNTS,
+        }
+    }
+}
+
+/// Points `timer` at `source`, compares every `counts`, in the order the
+/// reference manual gives for a change of clock source (GPT, "Selecting the
+/// clock source"): disabled, interrupts off, source, software reset, then
+/// the rest. The reset is done again for the source in case it clears it.
+fn configure(timer: &mut Gpt, source: ClockSource, counts: u32) {
+    timer.disable();
+    timer.set_output_interrupt_on_compare(OutputCompareRegister::OCR1, false);
+    timer.set_clock_source(source);
+    timer.reset();
+    timer.set_clock_source(source);
+    timer.set_divider_24mhz(1);
+    timer.set_divider(1);
+    timer.set_mode(Mode::Restart);
+    timer.set_reset_on_enable(true);
+    timer.set_output_compare_count(OutputCompareRegister::OCR1, counts - 1);
+    timer.clear_elapsed(OutputCompareRegister::OCR1);
+}
+
+/// Sets GPT2 to the crystal and checks it compares within a period and a
+/// bit; otherwise falls back to PERCLK. The timer is left disabled.
+fn choose_input(timer: &mut Gpt, delay: &mut impl embedded_hal::delay::DelayNs) -> TimerInput {
+    configure(
+        timer,
+        ClockSource::CrystalOscillator,
+        board::AUDIO_CRYSTAL_HZ / board::AUDIO_RATE_HZ,
+    );
+    timer.enable();
+    // A period is 20.8 µs; at PERCLK's 1 MHz the compare would take 500 µs.
+    delay.delay_us(25);
+    let crystal = timer.is_elapsed(OutputCompareRegister::OCR1);
+    timer.disable();
+    if crystal {
+        configure(
+            timer,
+            ClockSource::CrystalOscillator,
+            board::AUDIO_CRYSTAL_HZ / board::AUDIO_RATE_HZ,
+        );
+        TimerInput::Crystal
+    } else {
+        configure(
+            timer,
+            ClockSource::PeripheralClock,
+            board::AUDIO_PERCLK_COUNTS,
+        );
+        TimerInput::Perclk
+    }
 }
 
 /// Takes the bus, the OLED's control lines and GPT2 over, and starts the
-/// interrupt at [`board::AUDIO_RATE_HZ`]. The OLED must be initialised; the
-/// outputs rest at 0 V (factory calibration) until the first [`publish`].
+/// interrupt, at the rate of the input GPT2 could count ([`TimerInput`]).
+/// The OLED must be initialised; the outputs rest at 0 V (factory
+/// calibration) until the first [`publish`].
 pub(crate) fn start(
     spi: Lpspi,
     oled_cs: Output,
@@ -127,17 +200,9 @@ pub(crate) fn start(
     mut timer: Gpt,
     clocks: BusClocks,
     controller: Controller,
-) {
-    timer.disable();
-    timer.set_clock_source(ClockSource::CrystalOscillator);
-    timer.set_divider_24mhz(1);
-    timer.set_divider(1);
-    timer.set_mode(Mode::Restart);
-    timer.set_reset_on_enable(true);
-    timer.set_output_compare_count(
-        OutputCompareRegister::OCR1,
-        board::AUDIO_TIMER_CLOCK_HZ / board::AUDIO_RATE_HZ - 1,
-    );
+    delay: &mut impl embedded_hal::delay::DelayNs,
+) -> TimerInput {
+    let input = choose_input(&mut timer, delay);
     timer.set_output_interrupt_on_compare(OutputCompareRegister::OCR1, true);
 
     let rest = CvOutputCalibration::FACTORY.to_code(0);
@@ -149,12 +214,13 @@ pub(crate) fn start(
         clocks,
         current_clock: clocks.oled,
         stream: FrameStream::new(controller),
-        voice: Voice::new(board::AUDIO_RATE_HZ),
+        voice: Voice::new(input.rate_hz()),
         calibration: [CvOutputCalibration::FACTORY; CV_CHANNELS],
         changed: ChangedCodes::new(),
         next_codes: [rest; CV_CHANNELS],
         last_entry: None,
         frame_started: None,
+        in_flight: 0,
     };
     critical_section::with(|cs| {
         let mut slot = STATE.borrow_ref_mut(cs);
@@ -163,6 +229,45 @@ pub(crate) fn start(
         state.timer.enable();
     });
     crate::audio_irq::enable();
+    input
+}
+
+/// What [`self_check`] saw of the timer and the interrupt.
+#[derive(Debug)]
+pub(crate) struct Health {
+    /// Runs of the interrupt during the check.
+    pub(crate) periods: u32,
+    /// The timer's counter at the start and the end of the check.
+    pub(crate) counts: (u32, u32),
+    /// Whether the compare flag is set.
+    pub(crate) compare_flag: bool,
+    /// Whether the NVIC line is enabled, and whether it is pending.
+    pub(crate) line: (bool, bool),
+}
+
+/// Watches the interrupt for `micros` microseconds, for the boot log: a
+/// silent audio path shows on USB rather than as a black screen.
+pub(crate) fn self_check(delay: &mut impl embedded_hal::delay::DelayNs, micros: u32) -> Health {
+    let count = || {
+        critical_section::with(|cs| {
+            STATE.borrow_ref(cs).as_ref().map_or((0, false), |state| {
+                (
+                    state.timer.count(),
+                    state.timer.is_elapsed(OutputCompareRegister::OCR1),
+                )
+            })
+        })
+    };
+    let start = periods();
+    let (first, _) = count();
+    delay.delay_us(micros);
+    let (last, compare_flag) = count();
+    Health {
+        periods: periods().wrapping_sub(start),
+        counts: (first, last),
+        compare_flag,
+        line: crate::audio_irq::line_state(),
+    }
 }
 
 /// Stops the interrupt, the outputs left where they are: before handing the
@@ -240,9 +345,13 @@ impl AudioState {
         self.last_entry = Some(entry);
         mail.periods = mail.periods.wrapping_add(1);
 
-        // 1. The previous piece of the screen.
-        wait_idle(&self.spi);
+        // 1. The previous piece of the screen. The chip select goes through
+        // GPIO2 and the words through LPSPI4, two buses that do not order
+        // their writes: the release is waited for, or the OLED would take
+        // the start of the DAC's words (journal/D-033, lot 7c on the module).
+        self.wait_idle();
         self.oled_cs.set();
+        settle(&self.oled_cs, true);
 
         // 2. The DAC words of last period's sample.
         let words = self.changed.words(&self.next_codes);
@@ -250,7 +359,7 @@ impl AudioState {
             self.set_clock(self.clocks.dac);
             let mut transaction = Transaction::new(24).unwrap_or_else(|_| unreachable!());
             transaction.set_pcs(board::DAC_PCS);
-            transaction.set_receive_data_mask(true);
+            self.in_flight = u16::try_from(words.as_slice().len()).unwrap_or(0);
             for &word in words.as_slice() {
                 self.spi.enqueue_transaction(transaction);
                 self.spi.enqueue_data(word);
@@ -283,8 +392,19 @@ impl AudioState {
         }
 
         // 4. The next piece of the screen, once the DAC words are out.
-        wait_idle(&self.spi);
+        self.wait_idle();
         self.send_chunk();
+
+        // The compare flag sits in the timer's clock domain: on PERCLK's
+        // 1 MHz its clearing takes a few microseconds to land, and a short
+        // run that returned before would run again at once. Waited for
+        // within half a period, past which a set flag is the next period's.
+        let half_period = CORE_CLOCK_HZ / self.voice.rate_hz() / 2;
+        while self.timer.is_elapsed(OutputCompareRegister::OCR1)
+            && DWT::cycle_count().wrapping_sub(entry) < half_period
+        {
+            core::hint::spin_loop();
+        }
 
         mail.stats
             .audio
@@ -306,13 +426,34 @@ impl AudioState {
             ChunkKind::Data => self.oled_dc.set(),
         }
         self.oled_cs.clear();
+        settle(&self.oled_cs, false);
         let bits = u16::try_from(chunk.bytes.len() * 8).unwrap_or(8);
         let mut transaction = Transaction::new(bits).unwrap_or_else(|_| unreachable!());
         transaction.set_pcs(board::OLED_PCS);
-        transaction.set_receive_data_mask(true);
+        self.in_flight = u16::try_from(fifo::word_count(chunk.bytes.len())).unwrap_or(0);
         self.spi.enqueue_transaction(transaction);
         for word in fifo::words(chunk.bytes) {
             self.spi.enqueue_data(word);
+        }
+    }
+
+    /// Waits until the words queued last have left the bus: each is echoed
+    /// in the receive FIFO once its last bit has been clocked, which is how
+    /// `imxrt-hal`'s blocking writes end too. The busy flag with an empty
+    /// transmit FIFO, and the transfer complete flag, answered early: the
+    /// last DAC word was still going out when the OLED was selected (`TONE`,
+    /// lot 7c on the module).
+    fn wait_idle(&mut self) {
+        if self.in_flight > 0 {
+            while self.spi.fifo_status().rxcount < self.in_flight {
+                core::hint::spin_loop();
+            }
+            self.in_flight = 0;
+        }
+        self.spi.clear_fifo(Direction::Rx);
+        let errors = Status::TRANSMIT_ERROR | Status::RECEIVE_ERROR;
+        if self.spi.status().intersects(errors) {
+            self.spi.clear_status(errors);
         }
     }
 
@@ -325,16 +466,12 @@ impl AudioState {
     }
 }
 
-/// Waits until every queued word has left the bus, as `Lpspi::flush` does
-/// (the busy flag alone may not be set yet right after queueing).
-fn wait_idle(spi: &Lpspi) {
-    while spi.status().intersects(Status::BUSY) || spi.fifo_status().txcount > 0 {
+/// Waits until a write to `pin` has reached it: the barrier drains the core's
+/// write buffer, the read-back waits for the GPIO itself.
+fn settle(pin: &Output, high: bool) {
+    cortex_m::asm::dsb();
+    while pin.is_set() != high {
         core::hint::spin_loop();
-    }
-    // A transmit error would stall the next transfers; nothing reads, so
-    // only the transmit side can report one.
-    if spi.status().intersects(Status::TRANSMIT_ERROR) {
-        spi.clear_status(Status::TRANSMIT_ERROR);
     }
 }
 

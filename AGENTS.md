@@ -168,8 +168,10 @@ lives in `oc-core` and is tested once, on the host.
   edge latches, the panel), runs `Engine::tick` (panel routing, the applet,
   drawing), publishes `Engine::params` and the output calibration to the
   audio interrupt, then waits for the deadline (previous deadline + 1 ms)
-  while serving USB. A **48 kHz interrupt** (GPT2 on the 24 MHz crystal,
-  `crates/oc-firmware/src/audio.rs`) owns the SPI bus: each period it
+  while serving USB. A **48 kHz interrupt** (GPT2 on the 24 MHz crystal;
+  on the module this input does not start and it falls back to PERCLK / 21,
+  47 619 Hz, the boot log says which; `crates/oc-firmware/src/audio.rs`)
+  owns the SPI bus: each period it
   writes the DAC words of the channels that changed, computes the next
   sample with its own `Voice`, then sends a piece of the screen. The two
   share mailboxes behind `critical_section::Mutex` (short copies).
@@ -192,9 +194,11 @@ lives in `oc-core` and is tested once, on the host.
   frame in the tick that drew it. The boot splash presents every tick.
 * **Costs** are measured, not assumed: `cargo probe stats` shows the loop's
   stages and the interrupt's (`audio`, `audio_period`, `frame`). The
-  interrupt waits for the DAC words (≈ 4.5 µs for four channels at 22 MHz),
-  so a tone on four outputs takes about a quarter of the CPU; a CV applet
-  whose levels do not move sends no DAC words at all.
+  interrupt waits for each transfer's echo in the receive FIFO (the busy
+  flag and the transfer-complete flag answer early, and the OLED then takes
+  DAC bits), so `TONE` on four outputs costs about 12.5 µs of each 21 µs
+  period on the module; a CV applet whose levels do not move sends no DAC
+  words at all.
 
 ## Signal representation
 

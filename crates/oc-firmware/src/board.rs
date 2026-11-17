@@ -74,7 +74,7 @@ use oc_core::platform::{BUTTONS, CV_CHANNELS, ENCODERS, TRIGGER_CHANNELS};
 use oc_drivers::panel::EncoderPins;
 use oc_drivers::ssd130x::Controller;
 use oc_drivers::triggers::{EdgeCapture, Polarity};
-use teensy4_bsp::board::{LPSPI_FREQUENCY, LpspiPins};
+use teensy4_bsp::board::{LPSPI_FREQUENCY, LpspiPins, PERCLK_FREQUENCY, XTAL_OSCILLATOR_FREQUENCY};
 use teensy4_bsp::hal::adc::{Adc, AnalogInput};
 use teensy4_bsp::hal::gpio::{Input, Output, Port, Trigger};
 use teensy4_bsp::hal::iomuxc::{self, Config, Hysteresis, PullKeeper};
@@ -155,18 +155,26 @@ fn timing(spi: &mut Lpspi, hz: u32) -> ClockConfigs {
     configs
 }
 
-/// Audio samples a second on the four outputs (journal/D-033).
+/// Audio samples a second on the four outputs (journal/D-033), with GPT2 on
+/// the 24 MHz crystal input: 500 counts.
 pub(crate) const AUDIO_RATE_HZ: u32 = 48_000;
 
-/// The audio timer's clock: GPT2 on the 24 MHz crystal, undivided. The BSP
-/// runs the PIT and the GPTs' peripheral clock at 1 MHz, which 48 kHz does
-/// not divide.
-pub(crate) const AUDIO_TIMER_CLOCK_HZ: u32 = 24_000_000;
+/// GPT2's crystal input.
+pub(crate) const AUDIO_CRYSTAL_HZ: u32 = XTAL_OSCILLATOR_FREQUENCY;
 
 const _: () = assert!(
-    AUDIO_TIMER_CLOCK_HZ.is_multiple_of(AUDIO_RATE_HZ),
-    "the audio rate must be a whole number of timer counts"
+    AUDIO_CRYSTAL_HZ.is_multiple_of(AUDIO_RATE_HZ),
+    "the audio rate must be a whole number of crystal counts"
 );
+
+/// GPT2's other inputs, the peripheral clock and the high-frequency
+/// reference, both PERCLK: the BSP runs it at 1 MHz, which 48 kHz does not
+/// divide (the first lot 7c firmware, `21cdbb6-dirty`, ran at 320 Hz on it).
+pub(crate) const AUDIO_PERCLK_HZ: u32 = PERCLK_FREQUENCY;
+
+/// Counts of PERCLK a period should the crystal input not start: 21, for
+/// 47 619 Hz, the voice then running at that rate.
+pub(crate) const AUDIO_PERCLK_COUNTS: u32 = 21;
 
 /// What a piece of the screen may take on the bus each audio period, in
 /// nanoseconds: about half the 20.8 µs, the DAC's words and the

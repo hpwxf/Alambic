@@ -221,11 +221,28 @@ fn main() -> ! {
     let (_, oled_cs, oled_dc, _oled_reset) = display.release();
     let mut spi = bus.into_inner();
     let clocks = board::bus_clocks(&mut spi);
-    audio::start(spi, oled_cs, oled_dc, gpt2, clocks, board::OLED_CONTROLLER);
+    let input = audio::start(
+        spi,
+        oled_cs,
+        oled_dc,
+        gpt2,
+        clocks,
+        board::OLED_CONTROLLER,
+        &mut delay,
+    );
+    // Expected: about 96 runs in 2 ms; anything else says where it stops.
+    let health = audio::self_check(&mut delay, 2_000);
     log::info!(
-        "audio interrupt at {} Hz, {} screen bytes a period",
-        board::AUDIO_RATE_HZ,
-        board::OLED_CHUNK_BYTES
+        "audio interrupt on {input:?} at {} Hz, {} screen bytes a period: {} runs in 2 ms, \
+         timer {} -> {}, compare flag {}, line enabled {} pending {}",
+        input.rate_hz(),
+        board::OLED_CHUNK_BYTES,
+        health.periods,
+        health.counts.0,
+        health.counts.1,
+        health.compare_flag,
+        health.line.0,
+        health.line.1
     );
     usb.poll();
 
