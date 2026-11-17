@@ -1,0 +1,21 @@
+# oc-sim scenario v1
+# RATCHET's inputs (journal/D-032): launch it from the app menu as in
+# ratchet.scn, click the right encoder on COUNT to change its input, turn five
+# detents (--, CV1= .. CV4=, then CV1+) and stay there: the snapshot shows
+# CV1+ in a dark box on the lit row, what the right encoder turns now.
+ticks 300
+20  button up down
+60  button down down
+70  button up up
+70  button down up
+90  button down down
+100 button down up
+110 button down down
+120 button down up
+130 button down down
+140 button down up
+160 button left down
+166 button left up
+200 button right down
+206 button right up
+230 encoder 2 +5

@@ -19,12 +19,14 @@
 
 pub mod diagnostic;
 pub mod gfx_demo;
+pub mod ratchet;
 pub mod scope;
 
 use serde::{Deserialize, Serialize};
 
 use crate::apps::diagnostic::DiagnosticApp;
 use crate::apps::gfx_demo::GfxDemoApp;
+use crate::apps::ratchet::RatchetApp;
 use crate::apps::scope::ScopeApp;
 use crate::buttons::ButtonEvents;
 use crate::framebuffer::FrameBuffer;
@@ -99,14 +101,17 @@ pub enum AppId {
     Diagnostic,
     /// A scrolling view of `CV1`, buffered to every output.
     Scope,
-    /// The graphics primitives on show (journal/D-030). Last, so that a
-    /// startup applet saved before it existed still reads back.
+    /// The graphics primitives on show (journal/D-030).
     Gfx,
+    /// Rising edges on `TR1` copied to A and burst onto B (journal/D-032).
+    /// Each new applet comes last, so a startup applet saved before it
+    /// existed still reads back.
+    Ratchet,
 }
 
 impl AppId {
     /// Every app, in the order the menu lists them.
-    pub const ALL: [Self; 3] = [Self::Diagnostic, Self::Scope, Self::Gfx];
+    pub const ALL: [Self; 4] = [Self::Diagnostic, Self::Scope, Self::Gfx, Self::Ratchet];
 
     /// Zero-based index of this app.
     #[must_use]
@@ -131,6 +136,7 @@ impl AppId {
             Self::Diagnostic => "DIAGNOSTIC",
             Self::Scope => "SCOPE",
             Self::Gfx => "GFX DEMO",
+            Self::Ratchet => "RATCHET",
         }
     }
 }
@@ -141,6 +147,7 @@ pub struct AppHost {
     diagnostic: DiagnosticApp,
     scope: ScopeApp,
     gfx: GfxDemoApp,
+    ratchet: RatchetApp,
     current: AppId,
 }
 
@@ -152,6 +159,7 @@ impl AppHost {
             diagnostic: DiagnosticApp::new(),
             scope: ScopeApp::new(),
             gfx: GfxDemoApp::new(),
+            ratchet: RatchetApp::new(),
             current: AppId::default(),
         }
     }
@@ -176,6 +184,7 @@ impl AppHost {
             AppId::Diagnostic => self.diagnostic.update(input),
             AppId::Scope => self.scope.update(input),
             AppId::Gfx => self.gfx.update(input),
+            AppId::Ratchet => self.ratchet.update(input),
         }
     }
 
@@ -185,6 +194,7 @@ impl AppHost {
             AppId::Diagnostic => self.diagnostic.render(frame, context),
             AppId::Scope => self.scope.render(frame, context),
             AppId::Gfx => self.gfx.render(frame, context),
+            AppId::Ratchet => self.ratchet.render(frame, context),
         }
     }
 
@@ -204,6 +214,12 @@ impl AppHost {
     #[must_use]
     pub const fn gfx(&self) -> &GfxDemoApp {
         &self.gfx
+    }
+
+    /// The Ratchet applet, running or not.
+    #[must_use]
+    pub const fn ratchet(&self) -> &RatchetApp {
+        &self.ratchet
     }
 }
 

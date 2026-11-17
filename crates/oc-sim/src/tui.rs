@@ -572,6 +572,11 @@ impl Tui {
                 self.simulator.diagnostic().selected() + 1
             ),
             AppId::Scope => format!("cv1 {}mV", self.simulator.scope().level()),
+            AppId::Ratchet => format!(
+                "{:?}   burst {:?}",
+                self.simulator.ratchet().selected(),
+                self.simulator.ratchet().repeats_sent()
+            ),
             AppId::Gfx => format!(
                 "page {:?}   knobs {:?}",
                 self.simulator.gfx().page(),

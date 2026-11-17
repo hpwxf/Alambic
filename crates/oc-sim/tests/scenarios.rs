@@ -196,6 +196,37 @@ fn the_app_menu_switches_to_the_scope() {
 }
 
 #[test]
+fn ratchet_bursts_a_trigger_onto_b() {
+    let mut simulator = replay("ratchet");
+    assert_eq!(simulator.current_app(), AppId::Ratchet);
+    // 200 ms after the trigger: the initial trigger and two repeats sent
+    // (100 ms, then about 84 ms), the burst still running.
+    assert_eq!(simulator.ratchet().repeats_sent(), Some(2));
+    assert_screen_matches(&mut simulator, "ratchet");
+}
+
+#[test]
+fn ratchet_marks_where_the_next_trigger_is_due() {
+    let mut simulator = replay("ratchet_tempo");
+    assert_eq!(simulator.ratchet().bpm(), Some(242));
+    assert_screen_matches(&mut simulator, "ratchet_tempo");
+}
+
+#[test]
+fn ratchet_shows_the_input_being_chosen() {
+    use oc_core::apps::ratchet::{Setting, Source};
+    use oc_core::platform::CvChannel;
+    let mut simulator = replay("ratchet_inputs");
+    let ratchet = simulator.ratchet();
+    assert!(ratchet.editing_source());
+    assert_eq!(
+        ratchet.source(Setting::Count),
+        Some(Source::Add(CvChannel::One))
+    );
+    assert_screen_matches(&mut simulator, "ratchet_inputs");
+}
+
+#[test]
 fn the_graphics_demo_shows_each_of_its_pages() {
     use oc_core::apps::gfx_demo::Page;
     for (name, page) in [
@@ -285,6 +316,9 @@ fn every_scenario_file_has_a_test_and_a_snapshot() {
         "gfx_curves",
         "gfx_sequencer",
         "gfx_meters",
+        "ratchet",
+        "ratchet_inputs",
+        "ratchet_tempo",
     ];
 
     let mut found: Vec<String> = std::fs::read_dir(scenario_dir())

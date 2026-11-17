@@ -18,6 +18,19 @@ Architectural decisions behind each change are in `journal/` (French).
 - `oc-image` (the pre-flash gate, moved from `xtask`, and the flash contents
   of a validated ELF or HEX), `oc-halfkay` (the bootloader's reports), `oc-web`
   (their WebAssembly bindings).
+- **`RATCHET`**, the first musical applet (journal/D-032): each rising edge
+  on `TR1` is copied to output A and starts a burst of 5 ms triggers on B,
+  the incoming one passed through or not (`PASSTHRU`). The burst has a count
+  (1 to 32) or runs while the gate stays up; a signed `SHAPE` (−3.0 to +3.0
+  octaves: 0 even, below accelerating, above slowing down); `PROB`, the chance
+  each repeat fires. `MODE` compares two placements: `FIRST`, a first interval
+  then intervals changing geometrically, and `SPAN`, the repeats spread over a
+  span. `SYNC ON` makes the first interval or span a fraction of `TR1`'s
+  period (×2 to /32, ×1.5, ×4/3, ×3/4 and ×2/3 included), whose rate shows in BPM; the timeline marks where the next trigger
+  is due. Each burst setting can take an input, `CVn=` (follows it) or `CVn+`
+  (adds it), chosen by a click on the right encoder; inputs are sampled at
+  the edge, and a new edge restarts the burst.
+- `oc_core::fixed`: base-2 logarithm and exponential in 16.16 fixed point.
 
 ### Changed
 
