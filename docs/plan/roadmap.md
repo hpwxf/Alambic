@@ -25,8 +25,9 @@
 
 | Étape | Contenu pressenti | Dépend de |
 |---|---|---|
-| 5 — premier applet musical | quantizer ou générateur d'enveloppes / LFO, à 1 kHz (D-023 C+) ; précision des entrées si l'applet suit une hauteur | D-006, D-023 |
-| 6 — chemin audio | échantillonnage non bloquant, supersaw PolyBLEP, DAC en DMA, priorités NVIC (`docs/supersaw/` § 12–14) | D-023 (option B) |
+| 5 — primitives graphiques et applet de démo | `oc_core::gfx`, applet de démonstration (D-030), plan `etape-5-gfx.md` | D-009, D-030 |
+| 6 — premier applet musical | quantizer ou générateur d'enveloppes / LFO, à 1 kHz (D-023 C+) ; précision des entrées si l'applet suit une hauteur | D-006, D-023 |
+| 7 — chemin audio | échantillonnage non bloquant, supersaw PolyBLEP, DAC en DMA, priorités NVIC (`docs/supersaw/` § 12–14) | D-023 (option B) |
 | ? — seconde carte | Teensy 4.1 / O.R.N.8 (notes locales non suivies) | D-003, D-007 |
 
 ## Questions ouvertes
