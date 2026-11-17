@@ -49,3 +49,18 @@ Ordre : 3c1 et 3c2 sont indépendants ; 3c3 après 3c2 (l'envoi par pages fait p
 Aucune perte (une perte doublerait l'intervalle), aucun front compté deux fois, aucun parasite au repos. Une
 impulsion courte est vue pendant un tick, comme prévu. La datation reste au tick (dispersion ≈ ± 2 ms, toujours
 ≈ 947 ticks par seconde : c'est le lot 3c2).
+
+**3c1, limite de largeur** (même firmware `c771353`, Pamela à 120 BPM) :
+
+| Réglage | Période | Largeur envoyée | Fronts en 30 s |
+|---|---|---|---|
+| ×32, 5 % | 15,625 ms | 0,78 ms | **1 920 / 1 920** |
+| ×32, 4 % | 15,625 ms | 0,625 ms | **0** |
+| ×96, 13 % | 5,208 ms | 0,68 ms | **5 760 / 5 760** |
+| ×96, 12 % | 5,208 ms | 0,625 ms | **0** |
+
+Au-dessus du seuil, compte exact jusqu'à 192 Hz ; en dessous, **plus aucun front**, quelle que soit la cadence. Ce
+n'est donc pas l'échantillonnage (le détecteur de front ne dépend pas de la largeur) : l'impulsion n'atteint jamais
+le seuil logique de la broche, ou n'est pas émise. Les deux limites tombent exactement sur 0,625 ms, ce qui
+évoque un pas de la source plutôt qu'un filtre analogique (qui raccourcirait progressivement) ; non tranché sans
+oscilloscope ou seconde source. Valeurs indicatives.
