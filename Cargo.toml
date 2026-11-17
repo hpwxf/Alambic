@@ -5,10 +5,13 @@ members = [
     "crates/oc-core",
     "crates/oc-drivers",
     "crates/oc-firmware",
+    "crates/oc-halfkay",
+    "crates/oc-image",
     "crates/oc-probe",
     "crates/oc-protocol",
     "crates/oc-sim",
     "crates/oc-vcv-ffi",
+    "crates/oc-web",
     "xtask",
 ]
 
@@ -20,10 +23,13 @@ default-members = [
     "crates/oc-buildinfo",
     "crates/oc-core",
     "crates/oc-drivers",
+    "crates/oc-halfkay",
+    "crates/oc-image",
     "crates/oc-probe",
     "crates/oc-protocol",
     "crates/oc-sim",
     "crates/oc-vcv-ffi",
+    "crates/oc-web",
     "xtask",
 ]
 
@@ -39,6 +45,9 @@ authors = ["Pascal Havé"]
 oc-core = { path = "crates/oc-core", version = "0.4.0" }
 oc-drivers = { path = "crates/oc-drivers", version = "0.4.0" }
 oc-protocol = { path = "crates/oc-protocol", version = "0.4.0" }
+oc-image = { path = "crates/oc-image" }
+oc-halfkay = { path = "crates/oc-halfkay" }
+oc-probe = { path = "crates/oc-probe", default-features = false }
 # Build-script helper only: computes the build identifier (journal/D-025).
 oc-buildinfo = { path = "crates/oc-buildinfo" }
 # Reads the commit and dirty state for oc-buildinfo through gitoxide (pure
@@ -49,11 +58,17 @@ vergen-gix = { version = "10.0.3", features = ["emit_and_set"] }
 # Host tooling
 anyhow = "1.0"
 clap = { version = "4.5", features = ["derive"] }
-# SHA-256 of firmware images printed by `cargo xtask flash` before confirmation.
+# SHA-256 of firmware images, printed by `cargo xtask flash` and the browser
+# flasher before confirmation (oc-image).
 sha2 = "0.10"
 # Generates the C header for oc-vcv-ffi from its own build script; only the
 # library API is needed, not cbindgen's own command-line front end.
 cbindgen = { version = "0.29", default-features = false }
+
+# Browser tool (oc-web, journal/D-031). Pinned exactly: the `wasm-bindgen`
+# command line `cargo xtask web` runs must be the same version, which it checks
+# against Cargo.lock.
+wasm-bindgen = "=0.2.129"
 
 # Shared embedded/host libraries
 embedded-graphics = "0.8.2"

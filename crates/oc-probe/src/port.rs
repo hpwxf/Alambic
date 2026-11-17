@@ -11,10 +11,7 @@ use serialport::{SerialPort, SerialPortType};
 
 use crate::client::{Client, ModuleInfo, ProbeError};
 
-/// The module's USB identifiers (the pid.codes test pair its firmware uses).
-pub const VID: u16 = 0x5824;
-/// See [`VID`].
-pub const PID: u16 = 0x27dd;
+pub use crate::{PID, VID};
 
 /// How long a read waits before giving up.
 pub const TIMEOUT: Duration = Duration::from_millis(500);

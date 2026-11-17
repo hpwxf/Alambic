@@ -1,0 +1,13 @@
+[package]
+name = "oc-halfkay"
+description = "The Teensy 4.0 bootloader's write protocol, as reports to send, transport-free (journal/D-031)"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+publish = false
+
+[lints]
+workspace = true

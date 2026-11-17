@@ -5,6 +5,25 @@ plugin, which Rack 2 requires to have major version 2, ships as
 `2.<minor>.<patch>` of the same release (checked by `xtask/tests/versions.rs`).
 Architectural decisions behind each change are in `journal/` (French).
 
+## Unreleased
+
+### Added
+
+- **Browser probe and flasher** (journal/D-031, not yet tried on a module):
+  `cargo xtask web` builds a static page into `dist/web/` that talks to the
+  module from Chrome or Edge — the probe over Web Serial (screen, profile,
+  stream, held outputs) and the flash over WebHID, from the firmware ELF,
+  behind the same gate as `cargo xtask flash`.
+- `oc-image` (the pre-flash gate, moved from `xtask`, and the flash contents
+  of a validated ELF), `oc-halfkay` (the bootloader's reports), `oc-web`
+  (their WebAssembly bindings).
+
+### Changed
+
+- `oc-probe`'s command line is behind a default `cli` feature;
+  `render::screen_grey` gives the screen's pixels to any output.
+- `rust-toolchain.toml` also provisions `wasm32-unknown-unknown`.
+
 ## 0.4.0 — 2026-11-17 (Rack plugin 2.4.0)
 
 ### Added

@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Alambic probe</title>
+  <link rel="stylesheet" href="style.css">
+  <script type="module" src="app.js"></script>
+</head>
+<body>
+  <header>
+    <h1>Alambic probe</h1>
+    <p class="sub">Ornament &amp; Crime, Alambic firmware: live probe and flasher, in the browser
+      (journal/D-031). Chromium only: Web Serial and WebHID.</p>
+    <p id="support" class="banner" hidden></p>
+  </header>
+
+  <main>
+    <section id="probe">
+      <h2>Probe</h2>
+      <div class="row">
+        <button id="connect">Connect…</button>
+        <button id="disconnect" disabled>Disconnect</button>
+        <span id="probe-status" class="status">not connected</span>
+      </div>
+      <p class="hint">The module shows two serial ports with the same name; pick the second
+        (“Alambic probe”). If the hello fails, connect again and pick the other one.</p>
+
+      <div class="grid">
+        <div class="panel">
+          <h3>Screen</h3>
+          <canvas id="screen" width="512" height="256"></canvas>
+          <div class="row">
+            <button class="needs-probe" id="screen-once" disabled>Capture</button>
+            <label><input type="checkbox" class="needs-probe" id="screen-live" disabled> live</label>
+          </div>
+        </div>
+
+        <div class="panel">
+          <h3>Outputs</h3>
+          <div class="row">
+            <select id="out-channel" class="needs-probe" disabled>
+              <option value="0">A</option><option value="1">B</option>
+              <option value="2">C</option><option value="3">D</option>
+            </select>
+            <input id="out-mv" type="number" step="1" min="-3000" max="7000" value="1000"> mV
+            <button class="needs-probe" id="out-set" disabled>Hold</button>
+            <button class="needs-probe" id="out-release" disabled>Release</button>
+          </div>
+          <p class="hint">Held outputs are released when the session closes.</p>
+        </div>
+      </div>
+
+      <div class="panel">
+        <h3>Profile</h3>
+        <div class="row">
+          <button class="needs-probe" id="profile" disabled>Read</button>
+          <button class="needs-probe" id="profile-clear" disabled>Clear</button>
+        </div>
+        <pre id="profile-out"></pre>
+      </div>
+
+      <div class="panel">
+        <h3>Stream</h3>
+        <div class="row">
+          every <input id="stream-every" type="number" min="1" max="65535" value="100"> ticks
+          <button class="needs-probe" id="stream-start" disabled>Start</button>
+          <button class="needs-probe" id="stream-stop" disabled>Stop</button>
+        </div>
+        <pre id="stream-out"></pre>
+      </div>
+    </section>
+
+    <section id="flash">
+      <h2>Flash</h2>
+      <p class="hint">Takes the firmware <strong>ELF</strong>
+        (<code>target/thumbv7em-none-eabihf/release/oc-firmware</code>) and runs the same checks as
+        <code>cargo xtask flash</code> before anything is written. A bad image cannot brick the
+        module: the bootloader is in ROM, the PROGRAM button always brings it back.</p>
+      <div class="row">
+        <input id="elf" type="file">
+      </div>
+      <pre id="image-out"></pre>
+      <div class="row">
+        <label><input type="checkbox" id="confirm" disabled> I checked the SHA-256 above; flash
+          this image</label>
+      </div>
+      <div class="row">
+        <button id="flash-go" disabled>Flash…</button>
+        <progress id="flash-progress" value="0" max="1"></progress>
+        <span id="flash-status" class="status"></span>
+      </div>
+      <p class="hint">With the probe connected, the module restarts into its bootloader by
+        itself; otherwise press PROGRAM first. Pick “HalfKay” (16c0:0478) in the browser’s list.</p>
+    </section>
+  </main>
+</body>
+</html>

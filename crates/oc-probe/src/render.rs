@@ -1,7 +1,8 @@
 //! What the tool prints: the profile as a table, the screen as text or as
-//! a PNG image.
+//! a PNG image (with the `cli` feature).
 
 use std::fmt::Write as _;
+#[cfg(feature = "cli")]
 use std::io;
 
 use oc_core::framebuffer::{FrameBuffer, HEIGHT, LEN, WIDTH};
@@ -123,13 +124,11 @@ pub fn screen_text(screen: &[u8; LEN]) -> String {
     out
 }
 
-/// The screen as a PNG, each pixel `scale` times wider and taller, lit
-/// pixels white on black.
-///
-/// # Errors
-///
-/// When `out` fails.
-pub fn screen_png(screen: &[u8; LEN], scale: u32, out: impl io::Write) -> io::Result<()> {
+/// The screen as 8-bit grey levels, row after row, each pixel `scale` times
+/// wider and taller, lit pixels white (`0xFF`) on black; with its width and
+/// height. The PNG output and the browser tool's canvas both draw from it.
+#[must_use]
+pub fn screen_grey(screen: &[u8; LEN], scale: u32) -> (u32, u32, Vec<u8>) {
     let frame = frame_of(screen);
     let scale = scale.max(1);
     let width = u32::try_from(WIDTH).unwrap_or(128) * scale;
@@ -144,6 +143,18 @@ pub fn screen_png(screen: &[u8; LEN], scale: u32, out: impl io::Write) -> io::Re
             pixels.push(if lit { 0xFF } else { 0x00 });
         }
     }
+    (width, height, pixels)
+}
+
+/// The screen as a PNG, each pixel `scale` times wider and taller, lit
+/// pixels white on black.
+///
+/// # Errors
+///
+/// When `out` fails.
+#[cfg(feature = "cli")]
+pub fn screen_png(screen: &[u8; LEN], scale: u32, out: impl io::Write) -> io::Result<()> {
+    let (width, height, pixels) = screen_grey(screen, scale);
     let mut encoder = png::Encoder::new(out, width, height);
     encoder.set_color(png::ColorType::Grayscale);
     encoder.set_depth(png::BitDepth::Eight);

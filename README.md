@@ -25,6 +25,9 @@ behaviour runs on hardware, in a native simulator, and inside VCV Rack 2.
 | `crates/oc-firmware` | Teensy 4.0 binary; the only crate that touches registers           |
 | `crates/oc-protocol` | `no_std` messages and server of the live probe (postcard over COBS) |
 | `crates/oc-probe`    | Host tool talking to a running module over its probe port          |
+| `crates/oc-image`    | Pre-flash image gate and the flash contents of a validated ELF     |
+| `crates/oc-halfkay`  | The Teensy bootloader's write protocol, as reports to send          |
+| `crates/oc-web`, `web/` | Browser probe and flasher: WebAssembly core and a static page   |
 | `crates/oc-sim`      | Native backend and terminal UI, with a deterministic virtual clock |
 | `crates/oc-vcv-ffi`  | `staticlib` exposing a C ABI to the VCV Rack 2 module              |
 | `vcv/OrnamentCrimeAlambic` | The Rack SDK plugin shim: module declaration and widget only, no behaviour |
@@ -305,6 +308,28 @@ cargo probe reboot             # restart into the bootloader, then `cargo xtask 
 module's probe port by itself (`--port` to name it); it is the second of the
 module's two USB serial ports, the first being the text log. Closing the tool
 ends the session, which releases every held output.
+
+### In the browser
+
+The same probe, and a flasher, run in a web page (journal/D-031), for anyone
+without the Rust toolchain:
+
+```sh
+cargo xtask web                              # builds dist/web/
+python3 -m http.server -d dist/web 8000      # then open http://localhost:8000
+```
+
+It needs Chrome or Edge on a desktop (Web Serial and WebHID; neither Firefox
+nor Safari has them) and a secure context: `localhost` or https. The probe
+side does what `cargo probe` does: screen capture (live too), profile, sample
+stream, held outputs. The flash side takes the firmware **ELF**, runs the same
+checks as `cargo xtask flash`, shows its SHA-256, and writes it through the
+bootloader (HalfKay) after an explicit confirmation; with the probe
+connected it restarts the module into the bootloader itself. `cargo xtask
+web` needs the `wasm-bindgen` command line at the version `Cargo.lock` pins
+(it says which, and how to install it). **The browser flasher has not been
+tried on a module yet**: until it has, `cargo xtask flash` stays the
+reference.
 
 ## Requirements
 

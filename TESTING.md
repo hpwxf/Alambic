@@ -280,6 +280,15 @@ The same `cargo test -p xtask` invocation also runs the unit tests for
 Those do not need a firmware build either; the live checklist on a real ELF is
 Level 7 (`cargo xtask size`).
 
+`cargo test -p oc-image` checks the layout of the flash contents an image
+describes (segments at their load address, erased gaps, refusal of a
+segment outside the flash or overlapping another) and, when `cargo xtask hex`
+has left a firmware ELF and a HEX no older than it,
+`real_firmware_matches_its_hex_when_present` checks they hold the same bytes:
+what the browser flasher writes is what `teensy_loader_cli` writes.
+`cargo test -p oc-halfkay` checks the bootloader reports cut from it, and
+`cargo test -p oc-web` the browser core (journal/D-031).
+
 **Proves:** the flashing tool correctly refuses the classes of corrupt or
 wrong-architecture images it is designed to catch, and reports every problem
 in one pass; the size-report parser understands SysV `llvm-size` output and
@@ -491,6 +500,19 @@ With the module running and the USB cable on the Teensy (journal/D-029):
    until Enter; closing the tool releases it, `oc-probe` killed included.
 6. `cargo probe reboot`, then `cargo xtask flash`: the flash goes through with
    no PROGRAM press.
+
+### 9.1c — Browser probe and flasher (journal/D-031)
+
+`cargo xtask web`, serve `dist/web/` on `localhost`, open it in Chrome.
+Connect, pick the probe port: the status shows the firmware and build. Capture
+the screen (it matches the panel), read the profile, start a stream, hold
+output A at 1000 mV (multimeter) and release it. Then load
+`target/thumbv7em-none-eabihf/release/oc-firmware` from a commit other than
+the running one, check the SHA-256 against `cargo xtask flash --dry-run`,
+confirm and flash: the module restarts into the bootloader by itself, the
+page lists HalfKay, the progress bar fills, and the module boots with the new
+build identifier on its splash. Record the result in the step's progress file;
+a pass moves D-031 to `adoptée`.
 
 ### 9.2 — CV inputs
 

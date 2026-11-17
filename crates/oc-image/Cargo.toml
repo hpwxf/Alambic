@@ -1,0 +1,16 @@
+[package]
+name = "oc-image"
+description = "Pre-flash validation of Teensy 4.0 firmware images and the flash contents they describe (journal/D-016, D-031)"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+publish = false
+
+[dependencies]
+sha2.workspace = true
+
+[lints]
+workspace = true

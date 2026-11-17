@@ -13,6 +13,7 @@ mod flash;
 mod llvm;
 mod paths;
 mod vcv;
+mod web;
 
 use anyhow::Result;
 use clap::{Parser, Subcommand, ValueEnum};
@@ -53,6 +54,8 @@ enum Command {
         #[command(subcommand)]
         action: VcvAction,
     },
+    /// Build the browser probe and flasher into `dist/web/`.
+    Web,
 }
 
 #[derive(Debug, Subcommand)]
@@ -131,6 +134,7 @@ fn main() -> Result<()> {
             VcvAction::Install(args) => vcv::install(&args)?,
             VcvAction::Clean => vcv::clean()?,
         },
+        Command::Web => web::build()?,
     }
 
     Ok(())

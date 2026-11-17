@@ -1,0 +1,26 @@
+[package]
+name = "oc-web"
+description = "WebAssembly core of the browser probe and flasher: protocol, image gate, `HalfKay` reports (journal/D-031)"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+publish = false
+
+[lib]
+# `cdylib` is the `.wasm` module `cargo xtask web` hands to `wasm-bindgen`;
+# `rlib` lets the host tests link the same code.
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+oc-core.workspace = true
+oc-halfkay.workspace = true
+oc-image.workspace = true
+oc-probe.workspace = true
+oc-protocol.workspace = true
+wasm-bindgen.workspace = true
+
+[lints]
+workspace = true
