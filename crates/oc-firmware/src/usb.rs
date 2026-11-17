@@ -9,7 +9,14 @@
 //! everything happens in [`Usb::poll`], as with the previous backend.
 //!
 //! Setting either port to 134 baud asks for a restart into the bootloader,
-//! the gesture Teensyduino's tools use.
+//! the gesture Teensyduino's tools use. No serial data is involved: a
+//! virtual port has no line rate, but CDC still lets the host set one, and
+//! `stty <port> 134` (or any `tcsetattr`) becomes a `SET_LINE_CODING` class
+//! request on endpoint 0, seven bytes whose first four carry the rate. The
+//! class keeps the last value; [`Usb::poll`] reads it back after each poll.
+//! 134 (once 134.5 baud, an IBM 2741 rate) is a value no ordinary program
+//! sets, so a terminal cannot restart the module by accident. What happens
+//! next is in [`crate::reboot`].
 
 use static_cell::StaticCell;
 use teensy4_bsp::usbd::{BusAdapter, EndpointMemory, EndpointState, Instances};

@@ -130,7 +130,9 @@ Statut inchangé (`proposée`) : le transport et l'outil hôte restent à faire.
   (`HW_OCOTP_CFG5 & 0x02`), `_reboot_Teensyduino_` exécute `bkpt #251`, auquel répond la puce du bootloader ; le
   déclencheur des outils Teensy est un `SET_LINE_CODING` à 134 bauds. Les deux sont repris (`reboot.rs`, second
   module `unsafe` du firmware) ; la variante sécurisée (saut dans la ROM NXP) n'est pas reprise et la sonde répond
-  `Unsupported` sur une puce verrouillée.
+  `Unsupported` sur une puce verrouillée. Le mécanisme (requête de contrôle sur l'endpoint 0, aucune donnée série ;
+  contrôleur PJRC sur le port de debug ; ce qui est lu des sources et ce qui est vérifié) est décrit dans la
+  documentation de `usb.rs` et de `reboot.rs`.
 * **Pages OLED** : `Ssd130x::flush_page` ; le firmware enveloppe le pilote (`TimedPanel`) pour envoyer et chronométrer
   chaque page (`Stage::Page`). Sur SSD1306 / SSD1309, la trame passe donc en huit fenêtres d'une page au lieu d'une
   seule fenêtre (6 octets de commande en plus par page).

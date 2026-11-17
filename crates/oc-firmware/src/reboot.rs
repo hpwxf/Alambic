@@ -8,6 +8,21 @@
 //! a jump into NXP's ROM instead; that path is not implemented here, and
 //! [`is_supported`] says so.
 //!
+//! The Teensy 4.0 carries two chips: the i.MX RT1062 that runs this
+//! firmware, and PJRC's small controller holding the `HalfKay` bootloader,
+//! wired to the RT1062's debug port. The breakpoint halts the core in debug
+//! state (its immediate, 251, means nothing to the core); the controller
+//! sees the core halted there and resets it into loading mode, as the
+//! PROGRAM button does. On the host the two serial ports disappear and a
+//! HID device (16C0:0478) appears, the one `teensy_loader_cli` waits for.
+//! On a secure chip the debug port is closed: nothing would answer, and the
+//! breakpoint would end in a `HardFault`.
+//!
+//! PJRC does not publish the controller's firmware: the sequence above is
+//! read from Teensyduino's sources and PJRC's own explanations. What is
+//! checked is the outcome, on a TLM module (`22fb58a`): a flash goes
+//! through without PROGRAM.
+//!
 //! The only `unsafe` besides `flash_store.rs` (AGENTS.md): reading a fuse
 //! register and the breakpoint instruction, which no crate wraps.
 
