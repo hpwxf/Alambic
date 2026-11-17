@@ -52,16 +52,17 @@ dépend à l'exécution (marge d'attente sans `poll` USB) est mesuré par le fir
 
 Gigue hors rendu : sous ≈ 4 à 8 µs. Ticks de rendu (≈ 5 %) : dépassent leur période d'≈ 1,1 ms ; **≈ 947 ticks
 par seconde au lieu de 1 000**. Conséquence observée : un trigger est daté à ≈ 2 ms près (intervalles d'un carré
-régulier dispersés de 132,7 à 134,8 ms). Conséquence prévue, non vérifiée : de l'ordre de 5 % des triggers de 1 ms
-manqués.
+régulier dispersés de 132,7 à 134,8 ms). Conséquence mesurée (Pamela's Pro Workout,
+32 Hz) : triggers de 0,94 ms perdus à 39 %, de 1,56 ms à 3,9 %, de 2,5 ms à 0,7 %, de 5 ms et plus à 0 % ; la
+prévision de ≈ 5 % pour 1 ms était fausse.
 
 ### Niveau 9
 
 * **9.2 entrées** : débranchées, moyenne −1 à 0 mV, crête à crête 20 à 24 mV sur 20 s (sous le seuil de 50 mV de
   D-024) ; plage de lecture ≈ −3,33 à +6,67 V, fixée par l'étage analogique (une sinusoïde de ± 4,8 V est écrêtée
   en bas) ; `P`, `~` et ordre des canaux conformes sur les quatre entrées ; pas de diaphonie visible.
-* **9.3 triggers** : carré, LFO lent (un front par cycle), repos (zéro front) conformes ; compte de triggers de
-  1 ms non fait (pas de générateur de salves).
+* **9.3 triggers** : carré, LFO lent (un front par cycle), repos (zéro front) conformes ; compte exact au Pamela
+  (960 sur 960) pour 5, 10 et 15 ms ; **pertes sous ≈ 3 ms** (tableau ci-dessus, détail dans le plan 3b).
 * **9.3b rebouclage et multimètre** : sortie A juste à ≤ 3 mV de −3 à +6 V ; l'erreur du rebouclage (jusqu'à
   −66 mV à +6 V sur A → CV1) vient de l'entrée : gain unique mesuré sur CV1 entre 1 et 3 V, et marches d'≈ 20 mV
   communes aux quatre voies.
@@ -70,8 +71,10 @@ manqués.
 
 * **Lot 3c** : trancher D-023 avec ces chiffres ; scinder `Engine::tick` en `signal_tick` / `ui_tick`. Points
   d'entrée : le rendu et l'envoi de la trame (≈ 1,8 ms d'un bloc) cassent la cadence ; l'envoi page par page
-  (≈ 145 µs) tient dans une période ; l'échantillonnage bloquant coûte ≈ 29 % d'une période.
+  (≈ 145 µs) tient dans une période ; l'échantillonnage bloquant coûte ≈ 29 % d'une période ; les triggers courts sont perdus (39 % à 0,94 ms) : il faut
+  une capture des fronts, pas seulement une cadence plus rapide.
 * **Précision des entrées** (≈ 20 mV, ≈ 24 cents) : gain par entrée ou table par morceaux ; à reprendre avec la
   première applet qui suit une hauteur.
-* Non vérifié sur module : mise à jour simultanée des quatre voies du DAC8565 ; compte de triggers de 1 ms.
+* Non vérifié sur module : mise à jour simultanée des quatre voies du DAC8565 ; d'où vient le raccourcissement
+  apparent des impulsions (source, étage d'entrée ou écarts entre lectures).
 * `cargo xtask flash` ne demande pas lui-même le redémarrage (`cargo probe reboot` avant).

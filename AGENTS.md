@@ -300,10 +300,11 @@ Full protocol, per level, with exact commands and what each proves: see
   calibration and settings flash (step 4), and with the probe the CV inputs,
   the CV outputs (multimeter), the trigger inputs and the output-to-input
   loopback (`docs/plan/avancement/etape-3.md`). **Not** checked: the DAC8565
-  simultaneous update, exact counts of 1 ms triggers. Known limits measured
-  there: the inputs read within about 20 mV only (one gain shared by the four
-  inputs), and render ticks overrun their period, so the loop runs below
-  1 kHz (journal/D-023, lot 3c). OLED overrides for other builds go through the
+  simultaneous update. Known limits measured there: the inputs read within
+  about 20 mV only (one gain shared by the four inputs); render ticks overrun
+  their period, so the loop runs below 1 kHz; and trigger pulses shorter than
+  about 3 ms can be missed (39 % of 0.94 ms pulses), since triggers are
+  sampled, not captured (journal/D-023, lot 3c). OLED overrides for other builds go through the
   normal gate: `cargo xtask build|size|hex|flash --features ssd1306` (or
   `ssd1309`).
 

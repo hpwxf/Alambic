@@ -144,8 +144,29 @@ sur les quatre entrées. Flux : CV1 1 973 à 1 985 mV, CV2 1 980 à 1 983, CV3 1
 erreur d'entrée que le rebouclage, CV4 à part) ; les trois autres entrées restent dans leur bruit de repos (± 7 mV)
 pendant ce temps : pas de diaphonie visible. Valeurs indicatives.
 
-**Non vérifié** : le compte exact de triggers de 1 ms (TESTING.md 9.3, étapes 4 et 7) faute de séquenceur ou de
-générateur de salves. À prévoir d'après les mesures : deux échantillons d'un tick de rendu sont espacés d'≈ 2,1 ms,
-une impulsion de 1 ms qui tombe entière dans cet écart est manquée, soit de l'ordre de 5 % des impulsions de 1 ms
-(≈ 1,1 ms de fenêtre toutes les ≈ 21 ms), à confirmer sur module ; c'est un argument de plus pour le lot 3c ; la mise
-à jour simultanée des quatre voies du DAC8565 (il faudrait un oscilloscope à deux voies).
+**9.3, largeur des triggers** (Pamela's Pro Workout, 120 BPM ×16, période 31,25 ms, 960 fronts attendus en 30 s
+de l'horloge du module, `cargo probe triggers --seconds 30`, largeur mesurée depuis `c505847`) :
+
+| Width | Largeur envoyée | Fronts | Perdus | Intervalle max | Largeur vue (moyenne, à un tick) |
+|---|---|---|---|---|---|
+| 50 % | 15,6 ms | 960 | 0 | 33,2 ms | — |
+| 16 % | 5 ms | 960 | 0 | 33,2 ms | — |
+| 32 % | 10 ms | 960 | 0 | 33,2 ms | 9,75 ms |
+| 3 % | 0,94 ms | 588 | 39 % | 219 ms (six d'affilée) | 1,06 ms |
+| 5 % | 1,56 ms | 923 | 3,9 % | 63,4 ms | 1,35 ms |
+| 8 % | 2,5 ms | 953 | 0,7 % | 63,4 ms | 1,96 ms |
+
+Intervalle moyen 31,248 ms pour 31,25 : les deux horloges à ≈ 60 ppm l'une de l'autre. Aucun front en trop, aucun
+rebond. **Tout trigger de moins de ≈ 3 ms peut être manqué** par la boucle actuelle, et sous un tick (1 ms) une
+grande part l'est. La prévision faite avant la mesure (≈ 5 % pour 1 ms, en ne comptant que l'écart d'≈ 2,1 ms des
+ticks de rendu) était fausse dans les deux sens : sous 1 ms, les écarts ordinaires d'un tick perdent aussi des
+impulsions ; à 2,5 ms, il en reste des pertes que ce modèle ne prévoit pas. En inversant le modèle, les séries à 3 et
+5 % donnent une impulsion vue raccourcie d'≈ 0,3 ms, celle à 8 % d'≈ 0,55 ms : soit l'impulsion arrive raccourcie
+(le Pamela ou l'étage d'entrée, à départager à l'oscilloscope), soit des écarts entre lectures sont plus longs
+qu'estimé (la distribution réelle des écarts n'a pas été mesurée). Les deux mécanismes ne changent pas la conclusion
+pour le lot 3c : seule une **capture des fronts** rend la lecture indépendante de la largeur ; un échantillonnage
+plus rapide ne fait que déplacer la largeur critique. Piste à vérifier dans le manuel du RT1062 : le registre
+d'état des GPIO (`ISR`) mémoriserait un front même interruption masquée, lu et effacé à chaque tick. Valeurs
+indicatives, un module, une source.
+
+**Non vérifié** : la mise à jour simultanée des quatre voies du DAC8565 (il faudrait un oscilloscope à deux voies).
