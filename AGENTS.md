@@ -176,9 +176,10 @@ lives in `oc-core` and is tested once, on the host.
   The boot splash sends whole frames every tick (outputs at rest).
 * **Over 20 ticks**, with indicative costs from one module (the profile
   measures them, `cargo probe stats`): tick 0 draws (≈ 0.29 ms sampling +
-  ≈ 0.65 ms drawing the diagnostic screen ≈ 0.96 ms, the tightest tick);
-  ticks 1–8 send pages 0–7 (≈ 0.145 ms each); ticks 9–19 have no screen
-  work. 50 frames a second, 1 000 ticks a second. While the 8 pages go out,
+  ≈ 0.09 ms drawing the diagnostic screen since text is laid as column
+  bytes, `oc_core::text`; ≈ 0.65 ms before); ticks 1–8 send pages 0–7
+  (≈ 0.145 ms each, now the longest ticks, ≈ 0.46 ms with the sampling);
+  ticks 9–19 have no screen work. 50 frames a second, 1 000 ticks a second. While the 8 pages go out,
   the panel shows the new frame on top and the previous one below (≈ 8 ms
   of each 20 ms frame); no page is ever sent half-redrawn.
 
@@ -333,10 +334,7 @@ Full protocol, per level, with exact commands and what each proves: see
   the CV outputs (multimeter), the trigger inputs and the output-to-input
   loopback (`docs/plan/avancement/etape-3.md`). **Not** checked: the DAC8565
   simultaneous update. Known limits measured there: the inputs read within
-  about 20 mV only (one gain shared by the four inputs); the redraw tick,
-  which no longer sends the frame (one page per tick follows it), has about
-  40 us of margin on the diagnostic screen, the costliest to draw
-  (journal/D-023, lot 3c2); and
+  about 20 mV only (one gain shared by the four inputs); and
   trigger pulses shorter than about 3 ms were missed (39 % of 0.94 ms
   pulses) while triggers were only sampled: the GPIO edge detector now
   latches them (journal/D-019, lot 3c1; 960 of 960 such pulses counted on the

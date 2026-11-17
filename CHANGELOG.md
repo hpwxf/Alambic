@@ -46,8 +46,8 @@ Architectural decisions behind each change are in `journal/` (French).
   `embedded-graphics`; the pixels are the same, checked glyph by glyph
   against `embedded-graphics` in the tests. The diagnostic screen's
   drawing falls from 15.7 to 2.8 us on the host (criterion,
-  `cargo bench -p oc-core -- text`), which widens the margin of the
-  module's redraw tick (journal/D-009).
+  `cargo bench -p oc-core -- text`) and from about 646 to 88 us on the
+  module, so the redraw tick is no longer the loop's tightest (journal/D-009).
 
 ### Fixed
 

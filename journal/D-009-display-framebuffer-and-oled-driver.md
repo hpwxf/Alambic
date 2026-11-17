@@ -116,5 +116,8 @@ par caractère, police rangée par lignes, framebuffer par colonnes).
 * **Tous les textes** passent par `text::draw` (Diagnostic, Scope, menu, SETUP, assistant, écran de démarrage,
   message de sauvegarde) ; les applets ne changent que l'appel.
 * **Gain** (hôte, criterion, indicatif) : `applet/render` 15,7 → 2,8 µs (−82 %), `menu/render` 4,6 → 2,0 µs,
-  un écran de texte 13,4 → 1,06 µs (`text/` dans `benches/engine.rs`, qui garde les deux tracés). Sur le module,
-  à mesurer (`cargo probe stats`, étape `render`).
+  un écran de texte 13,4 → 1,06 µs (`text/` dans `benches/engine.rs`, qui garde les deux tracés).
+* **Sur le module TLM** (`53ee310`, `cargo probe stats --fresh 10`, Diagnostic, indicatif) : `render`
+  645,5 → **87,8 µs** (÷ 7,4) ; pire tick 671 → 169 µs, ≈ 0,46 ms échantillonnage compris : la marge du tick le
+  plus chargé passe d'≈ 40 à ≈ 540 µs, et ce sont désormais les ticks d'envoi d'une page, plus le dessin, qui
+  sont les plus longs ; périodes 997,6 – 1 002,3 µs.

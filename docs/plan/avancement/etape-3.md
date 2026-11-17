@@ -89,8 +89,8 @@ ou étage d'entrée, non tranché ; voir le plan 3c).
 
 ## Reste ouvert
 
-* **Marge du tick de dessin** : ≈ 40 µs sur l'écran Diagnostic. Si un écran la dépasse : dessin des caractères
-  (le Diagnostic coûte neuf fois le Scope), dessin en deux ticks, puis échantillonnage non bloquant.
+* ~~Marge du tick de dessin (≈ 40 µs sur le Diagnostic)~~ : réglé après la clôture (`53ee310`, D-009) : texte posé
+  par colonnes, `render` 645,5 → 87,8 µs sur le module, pire tick ≈ 0,46 ms échantillonnage compris.
 * **Option A ou B de D-023** : échantillonnage non bloquant, envoi OLED en DMA, puis `signal_tick` / `ui_tick`
   (3c3 reporté), le jour où un applet en a besoin.
 * **Triggers de moins de 0,625 ms** : rien n'est vu ; à départager à l'oscilloscope ou avec une seconde source.

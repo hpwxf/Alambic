@@ -82,3 +82,6 @@ Affichage normal sur les trois écrans (pas de déchirure). `cargo probe trigger
 (0,68 ms toutes les 2,604 ms) : **11 521 fronts** pour 11 520 attendus (± 1 de fenêtre), **29 999 ticks en
 29 999,0 ms**, intervalles de 1,997 à 3,003 ms (moyenne 2,603) : la dispersion n'est plus que d'un tick, la
 quantification attendue d'une période qui n'est pas un multiple de 1 ms (≈ −1,1 / +2,0 ms avant 3c2).
+
+**Après l'étape 3** (`53ee310`, texte posé par colonnes, D-009) : Diagnostic `render` 645,5 → **87,8 µs**, `tick`
+max 671 → 169 µs, périodes 997,6 – 1 002,3 µs ; la marge du tick de dessin (≈ 40 µs) n'est plus un risque.
