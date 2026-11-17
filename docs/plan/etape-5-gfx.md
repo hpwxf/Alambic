@@ -21,3 +21,10 @@ Ordre : 5a → 5b → 5c → 5d.
    rapide dédié ou dessin réparti.
 2. Ajouter `AppId::Gfx` change le menu et l'énumération sérialisée (`startup_app`) : la variante s'ajoute en fin,
    un réglage enregistré reste lisible ; écran doré du menu à régénérer.
+
+## Mesures (module TLM, valeurs indicatives)
+
+**5d, page des courbes** (`da8d31b`, `cargo probe stats --fresh 10`) : `render` **105,2 µs** (104,9 – 105,5 ; hôte
+3,1 µs) ; pire `tick` 169 µs (les ticks d'envoi d'une page, comme sur le Diagnostic) ; périodes 997,5 – 1 002,4 µs,
+toutes à moins de 4 µs de la cible. La page la plus coûteuse de la démo dessine en ≈ 0,1 ms : la marge du tick
+de dessin reste de l'ordre de 0,6 ms.
