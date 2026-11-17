@@ -80,3 +80,22 @@ découpe l'envoi** :
 
 * Les features `ssd1306` et `ssd1309` sont mutuellement exclusives, mais rien ne l'impose : avec les deux,
   `ssd1309` gagne silencieusement. Un `compile_error!` sur la combinaison coûterait deux lignes.
+
+## Pistes (2026-11-17, après le lot 3c2) — non engagées
+
+Deux gains distincts, à ne pas confondre :
+
+* **N'envoyer que ce qui a changé.** Le SH1106 comme le SSD130x acceptent un envoi qui commence à n'importe quelle
+  colonne d'une page (commandes de colonne et de page, puis N octets ; fenêtre colonnes / pages sur SSD130x), dans
+  n'importe quel ordre. Les applets ne changent pas : elles dessinent toujours leur image entière ; le cœur la
+  compare à la dernière image envoyée (copie de 1 Kio) et n'en extrait que les morceaux modifiés. Limites : l'unité
+  est l'octet (8 pixels verticaux) et l'OLED ne se relit pas (pas de MISO) ; chaque morceau coûte ≈ 3 octets de
+  commande et deux fenêtres CS (≈ 14 µs de surcoût par envoi d'après une page mesurée, indicatif), d'où des morceaux
+  voisins fusionnés et une page entière au-delà d'un seuil ; le pire cas (Scope qui défile, changement d'écran)
+  reste une trame entière, donc un budget de bus par tick reste nécessaire. Gain : le **bus** (et la transition de
+  ≈ 8 ms) ; utile surtout à l'option A de D-023. Ne réduit pas le dessin.
+* **Accélérer le dessin du texte.** Le dessin, pas l'envoi, fixe la marge du tick le plus chargé (≈ 646 µs pour le
+  Diagnostic contre ≈ 73 µs pour le Scope, ≈ 40 µs de marge ; indicatif) ; le texte en est le suspect. Le texte est
+  aligné sur les pages (police de 8 pixels, `ROW_HEIGHT`) : une colonne de glyphe tient dans un octet et pourrait
+  être copiée telle quelle au lieu d'être posée pixel par pixel. Transparent pour ce que les applets affichent ;
+  hypothèse à mesurer avant d'écrire quoi que ce soit (exploration ouverte le 2026-11-17).
