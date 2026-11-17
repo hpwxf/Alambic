@@ -56,6 +56,10 @@ ssd1309 = []
 # back before running normally (src/stress.rs, TESTING.md 9.5c). Never for a
 # module in use: it wears the settings sectors for nothing.
 settings-stress = []
+# Lot 7a comparison (journal/D-033): the OLED at 8 MHz, the rate the module
+# was brought up at, the bus switching clock between it and the DAC at 22 MHz.
+# The default runs both at 22 MHz.
+oled-spi-8mhz = []
 
 [lints]
 workspace = true

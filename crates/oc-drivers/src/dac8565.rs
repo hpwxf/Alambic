@@ -9,9 +9,14 @@
 //! `kChannelCommand = { 0b00010000, 0b00010010, 0b00010100, 0b00010110 }`), so
 //! it is known to work on the real module and is the default here.
 //!
-//! [`UpdateMode::Simultaneous`] is offered as an opt-in: it buffers three
-//! channels and updates all four on the last word so that the outputs step
-//! together. It relies on the data sheet's load-command encoding rather than on
+//! [`AnalogOut::flush`] sends only the channels whose code changed since
+//! the last one: at a constant level the bus and the converter stay quiet,
+//! which matters once the outputs are refreshed at an audio rate
+//! (journal/D-033).
+//!
+//! [`UpdateMode::Simultaneous`] is offered as an opt-in: it buffers the
+//! channels sent and updates all four on the last word so that the outputs
+//! step together. It relies on the data sheet's load-command encoding rather than on
 //! observed behaviour, so it must be verified on hardware before being trusted.
 //!
 //! The driver sends raw codes: the conversion from millivolts, and the
@@ -41,6 +46,14 @@ mod command {
     pub(super) const CHANNEL_SHIFT: u8 = 1;
 }
 
+/// Every channel's bit in [`Dac8565::pending`].
+const ALL_CHANNELS: u8 = (1 << CV_CHANNELS) - 1;
+
+/// A channel's bit in [`Dac8565::pending`].
+const fn bit(channel: CvChannel) -> u8 {
+    1 << channel.index()
+}
+
 /// When the DAC outputs actually move.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum UpdateMode {
@@ -49,8 +62,9 @@ pub enum UpdateMode {
     /// therefore the trusted default.
     #[default]
     PerChannel,
-    /// Three channels are buffered and all four move on the last word. Nicer,
-    /// but derived from the data sheet rather than from proven firmware.
+    /// The channels sent are buffered and all four move on the last word.
+    /// Nicer, but derived from the data sheet rather than from proven
+    /// firmware.
     Simultaneous,
 }
 
@@ -70,8 +84,8 @@ pub struct Dac8565<SPI, CS> {
     chip_select: CS,
     update_mode: UpdateMode,
     staged: [u16; CV_CHANNELS],
-    /// Set when a staged value has not yet been pushed to the hardware.
-    dirty: bool,
+    /// One bit per channel whose staged code has not reached the hardware.
+    pending: u8,
     /// Last error seen, kept so that a failing bus does not silently do nothing.
     last_error: Option<Dac8565Error>,
 }
@@ -92,7 +106,7 @@ where
             chip_select,
             update_mode: UpdateMode::PerChannel,
             staged: [rest_code; CV_CHANNELS],
-            dirty: true,
+            pending: ALL_CHANNELS,
             last_error: None,
         }
     }
@@ -100,7 +114,7 @@ where
     /// Chooses when the outputs move; see [`UpdateMode`].
     pub const fn set_update_mode(&mut self, mode: UpdateMode) {
         self.update_mode = mode;
-        self.dirty = true;
+        self.pending = ALL_CHANNELS;
     }
 
     /// The most recent error, if the outputs are not being updated.
@@ -108,24 +122,42 @@ where
         self.last_error
     }
 
-    /// Pushes the staged values to the converter.
+    /// Pushes every staged value to the converter, changed or not.
     ///
     /// # Errors
     ///
     /// Returns an error if the chip select or the SPI transfer fails.
     pub fn commit(&mut self) -> Result<(), Dac8565Error> {
+        self.send(ALL_CHANNELS)
+    }
+
+    /// Sends the channels in `mask`, in channel order; with
+    /// [`UpdateMode::Simultaneous`] the last of them moves all four. A
+    /// channel that could not be sent stays pending.
+    fn send(&mut self, mask: u8) -> Result<(), Dac8565Error> {
+        let last = CvChannel::ALL
+            .iter()
+            .rev()
+            .find(|channel| mask & bit(**channel) != 0)
+            .map(|channel| channel.index());
         for channel in CvChannel::ALL {
+            if mask & bit(channel) == 0 {
+                continue;
+            }
             let index = channel.index();
-            let code = self.staged[index];
-            let last = index + 1 == CV_CHANNELS;
-            let mode = match (self.update_mode, last) {
+            let mode = match (self.update_mode, Some(index) == last) {
                 (UpdateMode::PerChannel, _) => command::WRITE_AND_UPDATE_ONE,
                 (UpdateMode::Simultaneous, false) => command::BUFFER,
                 (UpdateMode::Simultaneous, true) => command::WRITE_AND_UPDATE_ALL,
             };
-            self.write_word(mode, channel, code)?;
+            self.write_word(mode, channel, self.staged[index])?;
+            if self.update_mode == UpdateMode::PerChannel {
+                self.pending &= !bit(channel);
+            }
         }
-        self.dirty = false;
+        // In simultaneous mode nothing moves before the last word: the whole
+        // set is pending until it went out.
+        self.pending &= !mask;
         Ok(())
     }
 
@@ -168,17 +200,17 @@ where
         let index = channel.index();
         if self.staged[index] != code {
             self.staged[index] = code;
-            self.dirty = true;
+            self.pending |= bit(channel);
         }
     }
 
     fn flush(&mut self) {
-        if !self.dirty {
+        if self.pending == 0 {
             return;
         }
         // The trait cannot report failures: record them instead, so the
         // firmware can surface a dead bus rather than silently doing nothing.
-        self.last_error = self.commit().err();
+        self.last_error = self.send(self.pending).err();
     }
 }
 
@@ -354,6 +386,45 @@ mod tests {
             after_first,
             "writing the same code again must not cost an SPI transaction"
         );
+    }
+
+    #[test]
+    fn a_flush_sends_only_the_channels_that_changed() {
+        let mut dac = dac();
+        dac.flush();
+        dac.spi.written.clear();
+
+        dac.write_code(CvChannel::Three, 0x1234);
+        dac.flush();
+        assert_eq!(dac.spi.written, [0b0001_0100, 0x12, 0x34]);
+    }
+
+    #[test]
+    fn simultaneous_mode_moves_all_outputs_on_the_last_changed_channel() {
+        let mut dac = dac();
+        dac.set_update_mode(UpdateMode::Simultaneous);
+        dac.flush();
+        dac.spi.written.clear();
+
+        dac.write_code(CvChannel::One, 1);
+        dac.write_code(CvChannel::Three, 3);
+        dac.flush();
+        let commands: Vec<u8> = dac.spi.written.chunks(3).map(|word| word[0]).collect();
+        assert_eq!(commands, [0b0000_0000, 0b0010_0100]);
+    }
+
+    #[test]
+    fn a_channel_that_failed_is_sent_again() {
+        let mut dac = dac();
+        dac.flush();
+        dac.spi.fail = true;
+        dac.write_code(CvChannel::Two, 2);
+        dac.flush();
+        dac.spi.fail = false;
+        dac.spi.written.clear();
+        dac.flush();
+        assert_eq!(dac.spi.written, [0b0001_0010, 0, 2]);
+        assert_eq!(dac.last_error(), None);
     }
 
     #[test]

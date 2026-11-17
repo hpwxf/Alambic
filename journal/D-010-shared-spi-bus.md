@@ -57,3 +57,24 @@ Le partage reste celui décrit plus haut (`SharedBus`, CS en GPIO, 8 MHz). Ce qu
 transactions OLED dans la boucle : une page (≈ 145 µs mesurées, indicatif) par tick au lieu d'une trame (≈ 1,16 ms),
 D-009 et D-023 (option C+). L'écriture du DAC n'attend donc plus jamais une trame entière, sauf pendant l'écran de
 démarrage, où les sorties sont au repos.
+
+## Révision (2026-11-17, lot 7a) — CS du DAC matériel, sélection par poignée, 22 MHz
+
+Préalable du chemin audio (D-033). Trois changements :
+
+* **`DAC_CS` (broche 10) passe au PCS0 de LPSPI4** : le contrôleur encadre chaque mot de 24 bits (un `write` de 3
+  octets est une trame de 24 bits dans `imxrt-hal`) ; `Dac8565` reçoit `ControllerChipSelect`, un CS sans effet. Le
+  CS de l'OLED reste un GPIO (broche 8, aucun PCS de LPSPI4 n'y est relié).
+* **Chaque poignée de `SharedBus` sélectionne son périphérique** avant chacune de ses opérations
+  (`SharedBus::with_select`) : PCS0 et l'horloge du DAC ; **PCS3**, qu'aucune broche ne porte, et l'horloge de
+  l'OLED. Sans cela, le contrôleur affirmerait PCS0 pendant les transactions de l'OLED et le DAC recevrait les
+  octets de l'écran.
+* **Horloges** : le DAC à **22 MHz**. Le plafond est de 25 MHz pour un DAC8565 alimenté entre 2,7 et 3,6 V
+  (SBAS411C), ce qui est le cas sur le schéma O&C (`3V3_A`), et non 50 MHz comme l'écrivait `board.rs` ; 22 MHz est
+  la fréquence permise la plus proche depuis les 132 MHz de LPSPI4. L'OLED à 22 MHz aussi par défaut (Phazerville
+  demande 24 MHz au SH1106 sur ce bus) ; la feature `oled-spi-8mhz` le garde à 8 MHz, le bus changeant alors
+  d'horloge entre les deux (désactivé, bus vide : chaque pilote attend la fin de ses transferts). Le choix se fait à
+  la mesure (TESTING 9.3d).
+
+Le `RefCell` reste correct : le firmware est encore mono-contexte. L'arbitrage à deux contextes (§ 5) vient avec
+l'interruption audio (D-033, lot 7c). Le DAC n'envoie plus que les voies dont le code a changé.

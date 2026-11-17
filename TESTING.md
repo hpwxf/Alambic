@@ -652,6 +652,25 @@ faster than the burst, the repeats past it are drawn short and are indeed
 cut on `TR3`. If `TR2` and `TR3` count nothing, the 5 V triggers do not cross the inputs' threshold: note it, it
 decides whether the trigger level has to change.
 
+### 9.3d — Fast DAC and shared bus (journal/D-033, lot 7a)
+
+The DAC's chip select is the SPI controller's own (PCS0) and the DAC runs at
+22 MHz; the OLED runs at 22 MHz too, or at 8 MHz with
+`cargo xtask flash --features oled-spi-8mhz`. With each firmware:
+
+1. The screen draws normally on every applet (no garbage, no frozen rows),
+   including after a minute of turning the encoders.
+2. The output levels are right: repeat 9.3b (`cargo probe sweep`) on the
+   four outputs, and `cargo probe out` at −3, 0 and +5 V with a multimeter.
+   A shift or a jump means the DAC took bytes meant for the OLED.
+3. Open `SCOPE` (it copies `CV1` to all four outputs) with an LFO on `CV1`,
+   then `cargo probe stats`: the `outputs` stage now writes four words at
+   22 MHz. For indication, about 16 µs at 8 MHz before this lot; record this
+   module's value.
+
+Keep the default if all three pass; otherwise note which failed and keep
+`oled-spi-8mhz`.
+
 ### 9.4 — Calibration
 
 This step measures how far the module is from the factory calibration, then

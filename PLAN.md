@@ -56,7 +56,7 @@ sorties, une applet `TONE` de test d'abord. Plan : [etape-7-chemin-audio.md](doc
 
 | Lot | Contenu | État |
 |---|---|---|
-| **7a** — DAC rapide, encore à 1 kHz | `DAC_CS` en PCS0, OLED sur PCS3, DAC à 22 MHz, OLED à 22 ou 8 MHz, voies écrites au changement ; écriture du DAC mesurée | en cours |
+| **7a** — DAC rapide, encore à 1 kHz | `DAC_CS` en PCS0, OLED sur PCS3, DAC à 22 MHz, OLED à 22 ou 8 MHz (feature `oled-spi-8mhz`), voies écrites au changement (révision de D-010) ; reste la mesure sur le module (TESTING 9.3d) | fait, à mesurer |
 | **7b** — cœur audio | voix entière dans `oc-core`, paramètres par tick, applet `TONE`, Rack et simulateur | à faire |
 | **7c** — interruption à 48 kHz | PIT, NVIC ; DAC chaque période et tronçons d'OLED ; profil de l'interruption | à faire |
 | **7d** — module | écoute, oscilloscope, accordeur, écran en marche | à faire |

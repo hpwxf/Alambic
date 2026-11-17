@@ -32,7 +32,7 @@
 //! | `OLED_RST`    |          7 | output    | active low                               |
 //! | `OLED_CS`     |          8 | output    | active low                               |
 //! | `DAC_RST`     |          9 | output    | active low                               |
-//! | `DAC_CS`      |         10 | output    | active low                               |
+//! | `DAC_CS`      |         10 | output    | active low; LPSPI4 PCS0, driven by the controller |
 //! | `SPI MOSI`    |         11 | output    | shared by the DAC and the OLED           |
 //! | `SPI MISO`    |         12 | input     | claimed by LPSPI4 only because its pin set needs one; nothing on the bus drives it (the DAC8565 and the OLED in 4-wire SPI have no data output) |
 //! | `SPI SCK`     |         13 | output    | shared; also the on-board LED            |
@@ -74,21 +74,59 @@ use oc_core::platform::{BUTTONS, CV_CHANNELS, ENCODERS, TRIGGER_CHANNELS};
 use oc_drivers::panel::EncoderPins;
 use oc_drivers::ssd130x::Controller;
 use oc_drivers::triggers::{EdgeCapture, Polarity};
-use teensy4_bsp::board::LpspiPins;
+use teensy4_bsp::board::{LPSPI_FREQUENCY, LpspiPins};
 use teensy4_bsp::hal::adc::{Adc, AnalogInput};
 use teensy4_bsp::hal::gpio::{Input, Output, Port, Trigger};
 use teensy4_bsp::hal::iomuxc::{self, Config, Hysteresis, PullKeeper};
+use teensy4_bsp::hal::lpspi::{Lpspi, Pcs};
 use teensy4_bsp::pins::imxrt_iomuxc::Iomuxc;
 use teensy4_bsp::pins::t40::{
     P0, P1, P2, P3, P4, P5, P6, P7, P8, P9, P10, P11, P12, P13, P14, P15, P16, P17, P18, P19, P20,
     P21, P22, P23, Pins,
 };
 
-/// SPI clock for the DAC8565 and the OLED, in hertz.
+/// SPI clock for the DAC8565, in hertz.
 ///
-/// The DAC8565 accepts up to 50 MHz and the OLED controllers up to about 10 MHz,
-/// and the two share the bus, so the slower part sets the rate.
-pub(crate) const SPI_CLOCK_HZ: u32 = 8_000_000;
+/// The data sheet allows 50 MHz only with the converter powered from 3.6 to
+/// 5.5 V, and 25 MHz from 2.7 to 3.6 V (SBAS411C, timing note 3); on the O&C
+/// schematic it runs from the 3.3 V analog rail. From LPSPI4's 132 MHz the
+/// nearest allowed rate is 22 MHz (journal/D-033).
+pub(crate) const DAC_SPI_HZ: u32 = 22_000_000;
+
+/// SPI clock for the OLED, in hertz.
+///
+/// 22 MHz shares the DAC's clock, which Phazerville's 24 MHz on the same bus
+/// suggests the SH1106 takes; the `oled-spi-8mhz` feature keeps the rate this
+/// module was brought up at, the bus then switching clock between the two
+/// (journal/D-033, lot 7a).
+pub(crate) const OLED_SPI_HZ: u32 = if cfg!(feature = "oled-spi-8mhz") {
+    8_000_000
+} else {
+    22_000_000
+};
+
+/// Readies the shared bus for the DAC: its own chip select, PCS0, which the
+/// controller asserts for each 24-bit word, and its clock.
+pub(crate) fn select_dac(spi: &mut Lpspi) {
+    spi.set_pcs(Pcs::Pcs0);
+    set_clock(spi, DAC_SPI_HZ);
+}
+
+/// Readies the shared bus for the OLED: a chip select no pad carries, so its
+/// transactions never assert the DAC's (the OLED's own is a GPIO), and its
+/// clock.
+pub(crate) fn select_oled(spi: &mut Lpspi) {
+    spi.set_pcs(Pcs::Pcs3);
+    set_clock(spi, OLED_SPI_HZ);
+}
+
+/// Sets the bus clock when the two devices differ; the drivers flush before
+/// releasing the bus, so it is idle here.
+fn set_clock(spi: &mut Lpspi, hz: u32) {
+    if DAC_SPI_HZ != OLED_SPI_HZ {
+        spi.disabled(|spi| spi.set_clock_hz(LPSPI_FREQUENCY, hz));
+    }
+}
 
 /// Nominal period of the main loop, in microseconds.
 pub(crate) const TICK_PERIOD_MICROS: u32 = 1_000;
@@ -353,20 +391,22 @@ pub(crate) struct DacPins {
     reset: P9,
 }
 
-/// The DAC8565 control lines, as GPIO outputs.
+/// The DAC8565 control lines.
 pub(crate) struct DacLines {
-    /// Chip select, active low. A plain GPIO rather than the LPSPI hardware PCS,
-    /// so that the DAC's 24-bit framing stays in software.
-    pub(crate) cs: Output,
+    /// Chip select, active low, muxed to LPSPI4's PCS0: the controller frames
+    /// each 24-bit word itself ([`select_dac`]). Held here so nothing else can
+    /// claim the pad.
+    _cs: P10,
     /// Reset, active low.
     pub(crate) reset: Output,
 }
 
 impl DacPins {
-    /// Claims both pads as GPIO outputs.
-    pub(crate) fn claim(self, gpio2: &mut Port) -> DacLines {
+    /// Hands the chip select to LPSPI4 and claims the reset as a GPIO output.
+    pub(crate) fn claim(mut self, gpio2: &mut Port) -> DacLines {
+        iomuxc::lpspi::prepare(&mut self.cs);
         DacLines {
-            cs: gpio2.output(self.cs).expect("P10 is a GPIO2 pin"),
+            _cs: self.cs,
             reset: gpio2.output(self.reset).expect("P9 is a GPIO2 pin"),
         }
     }

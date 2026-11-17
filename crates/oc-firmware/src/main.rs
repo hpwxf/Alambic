@@ -72,7 +72,7 @@ use oc_core::settings::SettingsStore;
 use oc_core::toast::SaveOutcome;
 use oc_drivers::dac8565::Dac8565;
 use oc_drivers::panel::Panel;
-use oc_drivers::shared_bus::SharedBus;
+use oc_drivers::shared_bus::{ControllerChipSelect, SharedBus};
 use oc_drivers::ssd130x::Ssd130x;
 use oc_drivers::triggers::Triggers;
 use oc_protocol::server::{Identity, Server};
@@ -172,25 +172,26 @@ fn main() -> ! {
 
     // ---- shared SPI bus -----------------------------------------------------
     // The DAC and the OLED share data and clock and are told apart by their
-    // chip selects, which the drivers own; hence a shared bus rather than two
-    // `SpiDevice`s.
+    // chip selects: the DAC's is the controller's PCS0, the OLED's a GPIO its
+    // driver owns. Each handle selects its device before each transaction
+    // (journal/D-033).
     let bus = RefCell::new(bsp_board::lpspi(
         lpspi4,
         pins.spi.with_clock(pins.led_sck),
-        board::SPI_CLOCK_HZ,
+        board::OLED_SPI_HZ,
     ));
     log::info!("spi ok");
     usb.poll();
 
     let dac_lines = pins.dac.claim(&mut gpio2);
     let dac = Dac8565::new(
-        SharedBus::new(&bus),
-        dac_lines.cs,
+        SharedBus::with_select(&bus, board::select_dac),
+        ControllerChipSelect,
         CvOutputCalibration::FACTORY.to_code(0),
     );
     let oled_lines = pins.oled.claim(&mut gpio2);
     let mut display = Ssd130x::new(
-        SharedBus::new(&bus),
+        SharedBus::with_select(&bus, board::select_oled),
         oled_lines.cs,
         oled_lines.dc,
         oled_lines.reset,

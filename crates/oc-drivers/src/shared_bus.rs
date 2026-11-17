@@ -11,27 +11,72 @@
 //! is single-threaded and cooperative, and a transfer never yields, the borrow
 //! can never actually be contended; a contended borrow would be a bug, so it is
 //! reported rather than ignored.
+//!
+//! A handle can also carry a *selection*, run on the bus before each of its
+//! operations: what one peripheral needs of the controller and the other must
+//! not inherit. On the module the DAC's chip select is the controller's own
+//! (PCS0), which it asserts on every transaction, so the OLED's transactions
+//! must pick a chip select no pad carries; each may want its own clock too
+//! (journal/D-033). [`ControllerChipSelect`] stands for a chip select the
+//! controller drives, for a driver that expects a pin.
 
 use core::cell::RefCell;
 
+use core::convert::Infallible;
+
+use embedded_hal::digital::{ErrorType as PinErrorType, OutputPin};
 use embedded_hal::spi::{ErrorKind, ErrorType, SpiBus};
 
 /// A handle onto a bus shared with other peripherals.
 #[derive(Debug)]
 pub struct SharedBus<'bus, SPI> {
     bus: &'bus RefCell<SPI>,
+    /// Run on the bus before each operation of this handle.
+    select: Option<fn(&mut SPI)>,
 }
 
 impl<'bus, SPI> SharedBus<'bus, SPI> {
-    /// Creates another handle onto `bus`.
+    /// Creates another handle onto `bus`, taking the bus as it is.
     pub const fn new(bus: &'bus RefCell<SPI>) -> Self {
-        Self { bus }
+        Self { bus, select: None }
+    }
+
+    /// Creates another handle onto `bus` that runs `select` on it before each
+    /// of its operations: the chip select, clock or mode its peripheral needs.
+    pub const fn with_select(bus: &'bus RefCell<SPI>, select: fn(&mut SPI)) -> Self {
+        Self {
+            bus,
+            select: Some(select),
+        }
     }
 }
 
 impl<SPI> Clone for SharedBus<'_, SPI> {
     fn clone(&self) -> Self {
-        Self { bus: self.bus }
+        Self {
+            bus: self.bus,
+            select: self.select,
+        }
+    }
+}
+
+/// A chip select driven by the SPI controller itself, for a driver that
+/// expects a pin: setting it does nothing, the controller frames each
+/// transaction on its own line.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct ControllerChipSelect;
+
+impl PinErrorType for ControllerChipSelect {
+    type Error = Infallible;
+}
+
+impl OutputPin for ControllerChipSelect {
+    fn set_low(&mut self) -> Result<(), Self::Error> {
+        Ok(())
+    }
+
+    fn set_high(&mut self) -> Result<(), Self::Error> {
+        Ok(())
     }
 }
 
@@ -85,6 +130,9 @@ where
             // transfer, which the cooperative loop makes impossible.
             return Err(ErrorKind::Other);
         };
+        if let Some(select) = self.select {
+            select(&mut bus);
+        }
         operation(&mut bus).map_err(|error| error.kind())
     }
 }
@@ -99,10 +147,13 @@ mod tests {
 
     use super::SharedBus;
 
-    /// A bus that records every byte written.
+    /// A bus that records every byte written, and which device it was
+    /// selected for when it was.
     #[derive(Debug, Default)]
     struct RecordingBus {
         written: Vec<u8>,
+        device: u8,
+        writes: Vec<(u8, Vec<u8>)>,
     }
 
     impl ErrorType for RecordingBus {
@@ -116,6 +167,7 @@ mod tests {
 
         fn write(&mut self, words: &[u8]) -> Result<(), Self::Error> {
             self.written.extend_from_slice(words);
+            self.writes.push((self.device, words.to_vec()));
             Ok(())
         }
 
@@ -167,6 +219,36 @@ mod tests {
         drop(held);
 
         assert!(handle.write(&[1]).is_ok(), "and must recover afterwards");
+    }
+
+    #[test]
+    fn each_handle_selects_its_device_before_each_operation() {
+        let bus = RefCell::new(RecordingBus::default());
+        let mut dac = SharedBus::with_select(&bus, |bus| bus.device = 1);
+        let mut oled = SharedBus::with_select(&bus, |bus| bus.device = 2);
+        let mut plain = SharedBus::new(&bus);
+
+        dac.write(&[1]).unwrap();
+        oled.write(&[2]).unwrap();
+        dac.write(&[3]).unwrap();
+        // A handle without a selection takes the bus as the last one left it.
+        plain.write(&[4]).unwrap();
+
+        let devices: Vec<u8> = bus
+            .borrow()
+            .writes
+            .iter()
+            .map(|(device, _)| *device)
+            .collect();
+        assert_eq!(devices, [1, 2, 1, 1]);
+    }
+
+    #[test]
+    fn a_cloned_handle_keeps_its_selection() {
+        let bus = RefCell::new(RecordingBus::default());
+        let mut copy = SharedBus::with_select(&bus, |bus| bus.device = 5).clone();
+        copy.write(&[0]).unwrap();
+        assert_eq!(bus.borrow().writes[0].0, 5);
     }
 
     #[test]
