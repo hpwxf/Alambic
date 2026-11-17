@@ -5,8 +5,8 @@
 | **Identifiant** | D-029 |
 | **Date** | 2026-11-16 |
 | **Auteur** | Pascal Havé |
-| **Statut** | proposée |
-| **Commits** | ce commit (ADR) ; implémentation aux lots 3b1 (profilage), 3b2 (protocole, firmware, outil hôte) de l'étape 3 |
+| **Statut** | adoptée, révisée |
+| **Commits** | `706410a` (ADR) ; `1a7d0c6` (3b1, profilage), `5528472` (3b2, protocole), `18a6cb4` → `22fb58a` (3b3, firmware), `d5365bb` (3b4, outil hôte), `1c11495` → adoption (3b5, mesures) |
 | **Relations** | **révise** D-002 (une capacité de plus sur `Clock`), D-003 (deux crates de plus), D-011 (deux ports CDC, sans `imxrt-log`) ; sert D-023 (mesure du lot 3b) ; touche D-016 (redémarrage en mode chargement sans bouton) |
 
 ## 1. Contexte
@@ -156,3 +156,25 @@ Statut inchangé (`proposée`) : essai sur module et outil hôte à faire.
   `cargo xtask flash` en tient lieu.
 
 Statut inchangé (`proposée`) : essai de l'outil sur module (lot 3b5).
+
+## Révision (2026-11-17, lot 3b5) — adoptée après essai sur module
+
+* **Mesures de niveau 9 dans l'outil** (`oc_probe::measure`, fonctions pures testées sur l'hôte) : `inputs`
+  (extrêmes, moyenne, crête à crête et codes des quatre entrées, à chaque tick), `triggers` (fronts montants et
+  intervalles, `INEXACT` si l'hôte a perdu des échantillons), `sweep` (une sortie rebouclée sur une entrée, palier
+  par palier). Documentées dans `TESTING.md` 9.1b à 9.3b.
+* **Les échantillons portent l'horloge du module** (`Sample.micros`, protocole **version 2**) : un tick ne dure pas
+  toujours 1 ms (les ticks de rendu durent ≈ 2,1 ms, ≈ 947 ticks par seconde mesurés, valeur indicative) ; des
+  durées comptées en ticks étaient fausses d'≈ 5 %.
+* **Une sortie tenue par la sonde se voit sur la façade** : `TickContext` porte les sorties écrites et le fait
+  qu'elles sont forcées ; l'applet diagnostic affiche `OUT*`.
+* **Critères du § 5, constatés sur le module TLM** (un exemplaire, valeurs indicatives) : macOS voit les deux ports ;
+  le service USB coûte ≈ 2 µs en moyenne par tick (max ≈ 7 µs), bien moins que « quelques pour cent » d'une période ;
+  le redémarrage par 134 bauds remplace l'appui sur PROGRAM. T1 est gardé ; la bascule vers T2 reste celle notée au
+  § 5.
+* **Ce que la sonde a permis de mesurer**, au lieu de l'oscilloscope prévu : coût d'une page OLED (≈ 145 µs) et
+  d'une trame (≈ 1,16 ms), du rendu (≈ 0,63 ms), de l'échantillonnage (≈ 0,29 ms) ; gigue de la boucle hors rendu
+  sous ≈ 8 µs ; et, au multimètre, que l'écart du rebouclage vient de l'entrée, pas de la sortie. Détail :
+  `docs/plan/etape-3b-sonde.md`, bilan : `docs/plan/avancement/etape-3.md`.
+* Toujours non fait : `cargo xtask flash` qui demanderait lui-même le redémarrage (`cargo probe reboot` avant
+  suffit).

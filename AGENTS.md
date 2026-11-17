@@ -294,12 +294,16 @@ Full protocol, per level, with exact commands and what each proves: see
   to). USB CDC logging is now wired in `oc-firmware` for real hardware; a
   Renode observation path (semihosting, SPI-write watch) is still not
   implemented.
-* **The firmware has been brought up on a real module, but only partly
-  verified.** Checked on the TLM build: the SH1106 OLED, the USB CDC log, the
-  boot LED, the encoders and the buttons (`3f50a42`, `a8f3560`). **Not**
-  checked: the CV inputs, the CV outputs and their calibration slopes, the
-  trigger inputs, the DAC8565 simultaneous update; `TESTING.md` Level 9 has
-  not been run as a whole. OLED overrides for other builds go through the
+* **The firmware has been brought up on a real module, mostly verified.**
+  Checked on the TLM build: the SH1106 OLED, the USB log and probe ports, the
+  boot LED, the encoders and the buttons (`3f50a42`, `a8f3560`), the
+  calibration and settings flash (step 4), and with the probe the CV inputs,
+  the CV outputs (multimeter), the trigger inputs and the output-to-input
+  loopback (`docs/plan/avancement/etape-3.md`). **Not** checked: the DAC8565
+  simultaneous update, exact counts of 1 ms triggers. Known limits measured
+  there: the inputs read within about 20 mV only (one gain shared by the four
+  inputs), and render ticks overrun their period, so the loop runs below
+  1 kHz (journal/D-023, lot 3c). OLED overrides for other builds go through the
   normal gate: `cargo xtask build|size|hex|flash --features ssd1306` (or
   `ssd1309`).
 

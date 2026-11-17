@@ -2,7 +2,7 @@
 
 Demande de l'utilisateur : finir l'étape 3 ; au passage, une interface de diagnostic plus élaborée que le journal
 USB, dans les deux sens, utile aussi au profilage (coût de l'affichage), sous la forme d'un outil du projet.
-Décision : [D-029](../../journal/D-029-live-probe.md) (**proposée**, adoptée lot par lot).
+Décision : [D-029](../../journal/D-029-live-probe.md) (adoptée, révisée, au lot 3b5).
 
 Choix de l'utilisateur : deux ports CDC (journal texte inchangé + canal binaire), sonde toujours compilée,
 périmètre complet en première version, crates `oc-protocol` + `oc-probe`.
@@ -17,8 +17,8 @@ au lieu du protocole GPIO + oscilloscope ; l'oscilloscope reste un recoupement p
 | **3b1** — profilage dans le cœur | `oc_core::profile` : étapes nommées, statistiques (min / max / moyenne / nombre), histogramme de la période de boucle ; `Clock::fine_count` / `fine_per_micro` par défaut ; l'`Engine` mesure tick, acquisition, applet, sorties, rendu, envoi ; le firmware écrit le profil sur le journal USB (fait ; le simulateur n'a pas de compteur fin réel, révision de D-029) | tests `oc-core` sur horloge simulée ; définition de « fait » |
 | **3b2** — protocole | crate `oc-protocol` (`no_std`) : messages hôte → module (hello, profil, remise à zéro, flux, sortie forcée, capture, redémarrage) et module → hôte (hello, profil, échantillons, écran, erreur) ; encadrement `postcard` COBS ; version du protocole | tests d'aller-retour et de trames corrompues |
 | **3b3** — firmware (fait, `fcd683d` → `22fb58a`, vérifié sur module) | `usb-device` composite à deux ports CDC (journal `log` maison sur le premier, `imxrt-log` retiré) ; serveur du protocole sondé par la boucle ; envoi OLED mesuré page par page ; commandes servies par l'`Engine` (sortie forcée, framebuffer) ; redémarrage en mode chargement vérifié sur les sources Teensy 4 | sur module : deux ports visibles sous macOS, journal inchangé ; coût du sondage mesuré |
-| **3b4** — outil hôte (écrit, essai sur module à faire) | crate `oc-probe` : `stats`, `stream`, `out`, `screen` (PNG ou texte), `reboot` ; `cargo xtask flash` peut demander le redémarrage | tests de l'outil sur un faux port ; essai sur module |
-| **3b5** — mesure | niveau 9 de `TESTING.md` (CV, triggers) aidé de la sonde ; coût d'une page, d'une trame, gigue de la boucle consignés dans `avancement/etape-3.md` | D-029 adoptée (révisée si besoin) ; chiffres utilisables pour trancher D-023 au lot 3c |
+| **3b4** — outil hôte (fait, `d5365bb`, essayé sur module au lot 3b5) | crate `oc-probe` : `stats`, `stream`, `out`, `screen` (PNG ou texte), `reboot` ; `cargo xtask flash` peut demander le redémarrage | tests de l'outil sur un faux port ; essai sur module |
+| **3b5** — mesure (fait, `1c11495` → ce commit) | niveau 9 de `TESTING.md` (CV, triggers) aidé de la sonde ; coût d'une page, d'une trame, gigue de la boucle consignés dans `avancement/etape-3.md` | D-029 adoptée (révisée si besoin) ; chiffres utilisables pour trancher D-023 au lot 3c |
 
 Ordre : 3b1 → 3b2 → 3b3 → 3b4 → 3b5 ; 3b1 et 3b2 sont indépendants l'un de l'autre.
 
@@ -136,3 +136,16 @@ voies, non-linéarité de la conversion d'entrée commune aux voies. 20 mV ≈ 2
 diagnostic et le scope, à reprendre si une applet suit une hauteur (quantificateur). Pistes, non engagées :
 gain par entrée, table d'entrée par morceaux comme celle du DAC. Point ouvert pour l'étape 4. Valeurs indicatives,
 un module.
+
+**9.2, source connue, ordre des canaux** (`cargo probe out A 2000`, sortie vérifiée au multimètre, branchée tour à
+tour sur CV1 à CV4) : à l'écran, la ligne attendue passe à `P`, `~` s'éteint après ≈ 1 s de niveau stable, revient
+à `.` au débranchement, `~` s'allume sur le LFO du Dixie ; l'étiquette qui réagit est celle de la prise sérigraphiée,
+sur les quatre entrées. Flux : CV1 1 973 à 1 985 mV, CV2 1 980 à 1 983, CV3 1 976 à 1 978, CV4 1 993 à 1 995 (même
+erreur d'entrée que le rebouclage, CV4 à part) ; les trois autres entrées restent dans leur bruit de repos (± 7 mV)
+pendant ce temps : pas de diaphonie visible. Valeurs indicatives.
+
+**Non vérifié** : le compte exact de triggers de 1 ms (TESTING.md 9.3, étapes 4 et 7) faute de séquenceur ou de
+générateur de salves. À prévoir d'après les mesures : deux échantillons d'un tick de rendu sont espacés d'≈ 2,1 ms,
+une impulsion de 1 ms qui tombe entière dans cet écart est manquée, soit de l'ordre de 5 % des impulsions de 1 ms
+(≈ 1,1 ms de fenêtre toutes les ≈ 21 ms), à confirmer sur module ; c'est un argument de plus pour le lot 3c ; la mise
+à jour simultanée des quatre voies du DAC8565 (il faudrait un oscilloscope à deux voies).

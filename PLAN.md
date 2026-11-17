@@ -16,6 +16,7 @@ ne recharge que ce dont elle a besoin (journal/D-001).
 | `docs/plan/roadmap.md` | étapes passées et à venir, questions ouvertes |
 | `docs/plan/revue-decisions-2026-11-16.md` | revue des décisions reconstruites : à vérifier / à réviser |
 | `docs/plan/etape-4-reglages-systeme.md` | plan de l'étape 4 : réglages système, calibration, persistance (lots 4a–4f) |
+| `docs/plan/etape-3b-sonde.md` | plan du lot 3b (sonde live) et relevé détaillé des mesures sur module |
 | `docs/plan/etape-3-plan-a-isr-16khz.md` | plan A de D-023 (ISR 16 666 Hz), proposé par Junie, non adopté ; bandeau des points caducs |
 | `docs/plan/avancement/etape-*.md` | journal d'une étape terminée : fait, mesuré, corrigé |
 | `.junie/plans/oc-rust-firmware-foundation.md` | plan détaillé de l'étape 0 (fondation), rédigé par l'assistant Junie, terminé |
@@ -44,12 +45,12 @@ comportemental (`oc-core`, D-002). Les applets musicaux sont la suite.
 ### Étape 3 — assainissement, puis choix de la cadence (en cours)
 
 Ouverte par la revue du 2026-11-16 ([revue-decisions-2026-11-16.md](docs/plan/revue-decisions-2026-11-16.md)).
-D-023 (double cadence) est **proposée** ; elle ne s'adopte qu'après 3a et la mesure de 3b.
+D-023 (double cadence) est **proposée** ; 3a et la mesure de 3b sont faites, elle se tranche au lot 3c.
 
 | Lot | Contenu | État |
 |---|---|---|
 | **3a** — dette de revue | ✅ CI verte avec `--all-features` (R1, D-013) ; ✅ triggers sans anti-rebond mécanique (R2, D-019) ; ✅ règle du brochage rendue vraie et testée (R3, D-007) ; ✅ docs « jamais sur matériel » / « jamais dans Rack » corrigées (R4, D-011, D-015) ; ✅ `flash --dry-run` en CI (V5, D-016) ; ✅ plus de présence de câble, backends alignés (R5, D-019) ; ✅ plan de cadence suivi par git, conflit avec l'étude audio consigné, OLED par pages proposé (R6, D-023) | fait — version **0.2.0** (plugin Rack 2.2.0, `CHANGELOG.md`) |
-| **3b** — sonde et mesure sur module | sonde live (D-029, plan : [etape-3b-sonde.md](docs/plan/etape-3b-sonde.md)) : ✅ 3b1 profilage dans le cœur (`oc_core::profile`, `CYCCNT`, deux lignes de profil par seconde sur le journal USB) ; ✅ 3b2 protocole `oc-protocol` (messages, COBS, `FrameReader`, testé) ; ✅ 3b3 firmware (deux ports CDC, serveur de la sonde, pages OLED chronométrées, redémarrage par 134 bauds ; vérifié sur module) ; 3b4 outil `oc-probe` (écrit et testé sur l'hôte, essai sur module à faire) ; 3b5 niveau 9 (CV, triggers ; la calibration est faite à l'étape 4), coût réel d'une trame OLED et d'une page, gigue de la boucle | à faire |
+| **3b** — sonde et mesure sur module | ✅ sonde live (D-029 adoptée, plan : [etape-3b-sonde.md](docs/plan/etape-3b-sonde.md)) : profilage dans le cœur (`CYCCNT`), protocole `oc-protocol`, deux ports CDC et redémarrage par 134 bauds, outil `oc-probe` (`stats`, `stream`, `out`, `inputs`, `triggers`, `sweep`, `screen`, `reboot`) ; boucle recalée (≈ 775 Hz depuis l'étape 1) ; niveau 9 CV, triggers, rebouclage. Mesures indicatives : trame OLED ≈ 1,16 ms (page ≈ 145 µs), rendu ≈ 0,63 ms, ADC ≈ 0,29 ms, ≈ 947 ticks/s ([etape-3.md](docs/plan/avancement/etape-3.md)) | fait |
 | **3c** — cadence | trancher D-023 (A, B ou C ; plan A : [etape-3-plan-a-isr-16khz.md](docs/plan/etape-3-plan-a-isr-16khz.md)) ; scinder `Engine::tick` en `signal_tick` / `ui_tick` dans `oc-core` | à faire |
 
 ### Étape 4 — réglages système, calibration, persistance (terminée)
@@ -83,7 +84,7 @@ Valeurs seules ; le raisonnement est dans `journal/`.
 | exécution | boucle coopérative 1 kHz, sans interruption ; rendu tous les 20 ticks (≈ 50 Hz) | D-008 (D-023 proposée) |
 | écran | framebuffer 1 024 octets dans l'ordre du contrôleur ; pilote `ssd130x` maison ; SH1106 par défaut, `ssd1306` / `ssd1309` en features | D-009 |
 | bus SPI | DAC8565 + OLED partagés, `SharedBus` sur `RefCell`, CS en GPIO, 8 MHz, tronçons ≤ 512 octets | D-010 |
-| diagnostic | aucun UART ; USB CDC sondé (`imxrt-log`) ; LED de démarrage avant la prise du SPI | D-011 |
+| diagnostic | aucun UART ; USB CDC sondé, deux ports (journal texte, sonde binaire) ; LED de démarrage avant la prise du SPI | D-011, D-029 |
 | harnais | simulation native ; Renode non fait | D-012 |
 | simulateur | TUI ratatui (crossterm), horloge virtuelle, scénarios `.scn` + écrans `.screen` (`UPDATE_SCREENS=1`) | D-013 |
 | tests | tout sur l'hôte, `oc-firmware` sans tests, bus simulés, proptest, criterion compilé en CI, niveau 9 manuel | D-014 |
@@ -99,4 +100,4 @@ Valeurs seules ; le raisonnement est dans `journal/`.
 | identifiant de build | hash court + `-dirty` sous la version, écran de démarrage des trois backends ; calculé par `oc-buildinfo` (vergen-gix, sans binaire `git`), jamais dans `oc-core` | D-025 |
 | réglages système | écran `oc-core` hors applets ; gestes au démarrage (encodeur gauche ⇒ calibration, `up` + `down` ⇒ secours) et item `SETUP` ; interaction de Phazerville | D-026 |
 | persistance | `postcard` + `sequential-storage` sur `embedded-storage` ; flash Teensy 4.0 par l'API ROM (`unsafe` confiné) ; fichier (sim) ; JSON du patch (Rack) | D-028 |
-| sonde live | *proposée* : profilage dans `oc-core` (DWT sur le module), second port USB CDC binaire `postcard` COBS, crates `oc-protocol` et `oc-probe`, toujours compilée | D-029 |
+| sonde live | profilage dans `oc-core` (DWT sur le module), second port USB CDC binaire `postcard` COBS, crates `oc-protocol` et `oc-probe`, toujours compilée ; un seul port encadré si l'USB MIDI arrive | D-029 |
