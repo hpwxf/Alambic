@@ -5,7 +5,7 @@
 | **Identifiant** | D-023 |
 | **Date** | 2026-11-16 (consigne un plan du 2026-08-02 et une étude du 2026-08-23 / 2026-09-03) |
 | **Auteur** | Pascal Havé |
-| **Statut** | proposée |
+| **Statut** | adoptée (option C+), révisée |
 | **Commits** | aucun pour l'implémentation ; étude : `83be36f`, `c8b3039` (`docs/supersaw/`) ; plan A : [`docs/plan/etape-3-plan-a-isr-16khz.md`](../docs/plan/etape-3-plan-a-isr-16khz.md) (suivi par git depuis le lot 3a ; auparavant `.junie/plans/isr-16khz-dual-rate.md`, exclu par `.git/info/exclude`) |
 
 ## 1. Contexte
@@ -76,3 +76,38 @@ Rien encore. Reste à trancher, dans cet ordre :
 * Les effets de bord de A sur D-010 (`RefCell` à deux contextes), D-018 (panique en ISR), D-019 (anti-rebond des
   triggers à 60 µs ≈ 180 µs) et D-020 (splash rendu à cadence signal) sont listés dans le plan local ; ils devront
   être révisés dans les entrées concernées le jour où A ou B est adoptée.
+
+## Révision (2026-11-17, lot 3c) — option C+ adoptée sur les mesures du lot 3b
+
+Mesures de la sonde (D-029) sur le module TLM, indicatives (un module) : une page OLED ≈ 145 µs, une trame
+≈ 1,16 ms, le dessin de l'écran diagnostic ≈ 0,63 ms, l'échantillonnage bloquant des quatre CV ≈ 0,29 ms ; un tick
+de rendu dure ≈ 2,1 ms, d'où ≈ 947 ticks par seconde ; au Pamela's Pro Workout, 39 % des triggers de 0,94 ms
+perdus, 3,9 % à 1,56 ms, 0,7 % à 2,5 ms, aucun à 5 ms et plus. Le protocole GPIO + oscilloscope prévu au § 4.2
+n'a pas été nécessaire.
+
+Ce que ces chiffres changent aux options :
+
+* A et B demandent d'abord un **échantillonnage non bloquant** (≈ 72 µs par voie en conversion bloquante, plus
+  qu'une période de 60 µs) et un **envoi OLED en DMA ou en morceaux** sous la période ; ce sont deux chantiers à
+  part entière, pas des détails de A ;
+* aucun applet audio n'est prévu avant l'étape 5 de la feuille de route ; le prochain (étape 4 : quantizer,
+  enveloppes, LFO) vit à 1 kHz ;
+* le défaut que l'utilisateur voit aujourd'hui (triggers courts perdus, trou de 2 ms) se corrige à 1 kHz.
+
+**Décision (utilisateur, 2026-11-17) : C+**, c'est-à-dire C (rester à 1 kHz, D-008) complétée de ce que le § 5
+demandait déjà (« corriger la capture des triggers indépendamment ») et de la proposition du lot 3a (aucune
+transaction OLED ne masque le chemin signal plus d'une période) :
+
+1. **capture des fronts des triggers** par le détecteur de front des GPIO, lu et effacé à chaque tick, sans
+   interruption (révision de D-019) ;
+2. **écran page par page** : dessin dans un tick, une page envoyée par tick suivant ; l'écran de démarrage garde la
+   trame entière (révision de D-009, D-010) ;
+3. **`signal_tick` / `ui_tick`** dans `oc-core` (§ 4.3), `tick()` restant la composition ;
+4. le plan A reste consigné tel quel (`docs/plan/etape-3-plan-a-isr-16khz.md`), non adopté.
+
+Plan : [`docs/plan/etape-3c-cadence.md`](../docs/plan/etape-3c-cadence.md) (lots 3c1 à 3c4).
+
+Ce qui ferait passer à A ou B (remplace le § 5) : un applet qui demande une cadence de contrôle au-delà de 1 kHz
+(enveloppes de l'ordre de la milliseconde, triggers datés à mieux qu'un tick) ⇒ A, précédée de l'échantillonnage
+non bloquant ; un chemin audio (étape 5) ⇒ B. Dans les deux cas, C+ en est la première marche : capture des
+fronts, envoi par pages et scission du tick restent.
