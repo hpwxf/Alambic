@@ -94,6 +94,17 @@ Deux gains distincts, à ne pas confondre :
   voisins fusionnés et une page entière au-delà d'un seuil ; le pire cas (Scope qui défile, changement d'écran)
   reste une trame entière, donc un budget de bus par tick reste nécessaire. Gain : le **bus** (et la transition de
   ≈ 8 ms) ; utile surtout à l'option A de D-023. Ne réduit pas le dessin.
+* **Envoyer par demi-page (ou par quart), pas par page** (examiné le 2026-11-17, non retenu pour l'instant).
+  Une demi-page (64 octets, ses propres commandes de colonne et fenêtres CS) coûterait ≈ 80 µs au lieu de ≈ 145 µs,
+  sur 16 ticks au lieu de 8 (il en reste de libres sur 20) ; pire tick ≈ 0,39 ms au lieu de ≈ 0,46 ms
+  échantillonnage compris (indicatif). Pas retenu : le calendrier est fixe, raccourcir le pire tick ne change ni
+  les périodes ni les triggers ni les sorties, la marge est déjà de ≈ 540 µs ; le bus travaille ≈ 10 % de plus
+  (surcoût fixe payé deux fois plus souvent) ; la transition visible passe de ≈ 8 à ≈ 16 ms sur 20 ; et une
+  demi-page (80 µs) reste trop longue pour l'option A de D-023 (période de 60 µs). À reprendre quand une applet
+  rendra le pire tick serré : un paramètre « morceaux par page » (1, 2, 4 ; `flush_page` sur une plage de
+  colonnes, `page_count` devenu un nombre de morceaux), comparé à « n'envoyer que ce qui a changé », qui réduit
+  le nombre et la durée des envois sans allonger la transition. Le premier poste d'un tick reste l'échantillonnage
+  bloquant (≈ 288 µs).
 * **Accélérer le dessin du texte.** Le dessin, pas l'envoi, fixe la marge du tick le plus chargé (≈ 646 µs pour le
   Diagnostic contre ≈ 73 µs pour le Scope, ≈ 40 µs de marge ; indicatif) ; le texte en est le suspect. Le texte est
   aligné sur les pages (police de 8 pixels, `ROW_HEIGHT`) : une colonne de glyphe tient dans un octet et pourrait
