@@ -64,3 +64,16 @@ n'est donc pas l'échantillonnage (le détecteur de front ne dépend pas de la l
 le seuil logique de la broche, ou n'est pas émise. Les deux limites tombent exactement sur 0,625 ms, ce qui
 évoque un pas de la source plutôt qu'un filtre analogique (qui raccourcirait progressivement) ; non tranché sans
 oscilloscope ou seconde source. Valeurs indicatives.
+
+**3c2** (`f4299a6`, `cargo probe stats --fresh 10`, Pamela 192x / 26 % sur TR1) :
+
+| Écran | `render` | `tick` max | Pire tick + `sample` | Période min – max | Ticks en 10 s |
+|---|---|---|---|---|---|
+| Diagnostic | 645,5 µs | 671 µs | ≈ 0,96 ms | 997,5 – 1 002,4 µs | 10 005 |
+| Scope | 73,2 µs | 169 µs | ≈ 0,46 ms | 997,5 – 1 002,4 µs | 10 005 |
+| SETUP | 417,5 µs | 426 µs | ≈ 0,71 ms | 997,5 – 1 002,3 µs | 10 002 |
+
+Pages : 4 000 en 10 s (8 × 50 images par seconde), 144,6 µs chacune. **Plus aucun tick ne dépasse la période** : la
+boucle tient 1 000 ticks par seconde (≈ 947 avant), toutes les périodes à moins de 4 µs de la cible, sur les trois
+écrans. Le Diagnostic est le pire cas, ≈ 40 µs de marge : son dessin coûte près de neuf fois celui du Scope, sans
+doute le texte ; si la marge manque un jour, regarder d'abord le dessin des caractères. Valeurs indicatives.
