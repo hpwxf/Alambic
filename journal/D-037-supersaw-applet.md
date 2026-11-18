@@ -120,6 +120,13 @@ touche rien.
 * Le sous-menu montre la valeur jouée (la fréquence pour `NOTE`) et sa place sur la course ; `NOTE` y est placée
   en octaves de C1 à C8.
 
+**Le ×4, tranché sur mesure (lot 8c′).** L'utilisateur a voulu une mesure objective plutôt que l'oreille.
+L'exemple `aliasing` d'`oc-core` rend le banc réel à 47 619 Hz et sépare par FFT les harmoniques de chaque voix (son
+pas exact) de ce qui s'est replié. À 1 V, de C2 à C8 : sous 10 kHz, le repli reste à −45 dB ou moins des harmoniques
+(−57 dB jusqu'à C5) ; les raies repliées les plus fortes (−22 dBc à C8) sont toutes entre 20 et 23,8 kHz. Le
+suréchantillonnage ×4 (lot 8d) n'est donc pas fait. La même mesure montre que la somme des voix est écrêtée à la
+borne de −3 V au-delà d'environ 1,1 V de `LEVEL` : question laissée ouverte.
+
 **Ce qui ne change pas.** Le banc, la voix, les parts et `STEREO`. Les assignations ne sont pas sauvegardées, comme
 celles de `RATCHET` (D-035).
 

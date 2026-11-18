@@ -266,6 +266,13 @@ impl Bank {
         &self.params
     }
 
+    /// Each voice's phase step, a turn being `2^32`: what an analysis needs
+    /// to tell a voice's harmonics from what folds back.
+    #[must_use]
+    pub fn steps(&self) -> [u32; VOICES] {
+        self.saws.map(|saw| saw.step)
+    }
+
     /// Plays `params` at `rate_hz` from the next sample on, keeping the
     /// phases and the filters' state.
     pub fn set(&mut self, params: &Supersaw, rate_hz: u32) {

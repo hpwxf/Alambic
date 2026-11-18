@@ -82,6 +82,7 @@ cargo xtask web                             # browser probe + flasher into dist/
 # version builds the firmware images onto a GitHub release; pages.yml deploys dist/web to GitHub Pages.
 cargo probe stats                           # live profile of a running module (oc-probe; also stream, out, screen, reboot)
 
+cargo run -p oc-core --example aliasing --release   # SUPERSAW's folding by FFT, C2-C8 (add a dir for WAVs)
 cargo bench                                 # criterion benchmarks; HTML report in target/criterion/report/index.html
 cargo bench -p oc-core --bench graphics     # text and shapes against embedded-graphics, demo pages (benches/graphics.rs)
 ```
