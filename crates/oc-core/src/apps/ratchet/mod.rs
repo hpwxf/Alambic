@@ -34,9 +34,8 @@ pub mod tempo;
 use core::fmt::Write as _;
 
 use self::burst::{
-    Burst, CURVE_TENTHS, Count, Effect, MAX_INTERVAL_MICROS, MAX_REPEATS, MAX_SPAN_MICROS,
-    MIN_INTERVAL_MICROS, Model, UNIT_MV, chance_from, count_from, curve_from, follow_time_micros,
-    time_from,
+    Burst, CURVE_TENTHS, Count, MAX_INTERVAL_MICROS, MAX_REPEATS, MAX_SPAN_MICROS,
+    MIN_INTERVAL_MICROS, Model, chance_from, count_from, curve_from, follow_time_micros, time_from,
 };
 use self::tempo::Tempo;
 use crate::apps::{InputSnapshot, TickContext};
@@ -44,7 +43,9 @@ use crate::fixed::{self, ONE};
 use crate::fmt::TextBuf;
 use crate::framebuffer::{FrameBuffer, ROW_HEIGHT, WIDTH_I32};
 use crate::gfx::{self, Ink, Point};
-use crate::platform::{Button, CV_CHANNELS, CvChannel, MilliVolts};
+use crate::modulation::editor::{AssignEditor, Param};
+use crate::modulation::{Assign, AssignLine};
+use crate::platform::{Button, CV_CHANNELS, MilliVolts};
 use crate::text::fonts::FONT_5X8;
 use crate::text::{self, Alignment, TextStyle};
 
@@ -82,46 +83,6 @@ fn arrow_down(frame: &mut FrameBuffer, at: Point) {
 
 /// Right edge of the value column, left of the input column.
 const VALUE_RIGHT: i32 = 98;
-
-/// The submenu's frame: from under its title to above the bottom of the
-/// timeline, which stays in view under it.
-const OVERLAY_TOP: i32 = 3;
-
-/// Height of the submenu's frame.
-const OVERLAY_HEIGHT: i32 = 51;
-
-/// Top of the submenu's first line, under the title in its frame.
-const OVERLAY_LINES_TOP: i32 = 7;
-
-/// Left edge of the submenu's text and bars' labels, inside the frame.
-const OVERLAY_LEFT: i32 = 4;
-
-/// Right edge of the submenu's text and bars, inside the frame.
-const OVERLAY_RIGHT: i32 = WIDTH_I32 - 5;
-
-/// Left edge of the scale on the formula line, after the input.
-const SCALE_LEFT: i32 = 34;
-
-/// Left edge of the lower bound's value, after `MIN`.
-const MIN_VALUE_LEFT: i32 = 26;
-
-/// Left edge of the effect's value, after `EFFECT`.
-const EFFECT_VALUE_LEFT: i32 = 46;
-
-/// Left edge of `MAX`.
-const MAX_LABEL_LEFT: i32 = 70;
-
-/// Left edge of the bars, after their labels.
-const BAR_LEFT: i32 = 26;
-
-/// Height of a bar.
-const BAR_HEIGHT: i32 = 7;
-
-/// Top of the bar of the input's signal; the setting's is one row under.
-const SIGNAL_BAR_TOP: i32 = 33;
-
-/// The range the bar of the input's signal spans, either side of 0 V.
-const SIGNAL_BAR_MV: MilliVolts = 10_000;
 
 /// `index` moved by `turns` among `len`, wrapping round.
 fn wrapped(index: usize, len: usize, turns: i32) -> usize {
@@ -239,91 +200,13 @@ enum FirstUnit {
 /// The default fraction: a quarter of the period.
 const DEFAULT_DIVISION: usize = 8;
 
-/// Bound of `SHIFT`, `MIN` and `MAX` either side of 0 V.
-const ASSIGN_RANGE_MV: MilliVolts = 10_000;
-
-/// Bound of `SCALE` either side of 0 %.
-const SCALE_RANGE_PERCENT: i32 = 200;
-
-/// `SCALE` per detent.
-const SCALE_STEP_PERCENT: i32 = 5;
-
-/// `SHIFT` per detent.
-const SHIFT_STEP_MV: MilliVolts = 50;
-
-/// `MIN` and `MAX` per detent.
-const BOUND_STEP_MV: MilliVolts = 100;
-
-/// How long a slice of the readings window lasts: the range seen covers the
-/// last one to two of them, so it follows a signal that changes (a new
-/// waveform, a smaller swing) within twice this, and still holds a whole
-/// cycle of an LFO down to a quarter of a hertz.
-pub const WINDOW_MICROS: u32 = 2_000_000;
-
-/// The lowest and highest reading lately: the slice under way and the one
-/// before, each [`WINDOW_MICROS`] long.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-struct Window {
-    current: Option<(MilliVolts, MilliVolts)>,
-    previous: Option<(MilliVolts, MilliVolts)>,
-    /// Time since the slice under way began.
-    age_micros: u32,
-}
-
-impl Window {
-    const fn new() -> Self {
-        Self {
-            current: None,
-            previous: None,
-            age_micros: 0,
-        }
-    }
-
-    /// Adds `reading`, `elapsed` after the last one; a slice that has lasted
-    /// its time becomes the previous one, the oldest is forgotten.
-    fn add(&mut self, reading: MilliVolts, elapsed: u32) {
-        self.age_micros = self.age_micros.saturating_add(elapsed);
-        if self.age_micros >= WINDOW_MICROS {
-            self.previous = self.current.take();
-            self.age_micros = 0;
-        }
-        self.current = Some(widened(self.current, (reading, reading)));
-    }
-
-    /// The range over both slices.
-    fn range(&self) -> Option<(MilliVolts, MilliVolts)> {
-        match (self.current, self.previous) {
-            (Some(current), previous) => Some(widened(previous, current)),
-            (None, previous) => previous,
-        }
-    }
-}
-
-/// `range` widened to take `other` in.
-fn widened(
-    range: Option<(MilliVolts, MilliVolts)>,
-    other: (MilliVolts, MilliVolts),
-) -> (MilliVolts, MilliVolts) {
-    range.map_or(other, |(low, high)| (low.min(other.0), high.max(other.1)))
-}
-
-/// The least span of readings `CENTER` works from.
-pub const CENTER_MIN_SPAN_MV: MilliVolts = 100;
-
-/// `numerator / denominator` rounded to the nearest multiple of `step`.
-fn rounded(numerator: i64, denominator: i64, step: i64) -> i64 {
-    let unit = denominator * step;
-    let half = unit / 2 * numerator.signum();
-    (numerator + half) / unit * step
-}
-
-/// The range of the shaped signal that sweeps `setting` over all its values
-/// under `effect` (journal/D-035): from the signal that gives its least
-/// value to the one that gives its most when it follows; centred on 0 V,
-/// around the panel's value, when it is added; 0 to 10 V (x0 to x2, x1 in
-/// the middle) when it multiplies.
+/// The range of the signal that sweeps `setting` over all its values when
+/// it follows its input (journal/D-035), from the signal that gives its
+/// least value to the one that gives its most; `None` for a setting that
+/// takes no input. [`crate::modulation::usable_range`] derives from it the ranges of the other
+/// effects.
 #[must_use]
-pub fn usable_range(setting: Setting, model: Model, effect: Effect) -> (MilliVolts, MilliVolts) {
+pub fn sweep(setting: Setting, model: Model) -> Option<(MilliVolts, MilliVolts)> {
     // Octaves as millivolts, at one volt per octave.
     let octaves = |longer: u32, shorter: u32| {
         fixed::log2(i64::from(longer) * i64::from(ONE) / i64::from(shorter.max(1)))
@@ -331,7 +214,7 @@ pub fn usable_range(setting: Setting, model: Model, effect: Effect) -> (MilliVol
                 MilliVolts::try_from(octaves * 1_000 / i64::from(ONE)).unwrap_or(0)
             })
     };
-    let (low, high) = match setting {
+    let range = match setting {
         // Four repeats per volt, one at 0 V.
         Setting::Count => (0, (i32::from(MAX_REPEATS) - 1) * 1_000 / 4),
         // A volt more halves the time, which follows from its 0 V value.
@@ -346,271 +229,9 @@ pub fn usable_range(setting: Setting, model: Model, effect: Effect) -> (MilliVol
         Setting::Shape => (-CURVE_TENTHS * 100, CURVE_TENTHS * 100),
         // 20 % per volt.
         Setting::Chance => (0, 5_000),
-        Setting::Passthru | Setting::Sync | Setting::Mode => (0, 0),
+        Setting::Passthru | Setting::Sync | Setting::Mode => return None,
     };
-    match effect {
-        Effect::Set => (low, high),
-        Effect::Add => {
-            let half = (high - low) / 2;
-            (-half, half)
-        }
-        Effect::Mul => (0, 2 * UNIT_MV),
-    }
-}
-
-/// The inputs a setting can take, in the order the right encoder turns them.
-const INPUTS: [Option<CvChannel>; 5] = [
-    None,
-    Some(CvChannel::One),
-    Some(CvChannel::Two),
-    Some(CvChannel::Three),
-    Some(CvChannel::Four),
-];
-
-/// The effects, in the order the right encoder turns them.
-const EFFECTS: [Effect; 3] = [Effect::Set, Effect::Add, Effect::Mul];
-
-/// The input a setting takes and how its signal is shaped (journal/D-035):
-/// `clamp(cv × scale + shift, min, max)`, then the effect.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct Assign {
-    /// The input, `None` for the panel's value alone.
-    pub input: Option<CvChannel>,
-    /// What the shaped signal does to the panel's value.
-    pub effect: Effect,
-    /// The input's gain, in percent; negative inverts it.
-    pub scale_percent: i32,
-    /// Added after the gain.
-    pub shift_mv: MilliVolts,
-    /// The shaped signal's lower bound.
-    pub min_mv: MilliVolts,
-    /// The shaped signal's upper bound, never below `min_mv`.
-    pub max_mv: MilliVolts,
-}
-
-impl Assign {
-    /// No input: the signal at unity, unshifted, unbounded, added.
-    pub const NONE: Self = Self {
-        input: None,
-        effect: Effect::Add,
-        scale_percent: 100,
-        shift_mv: 0,
-        min_mv: -ASSIGN_RANGE_MV,
-        max_mv: ASSIGN_RANGE_MV,
-    };
-
-    /// `millivolts` as the setting receives it: scaled, shifted, bounded.
-    #[must_use]
-    pub fn shape(&self, millivolts: MilliVolts) -> MilliVolts {
-        let shaped =
-            i64::from(millivolts) * i64::from(self.scale_percent) / 100 + i64::from(self.shift_mv);
-        let bounded = shaped.clamp(i64::from(self.min_mv), i64::from(self.max_mv));
-        MilliVolts::try_from(bounded).unwrap_or(0)
-    }
-
-    /// The shaped signal and its effect, `None` without an input.
-    fn reading(&self, cv: &[MilliVolts; CV_CHANNELS]) -> Option<(MilliVolts, Effect)> {
-        self.input
-            .map(|channel| (self.shape(cv[channel.index()]), self.effect))
-    }
-
-    /// How the main screen names it, as an operation on the panel's value:
-    /// `=CV2`, `+CV2` or `*CV2`.
-    fn write(&self, out: &mut TextBuf<8>) {
-        if let Some(channel) = self.input {
-            let symbol = match self.effect {
-                Effect::Set => '=',
-                Effect::Add => '+',
-                Effect::Mul => '*',
-            };
-            let _ = write!(out, "{symbol}CV{}", channel.index() + 1);
-        }
-    }
-
-    /// The value of `line` as the submenu shows it: the input, the scale as
-    /// a factor (`x0.50`), the shift and the bounds in volts, the effect.
-    fn field(&self, line: AssignLine) -> TextBuf<16> {
-        let mut out = TextBuf::<16>::new();
-        let _ = match line {
-            AssignLine::Input => match self.input {
-                Some(channel) => write!(out, "CV{}", channel.index() + 1),
-                None => write!(out, "--"),
-            },
-            AssignLine::Scale => {
-                let sign = if self.scale_percent < 0 { "-" } else { "" };
-                let magnitude = self.scale_percent.unsigned_abs();
-                write!(out, "x{sign}{}.{:02}", magnitude / 100, magnitude % 100)
-            }
-            AssignLine::Shift => {
-                write_volts(&mut out, self.shift_mv, 2);
-                write!(out, "V")
-            }
-            AssignLine::Min => {
-                write_volts(&mut out, self.min_mv, 1);
-                Ok(())
-            }
-            AssignLine::Max => {
-                write_volts(&mut out, self.max_mv, 1);
-                Ok(())
-            }
-            AssignLine::Center => write!(out, "{}", line.label()),
-            AssignLine::Effect => write!(
-                out,
-                "{}",
-                match self.effect {
-                    Effect::Set => "SET",
-                    Effect::Add => "ADD",
-                    Effect::Mul => "MUL",
-                }
-            ),
-        };
-        out
-    }
-
-    /// Sets the scale and shift that carry `seen`, the lowest and highest
-    /// reading, onto `target`, the range of the shaped signal the setting can
-    /// use: the middles meet, the spans too as far as the scale's range
-    /// allows; both rounded to their steps. Leaves them as they are and
-    /// returns `false` when the readings span less than [`CENTER_MIN_SPAN_MV`],
-    /// a signal too still to measure.
-    pub fn center(
-        &mut self,
-        seen: (MilliVolts, MilliVolts),
-        target: (MilliVolts, MilliVolts),
-    ) -> bool {
-        let span = i64::from(seen.1) - i64::from(seen.0);
-        if span < i64::from(CENTER_MIN_SPAN_MV) {
-            return false;
-        }
-        let wanted = i64::from(target.1) - i64::from(target.0);
-        let scale = rounded(wanted * 100, span, i64::from(SCALE_STEP_PERCENT)).clamp(
-            i64::from(SCALE_STEP_PERCENT),
-            i64::from(SCALE_RANGE_PERCENT),
-        );
-        // Twice the middles, to stay in whole millivolts.
-        let seen_middle = i64::from(seen.0) + i64::from(seen.1);
-        let target_middle = i64::from(target.0) + i64::from(target.1);
-        let shift = rounded(
-            target_middle * 100 - seen_middle * scale,
-            200,
-            i64::from(SHIFT_STEP_MV),
-        )
-        .clamp(-i64::from(ASSIGN_RANGE_MV), i64::from(ASSIGN_RANGE_MV));
-        self.scale_percent = i32::try_from(scale).unwrap_or(100);
-        self.shift_mv = MilliVolts::try_from(shift).unwrap_or(0);
-        true
-    }
-
-    /// Whether the setting follows its input, the panel's value unused.
-    const fn sets(&self) -> bool {
-        self.input.is_some() && matches!(self.effect, Effect::Set)
-    }
-
-    /// Turns `line` by `turns` detents, each value stopping at its ends.
-    fn turn(&mut self, line: AssignLine, turns: i32) {
-        match line {
-            AssignLine::Input => self.input = step_through(&INPUTS, self.input, turns),
-            AssignLine::Effect => self.effect = step_through(&EFFECTS, self.effect, turns),
-            AssignLine::Center => {}
-            AssignLine::Scale => {
-                self.scale_percent = (self.scale_percent + turns * SCALE_STEP_PERCENT)
-                    .clamp(-SCALE_RANGE_PERCENT, SCALE_RANGE_PERCENT);
-            }
-            AssignLine::Shift => {
-                self.shift_mv = (self.shift_mv + turns * SHIFT_STEP_MV)
-                    .clamp(-ASSIGN_RANGE_MV, ASSIGN_RANGE_MV);
-            }
-            AssignLine::Min => {
-                self.min_mv =
-                    (self.min_mv + turns * BOUND_STEP_MV).clamp(-ASSIGN_RANGE_MV, self.max_mv);
-            }
-            AssignLine::Max => {
-                self.max_mv =
-                    (self.max_mv + turns * BOUND_STEP_MV).clamp(self.min_mv, ASSIGN_RANGE_MV);
-            }
-        }
-    }
-}
-
-/// The value `turns` places from `current` in `values`, stopping at both
-/// ends.
-fn step_through<T: Copy + PartialEq>(values: &[T], current: T, turns: i32) -> T {
-    let last = i32::try_from(values.len()).unwrap_or(1) - 1;
-    let index = values
-        .iter()
-        .position(|&value| value == current)
-        .unwrap_or(0);
-    let next = (i32::try_from(index).unwrap_or(0) + turns).clamp(0, last);
-    values[usize::try_from(next).unwrap_or(0)]
-}
-
-/// The fields of the input submenu, in the order the left encoder picks
-/// them: the input, its scale and shift on the first line, read as a
-/// formula, the bounds on the second, the effect and `CENTER` on the third.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum AssignLine {
-    /// Which input.
-    Input,
-    /// The gain.
-    Scale,
-    /// The offset.
-    Shift,
-    /// The lower bound.
-    Min,
-    /// The upper bound.
-    Max,
-    /// What the signal does to the panel's value.
-    Effect,
-    /// An action, not a value: the right encoder's click sets the scale and
-    /// shift that carry the readings seen onto the setting's usable range.
-    Center,
-}
-
-impl AssignLine {
-    /// Every line, top to bottom.
-    pub const ALL: [Self; 7] = [
-        Self::Input,
-        Self::Scale,
-        Self::Shift,
-        Self::Min,
-        Self::Max,
-        Self::Effect,
-        Self::Center,
-    ];
-
-    const fn label(self) -> &'static str {
-        match self {
-            Self::Input => "INPUT",
-            Self::Scale => "SCALE",
-            Self::Shift => "SHIFT",
-            Self::Min => "MIN",
-            Self::Max => "MAX",
-            Self::Effect => "EFFECT",
-            Self::Center => "CENTER",
-        }
-    }
-}
-
-/// Writes `millivolts` as signed volts with `decimals` (1 or 2) digits after
-/// the point, truncated: `+1.23`, `-0.5`.
-fn write_volts<const N: usize>(out: &mut TextBuf<N>, millivolts: MilliVolts, decimals: u32) {
-    let sign = if millivolts < 0 { '-' } else { '+' };
-    let magnitude = millivolts.unsigned_abs();
-    let _ = if decimals >= 2 {
-        write!(
-            out,
-            "{sign}{}.{:02}",
-            magnitude / 1_000,
-            magnitude % 1_000 / 10
-        )
-    } else {
-        write!(
-            out,
-            "{sign}{}.{}",
-            magnitude / 1_000,
-            magnitude % 1_000 / 100
-        )
-    };
+    Some(range)
 }
 
 /// A burst under way.
@@ -653,11 +274,8 @@ pub struct RatchetApp {
     /// The input of each setting that takes one (see `Setting::input_slot`).
     assigns: [Assign; 4],
     selected: usize,
-    /// The line picked in the selected setting's input submenu, `None` while
-    /// it is closed.
-    assigning: Option<usize>,
-    /// The lowest and highest reading of the submenu's input, lately.
-    observed: Window,
+    /// The selected setting's input submenu, `None` while it is closed.
+    assigning: Option<AssignEditor>,
     gate: bool,
     running: Option<Running>,
     pulse_a_micros: u32,
@@ -680,7 +298,6 @@ impl RatchetApp {
             seed: 0x2545_F491,
             selected: 0,
             assigning: None,
-            observed: Window::new(),
             gate: false,
             running: None,
             pulse_a_micros: 0,
@@ -735,21 +352,22 @@ impl RatchetApp {
         self.selected / PAGE_ROWS
     }
 
-    /// The line picked in the selected setting's input submenu, `None`
+    /// The field picked in the selected setting's input submenu, `None`
     /// while it is closed.
     #[must_use]
     pub const fn assigning(&self) -> Option<AssignLine> {
-        match self.assigning {
-            Some(line) => Some(AssignLine::ALL[line]),
+        match &self.assigning {
+            Some(editor) => Some(editor.line()),
             None => None,
         }
     }
 
-    /// The lowest and highest reading of the submenu's input over the last
-    /// [`WINDOW_MICROS`] to twice that, `None` before the first.
+    /// The lowest and highest reading of the submenu's input lately (see
+    /// [`AssignEditor::range`]), `None` while it is closed or before the
+    /// first.
     #[must_use]
     pub fn observed(&self) -> Option<(MilliVolts, MilliVolts)> {
-        self.observed.range()
+        self.assigning.as_ref().and_then(AssignEditor::range)
     }
 
     /// Repeats sent by the burst under way, `None` when none runs.
@@ -887,73 +505,37 @@ impl RatchetApp {
     }
 
     fn follow_panel(&mut self, input: &InputSnapshot) {
-        let picks = i32::from(input.controls.delta(0));
-        let turns = i32::from(input.controls.delta(1));
-        if let (Some(line), Some(slot)) = (self.assigning, self.selected().input_slot()) {
-            self.follow_submenu(input, line, slot, picks, turns);
+        let selected = self.selected();
+        if let (Some(editor), Some(slot), Some(sweep)) = (
+            &mut self.assigning,
+            selected.input_slot(),
+            sweep(selected, self.settings.model),
+        ) {
+            if !editor.follow(&mut self.assigns[slot], input, sweep) {
+                self.assigning = None;
+            }
             return;
         }
+        let picks = i32::from(input.controls.delta(0));
         if picks != 0 {
             self.selected = wrapped(self.selected, Setting::ALL.len(), picks);
         }
         if input.buttons.pressed(Button::RightEncoder) && self.selected().input_slot().is_some() {
-            self.assigning = Some(0);
-            self.observed = Window::new();
+            self.assigning = Some(AssignEditor::new());
         }
+        let turns = i32::from(input.controls.delta(1));
         if turns != 0 {
             self.change(self.selected(), turns);
         }
     }
 
-    /// The panel in the input submenu of the setting whose input is kept in
-    /// `slot`, `line` picked.
-    fn follow_submenu(
-        &mut self,
-        input: &InputSnapshot,
-        line: usize,
-        slot: usize,
-        picks: i32,
-        turns: i32,
-    ) {
-        let centering = AssignLine::ALL[line] == AssignLine::Center;
-        if input.buttons.pressed(Button::RightEncoder) && centering {
-            if let Some(seen) = self.observed.range() {
-                let target = usable_range(
-                    self.selected(),
-                    self.settings.model,
-                    self.assigns[slot].effect,
-                );
-                self.assigns[slot].center(seen, target);
-            }
-            return;
-        }
-        if input.buttons.pressed(Button::RightEncoder) || input.buttons.pressed(Button::Down) {
-            self.assigning = None;
-            return;
-        }
-        let line = wrapped(line, AssignLine::ALL.len(), picks);
-        self.assigning = Some(line);
-        if turns != 0 {
-            let assign = &mut self.assigns[slot];
-            let before = assign.input;
-            assign.turn(AssignLine::ALL[line], turns);
-            if assign.input != before {
-                self.observed = Window::new();
-            }
-        }
-    }
-
-    /// Adds the input's reading to the submenu's window, `elapsed` after the
-    /// last.
+    /// Adds the reading of the submenu's input to its range seen, `elapsed`
+    /// after the last.
     fn observe(&mut self, elapsed: u32) {
-        let Some(channel) = self
-            .assigning
-            .and(self.assign(self.selected()))
-            .and_then(|assign| assign.input)
-        else {
-            return;
-        };
-        self.observed.add(self.cv[channel.index()], elapsed);
+        let slot = self.selected().input_slot();
+        if let (Some(editor), Some(slot)) = (&mut self.assigning, slot) {
+            editor.observe(&self.assigns[slot], &self.cv, elapsed);
+        }
     }
 
     /// Turns `setting` by `turns` detents.
@@ -1037,8 +619,8 @@ impl RatchetApp {
     pub fn render(&self, frame: &mut FrameBuffer, _context: &TickContext) {
         frame.clear();
         self.render_main(frame);
-        if let (Some(line), Some(assign)) = (self.assigning(), self.assign(self.selected())) {
-            self.render_submenu(frame, line, assign);
+        if let (Some(editor), Some(assign)) = (&self.assigning, self.assign(self.selected())) {
+            self.render_submenu(frame, editor, assign);
         }
     }
 
@@ -1135,141 +717,24 @@ impl RatchetApp {
         }
     }
 
-    /// The input submenu of the selected setting, `line` picked, as a frame
-    /// over the main screen whose top edge carries the setting and the value
-    /// a burst would take now: the input, scale and shift read as a formula,
-    /// the bounds, the effect, then a bar of the input's signal and one of
-    /// the setting it moves. The bottom of the timeline stays in view.
-    fn render_submenu(&self, frame: &mut FrameBuffer, line: AssignLine, assign: &Assign) {
+    /// The selected setting's input submenu over the main screen: the
+    /// setting, the value a burst would take now and where both sit in its
+    /// range (journal/D-036).
+    fn render_submenu(&self, frame: &mut FrameBuffer, editor: &AssignEditor, assign: &Assign) {
         let setting = self.selected();
         let latched = self.latched();
         let mut now = TextBuf::<16>::new();
         self.write_value(setting, &latched, None, &mut now);
-        render_overlay_frame(frame, self.label(setting), now.as_str());
-
-        let lit = TextStyle::lit(&FONT_5X8);
-        for (shown, row, x) in [
-            (AssignLine::Min, 1, OVERLAY_LEFT),
-            (AssignLine::Max, 1, MAX_LABEL_LEFT),
-            (AssignLine::Effect, 2, OVERLAY_LEFT),
-        ] {
-            text::draw(frame, shown.label(), Point::new(x, overlay_row(row)), lit);
-        }
-        for (shown, row, x, align) in [
-            (AssignLine::Input, 0, OVERLAY_LEFT, Alignment::Left),
-            (AssignLine::Scale, 0, SCALE_LEFT, Alignment::Left),
-            (AssignLine::Shift, 0, OVERLAY_RIGHT, Alignment::Right),
-            (AssignLine::Min, 1, MIN_VALUE_LEFT, Alignment::Left),
-            (AssignLine::Max, 1, OVERLAY_RIGHT, Alignment::Right),
-            (AssignLine::Effect, 2, EFFECT_VALUE_LEFT, Alignment::Left),
-            (AssignLine::Center, 2, OVERLAY_RIGHT, Alignment::Right),
-        ] {
-            let value = assign.field(shown);
-            let width = FONT_5X8.width_of(value.as_str());
-            let left = if align == Alignment::Right {
-                x - width
-            } else {
-                x
-            };
-            let top = overlay_row(row);
-            let style = if shown == line {
-                // The field the right encoder turns, in a lit box.
-                gfx::fill_rect(frame, left - 2, top, width + 4, ROW_HEIGHT, Ink::Lit);
-                TextStyle::dark(&FONT_5X8)
-            } else {
-                if shown == AssignLine::Center {
-                    // An action: a button, outlined.
-                    gfx::rect(frame, left - 2, top, width + 4, ROW_HEIGHT, Ink::Lit);
-                }
-                lit
-            };
-            text::draw(frame, value.as_str(), Point::new(left, top), style);
-        }
-
-        self.render_signal_bar(frame, assign, SIGNAL_BAR_TOP);
-        self.render_setting_bar(
-            frame,
-            setting,
-            assign,
-            &latched,
-            SIGNAL_BAR_TOP + ROW_HEIGHT + 3,
-        );
-    }
-
-    /// The bar of the input's signal at `top`, −10 V to +10 V with a mark at
-    /// 0 V, on the scale of what the setting receives: the signal once
-    /// scaled, shifted and bounded as a band from 0 V and a block, so that
-    /// `SCALE` and `SHIFT` move them; the reading as it comes as a thin
-    /// stroke, taller than the block, the lowest to highest reading seen as a
-    /// line along the top; the bounds, when they bound anything, as brackets.
-    fn render_signal_bar(&self, frame: &mut FrameBuffer, assign: &Assign, top: i32) {
-        text::draw(
-            frame,
-            "CV",
-            Point::new(OVERLAY_LEFT, top),
-            TextStyle::lit(&FONT_5X8),
-        );
-        let width = OVERLAY_RIGHT - BAR_LEFT;
-        let x_of = |millivolts: MilliVolts| {
-            let clamped = millivolts.clamp(-SIGNAL_BAR_MV, SIGNAL_BAR_MV);
-            BAR_LEFT + (clamped + SIGNAL_BAR_MV) * width / (2 * SIGNAL_BAR_MV)
+        let param = Param {
+            name: self.label(setting),
+            now: now.as_str(),
+            // A bipolar setting is marked at its middle, the others at
+            // their start.
+            zero_permille: if setting == Setting::Shape { 500 } else { 0 },
+            panel_permille: position(setting, &self.synced()),
+            now_permille: position(setting, &latched),
         };
-        render_bar_frame(frame, top, x_of(0));
-        if assign.min_mv > -SIGNAL_BAR_MV || assign.max_mv < SIGNAL_BAR_MV {
-            for (x, inward) in [(x_of(assign.min_mv), 1), (x_of(assign.max_mv), -1)] {
-                gfx::vline(frame, x, top - 1, BAR_HEIGHT + 2, Ink::Lit);
-                gfx::pixel(frame, x + inward, top - 1, Ink::Lit);
-                gfx::pixel(frame, x + inward, top + BAR_HEIGHT, Ink::Lit);
-            }
-        }
-        let Some(channel) = assign.input else {
-            return;
-        };
-        if let Some((low, high)) = self.observed.range() {
-            gfx::hline(frame, x_of(low), top, x_of(high) - x_of(low) + 1, Ink::Lit);
-        }
-        let reading = self.cv[channel.index()];
-        let shaped = x_of(assign.shape(reading));
-        let zero = x_of(0);
-        let (left, right) = (zero.min(shaped), zero.max(shaped));
-        gfx::fill_rect(frame, left, top + 2, right - left + 1, 3, Ink::Lit);
-        gfx::fill_rect(frame, shaped - 1, top + 1, 3, BAR_HEIGHT - 2, Ink::Lit);
-        gfx::vline(frame, x_of(reading), top - 1, BAR_HEIGHT + 2, Ink::Lit);
-    }
-
-    /// The bar of `setting` at `top`, over its whole range: the panel's value
-    /// as a tick (unless the input sets it), the value a burst would take now
-    /// as a block, and the stretch the input moves it as a band between.
-    fn render_setting_bar(
-        &self,
-        frame: &mut FrameBuffer,
-        setting: Setting,
-        assign: &Assign,
-        latched: &Burst,
-        top: i32,
-    ) {
-        text::draw(
-            frame,
-            "VAL",
-            Point::new(OVERLAY_LEFT, top),
-            TextStyle::lit(&FONT_5X8),
-        );
-        let width = OVERLAY_RIGHT - BAR_LEFT;
-        let x_of = |permille: i32| BAR_LEFT + permille.clamp(0, 1_000) * width / 1_000;
-        // A bipolar setting is marked at its middle, the others at their start.
-        let zero = if setting == Setting::Shape { 500 } else { 0 };
-        render_bar_frame(frame, top, x_of(zero));
-        let now = x_of(position(setting, latched));
-        let from = if assign.sets() {
-            x_of(zero)
-        } else {
-            let panel = x_of(position(setting, &self.synced()));
-            gfx::vline(frame, panel, top - 1, BAR_HEIGHT + 2, Ink::Lit);
-            panel
-        };
-        let (left, right) = (from.min(now), from.max(now));
-        gfx::fill_rect(frame, left, top + 2, right - left + 1, 3, Ink::Lit);
-        gfx::fill_rect(frame, now - 1, top, 3, BAR_HEIGHT, Ink::Lit);
+        editor.render(frame, assign, &self.cv, &param);
     }
 
     /// The scroll bar left of the settings, `height` pixels under the title
@@ -1394,67 +859,6 @@ impl RatchetApp {
             arrow_down(frame, Point::new(x - 2, top - 4));
         }
     }
-}
-
-/// Top of line `row` (from 0) in the submenu's frame.
-const fn overlay_row(row: i32) -> i32 {
-    OVERLAY_LINES_TOP + row * ROW_HEIGHT
-}
-
-/// Clears the submenu's place and draws its frame, `label` and `now` each in
-/// a gap of its top edge, a pixel clear either side.
-fn render_overlay_frame(frame: &mut FrameBuffer, label: &str, now: &str) {
-    let lit = TextStyle::lit(&FONT_5X8);
-    gfx::fill_rect(
-        frame,
-        0,
-        0,
-        WIDTH_I32,
-        OVERLAY_TOP + OVERLAY_HEIGHT + 1,
-        Ink::Dark,
-    );
-    gfx::rect(frame, 0, OVERLAY_TOP, WIDTH_I32, OVERLAY_HEIGHT, Ink::Lit);
-    gfx::fill_rect(
-        frame,
-        4,
-        0,
-        FONT_5X8.width_of(label) + 4,
-        ROW_HEIGHT - 1,
-        Ink::Dark,
-    );
-    text::draw(frame, label, Point::new(6, 0), lit);
-    let right = WIDTH_I32 - 6;
-    let width = FONT_5X8.width_of(now);
-    gfx::fill_rect(
-        frame,
-        right - width - 2,
-        0,
-        width + 4,
-        ROW_HEIGHT - 1,
-        Ink::Dark,
-    );
-    text::draw(
-        frame,
-        now,
-        Point::new(right, 0),
-        lit.aligned(Alignment::Right),
-    );
-}
-
-/// The outline of a bar at `top`, between the bars' edges, with a mark at
-/// `zero` above and below.
-fn render_bar_frame(frame: &mut FrameBuffer, top: i32, zero: i32) {
-    gfx::hline(
-        frame,
-        BAR_LEFT,
-        top + BAR_HEIGHT / 2,
-        OVERLAY_RIGHT - BAR_LEFT + 1,
-        Ink::Lit,
-    );
-    gfx::vline(frame, BAR_LEFT, top, BAR_HEIGHT, Ink::Lit);
-    gfx::vline(frame, OVERLAY_RIGHT, top, BAR_HEIGHT, Ink::Lit);
-    gfx::vline(frame, zero, top, 2, Ink::Lit);
-    gfx::vline(frame, zero, top + BAR_HEIGHT - 2, 2, Ink::Lit);
 }
 
 /// Where `setting` sits in its range in `burst`, in thousandths: the count

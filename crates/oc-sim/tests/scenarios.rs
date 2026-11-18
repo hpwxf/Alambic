@@ -214,7 +214,8 @@ fn ratchet_marks_where_the_next_trigger_is_due() {
 
 #[test]
 fn ratchet_shows_the_input_submenu() {
-    use oc_core::apps::ratchet::{AssignLine, Setting};
+    use oc_core::apps::ratchet::Setting;
+    use oc_core::modulation::AssignLine;
     use oc_core::platform::CvChannel;
     let mut simulator = replay("ratchet_inputs");
     let ratchet = simulator.ratchet();

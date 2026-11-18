@@ -2,8 +2,9 @@
 //! outputs, tick by tick, for the edges `TR1` receives.
 
 use oc_core::apps::AppId;
-use oc_core::apps::ratchet::burst::{Count, Effect, Model};
-use oc_core::apps::ratchet::{Assign, AssignLine, Setting, TRIGGER_MV, usable_range};
+use oc_core::apps::ratchet::burst::{Count, Model};
+use oc_core::apps::ratchet::{Setting, TRIGGER_MV, sweep};
+use oc_core::modulation::{AssignLine, Effect};
 use oc_core::platform::{Button, CvChannel, TriggerChannel};
 use oc_core::settings::Settings;
 use oc_core::testing::{MockEngine, mock_engine_at_boot};
@@ -555,47 +556,20 @@ fn an_input_that_sets_a_setting_stands_in_for_its_value() {
 }
 
 #[test]
-fn the_usable_range_sweeps_each_setting_end_to_end() {
-    // Added, centred: COUNT 4 per volt over 1 to 32, SHAPE a volt per 1.0.
-    assert_eq!(
-        usable_range(Setting::Count, Model::First, Effect::Add),
-        (-3_875, 3_875)
-    );
-    assert_eq!(
-        usable_range(Setting::Shape, Model::First, Effect::Add),
-        (-3_000, 3_000)
-    );
-    assert_eq!(
-        usable_range(Setting::Chance, Model::First, Effect::Set),
-        (0, 5_000)
-    );
-    // Followed, the time is 100 ms at 0 V: about 4.3 octaves down to 2 s,
-    // 5.6 up to 2 ms; SPAN from 400 ms, up to 8 s.
-    let (slow, fast) = usable_range(Setting::Time, Model::First, Effect::Set);
+fn each_setting_is_swept_end_to_end_by_its_own_range() {
+    // Followed: COUNT 4 per volt over 1 to 32, SHAPE a volt per 1.0, PROB
+    // 20 % per volt.
+    assert_eq!(sweep(Setting::Count, Model::First), Some((0, 7_750)));
+    assert_eq!(sweep(Setting::Shape, Model::First), Some((-3_000, 3_000)));
+    assert_eq!(sweep(Setting::Chance, Model::First), Some((0, 5_000)));
+    // The time is 100 ms at 0 V: about 4.3 octaves down to 2 s, 5.6 up to
+    // 2 ms; SPAN from 400 ms, up to 8 s.
+    let (slow, fast) = sweep(Setting::Time, Model::First).unwrap();
     assert!((-4_330..=-4_310).contains(&slow) && (5_630..=5_650).contains(&fast));
-    let (slow, fast) = usable_range(Setting::Time, Model::Span, Effect::Set);
+    let (slow, fast) = sweep(Setting::Time, Model::Span).unwrap();
     assert!((-4_330..=-4_310).contains(&slow) && (7_630..=7_650).contains(&fast));
-    // Multiplying: x0 to x2 around x1, for any setting.
-    assert_eq!(
-        usable_range(Setting::Count, Model::First, Effect::Mul),
-        (0, 10_000)
-    );
-}
-
-#[test]
-fn center_carries_the_readings_seen_onto_the_usable_range() {
-    let mut assign = Assign::NONE;
-    // -3.6 V to 4.9 V onto +-3.875 V: x0.90 (8.5 V to 7.65 V), the middle,
-    // 0.65 V, brought to 0 V by -0.60 V; the steps round both.
-    assert!(assign.center((-3_600, 4_900), (-3_875, 3_875)));
-    assert_eq!((assign.scale_percent, assign.shift_mv), (90, -600));
-    assert_eq!((assign.shape(-3_600), assign.shape(4_900)), (-3_840, 3_810));
-    // A narrow signal is scaled up as far as x2.00, then centred.
-    assert!(assign.center((1_000, 2_000), (0, 10_000)));
-    assert_eq!((assign.scale_percent, assign.shift_mv), (200, 2_000));
-    // Too still to measure: left as it is.
-    assert!(!assign.center((1_000, 1_050), (-3_875, 3_875)));
-    assert_eq!((assign.scale_percent, assign.shift_mv), (200, 2_000));
+    // The options take no input.
+    assert_eq!(sweep(Setting::Mode, Model::First), None);
 }
 
 #[test]

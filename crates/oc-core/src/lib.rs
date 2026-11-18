@@ -45,6 +45,7 @@ pub mod fmt;
 pub mod framebuffer;
 pub mod gfx;
 pub mod menu;
+pub mod modulation;
 pub mod platform;
 pub mod presence;
 pub mod profile;

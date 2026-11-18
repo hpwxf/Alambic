@@ -5,7 +5,7 @@
 | **Identifiant** | D-035 |
 | **Date** | 2026-11-18 |
 | **Auteur** | Pascal Havé |
-| **Statut** | adoptée |
+| **Statut** | adoptée, révisée |
 | **Commits** | ce commit (ADR, plan, implémentation) |
 | **Relations** | remplace le choix d'entrée de D-032 (`--`, `CVn=`, `CVn+` au clic sur l'encodeur droit) ; garde ses correspondances (nombre +4/V, temps 1 V/oct, `SHAPE` +1,0/V, `PROB` +20 %/V) ; calcul entier (D-005) ; écran par `gfx` / `text` (D-030) |
 
@@ -91,3 +91,8 @@ L'utilisateur a choisi `SET` / `ADD` / `MUL`, **les deux** sortes de bornes, la 
   référence ou la rendre réglable.
 * Des pas trop grossiers ou trop fins à l'encodeur : accélération de l'encodeur, ou pas variables.
 * Le besoin de garder les assignations après coupure : les faire entrer dans les réglages persistants (D-028).
+
+## Révision du 2026-11-18 — mécanique partagée (D-036)
+
+Le code de cette décision sort de `apps/ratchet` vers `oc_core::modulation` (`Assign`, `Effect`, la plage vue,
+`CENTER`, l'éditeur et son dessin), pour d'autres applets. Le comportement ne change pas. Voir D-036.

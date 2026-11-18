@@ -107,7 +107,7 @@ test tone for the audio path (journal/D-033).
 
 | Crate                | `no_std` | `unsafe` policy            | Role |
 |-----------------------|----------|-----------------------------|------|
-| `crates/oc-core`      | yes      | `forbid(unsafe_code)`       | **All** behaviour: platform traits, `Engine::tick`, the applets (`DiagnosticApp`, `ScopeApp`, `GfxDemoApp`, `RatchetApp`, `ToneApp`) and the app menu, the output parameters and the voice that renders them (`audio`), the graphics primitives (`gfx`, `text`), button debouncing and chord arbitration, calibration, quadrature decoding, framebuffer. Knows nothing about registers or an OS. |
+| `crates/oc-core`      | yes      | `forbid(unsafe_code)`       | **All** behaviour: platform traits, `Engine::tick`, the applets (`DiagnosticApp`, `ScopeApp`, `GfxDemoApp`, `RatchetApp`, `ToneApp`) and the app menu, the output parameters and the voice that renders them (`audio`), modulating a parameter by a CV input and the submenu that edits it (`modulation`), the graphics primitives (`gfx`, `text`), button debouncing and chord arbitration, calibration, quadrature decoding, framebuffer. Knows nothing about registers or an OS. |
 | `crates/oc-drivers`   | yes      | `forbid(unsafe_code)`       | Peripheral protocols (DAC8565, SH1106/SSD1306/SSD1309, triggers, shared SPI bus) over `embedded-hal` 1.0 only; tested on the host against recording mock buses. |
 | `crates/oc-firmware`  | yes (bin)| `deny(unsafe_code)`; `unsafe` only in `flash_store.rs` (boot ROM calls), `reboot.rs` (bootloader hand-over) and `audio_irq.rs` (the DAC's DMA, its ring, the audio handlers) | Pure wiring: turns `teensy4-bsp`/`imxrt-hal` resources into the `oc-core` platform traits, runs the 1 kHz loop. The one crate that cannot be tested on the host. |
 | `crates/oc-protocol`  | yes      | `forbid(unsafe_code)`       | Messages between the firmware and the host probe (`Request`, `Reply`), `postcard` + COBS framing, `FrameReader`; tested on the host (journal/D-029). |
@@ -394,6 +394,7 @@ Full protocol, per level, with exact commands and what each proves: see
 | The scope applet                                  | `crates/oc-core/src/apps/scope.rs` |
 | The `TONE` test applet (four waveforms, V/oct)    | `crates/oc-core/src/apps/tone.rs` |
 | Output parameters, the voice, the waveforms (sine table built at compile time) | `crates/oc-core/src/audio/mod.rs`, `audio/wave.rs` (journal/D-033) |
+| A parameter modulated by a CV input (scale, shift, bounds, `SET` / `ADD` / `MUL`, `CENTER`) and its submenu, for any applet; `RATCHET` is the first user | `crates/oc-core/src/modulation/mod.rs`, `modulation/editor.rs` (journal/D-035, D-036) |
 | The app registry and dispatch (`AppId`, `AppHost`) | `crates/oc-core/src/apps/mod.rs` |
 | The app menu (`up`+`down`) and its rendering      | `crates/oc-core/src/menu.rs` |
 | The system settings screen (`SETUP`, boot gestures) | `crates/oc-core/src/system.rs` (routing in `engine.rs`) |
