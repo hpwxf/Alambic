@@ -19,6 +19,7 @@ ne recharge que ce dont elle a besoin (journal/D-001).
 | `docs/plan/etape-3b-sonde.md` | plan du lot 3b (sonde live) et relevé détaillé des mesures sur module |
 | `docs/plan/etape-6-ratchet.md` | plan de l'étape 6 : applet Ratchet (D-032) |
 | `docs/plan/etape-7-chemin-audio.md` | plan de l'étape 7 : chemin audio, DAC à 48 kHz (D-033) |
+| `docs/plan/etape-8-supersaw.md` | plan de l'étape 8 : applet Supersaw, premier oscillateur (D-037) |
 | `docs/hardware.md` | le matériel du module : principes, ce que disent les fiches, ce module et ses mesures ; glossaire |
 | `docs/plan/rapport-etape-7-chemin-audio.md` | rapport détaillé de l'étape 7 : essais, échecs, analyses et correctifs, du DAC à 1 kHz au DAC en DMA |
 | `docs/plan/panique-persistante.md` | préparé, non décidé : garder le message d'une panique à travers un redémarrage (D-018) |
@@ -51,6 +52,19 @@ comportemental (`oc-core`, D-002). Les applets musicaux sont la suite.
 | **4** — réglages système, calibration, persistance (2026-11-16) | ✅ écran `SETUP` et gestes de démarrage façon Phazerville (D-026) ; conversion dans `oc-core`, valeurs d'usine de Phazerville, assistant de calibration (D-027) ; réglages dans la flash du Teensy par l'API ROM, fichier (sim), patch (Rack) (D-028) ; seuil de présence 50 mV mesuré (D-024). Version **0.3.0**. Réserve : C++ Rack non compilé | [etape-4.md](docs/plan/avancement/etape-4.md) |
 | **7** — chemin audio (2026-11-17 → 11-18) | ✅ `oc_core::audio` (paramètres de sortie, voix), applet `TONE` ; DAC en PCS0 à 22 MHz ; PIT → DMA → LPSPI4 à **47 619 Hz** (instant fixé par le matériel), interruption du DMA pour l'échantillon et l'écran par tronçons ; `audio` 3,4 µs sur 21 ; juste à l'accordeur jusqu'à B7 (D-033). Réserves : 48 kHz impossible (quartz de GPT2 muet), quatre voies écrites à chaque période, Rack non écouté. Version **0.5.0** (avec l'étape 6 ; plugin Rack 2.5.0) | [etape-7.md](docs/plan/avancement/etape-7.md), [rapport](docs/plan/rapport-etape-7-chemin-audio.md) |
 | **5** — primitives graphiques et applet de démo (2026-11-17) | ✅ texte par colonnes (Diagnostic 646 → 88 µs), six polices en paramètre ; `oc_core::gfx` (bases en octets, contrôles, courbes, motifs) ; applet `GFX DEMO` ; `embedded-graphics` en dépendance de test (D-030). Version **0.4.0** (avec l'étape 3 ; plugin Rack 2.4.0) | [etape-5.md](docs/plan/avancement/etape-5.md) |
+
+### Étape 8 — premier oscillateur : Supersaw (en cours)
+
+Demandée le 2026-11-18 (D-037) : l'applet de l'étude `docs/supersaw/` sur le chemin audio. Choix de l'utilisateur : A
+et B stéréo, C sub-octave ; note, désaccord et mix ; PolyBLEP d'abord, ×4 si le repliement s'entend. Plan :
+[etape-8-supersaw.md](docs/plan/etape-8-supersaw.md).
+
+| Lot | Contenu | État |
+|---|---|---|
+| **8a** — calcul | `oc_core::audio::supersaw` : scie PolyBLEP entière, désaccord et mix de Szabo, passe-haut sur la fondamentale, parts `Mono` / `Left` / `Right` / `Sub` ; banc partagé dans `Voice` | à faire |
+| **8b** — applet | `SupersawApp` (« SUPERSAW ») : `NOTE`, `DETUNE`, `MIX`, `LEVEL`, `STEREO` ; CV1 V/oct, CV2, CV3 ; menu à six applets ; écran | à faire |
+| **8c** — module | profil `audio`, écoute, décision sur le ×4 | à faire |
+| **8d** — ×4 | suréchantillonnage et décimation, si 8c le demande | conditionnel |
 
 ### Étape 7 — chemin audio : DAC à 47,6 kHz par DMA (terminée)
 
@@ -156,3 +170,4 @@ Valeurs seules ; le raisonnement est dans `journal/`.
 | modulation par une entrée CV | `oc_core::modulation` partagé entre applets : `Assign` (entrée, `SCALE`, `SHIFT`, `MIN` / `MAX`, effet), `AssignEditor` + `Param` ; l'applet fournit la plage `SET` de chaque paramètre et applique l'effet | D-036 |
 | publication | à chaque étiquette `v*` : release GitHub avec les images du firmware (ELF et HEX SH1106, HEX SSD1306 / SSD1309, SHA-256) ; page web sur GitHub Pages | D-034 |
 | chemin audio | interruption PIT à 48 kHz, priorité la plus haute ; les quatre sorties ; `DAC_CS` en PCS0 matériel, DAC à 22 MHz (plafond 25 MHz en 3,3 V) ; l'interruption possède le bus et cède des tronçons à l'OLED ; voix séparée du contrôle ; applet `TONE` ; DMA seulement si la mesure le demande | D-033 |
+| applet Supersaw | sept scies PolyBLEP en entier, désaccord et mix de Szabo, passe-haut sur la fondamentale ; banc partagé dans la voix : A / B mono ou stéréo, C sub-octave ; CV1 V/oct, CV2 désaccord, CV3 mix ; ×4 si le repliement s'entend | D-037 |

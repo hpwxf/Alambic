@@ -28,7 +28,7 @@
 | Étape | Contenu pressenti | Dépend de |
 |---|---|---|
 | 6 — premiers applets musicaux | Ratchet (D-032, plan `etape-6-ratchet.md`), puis une seconde à décrire ; à 1 kHz (D-023 C+) | D-019, D-023, D-032 |
-| 8 — premier oscillateur | supersaw PolyBLEP sur le chemin audio de l'étape 7 (`docs/supersaw/` § 12–14) ; à planifier | D-033 |
+| 8 — premier oscillateur | supersaw PolyBLEP sur le chemin audio de l'étape 7 (`docs/supersaw/` § 12–14) ; en cours, plan `etape-8-supersaw.md` | D-033, D-037 |
 | ? — seconde carte | Teensy 4.1 / O.R.N.8 (notes locales non suivies) | D-003, D-007 |
 
 ## Questions ouvertes
