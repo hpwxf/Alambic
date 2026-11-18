@@ -14,6 +14,7 @@
 //! Each repeat fires with a chance, 0 to 100 %.
 
 use crate::fixed::{self, ONE};
+use crate::modulation::{Effect, multiplied};
 use crate::platform::MilliVolts;
 
 /// Shortest interval between two triggers, in microseconds.
@@ -169,29 +170,6 @@ impl Burst {
     }
 }
 
-/// What an input does to the value its setting has on the panel
-/// (journal/D-035).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Effect {
-    /// The setting follows the input, from a fixed value at 0 V.
-    Set,
-    /// The input is added to the panel's value.
-    Add,
-    /// The panel's value is multiplied by the input over [`UNIT_MV`].
-    Mul,
-}
-
-/// The input that leaves a value unchanged under [`Effect::Mul`]: 5 V, the
-/// top of a unipolar envelope or LFO.
-pub const UNIT_MV: MilliVolts = 5_000;
-
-/// `value * millivolts / UNIT_MV`, rounded to the nearest.
-fn multiplied(value: i64, millivolts: MilliVolts) -> i64 {
-    let product = value * i64::from(millivolts);
-    let unit = i64::from(UNIT_MV);
-    (product + product.signum() * unit / 2) / unit
-}
-
 /// The time an input sets when a setting follows it, at 0 V: the first
 /// interval of [`Model::First`], the span of [`Model::Span`].
 #[must_use]
@@ -278,9 +256,10 @@ fn scale(value: u32, octaves: i64) -> u32 {
 #[cfg(test)]
 mod tests {
     use super::{
-        Burst, Count, Effect, MAX_INTERVAL_MICROS, MIN_INTERVAL_MICROS, Model, chance_from,
-        count_from, curve_from, time_from,
+        Burst, Count, MAX_INTERVAL_MICROS, MIN_INTERVAL_MICROS, Model, chance_from, count_from,
+        curve_from, time_from,
     };
+    use crate::modulation::Effect;
 
     fn burst(model: Model, count: Count, curve_tenths: i32) -> Burst {
         Burst {

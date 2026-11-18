@@ -15,6 +15,12 @@ Architectural decisions behind each change are in `journal/` (French).
 
 ### Changed
 
+- `oc_core::modulation` (journal/D-036): the input submenu of `RATCHET`
+  (`Assign`, `Effect`, `CENTER`, the range seen) and its editor
+  (`AssignEditor`, drawn from a `Param` the applet gives) move out of the
+  applet, for any applet to reuse; `ratchet::sweep` gives each setting's
+  range, `modulation::usable_range` derives the effects' from it. Behaviour
+  unchanged.
 - `RATCHET`'s screen: a scroll bar left of the settings shows the page, in
   place of the arrows in the title bar; the timeline is shorter (15 pixels),
   and while a burst runs it shows that burst, a playhead above it, the
