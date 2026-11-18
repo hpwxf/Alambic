@@ -78,6 +78,8 @@ cargo xtask vcv build --rack-dir <path>     # build the VCV Rack 2 plugin (needs
 cargo xtask vcv install --rack-dir <path>   # build + drop into the Rack user plugin folder
 cargo xtask vcv clean                       # wipe plugin + oc-vcv-ffi build artefacts
 cargo xtask web                             # browser probe + flasher into dist/web/ (needs the wasm-bindgen CLI at the pinned version)
+# Release (.github/workflows/release.yml, journal/D-034): pushing a tag `vX.Y.Z` equal to the workspace
+# version builds the firmware images onto a GitHub release; pages.yml deploys dist/web to GitHub Pages.
 cargo probe stats                           # live profile of a running module (oc-probe; also stream, out, screen, reboot)
 
 cargo bench                                 # criterion benchmarks; HTML report in target/criterion/report/index.html

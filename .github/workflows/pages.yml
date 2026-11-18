@@ -1,0 +1,79 @@
+name: Web page (GitHub Pages)
+
+# Builds the browser probe and flasher (crates/oc-web + web/, journal/D-031)
+# and deploys it to GitHub Pages at each version tag, or by hand
+# (journal/D-034). The page is static: it talks to the module from the
+# visitor's browser (Web Serial, WebHID), nothing is uploaded anywhere.
+#
+# One-time setup:
+# * Settings › Pages › Build and deployment › Source: "GitHub Actions". The
+#   site is then at https://hpwxf.github.io/Alambic/
+# * for the tag trigger: Settings › Environments › github-pages › Deployment
+#   branches and tags: add the tag rule `v*` (by default only the default
+#   branch may deploy). A run by hand from master needs nothing more: give
+#   the tag as `ref`.
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "Tag or branch to publish (empty: the one selected above)"
+        required: false
+        type: string
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# One deployment at a time; a newer run does not cancel one in progress.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    name: build dist/web
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || github.ref }}
+
+      # rust-toolchain.toml provisions wasm32-unknown-unknown.
+      - uses: Swatinem/rust-cache@v2
+
+      # The CLI must match the wasm-bindgen crate in Cargo.lock exactly
+      # (`cargo xtask web` checks it). Cached in ~/.cargo/bin by rust-cache.
+      - name: Install wasm-bindgen-cli
+        run: |
+          version=$(awk '/^name = "wasm-bindgen"$/ { getline; gsub(/"/, "", $3); print $3 }' Cargo.lock)
+          if ! wasm-bindgen --version 2>/dev/null | grep -qx "wasm-bindgen $version"; then
+            cargo install wasm-bindgen-cli --version "$version" --locked
+          fi
+
+      - name: Test the WebAssembly core on the host
+        run: cargo test -p oc-web --locked
+
+      - name: Build dist/web
+        run: cargo xtask web
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist/web
+
+  deploy:
+    name: deploy to GitHub Pages
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
