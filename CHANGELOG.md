@@ -16,7 +16,15 @@ Architectural decisions behind each change are in `journal/` (French).
   `LEVEL`. Every setting but `STEREO` takes an input through the submenu of
   `oc_core::modulation` (journal/D-036): `NOTE` takes `CV1` at one volt per
   octave at start, the others none, so that an unplugged input's noise on
-  the module moves nothing; `MUL` on `LEVEL` makes a VCA.
+  the module moves nothing; `MUL` on `LEVEL` makes a VCA. The parts are
+  falling sawtooths, so that the high-pass's spikes go towards the outputs'
+  6 V of room above 0 V rather than their 3 V below: the level reached
+  without clipping doubles, to about 2 V, and only rare peaks touch the
+  bound at 3 V.
+- An `oc-core` example, `aliasing`, measures the supersaw by FFT: the
+  folding against naive ramps, the clipping by level, the difference from
+  an ideal additive supersaw; with a directory, WAVs of each case and
+  clipping pairs to compare by ear.
 - `oc_core::audio::supersaw`, the bank the voice renders for the outputs
   that ask for one of its parts.
 

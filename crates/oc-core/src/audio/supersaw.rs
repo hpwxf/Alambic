@@ -8,6 +8,12 @@
 //! folds back into the audible band; the sum goes through a one-pole
 //! high-pass tuned on the fundamental. Everything that needs a division is
 //! computed when the parameters change, never per sample.
+//!
+//! The parts come out as falling sawtooths: the high-pass turns each jump
+//! into a spike several times higher than the rest of the wave, and the
+//! outputs have 6 V of room above 0 V for 3 V below, so the spikes go up;
+//! that doubles the level reached without clipping, and the ear does not
+//! hear a waveform's polarity (journal/D-037, revision of 2026-11-18).
 
 use super::wave::ONE;
 use super::{MilliHertz, phase_step, scale};
@@ -321,12 +327,16 @@ impl Bank {
             #[allow(clippy::cast_possible_truncation)]
             // At most the seven gains' sum over their root: a few `ONE`.
             let normalised = ((sum * normaliser) >> 32) as i32;
+            // Falling sawtooths: the high-pass turns each jump into a
+            // spike, and the outputs have 6 V of room above 0 V for 3 V
+            // below, so the spikes go up.
             *part = scale(
-                filter.next(normalised, self.coefficient),
+                -filter.next(normalised, self.coefficient),
                 self.params.amplitude,
             );
         }
-        let sub = scale(self.sub.next(), self.params.amplitude);
+        // Falling too, to keep its phase against the voices'.
+        let sub = scale(-self.sub.next(), self.params.amplitude);
         Frame {
             mono: parts[0],
             left: parts[1],

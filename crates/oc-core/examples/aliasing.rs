@@ -10,10 +10,11 @@
 //! everything else: what is left is what folded back (and the rounding to
 //! the millivolt, far below).
 //!
-//! The level is the default, 1 V: above about 1.1 V the seven voices' sum
-//! reaches the outputs' −3 V bound and is clipped, which adds lines that are
-//! not harmonics either and would be counted as folding. A second table
-//! shows that clipping on its own.
+//! The level is the default, 1 V: above about 2 V the seven voices' sum
+//! reaches the outputs' +6 V bound, the high-pass's spikes first, and is
+//! clipped, which adds lines that are not harmonics either and would be
+//! counted as folding. A second table shows that clipping on its own, and the
+//! highest level that clips nowhere over every case.
 //!
 //! ```sh
 //! cargo run -p oc-core --example aliasing --release            # the table
@@ -30,10 +31,10 @@
 //!
 //! With a directory, it writes a WAV per case of the table, and in `pairs/`
 //! what the clipping sounds like: at full detune, the same notes and mixes at
-//! 3 V (`clipped`) and at 1 V raised three times in the file (`clean`), so
+//! 2 V and 3 V (`clipped`) and at 1 V raised as much in the file (`clean`), so
 //! both are as loud and differ only where the outputs' bound cut the peaks;
 //! `ab` alternates them every two seconds; `ideal`, the ideal supersaw at
-//! 3 V, and `error-clean` and `error-clipped`, each less the ideal, what the
+//! that level, and `error-clean` and `error-clipped`, each less the ideal, what the
 //! module adds without and with the clipping. The files are 32-bit floats,
 //! 10 V at full scale.
 
@@ -72,8 +73,9 @@ const CLIP_LEVELS_MV: [i32; 5] = [1_000, 1_500, 2_000, 2_500, 3_000];
 /// The mixes the clipping is measured at.
 const CLIP_MIXES: [u16; 3] = [0, FULL / 2, FULL];
 
-/// The level of the clipped half of a pair: the highest.
-const PAIR_LEVEL_MV: i32 = 3_000;
+/// The levels of the pairs' second halves: the cap proposed for `LEVEL`,
+/// then the highest.
+const PAIR_LEVELS_MV: [i32; 2] = [2_000, 3_000];
 
 /// The notes of the pairs: C3, C4, C6.
 const PAIR_NOTES: [u8; 3] = [48, 60, 84];
@@ -172,9 +174,12 @@ fn main() {
 /// The clipping pairs (see the module's documentation) into `dir`.
 fn write_pairs(dir: &Path) {
     fs::create_dir_all(dir).expect("the pairs' directory must be writable");
-    let gain = f64::from(PAIR_LEVEL_MV) / f64::from(LEVEL_MV);
     for note in PAIR_NOTES {
-        for mix in PAIR_MIXES {
+        for (mix, level) in PAIR_MIXES
+            .iter()
+            .flat_map(|&mix| PAIR_LEVELS_MV.map(|level| (mix, level)))
+        {
+            let gain = f64::from(level) / f64::from(LEVEL_MV);
             let at = |amplitude| Supersaw {
                 frequency: tone::frequency(note, 0),
                 detune: FULL,
@@ -185,8 +190,8 @@ fn write_pairs(dir: &Path) {
                 .iter()
                 .map(|sample| sample * gain)
                 .collect();
-            let (clipped, steps, phases) = render_for(&at(PAIR_LEVEL_MV), PAIR_LENGTH);
-            let ideal = ideal(&at(PAIR_LEVEL_MV), &steps, &phases, PAIR_LENGTH);
+            let (clipped, steps, phases) = render_for(&at(level), PAIR_LENGTH);
+            let ideal = ideal(&at(level), &steps, &phases, PAIR_LENGTH);
             let error_clean = difference(&clean, &ideal);
             let error_clipped = difference(&clipped, &ideal);
             let ab: Vec<f64> = clean
@@ -201,7 +206,12 @@ fn write_pairs(dir: &Path) {
                     }
                 })
                 .collect();
-            let name = format!("{}-mix{}", tone::note_name(note).as_str(), mix / 10);
+            let name = format!(
+                "{}-mix{}-{}V",
+                tone::note_name(note).as_str(),
+                mix / 10,
+                level / 1_000
+            );
             for (kind, samples) in [
                 ("clean", &clean),
                 ("clipped", &clipped),
@@ -213,7 +223,7 @@ fn write_pairs(dir: &Path) {
                 write_wav(&dir.join(format!("{name}-{kind}.wav")), samples);
             }
             println!(
-                "{name:<10} error against the ideal: {:>6.1} dB clean, {:>6.1} dB clipped",
+                "{name:<13} error against the ideal: {:>6.1} dB clean, {:>6.1} dB clipped",
                 power_db(&error_clean, &ideal),
                 power_db(&error_clipped, &ideal)
             );
@@ -294,6 +304,59 @@ fn clipping() {
             shares.join(" ")
         );
     }
+    let highest: Vec<String> = CLIP_MIXES
+        .iter()
+        .map(|&mix| {
+            let params = Supersaw {
+                frequency: tone::frequency(60, 0),
+                detune: FULL,
+                mix,
+                amplitude: LEVEL_MV,
+            };
+            let (played, _) = render(&params);
+            let low = played.iter().copied().fold(0.0, f64::min);
+            let high = played.iter().copied().fold(0.0, f64::max);
+            // The level scales the samples: the bound reached first sets it.
+            let room = (f64::from(CV_OUT_MIN_MV) / low).min(f64::from(CV_OUT_MAX_MV) / high);
+            format!("{:>8.2} V", room * f64::from(LEVEL_MV) / 1_000.0)
+        })
+        .collect();
+    println!("{:>7}  {}", "highest", highest.join(" "));
+    worst_level();
+}
+
+/// The highest level that clips nowhere: over every note, detune and mix
+/// measured, eight seconds each, the least room either bound leaves.
+fn worst_level() {
+    let mut worst = (f64::MAX, 0, 0, 0);
+    for note in NOTES {
+        for detune in DETUNES {
+            for mix in CLIP_MIXES {
+                let params = Supersaw {
+                    frequency: tone::frequency(note, 0),
+                    detune,
+                    mix,
+                    amplitude: LEVEL_MV,
+                };
+                let played = play(&params, PAIR_LENGTH);
+                let low = played.iter().copied().fold(0.0, f64::min);
+                let high = played.iter().copied().fold(0.0, f64::max);
+                let room = (f64::from(CV_OUT_MIN_MV) / low).min(f64::from(CV_OUT_MAX_MV) / high);
+                if room < worst.0 {
+                    worst = (room, note, detune, mix);
+                }
+            }
+        }
+    }
+    let (room, note, detune, mix) = worst;
+    println!(
+        "\nHighest level clipping nowhere, every case above over eight seconds: {:.2} V \
+         (the least room at {}, detune {} %, mix {} %)",
+        room * f64::from(LEVEL_MV) / 1_000.0,
+        tone::note_name(note).as_str(),
+        detune / 10,
+        mix / 10
+    );
 }
 
 /// `params` played on the mono part, in millivolts, after the high-pass has
@@ -364,8 +427,9 @@ fn ideal(
     samples
 }
 
-/// A rising ramp from −1 to 1 at `angle`, of its first `harmonics`
-/// harmonics: `-(2 / pi) sum sin(k angle) / k`, by the sines' recurrence.
+/// A falling ramp from 1 to −1 at `angle`, as the bank plays its voices, of
+/// its first `harmonics` harmonics: `(2 / pi) sum sin(k angle) / k`, by the
+/// sines' recurrence.
 fn band_limited_ramp(angle: f64, harmonics: u32) -> f64 {
     let twice_cos = 2.0 * angle.cos();
     let (mut before, mut sine) = (0.0, angle.sin());
@@ -376,7 +440,7 @@ fn band_limited_ramp(angle: f64, harmonics: u32) -> f64 {
         before = sine;
         sine = next;
     }
-    -sum / std::f64::consts::FRAC_PI_2
+    sum / std::f64::consts::FRAC_PI_2
 }
 
 /// `samples` less `reference`, sample by sample.
@@ -420,7 +484,8 @@ fn naive(params: &Supersaw, steps: &[u32; VOICES]) -> Vec<f64> {
         .map(|_| {
             let mut sum = 0.0;
             for ((phase, step), gain) in phases.iter_mut().zip(steps).zip(&gains) {
-                let ramp = f64::from(*phase) / 2f64.powi(31) - 1.0;
+                // Falling, as the bank plays them.
+                let ramp = 1.0 - f64::from(*phase) / 2f64.powi(31);
                 sum += ramp * gain;
                 *phase = phase.wrapping_add(*step);
             }

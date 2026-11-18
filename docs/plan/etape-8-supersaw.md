@@ -13,6 +13,7 @@ mix ; PolyBLEP d'abord, ×4 seulement si le repliement s'entend.
 | **8b′** — entrées assignables (ajouté le 2026-11-18) | les réglages sauf `STEREO` prennent leur entrée par `oc_core::modulation` (D-036) ; `NOTE` sur CV1 au démarrage, les autres sans entrée ; révision de D-037 | tests sur `mock_engine` (bruit d'une entrée non assignée, sous-menu, VCA) ; scénarios dorés `supersaw` et `supersaw_inputs` |
 | **8c** — module | niveau 9 : `audio` au profil, écoute du grave à l'aigu, `STEREO`, CV ; écran en marche | interruption sous sa période avec marge ; pas de tic ; décision sur le ×4 |
 | **8c′** — repliement mesuré (ajouté le 2026-11-18) | exemple `aliasing` d'`oc-core` : spectre du banc réel, harmoniques séparées par le pas exact de chaque voix, rampes naïves en référence ; écrêtage par niveau | décision sur le ×4 sur des chiffres, pas à l'oreille |
+| **8c″** — polarité inversée (ajouté le 2026-11-18) | scies descendantes, pour que les pointes du passe-haut aillent vers la marge de 6 V ; niveau le plus haut sans écrêtage mesuré sur tous les cas ; paires de WAV écoutées | révision de D-037 ; `LEVEL` à 3 V gardé |
 | **8d** — ×4 (si 8c le demande) | suréchantillonnage ×4 dans la voix, filtre de décimation | 8c repassé ; `audio` mesuré |
 
 Ordre : 8a → 8b → 8c → 8d éventuel. Version 0.6.0 à la clôture.

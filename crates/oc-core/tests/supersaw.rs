@@ -201,9 +201,9 @@ fn left_and_right_differ_only_by_their_side_voices() {
     assert!(different > 1_000, "{different} samples apart");
 }
 
-/// Jumps of `part` over a second: falls of more than its peak level over
-/// two samples, `PolyBLEP` spreading each over two; the side voices, far
-/// quieter, never fall that much.
+/// Jumps of `part` over a second: rises of more than its peak level over
+/// two samples, `PolyBLEP` spreading each over two (the sawtooths fall and
+/// jump up); the side voices, far quieter, never rise that much.
 fn jumps(supersaw: Supersaw, part: usize) -> u32 {
     let mut voice = bank_voice(supersaw);
     let mut count = 0;
@@ -211,7 +211,7 @@ fn jumps(supersaw: Supersaw, part: usize) -> u32 {
     let mut quiet = 0u8;
     for _ in 0..48_000 {
         let sample = voice.next_sample()[part];
-        if quiet == 0 && sample - history[0] < -supersaw.amplitude {
+        if quiet == 0 && sample - history[0] > supersaw.amplitude {
             count += 1;
             // One jump counts once.
             quiet = 4;

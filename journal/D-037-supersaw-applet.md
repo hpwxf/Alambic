@@ -125,8 +125,96 @@ L'exemple `aliasing` d'`oc-core` rend le banc réel à 47 619 Hz et sépare par 
 pas exact) de ce qui s'est replié. À 1 V, de C2 à C8 : sous 10 kHz, le repli reste à −45 dB ou moins des harmoniques
 (−57 dB jusqu'à C5) ; les raies repliées les plus fortes (−22 dBc à C8) sont toutes entre 20 et 23,8 kHz. Le
 suréchantillonnage ×4 (lot 8d) n'est donc pas fait. La même mesure montre que la somme des voix est écrêtée à la
-borne de −3 V au-delà d'environ 1,1 V de `LEVEL` : question laissée ouverte.
+borne de −3 V au-delà d'environ 1,1 V de `LEVEL` : tranché par la révision suivante (polarité inversée).
 
 **Ce qui ne change pas.** Le banc, la voix, les parts et `STEREO`. Les assignations ne sont pas sauvegardées, comme
 celles de `RATCHET` (D-035).
+
+## Révision du 2026-11-18 — scies descendantes : la polarité inversée contre l'écrêtage (lot 8c″)
+
+**Le constat.** L'exemple `aliasing` (lot 8c′) a montré la somme des voix écrêtée bien en dessous du `LEVEL`
+maximal : sur toutes les notes, désaccords et mix mesurés, 8 s chacun, le niveau le plus haut sans écrêtage était
+**1,00 V** (le pire cas : C5, désaccord 100 %, mix 50 %) ; à 3 V, 2,9 % des échantillons écrêtés à C4 (mix 50 %),
+6,3 % à mix 0 %. Les paires de WAV (`clean`, `clipped`, `ab`) le faisaient entendre : un timbre plus dur à mix 0 %,
+du grain au rythme des battements à mix 50 %.
+
+**Pourquoi.** Deux asymétries se rencontrent.
+
+1. Les sorties ne sont pas centrées sur 0 V : elles vont de −3 V à +6 V.
+
+   ```text
+    +6 V ┬─────────────  ← 6 V de marge au-dessus de 0
+         │
+    0 V  ┼─────────────
+         │  ← 3 V seulement en dessous
+    −3 V ┴─────────────
+   ```
+
+2. La forme d'onde ne l'est pas non plus. Une scie montante monte lentement puis chute d'un coup ; le passe-haut
+   sur la fondamentale (ce même ADR, repris du JP-8000) retire le contenu lent, la rampe, mais laisse passer le
+   contenu rapide, la chute : chaque chute devient une pointe profonde, la rampe s'aplatit.
+
+   ```text
+      /|  /|  /|                ‾‾\_   ‾‾\_   ‾‾\_      un peu au-dessus de 0
+     / | / | / |       →            |      |      |
+    /  |/  |/  |                    ↓      ↓      ↓     pointe profonde vers le bas
+    scie montante               après le passe-haut
+   ```
+
+   À 1 V de `LEVEL`, une scie seule va de +0,4 V à −1,8 V ; la somme des sept voix, au pire, de +0,8 V à −2,8 V.
+   La grande pointe va vers −3 V, le côté qui n'a que 3 V de marge, et l'atteint dès 1,0 V de `LEVEL`, alors que
+   plus de 5 V restent inutilisés en haut. (La somme des voix y ajoute : Σg / √(Σg²) ≈ 2,6 à mix 50 et 100 %.)
+
+**Les options envisagées.**
+
+* **Plafonner `LEVEL`** vers 1,1 V : aucun écrêtage, le volume constant au mix gardé, mais une sortie faible
+  (≈ −13 dB en efficace sous une scie Eurorack de ±5 V).
+* **`LEVEL` en crête de la somme** (diviser par Σg au lieu de √(Σg²)) : aucun écrêtage jusqu'à 3 V, mais le volume
+  dépend du mix (≈ −8 dB à mix 100 % sous mix 0 %), la compensation de ce même ADR perdue.
+* **Décaler la somme** vers +1,5 V (plage symétrique ±4,5 V) : +3,5 dB seulement, une composante continue sur une
+  sortie audio (que le passe-haut venait d'ôter), des « tocs » à chaque changement d'applet.
+* **Inverser la polarité** : des scies descendantes, dont le saut monte. Proposée par l'assistant en vérifiant les
+  paires de WAV, qui montraient les crêtes : −8,4 V contre +2,4 V à 3 V.
+
+**L'inversion.** C'est multiplier le signal par −1 : la scie descend lentement puis remonte d'un coup, et les
+pointes changent de côté.
+
+```text
+      ↑      ↑      ↑     pointe vers le haut, vers +6 V
+      |      |      |
+  __/‾   __/‾   __/‾      un peu en dessous de 0
+```
+
+À 1 V, la somme va de −0,8 V à +2,8 V : la grande pointe a 6 V de marge au lieu de 3, la petite partie reste loin
+de −3 V.
+
+* **Pourquoi le son ne change pas.** L'oreille n'entend pas la polarité absolue d'un son périodique : l'inversion
+  décale toutes les harmoniques de la même demi-période, leurs niveaux et leurs phases relatives restent
+  identiques, le spectre aussi. Les tableaux de repliement et d'écart à l'idéal de l'exemple `aliasing` sont
+  identiques au dB près. Une scie descendante est aussi courante qu'une montante sur les synthés.
+* **La sous-octave (C) est inversée aussi** : la polarité ne compte que quand on additionne un signal à un autre en
+  phase avec lui ; mélangée à A, elle garde la relation d'avant.
+* **L'image** : un objet plus haut d'un côté, dans un coffre plus haut d'un côté ; on ne change pas l'objet, on le
+  tourne pour que sa partie haute aille du côté où il y a de la place.
+
+**Mesuré** (le même outil, l'ancien signe remis le temps d'un passage) :
+
+| | avant | après |
+|---|---|---|
+| niveau le plus haut sans écrêtage, tous les cas | **1,00 V** | **2,01 V** (+6 dB) |
+| C4, désaccord 100 %, mix 0 / 50 / 100 % | 1,72 / 1,25 / 1,23 V | 3,44 / 2,51 / 2,47 V |
+| échantillons écrêtés à 3 V, C4, mix 50 % | 2,9 % | 0,05 % |
+| écart à l'idéal à 3 V (C3 / C4 / C6, mix 0 %) | −14,0 / −14,2 / −15,5 dB | −30,4 / −27,3 / −21,4 dB, comme sans écrêtage |
+
+**Décidé.** Les parts `Mono`, `Left`, `Right` et `Sub` sont des scies descendantes (`audio::supersaw`, le signe à la
+sortie du passe-haut et de la sous-octave). **`LEVEL` garde son plafond de 3 V** : l'utilisateur a écouté le pire
+cas d'avant après inversion (`C3-mix0-3V-ab.wav`, la moitié propre et la moitié à 3 V alternées) et le juge très
+correct ; un plafond à 2 V, sans écrêtage sur tous les cas mesurés, serait une surprotection. Le prix accepté :
+au-delà d'environ 2 V, de rares crêtes (0,05 % des échantillons à 3 V, C4, mix 50 %) touchent la borne de +6 V,
+sans écart mesurable à l'idéal.
+
+**Ce qui ferait changer d'avis.** Un écrêtage entendu à 3 V sur un cas que l'exemple ne mesure pas (une autre note,
+une modulation rapide de `DETUNE` ou `MIX`) : plafonner `LEVEL` à 2 V. Un étage de sortie autre (une autre
+fabrication aux bornes différentes) : refaire la mesure, les bornes venant de `calibration::CV_OUT_MIN_MV` et
+`CV_OUT_MAX_MV`.
 

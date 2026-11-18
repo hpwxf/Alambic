@@ -775,6 +775,12 @@ the loop at 1 000 µs; the sound right, `STEREO` included. With `CV2` and
 reading exactly 0 V, did not show. With the inputs assignable (lot 8b′),
 the bars stay still, inputs unplugged, at full detune.
 
+Before the module, `cargo run -p oc-core --example aliasing --release --<dir>` 
+gives the folding, the clipping and the difference from an ideal
+supersaw, and WAVs to listen to (lots 8c′ and 8c″): with the falling
+sawtooths, the highest level that clips nowhere is about 2.0 V; at 3 V,
+0.05 % of the samples touch the +6 V bound.
+
 ### 9.4 — Calibration
 
 This step measures how far the module is from the factory calibration, then
