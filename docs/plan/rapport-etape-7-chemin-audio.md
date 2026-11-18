@@ -75,7 +75,8 @@ Deux conséquences ont pesé lourd dans l'étape :
 * Broches : MOSI 11, MISO 12 (inutilisé), SCK 13 (aussi la LED de la carte).
 * Deux périphériques sur le même MOSI / SCK : le **DAC8565** (CS sur la broche 10) et l'**OLED** (CS broche 8, D/C
   broche 6, reset broche 7).
-* **Le contrôleur LPSPI** a une FIFO d'émission de **16 mots de 32 bits**. On y dépose soit des *commandes de
+* **Le contrôleur LPSPI** a une FIFO d'émission de **16 mots de 32 bits** (et autant en réception ; la taille se lit
+  dans son registre `PARAM`, c'est ce que fait `imxrt-hal`). On y dépose soit des *commandes de
   transaction* en écrivant le registre `TCR` (taille de trame `FRAMESZ`, quel CS matériel `PCS` affirmer, masques
   de réception `RXMSK`…), soit des *données* en écrivant `TDR`. Les deux registres sont consécutifs (`TCR` à
   0x60, `TDR` à 0x64), et **les deux écritures passent par la même FIFO, dans l'ordre**.
@@ -115,8 +116,10 @@ Deux conséquences ont pesé lourd dans l'étape :
   rechargent, lèvent un drapeau (`TIF`) et, si demandé, une interruption (une seule ligne pour les 4 canaux). Sur
   PERCLK (1 MHz). **Les canaux 0 à 3 du PIT peuvent déclencher les canaux 0 à 3 du DMA** via le DMAMUX.
 * **GPT** (*General Purpose Timer*, GPT1 et GPT2) : compteur montant, 3 registres de comparaison (`OCR1..3`), mode
-  *Restart* (le compteur repart à 0 sur `OCR1`). Entrées d'horloge possibles : PERCLK (deux sélections qui, sur ce
-  chip, donnent toutes deux PERCLK) ou le quartz 24 MHz (`CLKSRC = 5` + `EN_24M`). GPT1 sert déjà d'horloge en µs au
+  *Restart* (le compteur repart à 0 sur `OCR1`). Entrées d'horloge : « horloge périphérique » (`CLKSRC = 1`,
+  **mesurée à 1 MHz** sur le module, donc PERCLK), « référence haute fréquence » (`CLKSRC = 2`, celle de GPT1, qui
+  compte en µs bien que son diviseur 24 MHz soit sans effet hors quartz : **déduite** à 1 MHz elle aussi), quartz
+  24 MHz (`CLKSRC = 5` + `EN_24M`, qui n'a pas démarré). GPT1 sert déjà d'horloge en µs au
   moteur ; GPT2 était libre.
 * **eDMA** : 32 canaux. Chaque canal a un *descripteur* (TCD) : adresse source, adresse destination, pas après chaque
   élément (`SOFF`, `DOFF`), *modulo* d'adresse (`SMOD`, `DMOD` : l'adresse ne change que dans ses `n` bits de poids
@@ -294,7 +297,7 @@ Rien à corriger dans `oc-core` : il fallait la cadence audio du lot 7c.
 
 ---
 
-## 7. Lot 7c sur le module — cinq essais (`21cdbb6` → `69e9099`)
+## 7. Lot 7c sur le module — six essais (`21cdbb6` → `69e9099`)
 
 ### 7.1 Essai 1 — écran noir, et l'interruption ne tourne pas
 
@@ -351,6 +354,8 @@ Deux défauts distincts :
    du CS de l'OLED (une écriture sur GPIO2) et le premier mot du DAC (une écriture sur LPSPI4) **passent par deux bus
    différents qui ne garantissent pas l'ordre** ; le DAC commence à recevoir alors que le CS de l'OLED est encore bas.
    *Correctif* : après chaque changement du CS, `dsb` puis relecture de la broche jusqu'à voir le bon niveau.
+   L'essai 4 a montré que ce n'était pas la cause principale ; on ne sait pas si ce correctif était nécessaire. Il
+   est resté, par prudence : il coûte quelques dizaines de nanosecondes.
 
 ### 7.4 Essai 4 — `RATCHET` correct, `TONE` saute encore
 
@@ -365,28 +370,34 @@ passé de la FIFO au registre à décalage, la FIFO est vide alors que ses bits 
 
 *Correctif essayé* : effacer le drapeau « transfert terminé » (`TCF`) avant chaque envoi, attendre qu'il se relève.
 
-### 7.5 Essai 5 — même symptôme ; l'écho en réception règle le problème
+### 7.5 Essai 5 — le drapeau « transfert terminé » ne change rien
 
-**Résultat** : identique. Statistiques du firmware à `TCF` : `audio` 12,3 µs, `audio_period` 17,9 – 24 µs.
+**Résultat** : identique, `RATCHET` correct, `TONE` qui saute. Statistiques de ce firmware (dans `TONE`) : `audio`
+12,3 µs en moyenne, `audio_period` 17,9 – 24 µs, `frame` 1,18 ms.
 
 **Raisonnement** : `TCF` se lève « quand le contrôleur revient au repos et que la FIFO est vide ». Or on l'efface
 *quand le bus est déjà au repos* : la condition étant vraie, il se relève aussitôt, et l'attente retombait sur
-l'ancien test. La seule preuve sûre qu'un mot est entièrement sorti est **son écho** : le contrôleur ne range un mot
-reçu qu'après en avoir échantillonné le dernier bit. C'est ainsi que se terminent les écritures bloquantes
+l'ancien test. C'est une déduction (on n'a pas lu le drapeau sur le module), cohérente avec le symptôme inchangé.
+
+### 7.6 Essai 6 — l'écho en réception règle le problème
+
+**Raisonnement** : la seule preuve sûre qu'un mot est entièrement sorti est **son écho** : le contrôleur ne range un
+mot reçu qu'après en avoir échantillonné le dernier bit. C'est ainsi que se terminent les écritures bloquantes
 d'`imxrt-hal` (qui lisent ce qu'elles ont reçu), et c'est pour cela que le lot 7a marchait.
 
 *Correctif* : ne plus masquer la réception ; compter les mots envoyés ; attendre autant de mots reçus ; vider la
 FIFO de réception. **Écran stable dans toutes les applets, son présent.** Commit `69e9099`.
 
-**Mesures (`TONE`)** : `audio` 12,5 µs en moyenne (≈ 60 % du processeur) ; `audio_period` 17,9 à 24 µs, soit
-**≈ ±3 µs de gigue** sur l'instant d'écriture du DAC (l'interruption est retardée par les sections critiques de la
-boucle, et sa durée varie) ; `frame` 1,18 ms ; boucle à 1 000 µs, gigue 8 à 16 µs (1 à 4 avant).
+**Mesures (`TONE`)** : `audio` 12,5 µs en moyenne, 14,9 µs au plus (≈ 60 % du processeur) ; `audio_period` 17,9 à
+24 µs, soit **≈ ±3 µs de gigue** sur l'instant d'écriture du DAC (l'interruption est retardée par les sections
+critiques de la boucle, et sa durée varie) ; `frame` 1,18 ms ; boucle à 1 000 µs, gigue 8 à 16 µs (1 à 4 avant).
 
 ---
 
 ## 8. Lot 7d — à l'oreille et à l'accordeur
 
-**Observations de l'utilisateur** : de C1 à C6, accordé et stable ; à C7, petites perturbations (± 3 cents) ;
+**Observations de l'utilisateur** : de C1 à C6, accordé et stable ; à C7, petites perturbations (« ±03 » sur
+l'accordeur, a priori des cents) ;
 au-dessus, l'accordage ne tient pas ; précision ensuite : C8 est lu comme C7.
 
 **Analyse** (sinus sur A ; la scie et le carré replient de toute façon) :
@@ -460,7 +471,9 @@ constants. **Écran** : noir.
   (`Configuration::AlwaysOn`).
 * `audio` constant à 12,9 µs : la boucle d'attente de l'effacement du drapeau (reprise du 7c) tournait jusqu'à la
   demi-période.
-* Écran noir : la fenêtre pour un tronçon était trop étroite (décision prise après le calcul de l'échantillon).
+* Écran noir : hypothèse du moment, la fenêtre pour un tronçon trop étroite (décision prise après le calcul de
+  l'échantillon). La vraie cause, établie à l'essai 3 (§ 10.3), était la phase de l'interruption : elle tombait trop
+  tôt après la rafale pour qu'un tronçon y ait jamais sa place.
 
 **Correctifs** : `CHCFG[0] = ENBL | TRIG | A_ON` écrit directement par le RAL ; décision du tronçon au début de
 l'interruption, tronçons de 12 octets ; plus d'attente active, mais un **filtre** : une exécution moins d'une
@@ -479,8 +492,9 @@ l'interruption tourne), `audio` 10,3 µs alors qu'elle n'attend plus rien.
   0 cycle après la précédente, et le filtre les rejetait toutes, sauf la première. Les rafales n'étant comptées que
   sur les exécutions acceptées, **« 0 rafale » ne prouvait rien** : le DMA marchait peut-être déjà.
 * **10,3 µs** : l'interruption lisait le compteur du PIT à chaque période (`current_timer_value`, qui lit aussi
-  `TCTRL`). **Chaque accès au PIT attend son domaine de 1 MHz.** C'est aussi l'explication, après coup, de
-  l'« effacement lent du drapeau » du lot 7c : ce n'était pas seulement l'effacement, c'était chaque lecture.
+  `TCTRL`). **Chaque accès au PIT attend son domaine de 1 MHz.** C'est probablement aussi l'explication, après
+  coup, de l'« effacement lent du drapeau » du lot 7c (GPT2, lui aussi sur PERCLK) : chaque lecture du drapeau
+  coûtait déjà ce temps. Non vérifié par une mesure isolée.
 
 **Correctifs** : démarrer le DWT en tête de `main` ; ne lire le PIT qu'une fois (à la première exécution), puis
 suivre la phase au compteur de cycles. PERCLK et le cœur viennent du même quartz par PLL : une période fait
@@ -536,10 +550,11 @@ t ≈ 0,5     Interruption audio (priorité 0) :
               - calcule l'échantillon suivant (Voice) → 4 codes (calibration) → l'écrit à l'emplacement k + 2 ;
               - attend l'écho de la rafale en cours (≈ jusqu'à t ≈ 5,5) ;
               - si la place restante ≥ tronçon (9 µs) + relâchement (3 µs) : D/C, CS de l'OLED bas (dsb +
-                relecture), TCR (8 × 20 bits, PCS3, réception masquée), 5 mots de pixels ; active FCF ;
+                relecture), un TCR d'une trame de 160 bits (20 octets) sur PCS3, réception masquée, puis
+                5 mots de pixels ; active FCF ;
               - rend la main (≈ 3,4 µs en moyenne).
-t ≈ 5,5–15  le tronçon d'écran sort sur le bus (20 octets à 22 MHz).
-t ≈ 15      LPSPI4 « trame terminée » (FCF) → interruption : relâche le CS de l'OLED (dsb + relecture), coupe FCF,
+t ≈ 5,5–13  le tronçon d'écran sort sur le bus (20 octets à 22 MHz, ≈ 7,3 µs).
+t ≈ 13      LPSPI4 « trame terminée » (FCF) → interruption : relâche le CS de l'OLED (dsb + relecture), coupe FCF,
             remet l'horloge du DAC si elle diffère (feature oled-spi-8mhz).
 t = 21      top suivant.
 ```
@@ -562,8 +577,9 @@ boucle prennent effet au plus 1 ms plus tard (un tick).
 ### 11.3 Sauvegarde et redémarrage
 
 * **SAVE** : `audio::rest_outputs` publie le repos, attend 5 périodes (pris, écrit deux emplacements plus loin, sorti
-  deux plus tard), puis **met le DMA en pause** (sinon, interruptions masquées par la ROM, les rafales
-  s'empileraient dans la FIFO de réception pleine et le contrôleur se bloquerait) ; après l'écriture,
+  deux plus tard), puis **met le DMA en pause**. Sinon, interruptions masquées par la ROM pendant des dizaines de
+  millisecondes, personne ne viderait la FIFO de réception : pleine après quatre rafales, elle arrête le
+  contrôleur, et les écritures suivantes du DMA déborderaient la FIFO d'émission ; après l'écriture,
   `audio::resume_outputs` le relance là où il s'était arrêté dans l'anneau.
 * **Passage au bootloader** : `audio::stop` masque les deux lignes et arrête le DMA.
 
@@ -591,8 +607,8 @@ boucle prennent effet au plus 1 ms plus tard (un tick).
 | `MIN_DBT` | 4 (6 cycles, 45 ns) | CS relevé entre deux mots du DAC |
 | `DAC_BURST_MICROS` | 6 | durée d'une rafale, arrondie |
 | `OLED_RELEASE_MICROS` | 3 | marge pour relâcher le CS avant le top |
-| `OLED_CHUNK_BYTES` | 20 à 22 MHz (4 à 8 MHz) | taille d'un tronçon (budget 8 µs) |
-| `OLED_CHUNK_MICROS` | 9 à 22 MHz | durée d'un tronçon, arrondie |
+| `OLED_CHUNK_BYTES` | 20 à 22 MHz (8 à 8 MHz) | taille d'un tronçon (budget 8 µs) |
+| `OLED_CHUNK_MICROS` | 9 à 22 MHz (9 à 8 MHz) | durée d'un tronçon, arrondie, plus 1 µs |
 
 Une assertion à la compilation vérifie que rafale + tronçon + relâchement tiennent dans une période.
 
@@ -612,8 +628,9 @@ Une assertion à la compilation vérifie que rafale + tronçon + relâchement ti
    sans broche, pour l'OLED).
 3. **Enchaîner les mots dans la FIFO change les timings** que des écritures bloquantes masquaient (écart de 40 ns
    du DAC).
-4. **Les noms d'horloge mentent selon le chip** : sur le RT1062, les entrées « périphérique » et « haute fréquence »
-   de GPT sont toutes deux PERCLK ; seul le quartz de GPT2 aurait donné 24 MHz, et il n'a pas démarré.
+4. **Les noms d'horloge mentent selon le chip** : sur le RT1062, l'entrée « périphérique » de GPT est PERCLK
+   (mesuré), la « haute fréquence » aussi (déduit) ; seul le quartz de GPT2 aurait donné 24 MHz, et il n'a pas
+   démarré.
 5. **Un périphérique à 1 MHz coûte des microsecondes à chaque accès** (lecture, écriture, effacement de drapeau) :
    ne jamais lire le PIT ou un GPT sur PERCLK à chaque période.
 6. **Effacer un drapeau ne prend pas effet tout de suite** dans un domaine lent : une interruption courte peut être
@@ -659,7 +676,7 @@ Une assertion à la compilation vérifie que rafale + tronçon + relâchement ti
 | `b293d6a` | 7a | PCS0 pour le DAC, PCS3 pour l'OLED, 22 MHz, voies écrites au changement |
 | `7993063` | 7b | `oc_core::audio` (paramètres, voix, formes), `TONE`, Rack `oc_engine_audio` |
 | `21cdbb6` | 7c | interruption GPT2, `FrameStream`, `fifo`, boîtes aux lettres, étapes du profil |
-| `69e9099` | 7c | correctifs du module : repli PERCLK, double déclenchement, écho en réception, ordre GPIO/SPI |
+| `69e9099` | 7c | correctifs du module (essais 2 à 6) : repli PERCLK, double déclenchement, écho en réception, ordre GPIO/SPI |
 | `27211a5` | 7e | DAC en DMA déclenché par le PIT, interruption du DMA, DMAMUX `A_ON`, DWT en tête |
 
 ### 14.2 Fichiers
