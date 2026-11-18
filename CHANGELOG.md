@@ -7,6 +7,12 @@ Architectural decisions behind each change are in `journal/` (French).
 
 ## Unreleased
 
+### Fixed
+
+- `cargo probe stats` (and the browser probe): the stage column is as wide
+  as the longest stage's name, so `audio_period` no longer pushes its row's
+  numbers out of line.
+
 ### Changed
 
 - `RATCHET`'s screen: a scroll bar left of the settings shows the page, in

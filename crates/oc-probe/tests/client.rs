@@ -82,6 +82,10 @@ fn the_profile_comes_back_and_prints() {
     assert!(profile.stage(Stage::Tick).count() >= 3);
     let table = render::profile_table(&profile);
     assert!(table.contains("period"), "{table}");
+    // The columns line up whatever the stage's name: every row of the table
+    // as long as its header.
+    let rows: Vec<&str> = table.lines().take_while(|line| !line.is_empty()).collect();
+    assert!(rows.iter().all(|row| row.len() == rows[0].len()), "{table}");
     client.clear_profile().unwrap();
 }
 
