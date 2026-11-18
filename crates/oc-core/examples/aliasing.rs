@@ -17,8 +17,25 @@
 //!
 //! ```sh
 //! cargo run -p oc-core --example aliasing --release            # the table
-//! cargo run -p oc-core --example aliasing --release -- out/    # and a WAV per case
+//! cargo run -p oc-core --example aliasing --release -- out/    # and the WAVs
 //! ```
+//!
+//! A third table compares the bank with an ideal supersaw: each voice built
+//! from all its harmonics below the Nyquist frequency, at its exact pitch,
+//! gain and starting phase, through the same high-pass, in `f64` and
+//! unbounded. Nothing folds, clips or rounds there, so the difference is
+//! everything the module adds: folding, the rounding to the millivolt, and
+//! the slight loss of the top harmonics `PolyBLEP` costs. It needs no
+//! harmonics told apart, so the low notes are measured too.
+//!
+//! With a directory, it writes a WAV per case of the table, and in `pairs/`
+//! what the clipping sounds like: at full detune, the same notes and mixes at
+//! 3 V (`clipped`) and at 1 V raised three times in the file (`clean`), so
+//! both are as loud and differ only where the outputs' bound cut the peaks;
+//! `ab` alternates them every two seconds; `ideal`, the ideal supersaw at
+//! 3 V, and `error-clean` and `error-clipped`, each less the ideal, what the
+//! module adds without and with the clipping. The files are 32-bit floats,
+//! 10 V at full scale.
 
 use std::f64::consts::TAU;
 use std::fs;
@@ -54,6 +71,21 @@ const CLIP_LEVELS_MV: [i32; 5] = [1_000, 1_500, 2_000, 2_500, 3_000];
 
 /// The mixes the clipping is measured at.
 const CLIP_MIXES: [u16; 3] = [0, FULL / 2, FULL];
+
+/// The level of the clipped half of a pair: the highest.
+const PAIR_LEVEL_MV: i32 = 3_000;
+
+/// The notes of the pairs: C3, C4, C6.
+const PAIR_NOTES: [u8; 3] = [48, 60, 84];
+
+/// The mixes of the pairs: one sawtooth, then the default.
+const PAIR_MIXES: [u16; 2] = [0, FULL / 2];
+
+/// How long a pair's files last, in samples: eight seconds.
+const PAIR_LENGTH: usize = 8 * RATE_HZ as usize;
+
+/// How long `ab` plays each half before the other, in samples.
+const PAIR_SWITCH: usize = 2 * RATE_HZ as usize;
 
 /// The notes measured, C2 to C8 and B7, as MIDI numbers.
 const NOTES: [u8; 8] = [36, 48, 60, 72, 84, 96, 107, 108];
@@ -131,6 +163,100 @@ fn main() {
         }
     }
     clipping();
+    against_ideal();
+    if let Some(dir) = &wav_dir {
+        write_pairs(&Path::new(dir).join("pairs"));
+    }
+}
+
+/// The clipping pairs (see the module's documentation) into `dir`.
+fn write_pairs(dir: &Path) {
+    fs::create_dir_all(dir).expect("the pairs' directory must be writable");
+    let gain = f64::from(PAIR_LEVEL_MV) / f64::from(LEVEL_MV);
+    for note in PAIR_NOTES {
+        for mix in PAIR_MIXES {
+            let at = |amplitude| Supersaw {
+                frequency: tone::frequency(note, 0),
+                detune: FULL,
+                mix,
+                amplitude,
+            };
+            let clean: Vec<f64> = play(&at(LEVEL_MV), PAIR_LENGTH)
+                .iter()
+                .map(|sample| sample * gain)
+                .collect();
+            let (clipped, steps, phases) = render_for(&at(PAIR_LEVEL_MV), PAIR_LENGTH);
+            let ideal = ideal(&at(PAIR_LEVEL_MV), &steps, &phases, PAIR_LENGTH);
+            let error_clean = difference(&clean, &ideal);
+            let error_clipped = difference(&clipped, &ideal);
+            let ab: Vec<f64> = clean
+                .iter()
+                .zip(&clipped)
+                .enumerate()
+                .map(|(index, (&clean, &clipped))| {
+                    if (index / PAIR_SWITCH).is_multiple_of(2) {
+                        clean
+                    } else {
+                        clipped
+                    }
+                })
+                .collect();
+            let name = format!("{}-mix{}", tone::note_name(note).as_str(), mix / 10);
+            for (kind, samples) in [
+                ("clean", &clean),
+                ("clipped", &clipped),
+                ("ab", &ab),
+                ("ideal", &ideal),
+                ("error-clean", &error_clean),
+                ("error-clipped", &error_clipped),
+            ] {
+                write_wav(&dir.join(format!("{name}-{kind}.wav")), samples);
+            }
+            println!(
+                "{name:<10} error against the ideal: {:>6.1} dB clean, {:>6.1} dB clipped",
+                power_db(&error_clean, &ideal),
+                power_db(&error_clipped, &ideal)
+            );
+        }
+    }
+    println!("Clipping pairs written to {}", dir.display());
+}
+
+/// The difference between the module and the ideal, by note and detune:
+/// its power against the ideal's, over the whole band and under 10 kHz.
+fn against_ideal() {
+    println!("\nThe module less the ideal supersaw, against the ideal, mix 50 %, 1 V:\n");
+    println!(
+        "{:<4} {:>8} {:>6}  {:>9} {:>9}",
+        "note", "Hz", "detune", "all", "< 10 kHz"
+    );
+    for note in NOTES {
+        println!();
+        for detune in DETUNES {
+            let params = Supersaw {
+                frequency: tone::frequency(note, 0),
+                detune,
+                mix: MIX,
+                amplitude: LEVEL_MV,
+            };
+            let (played, steps, phases) = render_for(&params, LENGTH);
+            let ideal = ideal(&params, &steps, &phases, LENGTH);
+            let error = spectrum(&difference(&played, &ideal));
+            let reference = spectrum(&ideal);
+            let bin_hz = f64::from(RATE_HZ) / count(LENGTH);
+            let audible = bin_of(10_000.0 / bin_hz);
+            let total = |power: &[f64]| power.iter().sum::<f64>();
+            let db = |ratio: f64| 10.0 * ratio.log10();
+            println!(
+                "{:<4} {:>8.1} {:>4} %  {:>6.1} dB {:>6.1} dB",
+                tone::note_name(note).as_str(),
+                f64::from(params.frequency) / 1_000.0,
+                detune / 10,
+                db(total(&error) / total(&reference)),
+                db(total(&error[..audible]) / total(&reference[..audible]))
+            );
+        }
+    }
 }
 
 /// The share of samples the outputs' bounds clip, at C4 and full detune, by
@@ -173,15 +299,113 @@ fn clipping() {
 /// `params` played on the mono part, in millivolts, after the high-pass has
 /// settled; and each voice's phase step.
 fn render(params: &Supersaw) -> (Vec<f64>, [u32; VOICES]) {
+    let (samples, steps, _) = render_for(params, LENGTH);
+    (samples, steps)
+}
+
+/// `length` samples of `params`, as [`render`] plays them, with each voice's
+/// step and starting phase.
+fn render_for(params: &Supersaw, length: usize) -> (Vec<f64>, [u32; VOICES], [u32; VOICES]) {
     let mut bank = Bank::new();
     bank.set(params, RATE_HZ);
+    let phases = bank.phases();
+    (played(&mut bank, length), bank.steps(), phases)
+}
+
+/// The ideal supersaw the bank approaches: from `phases`, at `steps`, each
+/// voice the sum of its harmonics below the Nyquist frequency, the same gains,
+/// normalisation and high-pass, in `f64` and unbounded; `length` samples
+/// after the same settling, in millivolts.
+fn ideal(
+    params: &Supersaw,
+    steps: &[u32; VOICES],
+    phases: &[u32; VOICES],
+    length: usize,
+) -> Vec<f64> {
+    let turn = 2f64.powi(32);
+    let (centre, side) = mix_gains(params.mix);
+    let gains: Vec<f64> = (0..VOICES)
+        .map(|index| if index == CENTRE { centre } else { side })
+        .map(|gain| i32::try_from(gain).map_or(0.0, f64::from))
+        .collect();
+    let norm = gains.iter().map(|gain| gain * gain).sum::<f64>().sqrt();
+    // The harmonics of each voice below the Nyquist frequency.
+    let harmonics: Vec<u32> = steps
+        .iter()
+        .map(|&step| {
+            let cycles = f64::from(step) / turn;
+            let mut count = 0;
+            while f64::from(count + 1) * cycles < 0.5 {
+                count += 1;
+            }
+            count
+        })
+        .collect();
+    // The bank's one pole, on the fundamental's step.
+    let coefficient = 1.0 / (1.0 + TAU * f64::from(steps[CENTRE]) / turn);
+    let (mut previous, mut output) = (0.0, 0.0);
+    let mut samples = Vec::with_capacity(length);
+    for index in 0..SETTLE + length {
+        let mut sum = 0.0;
+        for voice in 0..VOICES {
+            #[allow(clippy::cast_possible_truncation)]
+            // The phase wraps round a turn, as the bank's does.
+            let phase = phases[voice].wrapping_add(steps[voice].wrapping_mul(index as u32));
+            sum +=
+                gains[voice] * band_limited_ramp(TAU * f64::from(phase) / turn, harmonics[voice]);
+        }
+        let input = sum / norm;
+        output = coefficient * (output + input - previous);
+        previous = input;
+        if index >= SETTLE {
+            samples.push(output * f64::from(params.amplitude));
+        }
+    }
+    samples
+}
+
+/// A rising ramp from −1 to 1 at `angle`, of its first `harmonics`
+/// harmonics: `-(2 / pi) sum sin(k angle) / k`, by the sines' recurrence.
+fn band_limited_ramp(angle: f64, harmonics: u32) -> f64 {
+    let twice_cos = 2.0 * angle.cos();
+    let (mut before, mut sine) = (0.0, angle.sin());
+    let mut sum = 0.0;
+    for k in 1..=harmonics {
+        sum += sine / f64::from(k);
+        let next = twice_cos * sine - before;
+        before = sine;
+        sine = next;
+    }
+    -sum / std::f64::consts::FRAC_PI_2
+}
+
+/// `samples` less `reference`, sample by sample.
+fn difference(samples: &[f64], reference: &[f64]) -> Vec<f64> {
+    samples.iter().zip(reference).map(|(a, b)| a - b).collect()
+}
+
+/// The power of `error` against the power of `reference`, in decibels.
+fn power_db(error: &[f64], reference: &[f64]) -> f64 {
+    let power = |samples: &[f64]| samples.iter().map(|value| value * value).sum::<f64>();
+    10.0 * (power(error) / power(reference)).log10()
+}
+
+/// `length` samples of `params` on the mono part, as [`render`] plays them.
+fn play(params: &Supersaw, length: usize) -> Vec<f64> {
+    let mut bank = Bank::new();
+    bank.set(params, RATE_HZ);
+    played(&mut bank, length)
+}
+
+/// `length` samples of the mono part of `bank`, in millivolts, after the
+/// high-pass has settled.
+fn played(bank: &mut Bank, length: usize) -> Vec<f64> {
     for _ in 0..SETTLE {
         bank.next_frame();
     }
-    let samples = (0..LENGTH)
+    (0..length)
         .map(|_| f64::from(bank.next_frame().mono))
-        .collect();
-    (samples, bank.steps())
+        .collect()
 }
 
 /// The same voices as naive ramps, at the same steps and gains, unfiltered.
@@ -333,15 +557,16 @@ fn bin_of(position: f64) -> usize {
     position.round().max(0.0) as usize
 }
 
-/// `samples` in millivolts as a mono 16-bit WAV at the module's rate, 10 V
-/// at full scale.
+/// `samples` in millivolts as a mono 32-bit float WAV at the module's rate,
+/// 10 V at full scale: the floats keep what an error file holds, far below
+/// a 16-bit step.
 fn write_wav(path: &Path, samples: &[f64]) {
     let data: Vec<u8> = samples
         .iter()
         .flat_map(|&millivolts| {
             #[allow(clippy::cast_possible_truncation)]
-            // Within ±10 V, so within an `i16` once scaled.
-            let value = (millivolts * 32_767.0 / 10_000.0).round() as i16;
+            // A level within a few units of full scale fits a `f32`.
+            let value = (millivolts / 10_000.0) as f32;
             value.to_le_bytes()
         })
         .collect();
@@ -352,12 +577,13 @@ fn write_wav(path: &Path, samples: &[f64]) {
     header.extend_from_slice(&(36 + bytes).to_le_bytes());
     header.extend_from_slice(b"WAVEfmt ");
     header.extend_from_slice(&16u32.to_le_bytes());
-    header.extend_from_slice(&1u16.to_le_bytes());
+    // IEEE float, one channel.
+    header.extend_from_slice(&3u16.to_le_bytes());
     header.extend_from_slice(&1u16.to_le_bytes());
     header.extend_from_slice(&RATE_HZ.to_le_bytes());
-    header.extend_from_slice(&(RATE_HZ * 2).to_le_bytes());
-    header.extend_from_slice(&2u16.to_le_bytes());
-    header.extend_from_slice(&16u16.to_le_bytes());
+    header.extend_from_slice(&(RATE_HZ * 4).to_le_bytes());
+    header.extend_from_slice(&4u16.to_le_bytes());
+    header.extend_from_slice(&32u16.to_le_bytes());
     header.extend_from_slice(b"data");
     header.extend_from_slice(&bytes.to_le_bytes());
     file.write_all(&header)

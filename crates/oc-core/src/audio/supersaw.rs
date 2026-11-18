@@ -273,6 +273,13 @@ impl Bank {
         self.saws.map(|saw| saw.step)
     }
 
+    /// Each voice's phase now, a turn being `2^32`: with [`Self::steps`],
+    /// what a reference rendering needs to start where the bank does.
+    #[must_use]
+    pub fn phases(&self) -> [u32; VOICES] {
+        self.saws.map(|saw| saw.phase)
+    }
+
     /// Plays `params` at `rate_hz` from the next sample on, keeping the
     /// phases and the filters' state.
     pub fn set(&mut self, params: &Supersaw, rate_hz: u32) {
