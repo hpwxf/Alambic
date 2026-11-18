@@ -3,8 +3,9 @@
 # down five times to SUPERSAW, launch it, raise the note by an octave (A3),
 # pick DETUNE and raise it by ten steps (60 %), click the right encoder to
 # open its input submenu, pick CV2 (two detents), close it. CV2 adds one volt,
-# 20 %: the detune played is 80 %. The snapshot shows the settings, NOTE
-# taking CV1 and DETUNE CV2 (`+CV1`, `+CV2`), and the seven voices.
+# 20 %: the detune played is 80 %. The snapshot shows the settings as the
+# panel sets them (DETUNE 60 %), NOTE taking CV1 and DETUNE CV2 (`+CV1`,
+# `+CV2`), and the seven voices spread at the 80 % played.
 ticks 360
 20  button up down
 60  button down down

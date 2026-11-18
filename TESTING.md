@@ -763,8 +763,8 @@ the edge of its range (C7 or C8).
 4. Inputs unplugged, `DETUNE` at 100 %: the seven bars stay still (an input
    nobody assigned moves nothing). `NOTE`'s `CV1`: a volt raises the pitch
    an octave (the header's hertz double). Assign `CV2` to `DETUNE` (right
-   encoder's click, `INPUT` to `CV2`): a volt adds 20 %, shown `60>80%` and
-   `+CV2`. Assign an envelope on `CV4` to `LEVEL` with `MUL`: A follows it.
+   encoder's click, `INPUT` to `CV2`): a volt adds 20 %: the line shows the
+   panel's `60%` and `+CV2`, the submenu's top edge the `80%` played. Assign an envelope on `CV4` to `LEVEL` with `MUL`: A follows it.
 
 On the TLM module this was written against (2026-11-18, before the inputs
 became assignable): `audio` 3.9 µs mean and 10.2 µs max at A2 and at C8

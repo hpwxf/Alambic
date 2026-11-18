@@ -456,7 +456,7 @@ impl SupersawApp {
                 } else {
                     (self.mix, self.played_mix())
                 };
-                let _ = write!(now, "{}%", (played + 5) / 10);
+                write_percent(&mut now, played);
                 (i32::from(panel), i32::from(played))
             }
             Setting::Level | Setting::Stereo => {
@@ -482,16 +482,17 @@ impl SupersawApp {
         editor.render(frame, assign, &self.cv, &param);
     }
 
-    /// The value of `setting` on screen; the detune and the mix show what
-    /// their input makes of them when it moves them.
+    /// The value of `setting` on screen, as the panel sets it: what its input
+    /// makes of it shows in the submenu, the header and the voices, as in
+    /// `RATCHET`.
     fn value_text(&self, setting: Setting) -> TextBuf<16> {
         let mut line = TextBuf::<16>::new();
         match setting {
             Setting::Note => {
                 let _ = write!(line, "{}", note_name(self.note).as_str());
             }
-            Setting::Detune => write_amount(&mut line, self.detune, self.played_detune()),
-            Setting::Mix => write_amount(&mut line, self.mix, self.played_mix()),
+            Setting::Detune => write_percent(&mut line, self.detune),
+            Setting::Mix => write_percent(&mut line, self.mix),
             Setting::Level => {
                 let _ = write_volts(&mut line, self.level, 1);
                 let _ = write!(line, " V");
@@ -556,14 +557,9 @@ fn pitch_permille(frequency: MilliHertz) -> i32 {
     i32::try_from(octaves * 1_000 / (span * i64::from(ONE))).unwrap_or(0)
 }
 
-/// `50%`, or `50>62%` when the input moves it.
-fn write_amount(line: &mut TextBuf<16>, panel: u16, played: u16) {
-    let percent = |amount: u16| (amount + 5) / 10;
-    if percent(panel) == percent(played) {
-        let _ = write!(line, "{}%", percent(panel));
-    } else {
-        let _ = write!(line, "{}>{}%", percent(panel), percent(played));
-    }
+/// An amount in thousandths as a whole percentage, `50%`.
+fn write_percent<const N: usize>(line: &mut TextBuf<N>, amount: u16) {
+    let _ = write!(line, "{}%", (amount + 5) / 10);
 }
 
 #[cfg(test)]
