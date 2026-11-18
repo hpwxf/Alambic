@@ -5,7 +5,7 @@ plugin, which Rack 2 requires to have major version 2, ships as
 `2.<minor>.<patch>` of the same release (checked by `xtask/tests/versions.rs`).
 Architectural decisions behind each change are in `journal/` (French).
 
-## Unreleased
+## 0.5.0 — 2026-11-18 (Rack plugin 2.5.0)
 
 ### Added
 
