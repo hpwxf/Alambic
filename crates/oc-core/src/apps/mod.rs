@@ -16,17 +16,18 @@
 //! [`InputSnapshot`] and [`TickContext`] — so that one applet never has to
 //! import another just to describe what it is fed. Each applet itself lives in
 //! its own submodule ([`diagnostic`], [`scope`], [`gfx_demo`], [`ratchet`],
-//! [`tone`]).
+//! [`tone`], [`supersaw`]).
 //!
 //! An applet's `update` returns what the outputs carry as
 //! [`Params`](crate::audio::Params): the CV applets hold levels, `TONE`
-//! asks for tones that a [`Voice`](crate::audio::Voice) renders
-//! (journal/D-033).
+//! asks for tones and `SUPERSAW` for parts of a supersaw bank that a
+//! [`Voice`](crate::audio::Voice) renders (journal/D-033, D-037).
 
 pub mod diagnostic;
 pub mod gfx_demo;
 pub mod ratchet;
 pub mod scope;
+pub mod supersaw;
 pub mod tone;
 
 use serde::{Deserialize, Serialize};
@@ -35,6 +36,7 @@ use crate::apps::diagnostic::DiagnosticApp;
 use crate::apps::gfx_demo::GfxDemoApp;
 use crate::apps::ratchet::RatchetApp;
 use crate::apps::scope::ScopeApp;
+use crate::apps::supersaw::SupersawApp;
 use crate::apps::tone::ToneApp;
 use crate::audio::Params;
 use crate::buttons::ButtonEvents;
@@ -118,16 +120,20 @@ pub enum AppId {
     Ratchet,
     /// A test tone in four waveforms on A to D (journal/D-033).
     Tone,
+    /// Seven detuned sawtooths on A and B, a sub-octave on C
+    /// (journal/D-037).
+    Supersaw,
 }
 
 impl AppId {
     /// Every app, in the order the menu lists them.
-    pub const ALL: [Self; 5] = [
+    pub const ALL: [Self; 6] = [
         Self::Diagnostic,
         Self::Scope,
         Self::Gfx,
         Self::Ratchet,
         Self::Tone,
+        Self::Supersaw,
     ];
 
     /// Zero-based index of this app.
@@ -155,6 +161,7 @@ impl AppId {
             Self::Gfx => "GFX DEMO",
             Self::Ratchet => "RATCHET",
             Self::Tone => "TONE",
+            Self::Supersaw => "SUPERSAW",
         }
     }
 }
@@ -167,6 +174,7 @@ pub struct AppHost {
     gfx: GfxDemoApp,
     ratchet: RatchetApp,
     tone: ToneApp,
+    supersaw: SupersawApp,
     current: AppId,
 }
 
@@ -180,6 +188,7 @@ impl AppHost {
             gfx: GfxDemoApp::new(),
             ratchet: RatchetApp::new(),
             tone: ToneApp::new(),
+            supersaw: SupersawApp::new(),
             current: AppId::default(),
         }
     }
@@ -206,6 +215,7 @@ impl AppHost {
             AppId::Gfx => self.gfx.update(input).into(),
             AppId::Ratchet => self.ratchet.update(input).into(),
             AppId::Tone => self.tone.update(input),
+            AppId::Supersaw => self.supersaw.update(input),
         }
     }
 
@@ -217,6 +227,7 @@ impl AppHost {
             AppId::Gfx => self.gfx.render(frame, context),
             AppId::Ratchet => self.ratchet.render(frame, context),
             AppId::Tone => self.tone.render(frame, context),
+            AppId::Supersaw => self.supersaw.render(frame, context),
         }
     }
 
@@ -248,6 +259,12 @@ impl AppHost {
     #[must_use]
     pub const fn tone(&self) -> &ToneApp {
         &self.tone
+    }
+
+    /// The `SUPERSAW` applet, running or not.
+    #[must_use]
+    pub const fn supersaw(&self) -> &SupersawApp {
+        &self.supersaw
     }
 }
 

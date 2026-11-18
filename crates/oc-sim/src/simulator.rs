@@ -17,6 +17,7 @@ use oc_core::apps::diagnostic::DiagnosticApp;
 use oc_core::apps::gfx_demo::GfxDemoApp;
 use oc_core::apps::ratchet::RatchetApp;
 use oc_core::apps::scope::ScopeApp;
+use oc_core::apps::supersaw::SupersawApp;
 use oc_core::apps::tone::ToneApp;
 use oc_core::debounce::DEFAULT_STABLE_SAMPLES;
 use oc_core::framebuffer::FrameBuffer;
@@ -403,6 +404,12 @@ impl Simulator {
     #[must_use]
     pub const fn tone(&self) -> &ToneApp {
         self.engine.apps().tone()
+    }
+
+    /// The `SUPERSAW` applet's observable state, running or not.
+    #[must_use]
+    pub const fn supersaw(&self) -> &SupersawApp {
+        self.engine.apps().supersaw()
     }
 
     /// The applet currently driving the outputs and the screen.

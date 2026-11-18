@@ -588,6 +588,14 @@ impl Tui {
                 self.simulator.tone().frequency(),
                 self.simulator.tone().amplitude()
             ),
+            AppId::Supersaw => format!(
+                "{} {}mHz   detune {}   mix {}   stereo {}",
+                oc_core::apps::tone::note_name(self.simulator.supersaw().note()).as_str(),
+                self.simulator.supersaw().frequency(),
+                self.simulator.supersaw().played_detune(),
+                self.simulator.supersaw().played_mix(),
+                self.simulator.supersaw().stereo()
+            ),
         };
         let menu = if self.simulator.menu_is_open() {
             "   [MENU]"

@@ -14,6 +14,7 @@
 | 4 — réglages système, calibration, persistance | 2026-11-16 | `92ab189` → `v0.3.0` | `etape-4-reglages-systeme.md` |
 | 5 — primitives graphiques et applet de démo | 2026-11-17 | `53ee310` → ce commit | `etape-5-gfx.md` |
 | 7 — chemin audio | 2026-11-17 → 2026-11-18 | `336817a` → `v0.5.0` | `etape-7-chemin-audio.md`, `rapport-etape-7-chemin-audio.md` |
+| 8 — premier oscillateur | 2026-11-18 | `69e54f3` → `v0.6.0` | `etape-8-supersaw.md` |
 
 ## Étape 3 — critères d'acceptation, tenus
 
@@ -28,7 +29,6 @@
 | Étape | Contenu pressenti | Dépend de |
 |---|---|---|
 | 6 — premiers applets musicaux | Ratchet (D-032, plan `etape-6-ratchet.md`), puis une seconde à décrire ; à 1 kHz (D-023 C+) | D-019, D-023, D-032 |
-| 8 — premier oscillateur | supersaw PolyBLEP sur le chemin audio de l'étape 7 (`docs/supersaw/` § 12–14) ; à planifier | D-033 |
 | ? — seconde carte | Teensy 4.1 / O.R.N.8 (notes locales non suivies) | D-003, D-007 |
 
 ## Questions ouvertes

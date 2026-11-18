@@ -56,6 +56,11 @@ The settings are erased and programmed through the boot ROM's `FlexSPI` NOR
 driver, which is safe while the firmware runs because `.text` executes from
 ITCM and nothing else reads the flash meanwhile.
 
+Keeping `.text` in ITCM is therefore load-bearing, not only a speed choice.
+The memory budget (what is used, how to measure what an applet costs, what to
+change when ITCM runs short, where a large test buffer goes, why DMA buffers
+stay in DTCM) is recorded in journal/D-038.
+
 Run `cargo xtask size` for the current figures. That command prints a selective
 section table (runtime sections only — DWARF is omitted on purpose) and runs an
 automated layout checklist; it exits non-zero if any hard placement invariant

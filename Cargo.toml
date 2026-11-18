@@ -34,7 +34,7 @@ default-members = [
 ]
 
 [workspace.package]
-version = "0.5.0"
+version = "0.6.0"
 edition = "2024"
 rust-version = "1.100"
 license = "MIT OR Apache-2.0"
@@ -42,9 +42,9 @@ repository = "https://github.com/hpwxf/Alambic"
 authors = ["Pascal Havé"]
 
 [workspace.dependencies]
-oc-core = { path = "crates/oc-core", version = "0.5.0" }
-oc-drivers = { path = "crates/oc-drivers", version = "0.5.0" }
-oc-protocol = { path = "crates/oc-protocol", version = "0.5.0" }
+oc-core = { path = "crates/oc-core", version = "0.6.0" }
+oc-drivers = { path = "crates/oc-drivers", version = "0.6.0" }
+oc-protocol = { path = "crates/oc-protocol", version = "0.6.0" }
 oc-image = { path = "crates/oc-image" }
 oc-halfkay = { path = "crates/oc-halfkay" }
 oc-probe = { path = "crates/oc-probe", default-features = false }

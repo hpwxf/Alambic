@@ -7,7 +7,7 @@
 | **Auteur** | Pascal Havé |
 | **Statut** | adoptée |
 | **Commits** | ce commit (ADR, extraction, `Ratchet` branchée dessus) |
-| **Relations** | sort de `RATCHET` la mécanique de D-035 pour d'autres applets (D-021) ; `oc-core` seul porteur du comportement (D-002) ; écran par `gfx` / `text` (D-030) |
+| **Relations** | sort de `RATCHET` la mécanique de D-035 pour d'autres applets (D-021) ; `oc-core` seul porteur du comportement (D-002) ; écran par `gfx` / `text` (D-030) ; deuxième utilisatrice : `SUPERSAW` (révision de D-037) |
 
 ## 1. Contexte
 
