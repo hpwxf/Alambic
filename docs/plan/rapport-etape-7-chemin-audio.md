@@ -571,7 +571,8 @@ interruption DMA : Voice::next_sample → calibration.to_code ─► RING (audio
 DMA (matériel)   : RING ─► TCR/TDR de LPSPI4 (PCS0) ─► DAC8565
 ```
 
-La latence entre un échantillon calculé et sa sortie est de 2 à 3 périodes (≈ 60 µs). Les paramètres publiés par la
+La latence entre un échantillon calculé et sa sortie est de 2 à 3 périodes (≈ 60 µs). Une interruption retardée
+d'une période entière laisse un emplacement avec son ancien contenu, qui sort tel quel (§ 14, Q7). Les paramètres publiés par la
 boucle prennent effet au plus 1 ms plus tard (un tick).
 
 ### 11.3 Sauvegarde et redémarrage
@@ -666,9 +667,133 @@ Une assertion à la compilation vérifie que rafale + tronçon + relâchement ti
 
 ---
 
-## 14. Index
+## 14. Questions naïves (et leurs réponses)
 
-### 14.1 Commits
+Questions qu'un développeur Rust sans pratique de l'embarqué ni du DMA poserait en lisant ce qui précède ; les
+réponses renvoient au code. Elles ont servi à relire le rapport : là où il ne répondait pas, il a été complété.
+
+**Q1. Qu'est-ce qu'un « registre », et pourquoi `write_volatile` ?**
+Un périphérique (SPI, timer, DMA) se pilote par des mots de 32 bits à des adresses fixes : écrire à l'adresse de
+`TDR` de LPSPI4, c'est déposer un mot dans sa FIFO. Pour le compilateur, ce sont des lectures et écritures mémoire
+ordinaires, qu'il pourrait fusionner, réordonner ou supprimer ; `read_volatile` / `write_volatile` (ce qu'utilisent
+`imxrt-ral` et `imxrt-hal` en dessous) lui interdisent. L'anneau du DMA est de la RAM ordinaire, mais le DMA la lit
+dans le dos du compilateur : d'où `write_volatile` dans `audio_irq::write_slot`.
+
+**Q2. Si le DMA écrit le DAC, à quoi sert encore une interruption ?**
+Le DMA *copie* ; il ne calcule rien. Il faut un code qui produise l'échantillon suivant (la voix, la calibration),
+qui le range dans l'anneau avant que le DMA ne le lise, et qui envoie l'écran. Le gain du DMA est ailleurs :
+l'**instant** d'écriture ne dépend plus de ce code, et ce code n'attend plus le bus pour le DAC.
+
+**Q3. Pourquoi pas un grand tampon calculé par blocs (le « double tampon » des cours) ?**
+C'est la suite naturelle (D-033, « calcul par blocs »), mais elle n'était pas nécessaire : un échantillon par
+interruption coûte 3,4 µs sur 21, et garde une latence de ≈ 60 µs. Un bloc de 32 échantillons réduirait le coût fixe
+de l'interruption (entrée, sortie, boîtes aux lettres) mais ajouterait ≈ 0,7 ms de latence, et l'envoi de l'écran,
+qui doit tomber *entre* deux rafales, garderait de toute façon une interruption par période.
+
+**Q4. Concrètement, une « boucle mineure », une « boucle majeure » ?**
+Ici, une boucle mineure = **les 32 octets d'un emplacement** (8 mots), copiés d'un trait à chaque top du PIT. Une
+boucle majeure = un nombre de boucles mineures (`BITER`) ; à sa fin, le DMA peut lever une interruption et appliquer
+`SLAST`/`DLAST`. On a choisi **une boucle mineure par boucle majeure** pour que *chaque* top lève l'interruption
+(§ 10.3).
+
+**Q5. Que font `SMOD = 8` et `DMOD = 3` sur les adresses ?**
+Un modulo `n` fige les bits de poids fort de l'adresse et ne laisse varier que ses `n` bits de poids faible.
+* Source : anneau à 0x2000_B100, 256 octets (2^8). L'adresse passe 0x…B100, B104, … B1FC, puis **revient à B100**
+  au lieu d'aller à B200 : l'anneau tourne sans rien reprogrammer. Il doit donc commencer sur un multiple de 256.
+* Destination : LPSPI4 est à 0x403A_0000 ; `TCR` à 0x403A_0060, `TDR` à 0x403A_0064, fenêtre de 8 octets (2^3).
+  L'adresse alterne 060, 064, 060, 064… : commande, donnée, commande, donnée.
+
+**Q6. Qu'est-ce qui empêche l'interruption d'écrire l'emplacement que le DMA est en train de lire ?**
+L'ordre dans le temps. Le DMA lit l'emplacement *k* au top *k* et met moins d'une microseconde à le copier ;
+l'interruption, qui ne démarre qu'après la copie, écrit l'emplacement *k + 2*, que le DMA ne lira que deux tops plus
+tard. Elle sait où en est le DMA en comptant les rafales terminées (leurs échos) et celle en cours.
+
+**Q7. Et si l'interruption arrive en retard d'une période entière ?**
+Les deux tops ne lèvent qu'une interruption (le drapeau est le même) ; l'exécution voit deux rafales terminées et
+recale sa position, mais elle n'a calculé qu'un échantillon pour deux périodes : un emplacement garde son ancien
+contenu (8 périodes plus tôt) et sort tel quel, soit un petit défaut audible. Rien ne se désynchronise pour autant.
+La boucle ne bloque jamais les interruptions plus de quelques µs (copies sous section critique), loin d'une période.
+
+**Q8. Pourquoi `critical_section::Mutex<RefCell<…>>` plutôt qu'un `Mutex` de `std` ou des atomiques ?**
+Il n'y a pas de système d'exploitation : pas de threads à endormir, donc pas de `std::sync::Mutex`. Sur un seul
+cœur, la façon simple d'avoir un accès exclusif est d'**empêcher les interruptions** le temps de l'accès
+(`critical-section-single-core`, qui pose PRIMASK). Le `RefCell` vérifie en plus qu'on n'emprunte pas deux fois. Des
+atomiques suffiraient pour un drapeau ou un compteur, pas pour copier 1 Kio de trame d'un coup sans déchirure.
+
+**Q9. Que se passe-t-il pendant une section critique de la boucle ?**
+Les interruptions attendent : celle du DMA est retardée de la durée de la copie (≈ 1 µs pour une trame). Le DAC, lui,
+n'attend pas : le DMA copie quand même au top. C'est ce qui a fait disparaître la gigue sur les sorties.
+
+**Q10. Pourquoi les deux interruptions à la même priorité ?**
+Avec la même priorité, aucune n'interrompt l'autre : celle du DMA et celle de « trame terminée » ne touchent jamais
+l'état en même temps, et elles prennent la même section critique sans risque. Priorité 0 = la plus haute ; rien
+d'autre n'est en interruption sur ce module (l'USB est interrogé par la boucle).
+
+**Q11. Qu'est-ce que la « gigue », et pourquoi s'entend-elle ?**
+L'écart entre l'instant où un échantillon *devrait* sortir et celui où il sort. Une sinusoïde de fréquence f,
+décalée de Δt, prend une erreur de phase de 2π·f·Δt : à 4 kHz et ±3 µs, ≈ 4,5°. Si la gigue a un rythme (ici celui
+de la boucle à 1 kHz), elle module le son et crée des raies parasites. Avec le DMA déclenché par le timer, Δt ne
+dépend plus que du matériel.
+
+**Q12. Pourquoi 47 619 Hz et pas 48 000 ? Est-ce un problème ?**
+Le PIT, seul timer qui sache déclencher le DMA, compte sur PERCLK à 1 MHz, et 1 000 000 / 48 000 n'est pas entier.
+La voix est construite à la cadence réelle : les hauteurs restent justes. Rien d'extérieur n'impose 48 kHz (pas
+d'interface audio numérique). La limite de Nyquist passe de 24 000 à 23 810 Hz : sans effet.
+
+**Q13. PCS3 « sans broche » : on affirme un CS qui n'existe pas ?**
+Oui, exprès. Chaque transaction du contrôleur affirme le PCS qu'elle désigne ; il en faut un. Celles de l'OLED
+désignent PCS3, qu'aucune broche ne sort : rien ne bouge, et surtout pas PCS0, le CS du DAC. Le vrai CS de l'OLED est
+une GPIO.
+
+**Q14. Pourquoi l'OLED garde un CS en GPIO ?**
+Ses broches (8 pour CS, 6 pour D/C) ne sont reliées à aucun PCS de LPSPI4 sur cette carte. Il faut donc les piloter
+au logiciel, au bon moment par rapport aux mots sur le bus — d'où l'attente de l'écho avant de le baisser, et
+l'interruption « trame terminée » pour le relever.
+
+**Q15. Pourquoi une interruption à part pour relâcher le CS de l'OLED ?**
+Pour que l'interruption audio n'ait pas à attendre la fin du tronçon (≈ 7 µs) : elle le lance et rend la main ; le
+contrôleur signale lui-même la fin de la trame (`FCF`, levé quand le PCS de la trame retombe, après son dernier
+bit). Il faut que le CS soit relevé avant le top suivant, sinon l'OLED lirait la rafale du DAC comme des commandes.
+
+**Q16. Qu'est-ce que le DWT, et pourquoi faut-il le « démarrer » ?**
+Le *Data Watchpoint and Trace* du Cortex-M7 contient un compteur de cycles (`CYCCNT`). Il est arrêté au reset ; il
+faut activer le traçage (`DCB`) et le compteur (`DWT`). Tant qu'il est arrêté, il rend toujours la même valeur — ce
+qui a fait croire au filtre que toutes les interruptions étaient des doublons (§ 10.2).
+
+**Q17. Qu'est-ce qu'un « domaine d'horloge », et pourquoi un accès au PIT coûte-t-il des microsecondes ?**
+Chaque périphérique tourne sur une horloge ; le cœur (600 MHz) et le bus (150 MHz) en ont d'autres. Un registre qui
+vit dans le domaine de PERCLK (1 MHz) ne change d'état qu'aux fronts de cette horloge : le pont entre les bus doit
+attendre un ou plusieurs de ces fronts pour qu'une lecture ou une écriture soit cohérente, soit jusqu'à quelques µs.
+C'est sans conséquence pour programmer un timer une fois ; c'est ruineux 47 619 fois par seconde.
+
+**Q18. Pourquoi l'anneau doit-il être en DTCM ?**
+Le DMA lit la mémoire directement, sans passer par le cache de données du cœur. Si l'anneau était dans une mémoire
+cachée (l'OCRAM), une écriture du cœur pourrait rester dans le cache et le DMA lirait l'ancienne valeur ; il faudrait
+nettoyer le cache après chaque écriture. La DTCM n'est pas cachée : ce que le cœur écrit, le DMA le voit.
+
+**Q19. Comment sait-on, sur le module, que le DMA fonctionne ?**
+Par son écho : chaque rafale fait revenir quatre mots dans la FIFO de réception, que l'interruption compte. Le
+journal de démarrage affiche ce compte (« DAC bursts ») et l'état d'erreur du DMA. « 0 rafale » avec « pas d'erreur »
+voulait dire « jamais déclenché » (§ 10.1) ; une erreur aurait voulu dire « déclenché mais adresse refusée ».
+
+**Q20. Qu'est-ce qui est testé sur l'hôte, et qu'est-ce qui ne peut l'être que sur le module ?**
+Sur l'hôte : la voix, les formes, la justesse (`oc-core/tests/audio.rs`), `TONE`, le découpage de l'écran
+(`FrameStream` produit exactement les octets du pilote bloquant), le rangement en mots de FIFO, les mots du DAC, la
+fusion des statistiques. Seulement sur le module : tout ce qui touche aux horloges, au DMA, au DMAMUX, aux
+interruptions et à l'ordre des écritures — d'où l'auto-test du journal, ajouté dès le deuxième essai.
+
+**Q21. Pourquoi l'écho de l'écran est-il masqué et pas celui du DAC ?**
+L'écho du DAC sert : il compte les rafales et dit quand la dernière est sortie. Celui de l'écran ne sert à rien (la
+fin du tronçon est signalée par `FCF`) et remplirait la FIFO de réception de mots à jeter.
+
+**Q22. Pourquoi « deux emplacements plus loin » et pas un ?**
+À l'instant où l'interruption s'exécute, le DMA vient de lire l'emplacement *k* ; l'emplacement *k + 1* sera lu au
+prochain top, dans moins de 21 µs. Écrire *k + 1* marcherait tant que l'interruption n'est jamais retardée de plus
+que la marge ; écrire *k + 2* donne une période entière de marge, pour 21 µs de latence de plus.
+
+## 15. Index
+
+### 15.1 Commits
 
 | Commit | Lot | Contenu |
 |---|---|---|
@@ -679,7 +804,7 @@ Une assertion à la compilation vérifie que rafale + tronçon + relâchement ti
 | `69e9099` | 7c | correctifs du module (essais 2 à 6) : repli PERCLK, double déclenchement, écho en réception, ordre GPIO/SPI |
 | `27211a5` | 7e | DAC en DMA déclenché par le PIT, interruption du DMA, DMAMUX `A_ON`, DWT en tête |
 
-### 14.2 Fichiers
+### 15.2 Fichiers
 
 | Fichier | Ce qu'on y trouve |
 |---|---|
@@ -695,7 +820,7 @@ Une assertion à la compilation vérifie que rafale + tronçon + relâchement ti
 | `journal/D-033-audio-path.md` | décision et ses six révisions |
 | `TESTING.md` § 9.3d, 9.3e | protocoles de mesure sur le module |
 
-### 14.3 Mesures, de bout en bout
+### 15.3 Mesures, de bout en bout
 
 | État | DAC | `audio` (moy.) | Écriture du DAC | Écran |
 |---|---|---|---|---|
