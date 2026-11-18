@@ -7,6 +7,19 @@ Architectural decisions behind each change are in `journal/` (French).
 
 ## Unreleased
 
+### Added
+
+- **`SUPERSAW`**, the first oscillator (journal/D-037): seven detuned
+  band-limited sawtooths (integer PolyBLEP, Szabo's detune and mix curves, a
+  one-pole high-pass at the fundamental) on A and B, mono or left and right
+  (`STEREO`), a sawtooth an octave below on C; `NOTE`, `DETUNE`, `MIX`,
+  `LEVEL`. Every setting but `STEREO` takes an input through the submenu of
+  `oc_core::modulation` (journal/D-036): `NOTE` takes `CV1` at one volt per
+  octave at start, the others none, so that an unplugged input's noise on
+  the module moves nothing; `MUL` on `LEVEL` makes a VCA.
+- `oc_core::audio::supersaw`, the bank the voice renders for the outputs
+  that ask for one of its parts.
+
 ### Fixed
 
 - `cargo probe stats` (and the browser probe): the stage column is as wide

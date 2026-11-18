@@ -1,0 +1,31 @@
+# oc-sim scenario v1
+# SUPERSAW's input submenu (journal/D-036, D-037 revised): as supersaw.scn,
+# but the submenu stays open on DETUNE, CV2 picked, at one volt. The snapshot
+# shows the frame over the main screen: DETUNE and the 80 % played in its top
+# edge; CV2 in a lit box, the scale and the shift; MIN, MAX, EFFECT ADD,
+# CENTER; the CV bar, 1 V as a band from 0 V; the VAL bar, the panel's 60 %
+# a tick and 80 % a block.
+ticks 360
+20  button up down
+60  button down down
+70  button up up
+70  button down up
+90  button down down
+100 button down up
+110 button down down
+120 button down up
+130 button down down
+140 button down up
+150 button down down
+160 button down up
+170 button down down
+176 button down up
+190 button left down
+196 button left up
+210 encoder 2 +12
+220 encoder 1 +1
+230 encoder 2 +10
+240 button right down
+246 button right up
+260 encoder 2 +2
+290 cv 2 1000

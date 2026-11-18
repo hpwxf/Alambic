@@ -5,7 +5,7 @@
 | **Identifiant** | D-037 |
 | **Date** | 2026-11-18 |
 | **Auteur** | Pascal Havé |
-| **Statut** | adoptée |
+| **Statut** | adoptée, révisée |
 | **Commits** | ce commit (ADR, plan) ; implémentation dans les lots de l'étape 8 (`docs/plan/etape-8-supersaw.md`) |
 | **Relations** | premier oscillateur sur le chemin audio de D-033 ; étend `oc_core::audio` (D-033, révision du lot 7b) ; ajoute une applet à D-021 ; pas de flottant (D-005) ; sorties par la calibration (D-027) ; étude `docs/supersaw/` § 2–14 |
 
@@ -92,3 +92,34 @@ Choix de l'utilisateur (2026-11-18) : **A et B en stéréo, C sub-octave**, **no
 * Des images de reconstruction gênantes : rien côté calcul, un passe-bas externe (étude § 10).
 * Une sortie mono jugée trop pauvre en `STEREO ON` : mélanger une part des voix de l'autre côté.
 * Un second moteur audio partagé : un choix de moteur dans `Params` à la place du champ `supersaw`.
+
+## Révision du 2026-11-18 — entrées assignables par `oc_core::modulation` (D-036)
+
+**Pourquoi.** Sur le module, l'écran de `SUPERSAW` « gigote » à fort désaccord, pas dans Rack. Le flux de la sonde,
+entrées débranchées, montre un bruit de ±5 codes environ (CV1 −22 à +12 mV, CV2 −17 à +7, CV3 −22 à +7) : CV2 et CV3
+s'ajoutaient sans seuil au désaccord et au mix (`mV / 5` millièmes), soit 997 à 1 000 sur la partie la plus raide de
+la courbe de Szabo ; Rack lit exactement 0 V. Au lieu d'un seuil de présence (D-024), l'utilisateur demande que
+les réglages prennent leur entrée par le sous-menu partagé de D-036, comme `RATCHET` : une entrée non choisie ne
+touche rien.
+
+**Ce qui change.**
+
+* `NOTE`, `DETUNE`, `MIX` et `LEVEL` prennent chacun une entrée, choisie par un clic sur l'encodeur droit
+  (`AssignEditor`) ; `STEREO` n'en prend pas. L'écran principal nomme l'entrée à droite de la valeur (`+CV1`,
+  `*CV4`, `=CV2` seul quand elle fixe le réglage).
+* **Au démarrage**, `NOTE` prend `CV1` en `ADD` (le V/oct, contrat d'un oscillateur) ; les autres aucune. Le
+  bruit de `CV1` reste donc sur la note tant que l'entrée n'est pas retirée (≈ ±14 cents mesurés), question
+  laissée au filtrage des entrées.
+* **Effets** (plage `SET` de chaque réglage, d'où `usable_range` tire `ADD` et `MUL`) :
+  * `NOTE` : `ADD` à un volt par octave sur la note du panneau ; `SET` à un volt par octave depuis C4 à 0 V
+    (−3 V pour C1, +4 V pour C8) ; `MUL` multiplie la fréquence (5 V la laissent, 10 V la doublent).
+  * `DETUNE`, `MIX` : 20 % par volt, de 0 % à 0 V à 100 % à 5 V pour `SET` ; ajoutés pour `ADD` ; multipliés pour
+    `MUL`.
+  * `LEVEL` : de 0 à 3 V sur 0 à 5 V pour `SET` ; ajouté pour `ADD` ; multiplié pour `MUL`, ce qui en fait un VCA
+    piloté par une enveloppe.
+* Le sous-menu montre la valeur jouée (la fréquence pour `NOTE`) et sa place sur la course ; `NOTE` y est placée
+  en octaves de C1 à C8.
+
+**Ce qui ne change pas.** Le banc, la voix, les parts et `STEREO`. Les assignations ne sont pas sauvegardées, comme
+celles de `RATCHET` (D-035).
+

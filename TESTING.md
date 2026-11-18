@@ -750,6 +750,30 @@ On the TLM module this was written against (2026-11-18, DAC by DMA, lot
 audible; a Korg NTS-2 tuner on the sine reads in tune up to B7, and C8 at
 the edge of its range (C7 or C8).
 
+### 9.3f — Supersaw (journal/D-037, lot 8c)
+
+`SUPERSAW` from the app menu, A (and B) into a mixer or headphones amp:
+
+1. `cargo probe stats` in `SUPERSAW`, just after a restart (the profile
+   counts from the splash): `audio` mean and max, at A2 and at C8 with
+   `DETUNE` at 100 %; the interrupt must stay well under its 21 µs period.
+2. By ear from C1 to C8 at `DETUNE` 0, 50 and 100 %: no click, no tone that
+   does not follow the note (aliasing would decide the ×4 of lot 8d).
+3. `STEREO ON`: A and B differ, the field widens; `OFF`: the same on both.
+4. Inputs unplugged, `DETUNE` at 100 %: the seven bars stay still (an input
+   nobody assigned moves nothing). `NOTE`'s `CV1`: a volt raises the pitch
+   an octave (the header's hertz double). Assign `CV2` to `DETUNE` (right
+   encoder's click, `INPUT` to `CV2`): a volt adds 20 %, shown `60>80%` and
+   `+CV2`. Assign an envelope on `CV4` to `LEVEL` with `MUL`: A follows it.
+
+On the TLM module this was written against (2026-11-18, before the inputs
+became assignable): `audio` 3.9 µs mean and 10.2 µs max at A2 and at C8
+with `DETUNE` 100 %, `audio_period` 18.4 to 23.5 µs, `frame` 1.37 to 1.39 ms,
+the loop at 1 000 µs; the sound right, `STEREO` included. With `CV2` and
+`CV3` added unconditionally then, the unplugged inputs' noise (about
+±5 codes, −22 to +12 mV) made the bars move at full detune, which Rack,
+reading exactly 0 V, did not show.
+
 ### 9.4 — Calibration
 
 This step measures how far the module is from the factory calibration, then

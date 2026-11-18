@@ -43,7 +43,7 @@ pub const AMPLITUDE_STEP_MV: MilliVolts = 100;
 
 /// The pitch range, whatever `CV1` adds: below a hertz is not a tone, and
 /// above 20 kHz not audible.
-const FREQUENCY_RANGE: (MilliHertz, MilliHertz) = (1_000, 20_000_000);
+pub const FREQUENCY_RANGE: (MilliHertz, MilliHertz) = (1_000, 20_000_000);
 
 /// The waveform of each output, A to D.
 const WAVES: [Waveform; CV_CHANNELS] = Waveform::ALL;

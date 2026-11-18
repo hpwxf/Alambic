@@ -229,7 +229,7 @@ fn ratchet_shows_the_input_submenu() {
 }
 
 #[test]
-fn supersaw_plays_its_settings_and_cv2() {
+fn supersaw_plays_its_settings_and_cv2_once_assigned() {
     let mut simulator = replay("supersaw");
     assert_eq!(simulator.current_app(), AppId::Supersaw);
     let supersaw = simulator.supersaw();
@@ -238,6 +238,20 @@ fn supersaw_plays_its_settings_and_cv2() {
     assert_eq!(supersaw.detune(), 600);
     assert_eq!(supersaw.played_detune(), 800, "CV2 adds 20 % a volt");
     assert_screen_matches(&mut simulator, "supersaw");
+}
+
+#[test]
+fn supersaw_shows_the_input_submenu() {
+    use oc_core::apps::supersaw::Setting;
+    use oc_core::modulation::AssignLine;
+    use oc_core::platform::CvChannel;
+    let mut simulator = replay("supersaw_inputs");
+    let supersaw = simulator.supersaw();
+    assert_eq!(supersaw.assigning(), Some(AssignLine::Input));
+    let assign = supersaw.assign(Setting::Detune).unwrap();
+    assert_eq!(assign.input, Some(CvChannel::Two));
+    assert_eq!(supersaw.played_detune(), 800);
+    assert_screen_matches(&mut simulator, "supersaw_inputs");
 }
 
 #[test]
@@ -353,6 +367,7 @@ fn every_scenario_file_has_a_test_and_a_snapshot() {
         "ratchet_tempo",
         "tone",
         "supersaw",
+        "supersaw_inputs",
     ];
 
     let mut found: Vec<String> = std::fs::read_dir(scenario_dir())
