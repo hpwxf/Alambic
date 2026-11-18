@@ -1,9 +1,16 @@
 # oc-sim scenario v1
-# RATCHET's inputs (journal/D-032): launch it from the app menu as in
-# ratchet.scn, click the right encoder on COUNT to change its input, turn five
-# detents (--, CV1= .. CV4=, then CV1+) and stay there: the snapshot shows
-# CV1+ in a dark box on the lit row, what the right encoder turns now.
-ticks 300
+# RATCHET's input submenu (journal/D-035): launch it from the app menu as in
+# ratchet.scn, click the right encoder on COUNT to open its submenu, pick CV2
+# (two detents), move CV2 between 1 V and 3 V, then go to SCALE (one detent
+# of the left encoder) and set it to x0.50. The snapshot shows the submenu, a
+# frame over the main screen: COUNT and the count a burst would take now
+# (4 + 4 x (2.5 V x 0.50) = 9) in its top edge; CV2, the scale x0.50 in a lit
+# box, the shift; MIN and MAX at their defaults; EFFECT ADD; the CV bar, the
+# signal once scaled, 1.25 V, as a band from 0 V and a block, the reading,
+# 2.5 V, a stroke, the range seen (0 V on opening to 3 V) a line on top; the VAL
+# bar, the panel's 4 a tick and 9 a block; under the frame, the bottom of the
+# timeline.
+ticks 320
 20  button up down
 60  button down down
 70  button up up
@@ -18,4 +25,9 @@ ticks 300
 166 button left up
 200 button right down
 206 button right up
-230 encoder 2 +5
+230 encoder 2 +2
+240 cv 2 1000
+250 cv 2 3000
+260 cv 2 2500
+270 encoder 1 +1
+280 encoder 2 -10

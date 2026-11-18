@@ -15,12 +15,24 @@ fn micros(profile: &Profile, fine: u32) -> String {
     format!("{}.{}", nanos / 1_000, nanos % 1_000 / 100)
 }
 
+/// Width of the stage column: the longest stage's name (`audio_period`), so
+/// that every row's numbers line up under the header.
+fn name_width() -> usize {
+    Stage::ALL
+        .iter()
+        .map(|stage| stage.name().len())
+        .chain(["period".len()])
+        .max()
+        .unwrap_or(0)
+}
+
 fn stat_row(out: &mut String, name: &str, profile: &Profile, stat: &Stat) {
+    let width = name_width();
     let cell =
         |value: Option<u32>| value.map_or_else(|| "-".to_owned(), |fine| micros(profile, fine));
     let _ = writeln!(
         out,
-        "{name:<8} {:>9} {:>9} {:>9} {:>9}",
+        "{name:<width$} {:>9} {:>9} {:>9} {:>9}",
         stat.count(),
         cell(stat.min()),
         cell(stat.mean()),
@@ -37,9 +49,10 @@ pub fn profile_table(profile: &Profile) -> String {
         out.push_str("this module has no fine counter: nothing is timed\n");
         return out;
     }
+    let width = name_width();
     let _ = writeln!(
         out,
-        "{:<8} {:>9} {:>9} {:>9} {:>9}",
+        "{:<width$} {:>9} {:>9} {:>9} {:>9}",
         "us", "count", "min", "mean", "max"
     );
     for stage in Stage::ALL {

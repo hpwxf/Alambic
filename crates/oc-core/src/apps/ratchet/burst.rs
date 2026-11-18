@@ -169,6 +169,29 @@ impl Burst {
     }
 }
 
+/// What an input does to the value its setting has on the panel
+/// (journal/D-035).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Effect {
+    /// The setting follows the input, from a fixed value at 0 V.
+    Set,
+    /// The input is added to the panel's value.
+    Add,
+    /// The panel's value is multiplied by the input over [`UNIT_MV`].
+    Mul,
+}
+
+/// The input that leaves a value unchanged under [`Effect::Mul`]: 5 V, the
+/// top of a unipolar envelope or LFO.
+pub const UNIT_MV: MilliVolts = 5_000;
+
+/// `value * millivolts / UNIT_MV`, rounded to the nearest.
+fn multiplied(value: i64, millivolts: MilliVolts) -> i64 {
+    let product = value * i64::from(millivolts);
+    let unit = i64::from(UNIT_MV);
+    (product + product.signum() * unit / 2) / unit
+}
+
 /// The time an input sets when a setting follows it, at 0 V: the first
 /// interval of [`Model::First`], the span of [`Model::Span`].
 #[must_use]
@@ -179,56 +202,66 @@ pub const fn follow_time_micros(model: Model) -> u32 {
     }
 }
 
-/// The count an input sets or adds: four repeats per volt, from one at 0 V
-/// when it follows. A gate burst stays a gate burst when an input adds to it;
-/// one that follows an input is counted.
+/// The count an input sets, adds to or multiplies: four repeats per volt,
+/// from one at 0 V when it is followed. A gate burst stays a gate burst
+/// unless the count follows the input.
 #[must_use]
-pub fn count_from(base: Count, millivolts: MilliVolts, follows: bool) -> Count {
+pub fn count_from(base: Count, millivolts: MilliVolts, effect: Effect) -> Count {
     let added = millivolts * 4 / 1_000;
-    let total = match (base, follows) {
-        (Count::Gate, false) => return Count::Gate,
-        (_, true) => 1 + added,
-        (Count::Repeats(count), false) => i32::from(count) + added,
+    let total = match (base, effect) {
+        (_, Effect::Set) => i64::from(1 + added),
+        (Count::Gate, _) => return Count::Gate,
+        (Count::Repeats(count), Effect::Add) => i64::from(i32::from(count) + added),
+        (Count::Repeats(count), Effect::Mul) => multiplied(i64::from(count), millivolts),
     };
-    let bounded = total.clamp(1, i32::from(MAX_REPEATS));
+    let bounded = total.clamp(1, i64::from(MAX_REPEATS));
     Count::Repeats(u8::try_from(bounded).unwrap_or(1))
 }
 
-/// The time (first interval or span) an input sets or scales, 1 V/oct on the
-/// rate: a volt more halves it; [`follow_time_micros`] at 0 V when it follows.
+/// The time (first interval or span) an input sets, scales 1 V/oct on the
+/// rate (a volt more halves it) or multiplies; [`follow_time_micros`] at 0 V
+/// when it is followed.
 #[must_use]
-pub fn time_from(model: Model, base_micros: u32, millivolts: MilliVolts, follows: bool) -> u32 {
-    let base = if follows {
-        follow_time_micros(model)
-    } else {
-        base_micros
-    };
+pub fn time_from(model: Model, base_micros: u32, millivolts: MilliVolts, effect: Effect) -> u32 {
     let longest = match model {
         Model::First => MAX_INTERVAL_MICROS,
         Model::Span => MAX_SPAN_MICROS,
     };
-    scale(base, -volts_q16(millivolts)).clamp(MIN_INTERVAL_MICROS, longest)
-}
-
-/// The curve an input sets or moves: an octave per volt, from 0 (even) at
-/// 0 V when it follows; within ±[`CURVE_TENTHS`].
-#[must_use]
-pub fn curve_from(base_tenths: i32, millivolts: MilliVolts, follows: bool) -> i32 {
-    let base = if follows { 0 } else { base_tenths };
-    (base + millivolts / 100).clamp(-CURVE_TENTHS, CURVE_TENTHS)
-}
-
-/// The chance an input sets or adds: 20 % per volt, from 0 % at 0 V when it
-/// follows (100 % at 5 V).
-#[must_use]
-pub fn chance_from(base_percent: u32, millivolts: MilliVolts, follows: bool) -> u32 {
-    let base = if follows {
-        0
-    } else {
-        i32::try_from(base_percent).unwrap_or(100)
+    let time = match effect {
+        Effect::Set => scale(follow_time_micros(model), -volts_q16(millivolts)),
+        Effect::Add => scale(base_micros, -volts_q16(millivolts)),
+        Effect::Mul => {
+            let product = multiplied(i64::from(base_micros), millivolts).max(0);
+            u32::try_from(product).unwrap_or(u32::MAX)
+        }
     };
-    let chance = (base + millivolts / 50).clamp(0, 100);
-    u32::try_from(chance).unwrap_or(100)
+    time.clamp(MIN_INTERVAL_MICROS, longest)
+}
+
+/// The curve an input sets, moves (an octave per volt, from 0, even, at 0 V
+/// when it is followed) or multiplies; within ±[`CURVE_TENTHS`].
+#[must_use]
+pub fn curve_from(base_tenths: i32, millivolts: MilliVolts, effect: Effect) -> i32 {
+    let curve = match effect {
+        Effect::Set => i64::from(millivolts / 100),
+        Effect::Add => i64::from(base_tenths + millivolts / 100),
+        Effect::Mul => multiplied(i64::from(base_tenths), millivolts),
+    };
+    let bounded = curve.clamp(-i64::from(CURVE_TENTHS), i64::from(CURVE_TENTHS));
+    i32::try_from(bounded).unwrap_or(0)
+}
+
+/// The chance an input sets, adds to (20 % per volt, from 0 % at 0 V when it
+/// is followed: 100 % at 5 V) or multiplies.
+#[must_use]
+pub fn chance_from(base_percent: u32, millivolts: MilliVolts, effect: Effect) -> u32 {
+    let base = i64::from(base_percent);
+    let chance = match effect {
+        Effect::Set => i64::from(millivolts / 50),
+        Effect::Add => base + i64::from(millivolts / 50),
+        Effect::Mul => multiplied(base, millivolts),
+    };
+    u32::try_from(chance.clamp(0, 100)).unwrap_or(100)
 }
 
 /// Millivolts as volts in 16.16.
@@ -245,8 +278,8 @@ fn scale(value: u32, octaves: i64) -> u32 {
 #[cfg(test)]
 mod tests {
     use super::{
-        Burst, Count, MAX_INTERVAL_MICROS, MIN_INTERVAL_MICROS, Model, chance_from, count_from,
-        curve_from, time_from,
+        Burst, Count, Effect, MAX_INTERVAL_MICROS, MIN_INTERVAL_MICROS, Model, chance_from,
+        count_from, curve_from, time_from,
     };
 
     fn burst(model: Model, count: Count, curve_tenths: i32) -> Burst {
@@ -340,34 +373,69 @@ mod tests {
     #[test]
     fn an_input_added_to_a_setting_moves_it_by_its_scale() {
         assert_eq!(
-            count_from(Count::Repeats(4), 1_000, false),
+            count_from(Count::Repeats(4), 1_000, Effect::Add),
             Count::Repeats(8)
         );
-        assert_eq!(count_from(Count::Gate, 5_000, false), Count::Gate);
-        assert!(time_from(Model::First, 100_000, 1_000, false).abs_diff(50_000) <= 50);
-        assert_eq!(curve_from(-5, 1_000, false), 5, "an octave per volt");
-        assert_eq!(curve_from(0, 9_000, false), 30);
-        assert_eq!(chance_from(50, 1_000, false), 70);
-        assert_eq!(chance_from(50, -5_000, false), 0);
+        assert_eq!(count_from(Count::Gate, 5_000, Effect::Add), Count::Gate);
+        assert!(time_from(Model::First, 100_000, 1_000, Effect::Add).abs_diff(50_000) <= 50);
+        assert_eq!(curve_from(-5, 1_000, Effect::Add), 5, "an octave per volt");
+        assert_eq!(curve_from(0, 9_000, Effect::Add), 30);
+        assert_eq!(chance_from(50, 1_000, Effect::Add), 70);
+        assert_eq!(chance_from(50, -5_000, Effect::Add), 0);
         assert_eq!(
-            count_from(Count::Repeats(4), -10_000, false),
+            count_from(Count::Repeats(4), -10_000, Effect::Add),
             Count::Repeats(1)
         );
         assert_eq!(
-            time_from(Model::First, 100_000, -10_000, false),
+            time_from(Model::First, 100_000, -10_000, Effect::Add),
             MAX_INTERVAL_MICROS
         );
     }
 
     #[test]
     fn an_input_followed_sets_a_setting_from_zero_volts() {
-        assert_eq!(count_from(Count::Repeats(20), 0, true), Count::Repeats(1));
-        assert_eq!(count_from(Count::Gate, 1_000, true), Count::Repeats(5));
-        assert_eq!(time_from(Model::First, 700_000, 0, true), 100_000);
-        assert_eq!(time_from(Model::Span, 700_000, 0, true), 400_000);
-        assert_eq!(curve_from(15, 0, true), 0);
-        assert_eq!(curve_from(15, -1_500, true), -15);
-        assert_eq!(chance_from(100, 2_500, true), 50);
-        assert_eq!(chance_from(0, 9_000, true), 100);
+        assert_eq!(
+            count_from(Count::Repeats(20), 0, Effect::Set),
+            Count::Repeats(1)
+        );
+        assert_eq!(
+            count_from(Count::Gate, 1_000, Effect::Set),
+            Count::Repeats(5)
+        );
+        assert_eq!(time_from(Model::First, 700_000, 0, Effect::Set), 100_000);
+        assert_eq!(time_from(Model::Span, 700_000, 0, Effect::Set), 400_000);
+        assert_eq!(curve_from(15, 0, Effect::Set), 0);
+        assert_eq!(curve_from(15, -1_500, Effect::Set), -15);
+        assert_eq!(chance_from(100, 2_500, Effect::Set), 50);
+        assert_eq!(chance_from(0, 9_000, Effect::Set), 100);
+    }
+
+    #[test]
+    fn an_input_multiplying_a_setting_leaves_it_at_five_volts() {
+        assert_eq!(
+            count_from(Count::Repeats(4), 5_000, Effect::Mul),
+            Count::Repeats(4)
+        );
+        assert_eq!(
+            count_from(Count::Repeats(4), 2_500, Effect::Mul),
+            Count::Repeats(2)
+        );
+        assert_eq!(
+            count_from(Count::Repeats(4), 0, Effect::Mul),
+            Count::Repeats(1)
+        );
+        assert_eq!(count_from(Count::Gate, 2_500, Effect::Mul), Count::Gate);
+        assert_eq!(
+            time_from(Model::First, 100_000, 10_000, Effect::Mul),
+            200_000
+        );
+        assert_eq!(
+            time_from(Model::First, 100_000, 0, Effect::Mul),
+            MIN_INTERVAL_MICROS
+        );
+        assert_eq!(curve_from(-10, 7_500, Effect::Mul), -15);
+        assert_eq!(curve_from(20, 10_000, Effect::Mul), 30);
+        assert_eq!(chance_from(80, 2_500, Effect::Mul), 40);
+        assert_eq!(chance_from(80, -5_000, Effect::Mul), 0);
     }
 }

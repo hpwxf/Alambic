@@ -76,6 +76,7 @@ Demandée le 2026-11-17 (D-032) : rafales de triggers sur B après une copie sur
 | **6b** — applet | ✅ `RatchetApp`, `AppId::Ratchet` (« RATCHET ») : A copie, B rafale, `PASSTHRU`, `PROB`, `SYNC`, entrée au choix par réglage (`CVn=` / `CVn+`), `up` à la main ; tests tick par tick | fait |
 | **6c** — écran | ✅ deux pages et leur curseur, entrées, BPM, témoins, frise avec repère du prochain trigger ; scénarios dorés | fait |
 | **6d** — module | essayé par l'utilisateur, sur le chemin audio : correct ; `MODE FIRST` et `SPAN` gardés tous les deux pour l'instant | ✅ |
+| **6e** — écran et entrées | ascenseur à gauche des réglages, frise plus basse qui suit la rafale en cours (révision de D-032) ; sous-menu d'assignation des entrées par réglage : entrée, lecture et bornes vues, `SCALE`, `SHIFT`, `MIN` / `MAX`, effet `SET` / `ADD` / `MUL` (D-035) ; tests et écrans dorés. Reste : essai sur le module (TESTING 9.3c) | en cours |
 
 ### Étape 5 — primitives graphiques et applet de démonstration (terminée)
 
@@ -150,6 +151,6 @@ Valeurs seules ; le raisonnement est dans `journal/`.
 | sonde live | profilage dans `oc-core` (DWT sur le module), second port USB CDC binaire `postcard` COBS, crates `oc-protocol` et `oc-probe`, toujours compilée ; un seul port encadré si l'USB MIDI arrive | D-029 |
 | graphisme | `oc_core::gfx` : bases en octets entiers, contrôles, courbes, motifs ; trigonométrie entière ; applet de démo dans le menu | D-030 |
 | outils web | page statique Chromium : sonde par Web Serial, flash par WebHID depuis l'ELF validé ou un HEX (vérification réduite) ; cœur wasm sans E/S (`oc-image`, `oc-halfkay`, `oc-web`), `cargo xtask web` ; essayé sur le module (sonde et flash) | D-031 |
-| applet Ratchet | A copie de TR1, B rafale ; nombre ou gate, `SHAPE` signé (accélère / ralentit), placement `FIRST` ou `SPAN`, `PROB`, `PASSTHRU`, `SYNC` sur le tempo de TR1 ; triggers 5 V / 5 ms ; entrée au choix par réglage (suit / s'ajoute) | D-032 |
+| applet Ratchet | A copie de TR1, B rafale ; nombre ou gate, `SHAPE` signé (accélère / ralentit), placement `FIRST` ou `SPAN`, `PROB`, `PASSTHRU`, `SYNC` sur le tempo de TR1 ; triggers 5 V / 5 ms ; entrée par réglage dans un sous-menu : `SCALE`, `SHIFT`, `MIN` / `MAX`, effet `SET` / `ADD` / `MUL` | D-032, D-035 |
 | publication | à chaque étiquette `v*` : release GitHub avec les images du firmware (ELF et HEX SH1106, HEX SSD1306 / SSD1309, SHA-256) ; page web sur GitHub Pages | D-034 |
 | chemin audio | interruption PIT à 48 kHz, priorité la plus haute ; les quatre sorties ; `DAC_CS` en PCS0 matériel, DAC à 22 MHz (plafond 25 MHz en 3,3 V) ; l'interruption possède le bus et cède des tronçons à l'OLED ; voix séparée du contrôle ; applet `TONE` ; DMA seulement si la mesure le demande | D-033 |
