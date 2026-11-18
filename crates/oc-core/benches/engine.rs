@@ -15,7 +15,8 @@ use oc_core::apps::diagnostic::DiagnosticApp;
 use oc_core::apps::ratchet::RatchetApp;
 use oc_core::apps::tone::ToneApp;
 use oc_core::apps::{InputSnapshot, TickContext};
-use oc_core::audio::Voice;
+use oc_core::audio::supersaw::{FULL, Part, Supersaw};
+use oc_core::audio::{Channel, Params, Voice};
 use oc_core::buttons::ButtonReader;
 use oc_core::calibration::{CvInputCalibration, CvOutputCalibration};
 use oc_core::framebuffer::FrameBuffer;
@@ -233,6 +234,30 @@ fn voice(criterion: &mut Criterion) {
     group.bench_function("tone_sample_to_codes", |bencher| {
         bencher.iter(|| {
             let samples = voice.next_sample();
+            black_box(samples.map(|level| output.to_code(level)))
+        });
+    });
+
+    // The seven sawtooths, their sums and high-passes and the sub-octave
+    // (journal/D-037), every part read.
+    let mut bank = Voice::new(48_000);
+    let mut params = Params::REST;
+    params.channels = [
+        Channel::Supersaw(Part::Left),
+        Channel::Supersaw(Part::Right),
+        Channel::Supersaw(Part::Sub),
+        Channel::Supersaw(Part::Mono),
+    ];
+    params.supersaw = Supersaw {
+        frequency: 110_000,
+        detune: FULL / 2,
+        mix: FULL / 2,
+        amplitude: 1_000,
+    };
+    bank.set_params(&params);
+    group.bench_function("supersaw_sample_to_codes", |bencher| {
+        bencher.iter(|| {
+            let samples = bank.next_sample();
             black_box(samples.map(|level| output.to_code(level)))
         });
     });

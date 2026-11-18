@@ -8,8 +8,10 @@
 //! engine runs one voice at the tick rate; a backend with an audio context
 //! runs its own at that context's rate, from [`Engine::params`](crate::engine::Engine::params).
 
+pub mod supersaw;
 pub mod wave;
 
+use self::supersaw::{Bank, Part, Supersaw};
 use self::wave::{ONE, Waveform};
 use crate::calibration::{CV_OUT_MAX_MV, CV_OUT_MIN_MV};
 use crate::platform::{CV_CHANNELS, MilliVolts};
@@ -35,6 +37,8 @@ pub enum Channel {
     Level(MilliVolts),
     /// A tone.
     Tone(Tone),
+    /// A part of the supersaw of [`Params::supersaw`] (journal/D-037).
+    Supersaw(Part),
 }
 
 /// What every output carries, as an applet publishes it once a tick.
@@ -42,6 +46,9 @@ pub enum Channel {
 pub struct Params {
     /// One per output, A to D.
     pub channels: [Channel; CV_CHANNELS],
+    /// The supersaw the [`Channel::Supersaw`] outputs share; ignored when
+    /// none reads it.
+    pub supersaw: Supersaw,
 }
 
 impl Params {
@@ -57,7 +64,10 @@ impl Params {
             channels[index] = Channel::Level(levels[index]);
             index += 1;
         }
-        Self { channels }
+        Self {
+            channels,
+            supersaw: Supersaw::OFF,
+        }
     }
 
     /// Holds output `index` at `level`, whatever it carried.
@@ -74,8 +84,9 @@ impl From<[MilliVolts; CV_CHANNELS]> for Params {
 
 /// Renders [`Params`] at a fixed rate, one sample of every output a call.
 ///
-/// The per-sample work is a phase addition and a waveform lookup per tone;
-/// the phase steps are computed when the parameters or the rate change.
+/// The per-sample work is a phase addition and a waveform lookup per tone,
+/// and the supersaw bank when an output reads it; the phase steps are
+/// computed when the parameters or the rate change.
 #[derive(Debug, Clone)]
 pub struct Voice {
     rate_hz: u32,
@@ -83,6 +94,10 @@ pub struct Voice {
     /// Phase added per sample, per output; zero for a level.
     steps: [u32; CV_CHANNELS],
     phases: [u32; CV_CHANNELS],
+    /// The supersaw every [`Channel::Supersaw`] output reads.
+    bank: Bank,
+    /// Whether an output reads the bank: otherwise it is not run.
+    bank_used: bool,
 }
 
 impl Voice {
@@ -95,6 +110,8 @@ impl Voice {
             params: Params::REST,
             steps: [0; CV_CHANNELS],
             phases: [0; CV_CHANNELS],
+            bank: Bank::new(),
+            bank_used: false,
         }
     }
 
@@ -127,6 +144,11 @@ impl Voice {
 
     /// One sample of every output, then advances the phases.
     pub fn next_sample(&mut self) -> [MilliVolts; CV_CHANNELS] {
+        let frame = if self.bank_used {
+            self.bank.next_frame()
+        } else {
+            supersaw::Frame::default()
+        };
         let mut out = [0; CV_CHANNELS];
         for (index, channel) in self.params.channels.iter().enumerate() {
             out[index] = match *channel {
@@ -136,19 +158,26 @@ impl Voice {
                     self.phases[index] = self.phases[index].wrapping_add(self.steps[index]);
                     scale(value, tone.amplitude)
                 }
+                Channel::Supersaw(part) => frame.part(part),
             };
         }
         out
     }
 
-    /// The phase step of each tone at the current rate.
+    /// The phase step of each tone, and the bank's, at the current rate.
     fn update_steps(&mut self) {
         for (step, channel) in self.steps.iter_mut().zip(&self.params.channels) {
             *step = match *channel {
-                Channel::Level(_) => 0,
+                Channel::Level(_) | Channel::Supersaw(_) => 0,
                 Channel::Tone(tone) => phase_step(tone.frequency, self.rate_hz),
             };
         }
+        self.bank_used = self
+            .params
+            .channels
+            .iter()
+            .any(|channel| matches!(channel, Channel::Supersaw(_)));
+        self.bank.set(&self.params.supersaw, self.rate_hz);
     }
 }
 
@@ -162,8 +191,8 @@ pub fn phase_step(frequency: MilliHertz, rate_hz: u32) -> u32 {
     u32::try_from(step.min(turn / 2 - 1)).unwrap_or(u32::MAX)
 }
 
-/// `value` in `-ONE..=ONE` as a level of peak `amplitude`, rounded and held
-/// within what the outputs can produce.
+/// `value`, `ONE` being the peak, as a level of peak `amplitude`, rounded
+/// and held within what the outputs can produce.
 fn scale(value: i32, amplitude: MilliVolts) -> MilliVolts {
     let level = (i64::from(value) * i64::from(amplitude) + i64::from(ONE / 2)) >> 15;
     #[allow(clippy::cast_possible_truncation)]
