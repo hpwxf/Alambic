@@ -56,14 +56,21 @@ const PAGE_ROWS: usize = 4;
 /// Pages of settings.
 const PAGES: usize = Setting::ALL.len().div_ceil(PAGE_ROWS);
 
-/// Left edge of the page cursor in the title bar.
-const PAGE_ARROW_X: i32 = 84;
+/// Width of the scroll bar left of the settings, which shows the page.
+const SCROLL_WIDTH: i32 = 3;
 
-/// A five-column, three-row triangle at `at`, its tip up or down.
-fn arrow(frame: &mut FrameBuffer, at: Point, up: bool) {
+/// Left edge of the settings' rows, right of the scroll bar and a gap.
+const ROW_LEFT: i32 = SCROLL_WIDTH + 1;
+
+/// Top of the burst's timeline, under its playhead; it runs to the bottom
+/// of the screen.
+const TIMELINE_TOP: i32 = 48;
+
+/// A five-column, three-row triangle at `at`, its tip down.
+fn arrow_down(frame: &mut FrameBuffer, at: Point) {
     for row in 0..3 {
-        // Rows widen away from the tip.
-        let half = if up { row } else { 2 - row };
+        // Rows narrow towards the tip.
+        let half = 2 - row;
         gfx::hline(frame, at.x + 2 - half, at.y + row, 2 * half + 1, Ink::Lit);
     }
 }
@@ -236,6 +243,19 @@ struct Running {
     sent: u32,
     /// Time since the last trigger of the burst.
     since_micros: u32,
+    /// The triggers B carried so far: bit 0 the incoming one, bit `n` the
+    /// `n`th repeat.
+    fired: u64,
+}
+
+impl Running {
+    /// Time since the burst started.
+    fn elapsed_micros(&self) -> u64 {
+        (1..=self.sent)
+            .map(|index| u64::from(self.burst.interval_micros(index)))
+            .sum::<u64>()
+            + u64::from(self.since_micros)
+    }
 }
 
 /// Retriggers `TR1` onto A and bursts it onto B.
@@ -427,6 +447,7 @@ impl RatchetApp {
             burst,
             sent: 0,
             since_micros: 0,
+            fired: u64::from(self.passthru),
         });
     }
 
@@ -454,6 +475,7 @@ impl RatchetApp {
             // A repeat that does not fire leaves its time to pass all the same.
             if self.roll(running.burst.chance_percent) {
                 self.pulse_b_micros = pulse_for(interval.min(next));
+                running.fired |= 1_u64.checked_shl(running.sent).unwrap_or(0);
             }
         }
         self.running = Some(running);
@@ -581,14 +603,6 @@ impl RatchetApp {
             None => write!(rate, "--- BPM"),
         };
         text::draw(frame, rate.as_str(), Point::new(42, 0), lit);
-        // A cursor for the other pages: up when one comes before, down
-        // when one comes after.
-        if self.page() > 0 {
-            arrow(frame, Point::new(PAGE_ARROW_X, 0), true);
-        }
-        if self.page() + 1 < PAGES {
-            arrow(frame, Point::new(PAGE_ARROW_X, 4), false);
-        }
         let lights = [
             ("1", self.gate),
             ("A", self.pulse_a_micros > 0),
@@ -604,13 +618,22 @@ impl RatchetApp {
             }
         }
 
+        let rows = i32::try_from(PAGE_ROWS).unwrap_or(4);
+        self.render_scroll_bar(frame, rows * ROW_HEIGHT);
         let first = self.page() * PAGE_ROWS;
         let shown = &Setting::ALL[first..(first + PAGE_ROWS).min(Setting::ALL.len())];
         for (row, &setting) in (1..).zip(shown) {
             let top = row * ROW_HEIGHT;
             let highlighted = setting == self.selected();
             if highlighted {
-                gfx::fill_rect(frame, 0, top, WIDTH_I32, ROW_HEIGHT, Ink::Lit);
+                gfx::fill_rect(
+                    frame,
+                    ROW_LEFT,
+                    top,
+                    WIDTH_I32 - ROW_LEFT,
+                    ROW_HEIGHT,
+                    Ink::Lit,
+                );
             }
             let style = if highlighted {
                 TextStyle::dark(&FONT_5X8)
@@ -621,7 +644,7 @@ impl RatchetApp {
                 (Setting::Time, Model::Span) => "SPAN",
                 _ => setting.label(),
             };
-            text::draw(frame, label, Point::new(2, top), style);
+            text::draw(frame, label, Point::new(ROW_LEFT + 2, top), style);
             let mut value = TextBuf::<16>::new();
             self.write_value(setting, &mut value);
             text::draw(
@@ -633,8 +656,19 @@ impl RatchetApp {
             self.render_source(frame, setting, top, highlighted);
         }
 
-        let rows = i32::try_from(PAGE_ROWS).unwrap_or(4);
-        self.render_timeline(frame, (rows + 1) * ROW_HEIGHT + 2);
+        self.render_timeline(frame, TIMELINE_TOP);
+    }
+
+    /// The scroll bar left of the settings, `height` pixels under the title
+    /// bar: a dotted track, and a thumb over the share of it the page on
+    /// screen takes.
+    fn render_scroll_bar(&self, frame: &mut FrameBuffer, height: i32) {
+        let pages = i32::try_from(PAGES).unwrap_or(1);
+        let page = i32::try_from(self.page()).unwrap_or(0);
+        gfx::dotted_vline(frame, SCROLL_WIDTH / 2, ROW_HEIGHT, height, 2, Ink::Lit);
+        let top = ROW_HEIGHT + page * height / pages;
+        let bottom = ROW_HEIGHT + (page + 1) * height / pages;
+        gfx::fill_rect(frame, 0, top, SCROLL_WIDTH, bottom - top, Ink::Lit);
     }
 
     /// The input column of `setting`'s row: its input when it has one, `--`
@@ -726,15 +760,21 @@ impl RatchetApp {
         };
     }
 
-    /// The triggers of a burst started now on B, as marks on a line (eight
-    /// repeats for a gate burst), from `top` to the bottom of the screen.
+    /// The triggers of the burst on B, as marks on a line (eight repeats for
+    /// a gate burst), from `top` to the bottom of the screen: the burst under
+    /// way, or else the one a trigger would start now.
+    ///
+    /// Under way, a playhead above the line follows the burst: the triggers
+    /// B carried are drawn bold, the repeats `PROB` dropped as a dot.
     ///
     /// With `TR1`'s rate known, a dotted line marks where the next trigger is
     /// due, one period after the start: the repeats past it would be cut by
     /// the restart, and are drawn short. The line is scaled to the longer of
     /// the burst and the period, so the mark stays on screen.
     fn render_timeline(&self, frame: &mut FrameBuffer, top: i32) {
-        let burst = self.latched();
+        let burst = self
+            .running
+            .map_or_else(|| self.latched(), |running| running.burst);
         let repeats = burst.max_repeats().min(if burst.count == Count::Gate {
             8
         } else {
@@ -749,20 +789,33 @@ impl RatchetApp {
         let height = baseline - top;
         gfx::hline(frame, 0, baseline, WIDTH_I32, Ink::Lit);
         let width = u64::from((WIDTH_I32 - 1).unsigned_abs());
-        let x_of = |at: u64| i32::try_from(at * width / span).unwrap_or(0);
-        let mark = |frame: &mut FrameBuffer, at: u64, tall: bool| {
+        let x_of = |at: u64| i32::try_from(at.min(span) * width / span).unwrap_or(0);
+        let mark = |frame: &mut FrameBuffer, at: u64, index: u32, tall: bool| {
+            let x = x_of(at);
             let length = if tall { height } else { height / 3 };
-            gfx::vline(frame, x_of(at), baseline - length, length, Ink::Lit);
+            let Some(running) = self.running.filter(|running| index <= running.sent) else {
+                gfx::vline(frame, x, baseline - length, length, Ink::Lit);
+                return;
+            };
+            if running.fired & 1_u64.checked_shl(index).unwrap_or(0) != 0 {
+                gfx::fill_rect(frame, x - 1, baseline - length, 3, length, Ink::Lit);
+            } else {
+                gfx::pixel(frame, x, baseline - 1, Ink::Lit);
+            }
         };
-        mark(frame, 0, self.passthru);
+        mark(frame, 0, 0, self.passthru);
         let mut at: u64 = 0;
         for index in 1..=repeats {
             at += u64::from(burst.interval_micros(index));
             let cut = next_trigger.is_some_and(|due| at >= due);
-            mark(frame, at, !cut);
+            mark(frame, at, index, !cut);
         }
         if let Some(due) = next_trigger {
             gfx::dotted_vline(frame, x_of(due), top, height, 2, Ink::Lit);
+        }
+        if let Some(running) = self.running {
+            let x = x_of(running.elapsed_micros());
+            arrow_down(frame, Point::new(x - 2, top - 4));
         }
     }
 }

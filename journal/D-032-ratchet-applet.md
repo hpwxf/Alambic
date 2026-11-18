@@ -94,3 +94,17 @@ Choix de l'utilisateur (2026-11-17), avec les détails tranchés par l'assistant
 L'utilisateur a essayé `RATCHET` sur le module, désormais sur le chemin audio (sorties par DMA, D-033) : correct.
 `MODE FIRST` et `SPAN` sont **gardés tous les deux** pour l'instant ; le choix reste ouvert (§ 5).
 
+## Révision du 2026-11-18 — écran : ascenseur, frise de la rafale en cours
+
+Demandée par l'utilisateur après l'essai sur le module. La décision ne change pas, seulement l'écran (§ 4,
+« Écran » et l'encodeur gauche) :
+
+* la flèche ▲ / ▼ de la barre de titre est remplacée par un **ascenseur** à gauche des réglages : un rail
+  pointillé sur la hauteur des quatre lignes, un curseur plein sur la part de la page affichée ; les lignes se
+  décalent de 4 pixels à droite ;
+* la **frise** est réduite à 15 pixels (lignes 48 à 63) ; les pages gardent quatre réglages, les options restent
+  en page 2 ;
+* **pendant une rafale**, la frise montre la rafale en cours (ses réglages lus au front) et non celle que lancerait
+  un front maintenant : une tête de lecture ▼ au-dessus suit le temps écoulé, les triggers partis sur B sont en
+  trait épais, les répétitions écartées par `PROB` réduites à un point ; hors rafale, l'aperçu reste celui des
+  réglages courants.

@@ -658,7 +658,10 @@ every 500 ms); set `SYNC ON` and `FIRST` to `/4`: the repeats on `TR3` come a
 quarter of the clock's period apart from the second trigger on. On the
 timeline, a dotted line marks where the next trigger is due: with a clock
 faster than the burst, the repeats past it are drawn short and are indeed
-cut on `TR3`. If `TR2` and `TR3` count nothing, the 5 V triggers do not cross the inputs' threshold: note it, it
+cut on `TR3`. While a burst runs, the timeline shows it: a playhead
+moves above it, the triggers sent turn bold, and with `PROB 50%` the
+dropped repeats shrink to a dot. The scroll bar left of the settings shows
+which of the two pages is on screen. If `TR2` and `TR3` count nothing, the 5 V triggers do not cross the inputs' threshold: note it, it
 decides whether the trigger level has to change.
 
 ### 9.3d — Fast DAC and shared bus (journal/D-033, lot 7a)

@@ -333,14 +333,39 @@ fn a_repeat_that_does_not_fire_keeps_the_others_in_place() {
 }
 
 #[test]
-fn a_cursor_points_to_the_other_page() {
+fn a_scroll_bar_left_of_the_settings_shows_the_page() {
     use oc_core::platform::Display as _;
     let mut engine = ratchet();
     engine.tick();
-    // Page 1: the down arrow's tip (bottom row), no up arrow.
+    // Page 1 of 2: the thumb over the top half of the rows (8..40).
     let frame = engine.parts_mut().4.frame_mut().clone();
-    assert!(frame.pixel(86, 6) && frame.pixel(84, 4) && !frame.pixel(86, 0));
+    assert!(frame.pixel(0, 8) && frame.pixel(2, 23) && !frame.pixel(0, 24) && !frame.pixel(2, 39));
     set(&mut engine, Setting::Mode, 0);
     let frame = engine.parts_mut().4.frame_mut().clone();
-    assert!(frame.pixel(86, 0) && frame.pixel(84, 2) && !frame.pixel(86, 6));
+    assert!(!frame.pixel(0, 8) && !frame.pixel(2, 23) && frame.pixel(0, 24) && frame.pixel(2, 39));
+    // Nothing left of the rows in the title bar's place of the old cursor.
+    assert!((80..90).all(|x| (0..8).all(|y| !frame.pixel(x, y))));
+}
+
+#[test]
+fn the_timeline_follows_the_burst_under_way() {
+    use oc_core::platform::Display as _;
+    let mut engine = ratchet();
+    // One trigger, then 240 ms of the default burst (4 x 100 ms, scaled to
+    // 400 ms over 127 columns): two repeats sent, the playhead at x 76.
+    run(&mut engine, 250, |tick| tick == 10);
+    let frame = engine.parts_mut().4.frame_mut().clone();
+    // The incoming trigger and the repeats sent are bold, the others thin.
+    for x in [0, 1, 30, 31, 32, 62, 63, 64] {
+        assert!(frame.pixel(x, 55), "bold at {x}");
+    }
+    assert!(frame.pixel(95, 55) && !frame.pixel(94, 55) && !frame.pixel(96, 55));
+    // The playhead's tip, alone on its row.
+    let tips: Vec<i32> = (0..128).filter(|&x| frame.pixel(x, 46)).collect();
+    assert_eq!(tips, [75]);
+    // Once the burst is over, the timeline shows the next one, all thin.
+    run(&mut engine, 300, |_| false);
+    let frame = engine.parts_mut().4.frame_mut().clone();
+    assert!(frame.pixel(31, 55) && !frame.pixel(30, 55) && !frame.pixel(32, 55));
+    assert!((0..128).all(|x| !frame.pixel(x, 46)));
 }

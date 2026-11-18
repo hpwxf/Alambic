@@ -5,6 +5,15 @@ plugin, which Rack 2 requires to have major version 2, ships as
 `2.<minor>.<patch>` of the same release (checked by `xtask/tests/versions.rs`).
 Architectural decisions behind each change are in `journal/` (French).
 
+## Unreleased
+
+### Changed
+
+- `RATCHET`'s screen: a scroll bar left of the settings shows the page, in
+  place of the arrows in the title bar; the timeline is shorter (15 pixels),
+  and while a burst runs it shows that burst, a playhead above it, the
+  triggers sent drawn bold and the repeats `PROB` dropped as a dot.
+
 ## 0.5.0 — 2026-11-18 (Rack plugin 2.5.0)
 
 ### Added
