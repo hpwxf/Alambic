@@ -27,7 +27,7 @@ const UNIT: i64 = 1 << 16;
 
 /// Each voice's relative offset from the fundamental at full detune, in
 /// 16.16: Szabo's -0.110 to +0.107.
-const OFFSETS: [i64; VOICES] = [-7_210, -4_121, -1_279, 0, 1_305, 4_074, 7_042];
+pub const OFFSETS: [i64; VOICES] = [-7_210, -4_121, -1_279, 0, 1_305, 4_074, 7_042];
 
 /// The voices of each side in stereo, besides the centre: a wide, a middle
 /// and a narrow one each, of mixed signs.

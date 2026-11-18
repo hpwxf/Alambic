@@ -229,6 +229,18 @@ fn ratchet_shows_the_input_submenu() {
 }
 
 #[test]
+fn supersaw_plays_its_settings_and_cv2() {
+    let mut simulator = replay("supersaw");
+    assert_eq!(simulator.current_app(), AppId::Supersaw);
+    let supersaw = simulator.supersaw();
+    assert_eq!(supersaw.note(), 57, "A3");
+    assert_eq!(supersaw.frequency(), 220_000);
+    assert_eq!(supersaw.detune(), 600);
+    assert_eq!(supersaw.played_detune(), 800, "CV2 adds 20 % a volt");
+    assert_screen_matches(&mut simulator, "supersaw");
+}
+
+#[test]
 fn tone_plays_its_note_raised_by_cv1() {
     let simulator = replay("tone");
     assert_eq!(simulator.current_app(), AppId::Tone);
@@ -340,6 +352,7 @@ fn every_scenario_file_has_a_test_and_a_snapshot() {
         "ratchet_inputs",
         "ratchet_tempo",
         "tone",
+        "supersaw",
     ];
 
     let mut found: Vec<String> = std::fs::read_dir(scenario_dir())

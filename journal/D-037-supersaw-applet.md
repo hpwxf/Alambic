@@ -5,7 +5,7 @@
 | **Identifiant** | D-037 |
 | **Date** | 2026-11-18 |
 | **Auteur** | Pascal Havé |
-| **Statut** | proposée |
+| **Statut** | adoptée |
 | **Commits** | ce commit (ADR, plan) ; implémentation dans les lots de l'étape 8 (`docs/plan/etape-8-supersaw.md`) |
 | **Relations** | premier oscillateur sur le chemin audio de D-033 ; étend `oc_core::audio` (D-033, révision du lot 7b) ; ajoute une applet à D-021 ; pas de flottant (D-005) ; sorties par la calibration (D-027) ; étude `docs/supersaw/` § 2–14 |
 

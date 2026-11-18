@@ -62,7 +62,7 @@ et B stéréo, C sub-octave ; note, désaccord et mix ; PolyBLEP d'abord, ×4 si
 | Lot | Contenu | État |
 |---|---|---|
 | **8a** — calcul | `oc_core::audio::supersaw` : scie PolyBLEP entière, désaccord et mix de Szabo, passe-haut sur la fondamentale, parts `Mono` / `Left` / `Right` / `Sub` ; banc partagé dans `Voice` ; alias sous 10 kHz ≥ 25 dB sous la scie naïve (≈ 35 dB estimés), banc criterion 36 ns / échantillon sur l'hôte (`TONE` 20 ns) | ✅ |
-| **8b** — applet | `SupersawApp` (« SUPERSAW ») : `NOTE`, `DETUNE`, `MIX`, `LEVEL`, `STEREO` ; CV1 V/oct, CV2, CV3 ; menu à six applets ; écran | à faire |
+| **8b** — applet | `SupersawApp` (« SUPERSAW ») : `NOTE`, `DETUNE`, `MIX`, `LEVEL`, `STEREO` ; CV1 V/oct, CV2, CV3 (+20 %/V, valeur jouée affichée `60>80%`) ; menu à six applets, `SETUP` sans ligne vide ; écran : réglages et les sept voix (écart, gain) ; scénario doré `supersaw` | ✅ |
 | **8c** — module | profil `audio`, écoute, décision sur le ×4 | à faire |
 | **8d** — ×4 | suréchantillonnage et décimation, si 8c le demande | conditionnel |
 

@@ -26,8 +26,8 @@ use crate::text::{self, TextStyle};
 const TITLE: &str = "SELECT APP";
 
 /// First screen row of the list, right under the title: the rows are all
-/// needed for five applets and `SETUP` (journal/D-033); past that, the list
-/// will have to scroll.
+/// needed for six applets and `SETUP` (journal/D-033, D-037); past that, the
+/// list will have to scroll.
 const FIRST_ROW: i32 = 1;
 
 /// Horizontal padding of a list entry, so text does not touch the highlight edge.
@@ -39,10 +39,9 @@ const SETUP_LABEL: &str = "SETUP";
 /// Number of entries: every app, then `SETUP`.
 const ENTRIES: usize = AppId::ALL.len() + 1;
 
-/// The list must fit on screen, `SETUP` one blank row below the apps; adding
-/// an app past that is a compile error.
+/// The list must fit on screen; adding an app past that is a compile error.
 const _: () = assert!(
-    ENTRIES < (ROWS - FIRST_ROW) as usize,
+    ENTRIES <= (ROWS - FIRST_ROW) as usize,
     "the app list no longer fits on the screen"
 );
 
@@ -64,13 +63,12 @@ impl MenuEntry {
         }
     }
 
-    /// Screen row of the entry at `index`: `SETUP` sits one blank row below
-    /// the apps, so it does not read as one of them.
+    /// Screen row of the entry at `index`, `SETUP` right below the apps: the
+    /// blank row that set it apart went to the sixth applet (journal/D-037).
     #[allow(clippy::cast_possible_truncation, clippy::cast_possible_wrap)]
     // `index` is below `ENTRIES`, a handful, checked at compile time above.
     const fn row(index: usize) -> i32 {
-        let gap = if index >= AppId::ALL.len() { 1 } else { 0 };
-        FIRST_ROW + index as i32 + gap
+        FIRST_ROW + index as i32
     }
 }
 
