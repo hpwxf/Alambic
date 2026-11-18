@@ -11,6 +11,12 @@ Conventions : *module* = l'Ornament & Crime réel ; *boucle* = la boucle coopér
 une période audio (21 µs aujourd'hui) ; *tick* = une période de la boucle (1 ms). Les essais sur le module sont
 numérotés dans l'ordre où l'utilisateur les a faits.
 
+Chaque affirmation technique relève de l'un de quatre ordres, comme dans [../hardware.md](../hardware.md) :
+**[principe]** (vrai de toute machine de ce genre), **[spécifié]** (promis par une fiche technique ou le manuel de
+référence, cité), **[ce module]** (l'assemblage concret et ce qu'on y a mesuré), **[firmware]** (un choix du code).
+Les étiquettes sont posées là où le contexte ne suffit pas. Dans le récit des essais (§ 7 et § 10), tout ce qui est
+« observé » ou « mesuré » est [ce module] ; ce qui est « déduit » ou « hypothèse » n'a pas été mesuré isolément.
+
 ---
 
 ## 1. Point de départ et objectif
@@ -50,9 +56,11 @@ le tout bloquant dans une boucle à 1 kHz) ne tenait ni la cadence ni la régula
 
 ## 2. Le matériel en jeu (ce qu'il faut savoir pour suivre)
 
-Le détail des acronymes est dans `HARDWARE.md` (non versionné). Ici, l'essentiel pour suivre le récit.
+Le détail est dans [../hardware.md](../hardware.md) ; ici, l'essentiel pour suivre le récit.
 
-### 2.1 Les horloges du i.MX RT1062 (telles que les règle la BSP `teensy4-bsp`)
+### 2.1 Les horloges du i.MX RT1062
+
+[spécifié — réglages de la BSP `teensy4-bsp`, `clock_power.rs`]
 
 | Horloge | Fréquence | Qui l'utilise ici |
 |---|---|---|
@@ -64,89 +72,85 @@ Le détail des acronymes est dans `HARDWARE.md` (non versionné). Ici, l'essenti
 
 Deux conséquences ont pesé lourd dans l'étape :
 
-* **48 kHz ne divise pas 1 MHz** (20,83 coups) : un timer sur PERCLK ne peut faire que 47 619 Hz (21 coups) ou
-  50 000 Hz (20 coups). Seul le quartz brut de 24 MHz donne 48 kHz exacts (500 coups).
-* **Un périphérique cadencé par PERCLK vit dans un domaine d'horloge à 1 MHz** : chaque accès à ses registres (et
-  l'effacement de ses drapeaux) doit se synchroniser avec ce domaine lent. Cela coûte **plusieurs microsecondes par
-  accès** — découvert au lot 7e, et qui explique rétrospectivement des bizarreries du lot 7c (§ 7 et § 10).
+* [principe] **48 kHz ne divise pas 1 MHz** (20,83 coups) : un timer sur PERCLK ne peut faire que 47 619 Hz
+  (21 coups) ou 50 000 Hz (20 coups). Seul le quartz brut de 24 MHz donne 48 kHz exacts (500 coups).
+* [principe] Un registre qui vit dans un domaine d'horloge lent ne se lit ou ne s'écrit qu'en se synchronisant avec
+  lui. [ce module, mesuré au lot 7e] Sur PERCLK, **chaque accès coûte plusieurs microsecondes**, et l'effacement d'un
+  drapeau met de l'ordre de la microseconde à prendre effet ; c'est vraisemblablement aussi la cause des bizarreries
+  du lot 7c (§ 7, § 10).
 
 ### 2.2 Le bus SPI partagé : LPSPI4
 
-* Broches : MOSI 11, MISO 12 (inutilisé), SCK 13 (aussi la LED de la carte).
-* Deux périphériques sur le même MOSI / SCK : le **DAC8565** (CS sur la broche 10) et l'**OLED** (CS broche 8, D/C
-  broche 6, reset broche 7).
-* **Le contrôleur LPSPI** a une FIFO d'émission de **16 mots de 32 bits** (et autant en réception ; la taille se lit
-  dans son registre `PARAM`, c'est ce que fait `imxrt-hal`). On y dépose soit des *commandes de
-  transaction* en écrivant le registre `TCR` (taille de trame `FRAMESZ`, quel CS matériel `PCS` affirmer, masques
-  de réception `RXMSK`…), soit des *données* en écrivant `TDR`. Les deux registres sont consécutifs (`TCR` à
-  0x60, `TDR` à 0x64), et **les deux écritures passent par la même FIFO, dans l'ordre**.
-* **Les CS matériels (PCS0..PCS3)** : le contrôleur peut affirmer lui-même un CS pendant chaque trame. La broche 10
-  du DAC est muxable en `LPSPI4_PCS0` ; les broches 8 et 6 de l'OLED ne sont reliées à aucun PCS : l'OLED garde un CS
-  et un D/C en GPIO.
-* **La réception** : en SPI chaque bit émis fait entrer un bit. Sauf masque (`RXMSK`), le contrôleur range dans sa
-  FIFO de réception **un mot reçu par mot émis, une fois le dernier bit échantillonné**. Cet « écho » est devenu
-  l'outil fiable pour savoir qu'un envoi est vraiment fini (§ 7.5).
+* [ce module] Broches : MOSI 11, MISO 12 (inutilisé), SCK 13 (aussi la LED de la carte). Deux périphériques sur le
+  même MOSI / SCK : le **DAC8565** (CS sur la broche 10) et l'**OLED** (CS broche 8, D/C broche 6, reset broche 7).
+* [spécifié — manuel de référence, transcrit dans `imxrt-ral` / `imxrt-hal`] **Le contrôleur LPSPI** a une FIFO
+  d'émission de **16 mots de 32 bits** (et autant en réception ; la taille se lit dans `PARAM`). On y dépose soit des
+  *commandes de transaction* en écrivant `TCR` (taille de trame `FRAMESZ`, quel CS matériel `PCS` affirmer, masque de
+  réception `RXMSK`…), soit des *données* en écrivant `TDR`. Les deux registres sont consécutifs (`TCR` à 0x60, `TDR`
+  à 0x64), et **les deux écritures passent par la même FIFO, dans l'ordre**.
+* [spécifié] **Les CS matériels (PCS0..PCS3)** : le contrôleur affirme lui-même un CS pendant chaque trame.
+  [spécifié — `imxrt-iomuxc`] La broche 10 est muxable en `LPSPI4_PCS0` ; les broches 8 et 6 ne sont reliées à aucun
+  PCS : [ce module] l'OLED garde un CS et un D/C en GPIO.
+* [principe] En SPI chaque bit émis fait entrer un bit. [spécifié] Sauf masque (`RXMSK`), le contrôleur range dans
+  sa FIFO de réception **un mot reçu par mot émis, une fois le dernier bit échantillonné**. [firmware] Cet « écho »
+  est devenu l'outil fiable pour savoir qu'un envoi est vraiment fini (§ 7.6).
 
 ### 2.3 Le DAC8565 et l'étage de sortie
 
-* Fiche TI SBAS411C : SCLK **50 MHz seulement entre 3,6 et 5,5 V, 25 MHz entre 2,7 et 3,6 V** ; SYNC (le CS) haut
-  au moins **40 ns** entre deux mots ; établissement 8–10 µs ; vitesse de balayage 2,2 V/µs.
-* Schéma O&C rev 2e (mxmxmx) : DVDD et AVDD sur `3V3_A` → **plafond 25 MHz**. LPSPI4 étant à 132 MHz, la fréquence
-  permise la plus proche est **22 MHz** (132 / 6).
-* Un mot = 24 bits : un octet de commande (`0b0001_0000 | voie << 1` : écrire et mettre à jour cette voie) puis le
-  code sur 16 bits. ≈ 1,1 µs par mot à 22 MHz.
-* Étage de sortie (rev 2e) : OPA2172 inverseur, gain −4, 22 pF de contre-réaction (pôle ≈ 72 kHz), 220 Ω en série,
-  plage −3,75 à +6,25 V. **Rien ne filtre les images d'échantillonnage** au-dessus de la bande audio (§ 8).
-* Réserve tenue tout du long : la carte TLM T4 n'est pas documentée publiquement ; rev 2e est la meilleure
-  approximation.
+* [spécifié — TI, fiche SBAS411C] SCLK **50 MHz seulement entre 3,6 et 5,5 V, 25 MHz entre 2,7 et 3,6 V** ; SYNC (le
+  CS) haut au moins **40 ns** entre deux mots ; établissement 8–10 µs ; vitesse de balayage 2,2 V/µs. Un mot =
+  24 bits : un octet de commande puis le code sur 16 bits.
+* [ce module, d'après le schéma O&C rev 2e de mxmxmx] DVDD et AVDD sur `3V3_A` → **plafond 25 MHz**. [firmware]
+  LPSPI4 étant à 132 MHz, la fréquence permise la plus proche est **22 MHz** (132 / 6), ≈ 1,1 µs par mot ; commande
+  `0b0001_0000 | voie << 1` (écrire et mettre à jour cette voie), celle du firmware de référence.
+* [ce module, schéma rev 2e] Étage de sortie : OPA2172 inverseur, gain −4, 22 pF de contre-réaction (pôle
+  ≈ 72 kHz), 220 Ω en série, plage −3,75 à +6,25 V. [principe] **Rien ne filtre les images d'échantillonnage**
+  au-dessus de la bande audio (§ 8).
+* [ce module] Réserve tenue tout du long : la carte TLM T4 n'est pas documentée publiquement ; rev 2e est la
+  meilleure approximation.
 
 ### 2.4 L'OLED SH1106
 
-* 128 × 64 pixels en 8 *pages* de 8 lignes (128 octets chacune). Pour écrire une page : trois octets de commande
-  (colonne haute, colonne basse — avec un décalage de 2 colonnes propre au SH1106 —, numéro de page) avec **D/C
-  bas**, puis 128 octets de pixels avec **D/C haut**.
-* **Les commandes du SH1106 dans la plage 0x10–0x17 sont « colonne haute »** ; 0xAE éteint l'écran ; 0x81 règle le
-  contraste. Ce détail a servi de signature : les octets de commande du DAC (0x10, 0x12, 0x14, 0x16) sont justement
-  des commandes valides pour l'écran (§ 7.4).
-* L'OLED accepte 22 MHz sur ce module (mesuré au lot 7a).
+* [spécifié — fiche SH1106] 128 × 64 pixels visibles en 8 *pages* de 8 lignes (128 octets chacune). Pour écrire une
+  page : trois octets de commande (colonne haute, colonne basse — avec un décalage de 2 colonnes —, numéro de page)
+  avec **D/C bas**, puis 128 octets de pixels avec **D/C haut**. Les commandes 0x10–0x17 sont « colonne haute » ;
+  0xAE éteint l'écran ; 0x81 règle le contraste.
+* [ce module, observé] Ce détail a servi de signature : les octets de commande du DAC (0x10, 0x12, 0x14, 0x16) sont
+  des commandes valides pour l'écran (§ 7.3). L'OLED tient 22 MHz (mesuré au lot 7a).
 
 ### 2.5 Timers, DMA, interruptions
 
-* **PIT** (*Periodic Interrupt Timer*) : 4 canaux qui décomptent depuis une valeur de chargement (`LDVAL`) jusqu'à 0,
-  rechargent, lèvent un drapeau (`TIF`) et, si demandé, une interruption (une seule ligne pour les 4 canaux). Sur
-  PERCLK (1 MHz). **Les canaux 0 à 3 du PIT peuvent déclencher les canaux 0 à 3 du DMA** via le DMAMUX.
-* **GPT** (*General Purpose Timer*, GPT1 et GPT2) : compteur montant, 3 registres de comparaison (`OCR1..3`), mode
-  *Restart* (le compteur repart à 0 sur `OCR1`). Entrées d'horloge : « horloge périphérique » (`CLKSRC = 1`,
-  **mesurée à 1 MHz** sur le module, donc PERCLK), « référence haute fréquence » (`CLKSRC = 2`, celle de GPT1, qui
-  compte en µs bien que son diviseur 24 MHz soit sans effet hors quartz : **déduite** à 1 MHz elle aussi), quartz
-  24 MHz (`CLKSRC = 5` + `EN_24M`, qui n'a pas démarré). GPT1 sert déjà d'horloge en µs au
-  moteur ; GPT2 était libre.
-* **eDMA** : 32 canaux. Chaque canal a un *descripteur* (TCD) : adresse source, adresse destination, pas après chaque
-  élément (`SOFF`, `DOFF`), *modulo* d'adresse (`SMOD`, `DMOD` : l'adresse ne change que dans ses `n` bits de poids
-  faible, ce qui fait une fenêtre circulaire alignée), nombre d'octets par *boucle mineure* (`NBYTES`), nombre de
-  boucles mineures dans une *boucle majeure* (`CITER` / `BITER`), ajustements en fin de boucle majeure (`SLAST`,
-  `DLAST`), interruption en fin de boucle majeure (`INTMAJOR`). **Une demande matérielle (« request ») = une boucle
+* [spécifié] **PIT** (*Periodic Interrupt Timer*) : 4 canaux qui décomptent depuis `LDVAL` jusqu'à 0, rechargent,
+  lèvent `TIF` et, si demandé, une interruption (une ligne pour les 4 canaux). Sur PERCLK (1 MHz). **Les canaux 0 à 3
+  du PIT peuvent déclencher les canaux 0 à 3 du DMA** via le DMAMUX.
+* [spécifié] **GPT** (*General Purpose Timer*, GPT1 et GPT2) : compteur montant, 3 comparaisons (`OCR1..3`), mode
+  *Restart* (le compteur repart à 0 sur `OCR1`). Entrées : « horloge périphérique » (`CLKSRC = 1`), « référence haute
+  fréquence » (`CLKSRC = 2`), quartz 24 MHz (`CLKSRC = 5` + `EN_24M`). [ce module] La première **mesurée à 1 MHz**
+  (PERCLK) ; la deuxième **déduite** à 1 MHz (GPT1 y compte en µs alors que son diviseur 24 MHz est sans effet hors
+  quartz) ; le quartz **n'a pas démarré**. [firmware] GPT1 sert d'horloge en µs au moteur ; GPT2 était libre.
+* [spécifié — manuel de référence, transcrit dans `imxrt-dma`] **eDMA** : 32 canaux. Chaque canal a un descripteur
+  (TCD) : adresse source, adresse destination, pas après chaque élément (`SOFF`, `DOFF`), *modulo* d'adresse (`SMOD`,
+  `DMOD` : l'adresse ne change que dans ses `n` bits de poids faible, fenêtre circulaire alignée), octets par *boucle
+  mineure* (`NBYTES`), boucles mineures par *boucle majeure* (`CITER` / `BITER`), ajustements en fin de boucle
+  majeure (`SLAST`, `DLAST`), interruption en fin de boucle majeure (`INTMAJOR`). **Une demande = une boucle
   mineure.**
-* **DMAMUX** : route une source de demande vers un canal DMA. Registre `CHCFG[n]` : `ENBL` (bit 31), `TRIG`
+* [spécifié] **DMAMUX** : route une source de demande vers un canal DMA. `CHCFG[n]` : `ENBL` (bit 31), `TRIG`
   (bit 30 : la demande n'est laissée passer qu'à chaque top du canal `n` du PIT), `A_ON` (bit 29 : demande toujours
-  active), `SOURCE` (numéro d'emplacement). **Le DMAMUX du RT1060 n'a pas d'emplacement « toujours actif »
-  numéroté** : c'est le bit `A_ON` qui joue ce rôle (§ 10.1).
-* **NVIC** : contrôleur d'interruptions du Cortex-M. Chaque ligne a un masque (`unmask`/`mask`) et une priorité (0 la
-  plus haute, valeur de reset). **PRIMASK** masque toutes les interruptions d'un coup : c'est ce qu'utilise
-  `critical-section-single-core` (sections critiques du firmware).
-* **DWT `CYCCNT`** : compteur de cycles du cœur (600 par µs), qu'il faut démarrer explicitement. Le profil s'en sert
-  depuis D-029.
-* **Ordre des écritures** : deux écritures vers deux périphériques sur des bus différents (ici GPIO2 et LPSPI4) ne
-  sont pas garanties d'arriver dans l'ordre du programme ; une barrière `dsb` vide le tampon d'écriture du cœur, et
-  relire le registre attend que l'écriture ait atteint le périphérique.
+  active), `SOURCE`. [ce module, mesuré] Pas d'emplacement « toujours actif » numéroté sur ce chip : c'est `A_ON`
+  qui joue ce rôle (§ 10.1).
+* [spécifié — ARM] **NVIC** : une ligne par source, masque, priorité (0 la plus haute, valeur de reset). **PRIMASK**
+  masque toutes les interruptions d'un coup ; [firmware] c'est ce qu'utilise `critical-section-single-core`.
+* [spécifié — ARM] **DWT `CYCCNT`** : compteur de cycles (600 par µs), arrêté au reset, à démarrer explicitement.
+* [principe] **Ordre des écritures** : deux écritures vers deux périphériques sur des bus différents (ici GPIO2 et
+  LPSPI4) peuvent arriver dans le désordre ; [spécifié — ARM] `dsb` attend la fin des écritures en cours, et relire
+  le registre attend que l'écriture ait atteint le périphérique.
 
 ### 2.6 La mémoire
 
-* **DTCM** (mémoire étroitement couplée aux données, à 0x2000_0000) : rapide, **non couverte par le cache de
-  données**, accessible au DMA. Les `static` du firmware y sont (`.bss`, `.data`). C'est ce qui permet au DMA de lire
-  l'anneau sans maintenance de cache.
-* **ITCM** (code, à 0x0) : le code y est copié au démarrage — d'où des gestionnaires à l'adresse 0x0 dans l'ELF, ce
-  qui est normal.
+* [spécifié] **DTCM** (0x2000_0000) : rapide, **non couverte par le cache de données**. [firmware] Les `static` y
+  sont (`.bss`, `.data`), l'anneau du DMA compris. [ce module, constaté] Le DMA la lit (les rafales sortent).
+* [spécifié] **ITCM** (0x0) : le code y est copié au démarrage — d'où des gestionnaires à l'adresse 0x0 dans l'ELF,
+  ce qui est normal.
 
 ---
 
@@ -624,27 +628,31 @@ Une assertion à la compilation vérifie que rafale + tronçon + relâchement ti
 
 ## 12. Ce que l'on retient (pièges de ce matériel)
 
-1. **Lire la fiche du composant avant de choisir une horloge** : le DAC8565 en 3,3 V plafonne à 25 MHz, pas 50.
-2. **Un CS matériel s'affirme à chaque transaction** : tout ce qui partage le bus doit choisir son PCS (ici PCS3,
-   sans broche, pour l'OLED).
-3. **Enchaîner les mots dans la FIFO change les timings** que des écritures bloquantes masquaient (écart de 40 ns
-   du DAC).
-4. **Les noms d'horloge mentent selon le chip** : sur le RT1062, l'entrée « périphérique » de GPT est PERCLK
-   (mesuré), la « haute fréquence » aussi (déduit) ; seul le quartz de GPT2 aurait donné 24 MHz, et il n'a pas
-   démarré.
-5. **Un périphérique à 1 MHz coûte des microsecondes à chaque accès** (lecture, écriture, effacement de drapeau) :
-   ne jamais lire le PIT ou un GPT sur PERCLK à chaque période.
-6. **Effacer un drapeau ne prend pas effet tout de suite** dans un domaine lent : une interruption courte peut être
-   rappelée aussitôt ; filtrer les doubles plutôt qu'attendre.
-7. **`BUSY` et `TCF` ne disent pas qu'un envoi est fini** ; l'écho en réception, si.
-8. **Deux bus, deux ordres** : une écriture GPIO et une écriture SPI ne sont pas ordonnées sans `dsb` + relecture.
-9. **Le DMAMUX du RT1060 n'a pas de source « toujours active » numérotée** : `ENBL | TRIG | A_ON`.
-10. **Un DMA cyclique sans `SLAST` passe par un modulo**, donc par un tampon aligné sur sa taille.
-11. **Un instant matériel vaut mieux qu'une phase réglée à la main** : déclencher l'interruption par la fin de copie du
-    DMA a supprimé toute dépendance au décalage de deux timers.
-12. **Démarrer les compteurs dont dépend la logique avant cette logique** (le DWT).
-13. **Ajouter un auto-test au journal à chaque inconnue matérielle** : chaque essai a tranché une hypothèse en un
-    flash.
+1. [spécifié] **Lire la fiche du composant avant de choisir une horloge** : le DAC8565 en 3,3 V plafonne à 25 MHz,
+   pas 50.
+2. [spécifié] **Un CS matériel s'affirme à chaque transaction** : tout ce qui partage le bus doit choisir son PCS
+   ([firmware] ici PCS3, sans broche, pour l'OLED).
+3. [principe] **Enchaîner les mots dans la FIFO change les timings** que des écritures bloquantes masquaient
+   ([spécifié] les 40 ns de SYNC haut du DAC).
+4. [ce module] **Les noms d'horloge ne disent pas la fréquence** : sur ce RT1062, l'entrée « périphérique » de GPT
+   est PERCLK (mesuré), la « haute fréquence » aussi (déduit) ; seul le quartz de GPT2 aurait donné 24 MHz, et il
+   n'a pas démarré.
+5. [ce module, mesuré] **Un périphérique à 1 MHz coûte des microsecondes à chaque accès** (lecture, écriture,
+   effacement de drapeau) : ne jamais lire le PIT ou un GPT sur PERCLK à chaque période.
+6. [principe] **Une interruption dont le drapeau n'est pas encore effacé à la sortie est rappelée** ; [ce module]
+   dans un domaine lent, l'effacement arrive tard : filtrer les doubles plutôt qu'attendre.
+7. [spécifié — `imxrt-hal`] **`BUSY` ne dit pas qu'un envoi est fini** ; [ce module] `TCF` non plus, dans l'usage qui
+   en était fait ; [spécifié] l'écho en réception, si.
+8. [principe] **Deux bus, deux ordres** : une écriture GPIO et une écriture SPI ne sont pas ordonnées sans `dsb` +
+   relecture.
+9. [ce module, mesuré] **Le DMAMUX de ce chip n'a pas de source « toujours active » numérotée** :
+   `ENBL | TRIG | A_ON`.
+10. [spécifié] **Un DMA cyclique sans `SLAST` passe par un modulo**, donc par un tampon aligné sur sa taille.
+11. [principe] **Un instant matériel vaut mieux qu'une phase réglée à la main** : déclencher l'interruption par la fin
+    de copie du DMA a supprimé toute dépendance au décalage de deux timers.
+12. [spécifié] **Démarrer les compteurs dont dépend la logique avant cette logique** (le DWT est arrêté au reset).
+13. [firmware] **Ajouter un auto-test au journal à chaque inconnue matérielle** : chaque essai a tranché une
+    hypothèse en un flash.
 
 ---
 
@@ -661,7 +669,6 @@ Une assertion à la compilation vérifie que rafale + tronçon + relâchement ti
 * **Gigue d'entrée de l'interruption** (18,4 – 23,5 µs) : sans effet sur le DAC, mais elle réduit la marge du tronçon
   d'écran ; un tronçon qui ne trouve pas sa place est simplement reporté.
 * **Rack** : `oc_engine_audio` n'a été ni compilé (pas de SDK sur la machine) ni écouté.
-* **`HARDWARE.md`** n'est pas versionné (choix de l'utilisateur en attente).
 * Le compte rendu court de l'étape (`docs/plan/avancement/etape-7.md`) et la PR restent à faire quand l'étape sera
   close.
 

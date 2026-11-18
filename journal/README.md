@@ -66,7 +66,7 @@ une section datée en fin de fichier) au lieu d'en ouvrir une nouvelle. Les num�
 
 | ID | Décision | Statut |
 |---|---|---|
-| [D-001](D-001-repository-conventions.md) | conventions du dépôt : `PLAN.md` index, `docs/plan/`, journal, langue, définition de « fait » | adoptée |
+| [D-001](D-001-repository-conventions.md) | conventions du dépôt : `PLAN.md` index, `docs/plan/`, journal, langue, définition de « fait » | adoptée, révisée |
 | [D-002](D-002-single-behavioural-core.md) | un seul cœur comportemental `oc-core` (`no_std`, traits de plateforme, `Engine::tick`) | adoptée (rétrospective), révisée |
 | [D-003](D-003-crate-split.md) | découpage en crates ; `oc-drivers` apparu en cours de route ; firmware hors `default-members` | adoptée (rétrospective), révisée |
 | [D-004](D-004-cross-compilation-toolchain.md) | chaîne croisée : script de lien généré par `imxrt-rt`, ni `memory.x` ni `flip-link`, LLVM du sysroot, `RUSTFLAGS` proscrit | adoptée (rétrospective) |

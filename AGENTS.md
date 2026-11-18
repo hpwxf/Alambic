@@ -5,8 +5,9 @@ analogy with a typical embedded or workspace project. Read it before making
 structural changes. User-facing instructions (how to run the simulator, key
 maps, flashing) live in `README.md`; the test protocol lives in `TESTING.md`;
 the rationale for every architectural decision lives in the ADR journal,
-`journal/` (French; index in `journal/README.md`), and the project state in
-`PLAN.md`. The original foundation plan,
+`journal/` (French; index in `journal/README.md`), the project state in
+`PLAN.md`, and the hardware (principles, data-sheet facts, this module's
+assembly and measurements, kept apart) in `docs/hardware.md` (French). The original foundation plan,
 `.junie/plans/oc-rust-firmware-foundation.md`, is kept as the step-0 plan.
 This file is the shortest path to "how does this repository actually work".
 
