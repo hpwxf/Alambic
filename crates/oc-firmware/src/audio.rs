@@ -1,52 +1,67 @@
-//! The audio path (journal/D-033, lot 7c): an interrupt at 48 kHz owns the
-//! shared SPI bus, writes the DAC each period and sends the screen between
-//! two samples; the 1 kHz loop only leaves it what to play and what to show.
+//! The audio path (journal/D-033, lots 7c and 7e): the DAC is written by DMA
+//! at instants the PIT fixes, an interrupt computes the samples and sends
+//! the screen between two DAC bursts; the 1 kHz loop only leaves them what
+//! to play and what to show.
 //!
-//! # One period
+//! # One period, 21 PERCLK counts
 //!
-//! 1. The previous piece of the screen has had the whole period to go out:
-//!    wait for the bus to be idle, release the OLED's chip select.
-//! 2. Queue the DAC words of the channels whose code changed (24-bit
-//!    transactions on PCS0), computed in the previous period: one sample of
-//!    latency, and no computing jitter on the jacks.
-//! 3. While they go out, take what the loop left (output parameters,
-//!    calibration, a frame, a contrast) and compute the next sample.
-//! 4. Wait for the DAC words, then queue the next piece of the screen, the
-//!    data / command line set and the OLED's chip select low, in one
-//!    transaction on PCS3, which no pad carries.
+//! 1. PIT channel 0 times out: the DMA copies one slot of the ring
+//!    ([`crate::audio_irq`]) into LPSPI4, four 24-bit words on PCS0, about
+//!    5.5 µs on the bus. The instant does not depend on any software.
+//! 2. The copy done (the words queued, not yet sent), the DMA raises its
+//!    interrupt: it counts the bursts by their echo in the receive FIFO,
+//!    which says where the DMA is in the ring; takes what the loop left;
+//!    computes the next sample and writes it two slots ahead.
+//! 3. It waits for the burst's last echo (the words go out meanwhile), then,
+//!    if enough of the period is left, sets D/C, lowers the OLED's chip
+//!    select and queues a piece of the screen on PCS3, its echo masked, and
+//!    returns without waiting for it.
+//! 4. LPSPI4's frame-complete interrupt, when that piece's last bit is out,
+//!    releases the OLED's chip select before the next burst.
 //!
 //! # The loop's side
 //!
 //! The engine keeps its output and display traits: [`MutedOutputs`] drops
 //! its codes, [`MailboxDisplay`] hands its frames over; after each tick the
 //! loop calls [`publish`] with [`oc_core::Engine::params`]. Everything the
-//! two contexts share sits in [`critical_section::Mutex`]es: the loop's
-//! sections are copies of a few hundred bytes (a frame: 1 KiB), during which
-//! the interrupt waits.
+//! contexts share sits in [`critical_section::Mutex`]es: the loop's sections
+//! are copies of a few hundred bytes (a frame: 1 KiB). They delay the
+//! interrupts a little, never the DAC.
 //!
-//! The registration of the handler and the NVIC calls, the only `unsafe`
-//! of this path, are in [`crate::audio_irq`].
+//! The DMA's programming, the ring and the handlers, the only `unsafe` of
+//! this path, are in [`crate::audio_irq`].
 
 use core::cell::RefCell;
 
 use cortex_m::peripheral::DWT;
 use critical_section::Mutex;
 
+use teensy4_bsp::hal::dma::channel::Channel;
 use teensy4_bsp::hal::gpio::Output;
-use teensy4_bsp::hal::gpt::{ClockSource, Gpt, Mode, OutputCompareRegister};
-use teensy4_bsp::hal::lpspi::{ClockConfigs, Direction, Lpspi, Status, Transaction};
+use teensy4_bsp::hal::lpspi::{ClockConfigs, Interrupts, Lpspi, Status, Transaction};
+use teensy4_bsp::hal::pit::{self, Pit};
+use teensy4_bsp::ral::lpspi::TCR;
 
 use oc_core::audio::{Params, Voice};
 use oc_core::calibration::CvOutputCalibration;
 use oc_core::framebuffer::{FrameBuffer, LEN};
 use oc_core::platform::{AnalogOut, CV_CHANNELS, CvChannel, Display};
 use oc_core::profile::{Stage, Stat};
-use oc_drivers::dac8565::ChangedCodes;
+use oc_drivers::dac8565::channel_word;
 use oc_drivers::fifo;
 use oc_drivers::ssd130x::{ChunkKind, Controller, FrameStream};
 
+use crate::audio_irq::{SLOT_WORDS, SLOTS};
 use crate::board::{self, BusClocks};
 use crate::delay::CORE_CLOCK_HZ;
+
+/// The PIT channel that triggers the DMA ([`board::AUDIO_DMA_CHANNEL`]).
+const DAC_TIMER: pit::Channel = pit::Channel::Chan0;
+
+/// The command the DMA queues before each DAC word: a 24-bit frame on
+/// PCS0, mode 0, most significant bit first, the echo kept (it counts the
+/// bursts). `imxrt-hal`'s `Transaction` has no raw value to put in a buffer.
+const DAC_TCR: u32 = (23 << TCR::FRAMESZ::offset) | ((board::DAC_PCS as u32) << TCR::PCS::offset);
 
 /// What the loop leaves for the interrupt, and what the interrupt measured.
 struct Mailbox {
@@ -61,6 +76,10 @@ struct Mailbox {
     contrast: Option<u8>,
     /// Runs of the interrupt, wrapping.
     periods: u32,
+    /// DAC bursts the interrupt has seen, wrapping.
+    bursts: u32,
+    /// Screen chunks sent, and OLED releases after them, wrapping.
+    chunks: (u32, u32),
     stats: Stats,
 }
 
@@ -91,189 +110,168 @@ static MAILBOX: Mutex<RefCell<Mailbox>> = Mutex::new(RefCell::new(Mailbox {
     frame_ready: false,
     contrast: None,
     periods: 0,
+    bursts: 0,
+    chunks: (0, 0),
     stats: Stats::new(),
 }));
 
-/// What the interrupt owns, from [`start`] on.
+/// What the interrupts own, from [`start`] on.
 static STATE: Mutex<RefCell<Option<AudioState>>> = Mutex::new(RefCell::new(None));
 
-/// The interrupt's hardware and its signal state.
+/// The interrupts' hardware and their signal state.
 struct AudioState {
     spi: Lpspi,
     oled_cs: Output,
     oled_dc: Output,
-    timer: Gpt,
+    pit: Pit,
+    dma: Channel,
     clocks: BusClocks,
     /// The timing in force on the bus.
     current_clock: ClockConfigs,
     stream: FrameStream,
     voice: Voice,
     calibration: [CvOutputCalibration; CV_CHANNELS],
-    changed: ChangedCodes,
-    /// The codes computed last period, sent this one.
-    next_codes: [u16; CV_CHANNELS],
+    /// The ring slot the DMA reads at its next trigger.
+    dma_next: usize,
+    /// Whether a piece of the screen is on the bus, the OLED selected.
+    chunk_active: bool,
     /// Cycle count at the previous run, for the period.
     last_entry: Option<u32>,
     /// Cycle count when the frame going out was taken.
     frame_started: Option<u32>,
-    /// Words queued since the bus was last seen idle, each echoed in the
-    /// receive FIFO once its last bit is out.
-    in_flight: u16,
+    /// The cycle count of the earliest run seen, carried to the current
+    /// period: the closest to the DAC's trigger, which the interrupt follows
+    /// by a constant. PERCLK and the core both come from the crystal, so the
+    /// period is a whole number of cycles; the PIT itself is not read, every
+    /// access to it waits on its 1 MHz domain for microseconds.
+    reference: Option<u32>,
+    /// DAC bursts whose four echoes came back, wrapping.
+    completed: usize,
 }
 
-/// Which input GPT2 counts, and so the audio rate.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum TimerInput {
-    /// The 24 MHz crystal: [`board::AUDIO_RATE_HZ`] exactly.
-    Crystal,
-    /// PERCLK, 1 MHz, if the crystal input did not start:
-    /// [`board::AUDIO_PERCLK_COUNTS`] counts a period.
-    Perclk,
-}
+/// Core cycles in an audio period.
+const PERIOD_CYCLES: u32 = CORE_CLOCK_HZ / board::AUDIO_TIMER_HZ * board::AUDIO_PERIOD_COUNTS;
 
-impl TimerInput {
-    /// Samples a second.
-    pub(crate) const fn rate_hz(self) -> u32 {
-        match self {
-            Self::Crystal => board::AUDIO_RATE_HZ,
-            Self::Perclk => board::AUDIO_PERCLK_HZ / board::AUDIO_PERCLK_COUNTS,
-        }
+/// Core cycles in a microsecond.
+const CYCLES_PER_MICRO: u32 = CORE_CLOCK_HZ / 1_000_000;
+
+/// The ring slot for `codes`.
+fn slot_words(codes: &[u16; CV_CHANNELS]) -> [u32; SLOT_WORDS] {
+    let mut words = [0; SLOT_WORDS];
+    for channel in CvChannel::ALL {
+        let index = channel.index();
+        words[2 * index] = DAC_TCR;
+        words[2 * index + 1] = channel_word(channel, codes[index]);
     }
+    words
 }
 
-/// Points `timer` at `source`, compares every `counts`, in the order the
-/// reference manual gives for a change of clock source (GPT, "Selecting the
-/// clock source"): disabled, interrupts off, source, software reset, then
-/// the rest. The reset is done again for the source in case it clears it.
-fn configure(timer: &mut Gpt, source: ClockSource, counts: u32) {
-    timer.disable();
-    timer.set_output_interrupt_on_compare(OutputCompareRegister::OCR1, false);
-    timer.set_clock_source(source);
-    timer.reset();
-    timer.set_clock_source(source);
-    timer.set_divider_24mhz(1);
-    timer.set_divider(1);
-    timer.set_mode(Mode::Restart);
-    timer.set_reset_on_enable(true);
-    timer.set_output_compare_count(OutputCompareRegister::OCR1, counts - 1);
-    timer.clear_elapsed(OutputCompareRegister::OCR1);
-}
-
-/// Sets GPT2 to the crystal and checks it compares within a period and a
-/// bit; otherwise falls back to PERCLK. The timer is left disabled.
-fn choose_input(timer: &mut Gpt, delay: &mut impl embedded_hal::delay::DelayNs) -> TimerInput {
-    configure(
-        timer,
-        ClockSource::CrystalOscillator,
-        board::AUDIO_CRYSTAL_HZ / board::AUDIO_RATE_HZ,
-    );
-    timer.enable();
-    // A period is 20.8 µs; at PERCLK's 1 MHz the compare would take 500 µs.
-    delay.delay_us(25);
-    let crystal = timer.is_elapsed(OutputCompareRegister::OCR1);
-    timer.disable();
-    if crystal {
-        configure(
-            timer,
-            ClockSource::CrystalOscillator,
-            board::AUDIO_CRYSTAL_HZ / board::AUDIO_RATE_HZ,
-        );
-        TimerInput::Crystal
-    } else {
-        configure(
-            timer,
-            ClockSource::PeripheralClock,
-            board::AUDIO_PERCLK_COUNTS,
-        );
-        TimerInput::Perclk
-    }
-}
-
-/// Takes the bus, the OLED's control lines and GPT2 over, and starts the
-/// interrupt, at the rate of the input GPT2 could count ([`TimerInput`]).
-/// The OLED must be initialised; the outputs rest at 0 V (factory
-/// calibration) until the first [`publish`].
+/// Takes the bus, the OLED's control lines, the PIT and a DMA channel over,
+/// and starts the audio path at [`board::AUDIO_RATE_HZ`]. The OLED must be
+/// initialised; the outputs rest at 0 V (factory calibration) until the
+/// first [`publish`].
+#[allow(clippy::too_many_arguments)]
+// The hardware the path takes over, each once, at start-up.
 pub(crate) fn start(
-    spi: Lpspi,
+    mut spi: Lpspi,
     oled_cs: Output,
     oled_dc: Output,
-    mut timer: Gpt,
+    mut pit: Pit,
+    mut dma: Channel,
     clocks: BusClocks,
     controller: Controller,
-    delay: &mut impl embedded_hal::delay::DelayNs,
-) -> TimerInput {
-    let input = choose_input(&mut timer, delay);
-    timer.set_output_interrupt_on_compare(OutputCompareRegister::OCR1, true);
+) {
+    let rest = slot_words(&[CvOutputCalibration::FACTORY.to_code(0); CV_CHANNELS]);
+    for slot in 0..SLOTS {
+        crate::audio_irq::write_slot(slot, &rest);
+    }
+    pit.disable(DAC_TIMER);
+    pit.set_load_timer_value(DAC_TIMER, board::AUDIO_PERIOD_COUNTS);
+    pit.clear_elapsed(DAC_TIMER);
+    spi.clear_fifos();
+    spi.disabled(|spi| spi.set_clock_configs(clocks.dac));
+    oled_cs.set();
+    crate::audio_irq::start_dma(&mut dma, spi.tdr().cast::<u32>());
 
-    let rest = CvOutputCalibration::FACTORY.to_code(0);
     let state = AudioState {
         spi,
         oled_cs,
         oled_dc,
-        timer,
+        pit,
+        dma,
         clocks,
-        current_clock: clocks.oled,
+        current_clock: clocks.dac,
         stream: FrameStream::new(controller),
-        voice: Voice::new(input.rate_hz()),
+        voice: Voice::new(board::AUDIO_RATE_HZ),
         calibration: [CvOutputCalibration::FACTORY; CV_CHANNELS],
-        changed: ChangedCodes::new(),
-        next_codes: [rest; CV_CHANNELS],
+        dma_next: 0,
+        chunk_active: false,
         last_entry: None,
         frame_started: None,
-        in_flight: 0,
+        reference: None,
+        completed: 0,
     };
     critical_section::with(|cs| {
         let mut slot = STATE.borrow_ref_mut(cs);
-        let state = slot.insert(state);
-        state.oled_cs.set();
-        state.timer.enable();
+        slot.insert(state).pit.enable(DAC_TIMER);
     });
     crate::audio_irq::enable();
-    input
 }
 
-/// What [`self_check`] saw of the timer and the interrupt.
+/// What [`self_check`] saw of the audio path.
 #[derive(Debug)]
 pub(crate) struct Health {
     /// Runs of the interrupt during the check.
     pub(crate) periods: u32,
-    /// The timer's counter at the start and the end of the check.
-    pub(crate) counts: (u32, u32),
-    /// Whether the compare flag is set.
-    pub(crate) compare_flag: bool,
-    /// Whether the NVIC line is enabled, and whether it is pending.
+    /// DAC bursts the DMA sent during the check.
+    pub(crate) bursts: u32,
+    /// Whether the period's NVIC line is enabled, and whether it is pending.
     pub(crate) line: (bool, bool),
+    /// Screen chunks sent, and OLED releases, during the check.
+    pub(crate) chunks: (u32, u32),
+    /// The DMA channel's error flag and the controller's error status
+    /// register, should it fail to read the ring or write LPSPI4.
+    pub(crate) dma_error: (bool, u32),
 }
 
-/// Watches the interrupt for `micros` microseconds, for the boot log: a
-/// silent audio path shows on USB rather than as a black screen.
+/// Watches the audio path for `micros` microseconds, for the boot log: a
+/// silent DMA or interrupt shows on USB rather than as a black screen.
 pub(crate) fn self_check(delay: &mut impl embedded_hal::delay::DelayNs, micros: u32) -> Health {
-    let count = || {
+    let counts = || {
         critical_section::with(|cs| {
-            STATE.borrow_ref(cs).as_ref().map_or((0, false), |state| {
-                (
-                    state.timer.count(),
-                    state.timer.is_elapsed(OutputCompareRegister::OCR1),
-                )
-            })
+            let mail = MAILBOX.borrow_ref(cs);
+            (mail.periods, mail.bursts, mail.chunks)
         })
     };
-    let start = periods();
-    let (first, _) = count();
+    let (periods, bursts, chunks) = counts();
     delay.delay_us(micros);
-    let (last, compare_flag) = count();
+    let (periods_after, bursts_after, chunks_after) = counts();
+    let dma_error = critical_section::with(|cs| {
+        STATE.borrow_ref(cs).as_ref().map_or((false, 0), |state| {
+            (state.dma.is_error(), state.dma.error_status().raw())
+        })
+    });
     Health {
-        periods: periods().wrapping_sub(start),
-        counts: (first, last),
-        compare_flag,
+        periods: periods_after.wrapping_sub(periods),
+        bursts: bursts_after.wrapping_sub(bursts),
+        chunks: (
+            chunks_after.0.wrapping_sub(chunks.0),
+            chunks_after.1.wrapping_sub(chunks.1),
+        ),
         line: crate::audio_irq::line_state(),
+        dma_error,
     }
 }
 
-/// Stops the interrupt, the outputs left where they are: before handing the
-/// chip to the bootloader.
+/// Stops the DMA and the interrupts, the outputs left where they are:
+/// before handing the chip to the bootloader.
 pub(crate) fn stop() {
     crate::audio_irq::disable();
+    critical_section::with(|cs| {
+        if let Some(state) = STATE.borrow_ref_mut(cs).as_mut() {
+            state.dma.disable();
+        }
+    });
 }
 
 /// Hands the interrupt what the outputs carry and how to convert it, from
@@ -289,21 +287,38 @@ pub(crate) fn publish(params: &Params, calibration: &[CvOutputCalibration; CV_CH
     });
 }
 
-/// Puts every output at 0 V and waits until the DAC has it: before a flash
-/// operation, during which the boot ROM masks the interrupt (journal/D-033).
-/// The next [`publish`] brings the parameters back.
+/// Puts every output at 0 V, waits until the DAC has it, then pauses the
+/// DMA: before a flash operation, during which the boot ROM masks the
+/// interrupts (journal/D-033), and the bursts would pile up in the FIFO.
+/// [`resume_outputs`] restarts it; the next [`publish`] brings the
+/// parameters back.
 pub(crate) fn rest_outputs(calibration: &[CvOutputCalibration; CV_CHANNELS]) {
     publish(&Params::REST, calibration);
     let running = critical_section::with(|cs| STATE.borrow_ref(cs).is_some());
     if !running {
         return;
     }
-    // Taken in one period, computed then, sent in the next: three periods
-    // leave one to spare.
+    // Taken in one period, written two slots ahead, sent two later: five
+    // periods leave one to spare.
     let start = periods();
-    while periods().wrapping_sub(start) < 3 {
+    while periods().wrapping_sub(start) < 5 {
         cortex_m::asm::nop();
     }
+    critical_section::with(|cs| {
+        if let Some(state) = STATE.borrow_ref_mut(cs).as_mut() {
+            state.dma.disable();
+        }
+    });
+}
+
+/// Restarts the DMA paused by [`rest_outputs`], where it stopped in the
+/// ring.
+pub(crate) fn resume_outputs() {
+    critical_section::with(|cs| {
+        if let Some(state) = STATE.borrow_ref_mut(cs).as_mut() {
+            crate::audio_irq::resume_dma(&state.dma);
+        }
+    });
 }
 
 /// Runs of the interrupt so far, wrapping.
@@ -322,8 +337,8 @@ pub(crate) fn drain_stats(profile: &mut oc_core::profile::Profile) {
     profile.merge(Stage::Frame, &stats.frame);
 }
 
-/// One run of the interrupt; called by the handler in [`crate::audio_irq`].
-pub(crate) fn on_interrupt() {
+/// One run of the period interrupt; called by its handler.
+pub(crate) fn on_period() {
     let entry = DWT::cycle_count();
     critical_section::with(|cs| {
         let mut state = STATE.borrow_ref_mut(cs);
@@ -335,47 +350,70 @@ pub(crate) fn on_interrupt() {
     });
 }
 
+/// A piece of the screen is out: release the OLED; called by LPSPI4's
+/// handler.
+pub(crate) fn on_frame_complete() {
+    critical_section::with(|cs| {
+        if let Some(state) = STATE.borrow_ref_mut(cs).as_mut()
+            && state.release_oled()
+        {
+            let mut mail = MAILBOX.borrow_ref_mut(cs);
+            mail.chunks.1 = mail.chunks.1.wrapping_add(1);
+        }
+    });
+}
+
 impl AudioState {
     /// One period: see the module documentation.
     fn run(&mut self, mail: &mut Mailbox, entry: u32) {
-        self.timer.clear_elapsed(OutputCompareRegister::OCR1);
+        self.dma.clear_interrupt();
+        self.dma.clear_complete();
+        let half_period = PERIOD_CYCLES / 2;
         if let Some(previous) = self.last_entry {
-            mail.stats.period.record(entry.wrapping_sub(previous));
+            let since = entry.wrapping_sub(previous);
+            // Not a new burst: the flag of the last one, seen again.
+            if since < half_period {
+                return;
+            }
+            mail.stats.period.record(since);
         }
         self.last_entry = Some(entry);
+        self.follow(entry);
         mail.periods = mail.periods.wrapping_add(1);
 
-        // 1. The previous piece of the screen. The chip select goes through
-        // GPIO2 and the words through LPSPI4, two buses that do not order
-        // their writes: the release is waited for, or the OLED would take
-        // the start of the DAC's words (journal/D-033, lot 7c on the module).
-        self.wait_idle();
-        self.oled_cs.set();
-        settle(&self.oled_cs, true);
-
-        // 2. The DAC words of last period's sample.
-        let words = self.changed.words(&self.next_codes);
-        if !words.as_slice().is_empty() {
-            self.set_clock(self.clocks.dac);
-            let mut transaction = Transaction::new(24).unwrap_or_else(|_| unreachable!());
-            transaction.set_pcs(board::DAC_PCS);
-            self.in_flight = u16::try_from(words.as_slice().len()).unwrap_or(0);
-            for &word in words.as_slice() {
-                self.spi.enqueue_transaction(transaction);
-                self.spi.enqueue_data(word);
-            }
+        // The bursts whose echo is complete, four words each; the one just
+        // queued, if its echo is not, is in flight. The DMA has read every
+        // slot of both.
+        let received = usize::from(self.spi.fifo_status().rxcount);
+        let bursts = received / CV_CHANNELS;
+        for _ in 0..bursts * CV_CHANNELS {
+            let _ = self.spi.read_data();
         }
+        self.completed = self.completed.wrapping_add(bursts);
+        mail.bursts = mail.bursts.wrapping_add(u32::try_from(bursts).unwrap_or(0));
+        let in_flight = usize::from(!self.burst_out());
+        self.dma_next = (self.completed + in_flight) % SLOTS;
 
-        // 3. The mailbox and the next sample, while they go out.
+        // The next sample, two slots ahead of the DMA: the one after its
+        // next read.
         if mail.fresh {
             self.voice.set_params(&mail.params);
             self.calibration = mail.calibration;
             mail.fresh = false;
         }
+        let samples = self.voice.next_sample();
+        let mut codes = [0; CV_CHANNELS];
+        for channel in CvChannel::ALL {
+            let index = channel.index();
+            codes[index] = self.calibration[index].to_code(samples[index]);
+        }
+        crate::audio_irq::write_slot(self.dma_next + 1, &slot_words(&codes));
+
+        // The frame to send, the contrast to set.
         if let Some(contrast) = mail.contrast.take() {
             self.stream.set_contrast(contrast);
         }
-        if self.stream.is_idle() {
+        if self.stream.is_idle() && !self.chunk_active {
             if let Some(started) = self.frame_started.take() {
                 mail.stats.frame.record(entry.wrapping_sub(started));
             }
@@ -385,25 +423,18 @@ impl AudioState {
                 self.frame_started = Some(entry);
             }
         }
-        let samples = self.voice.next_sample();
-        for channel in CvChannel::ALL {
-            let index = channel.index();
-            self.next_codes[index] = self.calibration[index].to_code(samples[index]);
-        }
 
-        // 4. The next piece of the screen, once the DAC words are out.
-        self.wait_idle();
-        self.send_chunk();
-
-        // The compare flag sits in the timer's clock domain: on PERCLK's
-        // 1 MHz its clearing takes a few microseconds to land, and a short
-        // run that returned before would run again at once. Waited for
-        // within half a period, past which a set flag is the next period's.
-        let half_period = CORE_CLOCK_HZ / self.voice.rate_hz() / 2;
-        while self.timer.is_elapsed(OutputCompareRegister::OCR1)
-            && DWT::cycle_count().wrapping_sub(entry) < half_period
-        {
+        // The burst out, a piece of the screen if the period has room for
+        // it and for the release before the next burst. The wait is bounded:
+        // a burst that never echoes must not hold the interrupt.
+        let deadline = entry.wrapping_add(2 * board::DAC_BURST_MICROS * CYCLES_PER_MICRO);
+        while !self.burst_out() && deadline.wrapping_sub(DWT::cycle_count()).cast_signed() > 0 {
             core::hint::spin_loop();
+        }
+        let left = board::AUDIO_PERIOD_COUNTS.saturating_sub(self.since_trigger_micros());
+        let fits = left >= board::OLED_CHUNK_MICROS + board::OLED_RELEASE_MICROS;
+        if !self.chunk_active && self.burst_out() && fits && self.send_chunk() {
+            mail.chunks.0 = mail.chunks.0.wrapping_add(1);
         }
 
         mail.stats
@@ -411,10 +442,41 @@ impl AudioState {
             .record(DWT::cycle_count().wrapping_sub(entry));
     }
 
-    /// Queues the next piece of the screen, if any.
-    fn send_chunk(&mut self) {
+    /// Whether every queued DAC word has been echoed: nothing left to send
+    /// and the echoes a whole number of bursts.
+    fn burst_out(&self) -> bool {
+        let fifo = self.spi.fifo_status();
+        fifo.txcount == 0 && usize::from(fifo.rxcount).is_multiple_of(CV_CHANNELS)
+    }
+
+    /// Keeps [`Self::reference`] on the earliest run's phase, carried to the
+    /// period of `entry`.
+    fn follow(&mut self, entry: u32) {
+        let reference = self.reference.map_or(entry, |reference| {
+            let late = entry.wrapping_sub(reference) % PERIOD_CYCLES;
+            if late > PERIOD_CYCLES / 2 {
+                // Earlier than the reference: the new earliest.
+                entry
+            } else {
+                entry.wrapping_sub(late)
+            }
+        });
+        self.reference = Some(reference);
+    }
+
+    /// Microseconds since this period's trigger, as far as the earliest run
+    /// tells it (a little after the trigger: the DMA's copy and the
+    /// interrupt's entry).
+    fn since_trigger_micros(&self) -> u32 {
+        let now = DWT::cycle_count();
+        now.wrapping_sub(self.reference.unwrap_or(now)) / CYCLES_PER_MICRO
+    }
+
+    /// Queues the next piece of the screen, if any, and arms the
+    /// frame-complete interrupt that releases the OLED; whether it did.
+    fn send_chunk(&mut self) -> bool {
         let Some(chunk) = self.stream.next_chunk(board::OLED_CHUNK_BYTES) else {
-            return;
+            return false;
         };
         if self.current_clock != self.clocks.oled {
             let oled = self.clocks.oled;
@@ -430,39 +492,37 @@ impl AudioState {
         let bits = u16::try_from(chunk.bytes.len() * 8).unwrap_or(8);
         let mut transaction = Transaction::new(bits).unwrap_or_else(|_| unreachable!());
         transaction.set_pcs(board::OLED_PCS);
-        self.in_flight = u16::try_from(fifo::word_count(chunk.bytes.len())).unwrap_or(0);
+        transaction.set_receive_data_mask(true);
+        self.spi.clear_status(Status::FRAME_COMPLETE);
+        self.spi.set_interrupts(Interrupts::FRAME_COMPLETE);
         self.spi.enqueue_transaction(transaction);
         for word in fifo::words(chunk.bytes) {
             self.spi.enqueue_data(word);
         }
+        self.chunk_active = true;
+        true
     }
 
-    /// Waits until the words queued last have left the bus: each is echoed
-    /// in the receive FIFO once its last bit has been clocked, which is how
-    /// `imxrt-hal`'s blocking writes end too. The busy flag with an empty
-    /// transmit FIFO, and the transfer complete flag, answered early: the
-    /// last DAC word was still going out when the OLED was selected (`TONE`,
-    /// lot 7c on the module).
-    fn wait_idle(&mut self) {
-        if self.in_flight > 0 {
-            while self.spi.fifo_status().rxcount < self.in_flight {
-                core::hint::spin_loop();
-            }
-            self.in_flight = 0;
+    /// Releases the OLED once its piece is out, and gives the bus the DAC's
+    /// timing back before the next burst; whether a piece was out.
+    fn release_oled(&mut self) -> bool {
+        self.spi.clear_status(Status::FRAME_COMPLETE);
+        self.spi.set_interrupts(Interrupts::empty());
+        if !self.chunk_active {
+            return false;
         }
-        self.spi.clear_fifo(Direction::Rx);
-        let errors = Status::TRANSMIT_ERROR | Status::RECEIVE_ERROR;
-        if self.spi.status().intersects(errors) {
-            self.spi.clear_status(errors);
+        // The chip select goes through GPIO2 and the DAC's words through
+        // LPSPI4, two buses that do not order their writes: the release is
+        // waited for (journal/D-033, lot 7c on the module).
+        self.oled_cs.set();
+        settle(&self.oled_cs, true);
+        self.chunk_active = false;
+        if self.current_clock != self.clocks.dac {
+            let dac = self.clocks.dac;
+            self.spi.disabled(|spi| spi.set_clock_configs(dac));
+            self.current_clock = dac;
         }
-    }
-
-    /// Puts `clock` in force; the bus is idle here.
-    fn set_clock(&mut self, clock: ClockConfigs) {
-        if self.current_clock != clock {
-            self.spi.disabled(|spi| spi.set_clock_configs(clock));
-            self.current_clock = clock;
-        }
+        true
     }
 }
 

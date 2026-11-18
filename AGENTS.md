@@ -106,7 +106,7 @@ test tone for the audio path (journal/D-033).
 |-----------------------|----------|-----------------------------|------|
 | `crates/oc-core`      | yes      | `forbid(unsafe_code)`       | **All** behaviour: platform traits, `Engine::tick`, the applets (`DiagnosticApp`, `ScopeApp`, `GfxDemoApp`, `RatchetApp`, `ToneApp`) and the app menu, the output parameters and the voice that renders them (`audio`), the graphics primitives (`gfx`, `text`), button debouncing and chord arbitration, calibration, quadrature decoding, framebuffer. Knows nothing about registers or an OS. |
 | `crates/oc-drivers`   | yes      | `forbid(unsafe_code)`       | Peripheral protocols (DAC8565, SH1106/SSD1306/SSD1309, triggers, shared SPI bus) over `embedded-hal` 1.0 only; tested on the host against recording mock buses. |
-| `crates/oc-firmware`  | yes (bin)| `deny(unsafe_code)`; `unsafe` only in `flash_store.rs` (boot ROM calls), `reboot.rs` (bootloader hand-over) and `audio_irq.rs` (the audio interrupt's handler and NVIC line) | Pure wiring: turns `teensy4-bsp`/`imxrt-hal` resources into the `oc-core` platform traits, runs the 1 kHz loop. The one crate that cannot be tested on the host. |
+| `crates/oc-firmware`  | yes (bin)| `deny(unsafe_code)`; `unsafe` only in `flash_store.rs` (boot ROM calls), `reboot.rs` (bootloader hand-over) and `audio_irq.rs` (the DAC's DMA, its ring, the audio handlers) | Pure wiring: turns `teensy4-bsp`/`imxrt-hal` resources into the `oc-core` platform traits, runs the 1 kHz loop. The one crate that cannot be tested on the host. |
 | `crates/oc-protocol`  | yes      | `forbid(unsafe_code)`       | Messages between the firmware and the host probe (`Request`, `Reply`), `postcard` + COBS framing, `FrameReader`; tested on the host (journal/D-029). |
 | `crates/oc-probe`     | no       | ordinary                    | Host tool over the module's probe port (`serialport`, without `libudev`): a `Client` over any byte stream, tested against the real `oc_protocol::server` through an in-memory loopback on a mock engine; CLI `stats`, `stream`, `out`, `screen`, `reboot` (journal/D-029). |
 | `crates/oc-image`     | no       | ordinary                    | The pre-flash gate (`validate`, moved from `xtask`, which re-exports it as `xtask::validate`) and `flash::flash_image`, the flash contents laid out from a validated ELF's `PT_LOAD` segments (byte for byte what `llvm-objcopy -O ihex` gives); `hex` and `boot` read an Intel HEX file and check the boot header (FCB, IVT, boot data), the reduced checks a HEX allows; `flash::firmware_image` picks the path by format; pure over bytes, no OS dependency (journal/D-031). |
@@ -168,13 +168,15 @@ lives in `oc-core` and is tested once, on the host.
   edge latches, the panel), runs `Engine::tick` (panel routing, the applet,
   drawing), publishes `Engine::params` and the output calibration to the
   audio interrupt, then waits for the deadline (previous deadline + 1 ms)
-  while serving USB. A **48 kHz interrupt** (GPT2 on the 24 MHz crystal;
-  on the module this input does not start and it falls back to PERCLK / 21,
-  47 619 Hz, the boot log says which; `crates/oc-firmware/src/audio.rs`)
-  owns the SPI bus: each period it
-  writes the DAC words of the channels that changed, computes the next
-  sample with its own `Voice`, then sends a piece of the screen. The two
-  share mailboxes behind `critical_section::Mutex` (short copies).
+  while serving USB. The **audio path** (`crates/oc-firmware/src/audio.rs`,
+  journal/D-033) owns the SPI bus at **47 619 Hz** (PIT channel 0 on PERCLK,
+  21 counts): each timeout triggers a DMA copy of four DAC words from a ring
+  into LPSPI4, so the DAC is written at instants the hardware fixes; the
+  DMA's interrupt then computes the next sample with its own `Voice` (two
+  slots ahead), waits for the burst's echo and sends a piece of the screen;
+  LPSPI4's frame-complete interrupt releases the OLED's chip select. The
+  loop and the interrupts share mailboxes behind `critical_section::Mutex`
+  (short copies).
 * **Vocabulary.** The *framebuffer* is the screen's copy in RAM (128 x 64,
   1 024 bytes). A *frame* is one whole image. A *page* is one eighth of it,
   a horizontal band 8 pixels high (128 bytes), the unit the SH1106 / SSD130x
@@ -193,12 +195,13 @@ lives in `oc-core` and is tested once, on the host.
   backend uses them any more; the simulator, Rack and the tests send the
   frame in the tick that drew it. The boot splash presents every tick.
 * **Costs** are measured, not assumed: `cargo probe stats` shows the loop's
-  stages and the interrupt's (`audio`, `audio_period`, `frame`). The
-  interrupt waits for each transfer's echo in the receive FIFO (the busy
-  flag and the transfer-complete flag answer early, and the OLED then takes
-  DAC bits), so `TONE` on four outputs costs about 12.5 µs of each 21 µs
-  period on the module; a CV applet whose levels do not move sends no DAC
-  words at all.
+  stages and the interrupt's (`audio`, `audio_period`, `frame`). The end
+  of a transfer is read from its echo in the receive FIFO (the busy flag
+  and the transfer-complete flag answer early, and the OLED then takes DAC
+  bits). On the module the interrupt costs about 3.4 µs of each 21 µs
+  period; the four DAC channels are written every period. Every access to
+  the PIT waits on its 1 MHz domain for microseconds: never read it per
+  period.
 
 ## Signal representation
 
@@ -270,8 +273,9 @@ lives in `oc-core` and is tested once, on the host.
   `crates/oc-firmware/src/reboot.rs`, which reads the secure-mode fuse and
   executes Teensyduino's `bkpt #251` to hand over to the bootloader
   (journal/D-029), and `crates/oc-firmware/src/audio_irq.rs`, which
-  registers the audio interrupt's handler and unmasks its NVIC line
-  (journal/D-033; what the interrupt does is the safe `audio.rs`). Each carries a module-level `#![allow(unsafe_code)]` and a
+  programs the DAC's DMA channel and its DMAMUX trigger, owns the ring the
+  DMA reads, and registers the DMA and LPSPI4 handlers and their NVIC lines
+  (journal/D-033; what the interrupts do is the safe `audio.rs`). Each carries a module-level `#![allow(unsafe_code)]` and a
   `SAFETY:` comment on every block. Any new `unsafe` must do the same, in a module of its own.
 * **The top 64 KiB of the flash (`0x601F_0000`..) is reserved**: the first
   four 4 KiB sectors hold the settings (`board::SETTINGS_FLASH_OFFSET`), the
@@ -403,7 +407,7 @@ Full protocol, per level, with exact commands and what each proves: see
 | The two USB serial ports and the log backend | `crates/oc-firmware/src/usb.rs`, `crates/oc-firmware/src/usb_log.rs` |
 | Persistent settings, their format and the flash store | `crates/oc-core/src/settings.rs` (`MemoryFlash` in `testing.rs`) |
 | The Teensy's settings flash (boot ROM calls, `unsafe`) | `crates/oc-firmware/src/flash_store.rs` |
-| The 48 kHz audio interrupt: the bus, the DAC, the screen in chunks; its mailboxes | `crates/oc-firmware/src/audio.rs` (handler and NVIC: `audio_irq.rs`; journal/D-033) |
+| The audio path: the DAC by DMA at 47 619 Hz, the sample and the screen chunks in its interrupt; the mailboxes | `crates/oc-firmware/src/audio.rs` (DMA, ring, handlers: `audio_irq.rs`; journal/D-033) |
 | The OLED's frame in chunks, the DAC's words, bytes as FIFO words | `crates/oc-drivers/src/ssd130x.rs` (`FrameStream`), `dac8565.rs` (`ChangedCodes`), `fifo.rs` |
 | Deterministic mocks used by every `oc-core` test  | `crates/oc-core/src/testing.rs` |
 | The pinout (the only file allowed to name a pin)  | `crates/oc-firmware/src/board.rs` (rule test: `xtask/tests/pin_rule.rs`) |

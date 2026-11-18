@@ -39,9 +39,10 @@
 //!
 //! # The audio interrupt
 //!
-//! From the end of the start-up on, a 48 kHz interrupt owns the SPI bus: it
-//! writes the DAC every period and sends the screen in pieces between two
-//! samples ([`audio`], journal/D-033). The 1 kHz loop below runs the engine
+//! From the end of the start-up on, the audio path owns the SPI bus: at
+//! 47 619 Hz a DMA copy writes the DAC and an interrupt computes the next
+//! sample and sends the screen in pieces between two bursts ([`audio`],
+//! journal/D-033). The 1 kHz loop below runs the engine
 //! and hands it what the outputs carry and what the screen shows.
 
 #![no_std]
@@ -123,7 +124,8 @@ fn main() -> ! {
         lpspi4,
         adc1,
         gpt1,
-        gpt2,
+        pit,
+        mut dma,
         usb: usb_instances,
         ..
     } = bsp_board::t40(bsp_board::instances());
@@ -135,6 +137,11 @@ fn main() -> ! {
     // used, for the profile (journal/D-029). Nothing else takes them.
     let mut cortex =
         cortex_m::Peripherals::take().unwrap_or_else(|| panic!("core peripherals already taken"));
+    // The cycle counter runs from here: the audio interrupt times itself and
+    // its periods on it from its first run (`SystemClock` starts it again).
+    cortex.DCB.enable_trace();
+    cortex_m::peripheral::DWT::unlock();
+    cortex.DWT.enable_cycle_counter();
 
     // 1 flash: we reached `main`. The LED pad is still free for GPIO here.
     boot_led::signal(&mut gpio2, &mut pins.led_sck, &mut delay, 1);
@@ -221,28 +228,34 @@ fn main() -> ! {
     let (_, oled_cs, oled_dc, _oled_reset) = display.release();
     let mut spi = bus.into_inner();
     let clocks = board::bus_clocks(&mut spi);
-    let input = audio::start(
+    let dac_dma = dma[board::AUDIO_DMA_CHANNEL]
+        .take()
+        .unwrap_or_else(|| panic!("DMA channel {} already taken", board::AUDIO_DMA_CHANNEL));
+    audio::start(
         spi,
         oled_cs,
         oled_dc,
-        gpt2,
+        pit,
+        dac_dma,
         clocks,
         board::OLED_CONTROLLER,
-        &mut delay,
     );
-    // Expected: about 96 runs in 2 ms; anything else says where it stops.
+    // Expected: about 95 of each in 2 ms; anything else says which stops.
     let health = audio::self_check(&mut delay, 2_000);
     log::info!(
-        "audio interrupt on {input:?} at {} Hz, {} screen bytes a period: {} runs in 2 ms, \
-         timer {} -> {}, compare flag {}, line enabled {} pending {}",
-        input.rate_hz(),
+        "audio at {} Hz, DAC by DMA, {} screen bytes a period: {} interrupts, {} DAC bursts, \
+         {} screen chunks and {} releases in 2 ms, line enabled {} pending {}, DMA error {} \
+         (status {:#010x})",
+        board::AUDIO_RATE_HZ,
         board::OLED_CHUNK_BYTES,
         health.periods,
-        health.counts.0,
-        health.counts.1,
-        health.compare_flag,
+        health.bursts,
+        health.chunks.0,
+        health.chunks.1,
         health.line.0,
-        health.line.1
+        health.line.1,
+        health.dma_error.0,
+        health.dma_error.1
     );
     usb.poll();
 
@@ -364,6 +377,7 @@ fn main() -> ! {
                     SaveOutcome::SessionOnly
                 }
             };
+            audio::resume_outputs();
             engine.report_save(outcome);
             usb.poll();
         }

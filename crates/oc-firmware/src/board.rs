@@ -74,7 +74,7 @@ use oc_core::platform::{BUTTONS, CV_CHANNELS, ENCODERS, TRIGGER_CHANNELS};
 use oc_drivers::panel::EncoderPins;
 use oc_drivers::ssd130x::Controller;
 use oc_drivers::triggers::{EdgeCapture, Polarity};
-use teensy4_bsp::board::{LPSPI_FREQUENCY, LpspiPins, PERCLK_FREQUENCY, XTAL_OSCILLATOR_FREQUENCY};
+use teensy4_bsp::board::{LPSPI_FREQUENCY, LpspiPins, PERCLK_FREQUENCY};
 use teensy4_bsp::hal::adc::{Adc, AnalogInput};
 use teensy4_bsp::hal::gpio::{Input, Output, Port, Trigger};
 use teensy4_bsp::hal::iomuxc::{self, Config, Hysteresis, PullKeeper};
@@ -155,31 +155,34 @@ fn timing(spi: &mut Lpspi, hz: u32) -> ClockConfigs {
     configs
 }
 
-/// Audio samples a second on the four outputs (journal/D-033), with GPT2 on
-/// the 24 MHz crystal input: 500 counts.
-pub(crate) const AUDIO_RATE_HZ: u32 = 48_000;
+/// The audio timer's clock: the PIT on PERCLK, which the BSP runs at 1 MHz.
+/// GPT2's crystal input, the only one 48 kHz divides, did not start on the
+/// module (journal/D-033, lot 7c).
+pub(crate) const AUDIO_TIMER_HZ: u32 = PERCLK_FREQUENCY;
 
-/// GPT2's crystal input.
-pub(crate) const AUDIO_CRYSTAL_HZ: u32 = XTAL_OSCILLATOR_FREQUENCY;
+/// PERCLK counts in an audio period.
+pub(crate) const AUDIO_PERIOD_COUNTS: u32 = 21;
 
-const _: () = assert!(
-    AUDIO_CRYSTAL_HZ.is_multiple_of(AUDIO_RATE_HZ),
-    "the audio rate must be a whole number of crystal counts"
-);
+/// Audio samples a second on the four outputs: 47 619 (journal/D-033).
+pub(crate) const AUDIO_RATE_HZ: u32 = AUDIO_TIMER_HZ / AUDIO_PERIOD_COUNTS;
 
-/// GPT2's other inputs, the peripheral clock and the high-frequency
-/// reference, both PERCLK: the BSP runs it at 1 MHz, which 48 kHz does not
-/// divide (the first lot 7c firmware, `21cdbb6-dirty`, ran at 320 Hz on it).
-pub(crate) const AUDIO_PERCLK_HZ: u32 = PERCLK_FREQUENCY;
+/// The DMA channel that writes the DAC, and the PIT channel that triggers
+/// it: the DMAMUX ties PIT channel `n` to DMA channel `n`, for `n` below 4.
+pub(crate) const AUDIO_DMA_CHANNEL: usize = 0;
 
-/// Counts of PERCLK a period should the crystal input not start: 21, for
-/// 47 619 Hz, the voice then running at that rate.
-pub(crate) const AUDIO_PERCLK_COUNTS: u32 = 21;
+/// The time a DAC burst takes, four 24-bit words at 22 MHz with their gaps
+/// and the DMA's start, rounded up, in microseconds.
+pub(crate) const DAC_BURST_MICROS: u32 = 6;
 
-/// What a piece of the screen may take on the bus each audio period, in
-/// nanoseconds: about half the 20.8 µs, the DAC's words and the
-/// interrupt's own work taking most of the rest.
-const OLED_CHUNK_BUDGET_NS: u64 = 10_000;
+/// What the frame-complete interrupt needs, after a chunk's last bit, to
+/// release the OLED's chip select before the next DAC burst, in
+/// microseconds: with room for the loop's critical sections.
+pub(crate) const OLED_RELEASE_MICROS: u32 = 3;
+
+/// What a piece of the screen may take on the bus, in nanoseconds: the
+/// period less the DAC burst, [`OLED_RELEASE_MICROS`] and a margin for the
+/// interrupt delayed by the loop's critical sections.
+const OLED_CHUNK_BUDGET_NS: u64 = 8_000;
 
 /// The most pixel bytes sent to the OLED each audio period: what goes out in
 /// [`OLED_CHUNK_BUDGET_NS`] at its clock, in whole FIFO words of four bytes,
@@ -199,6 +202,19 @@ pub(crate) const OLED_CHUNK_BYTES: usize = {
     };
     words as usize * 4
 };
+
+/// How long a chunk of [`OLED_CHUNK_BYTES`] keeps the bus, rounded up, in
+/// microseconds, with a microsecond for the frame's own delays.
+#[allow(clippy::cast_possible_truncation)]
+// A few microseconds.
+pub(crate) const OLED_CHUNK_MICROS: u32 =
+    ((OLED_CHUNK_BYTES as u64 * 8 * 1_000_000).div_ceil(OLED_SPI_HZ as u64) + 1) as u32;
+
+const _: () = assert!(
+    DAC_BURST_MICROS + OLED_CHUNK_MICROS + OLED_RELEASE_MICROS
+        <= AUDIO_PERIOD_COUNTS * 1_000_000 / AUDIO_TIMER_HZ,
+    "a DAC burst, a screen chunk and the release must fit a period"
+);
 
 /// Nominal period of the main loop, in microseconds.
 ///

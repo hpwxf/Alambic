@@ -685,21 +685,26 @@ screen stayed clean at 22 MHz, the four outputs read −3.000/−2.999 V and
 +4.997 V, `outputs` took 3.0 µs on average and 8.0 µs at most, one OLED page
 49 µs (about 145 µs at 8 MHz). An observation on one module, not a target.
 
-### 9.3e — Audio interrupt (journal/D-033, lot 7c)
+### 9.3e — Audio path (journal/D-033, lots 7c and 7e)
 
-From this firmware on, a 48 kHz interrupt writes the DAC and sends the
-screen; the 1 kHz loop no longer touches the bus. `cargo xtask flash`, then:
+From this firmware on, the DAC is written by DMA at 47 619 Hz and an
+interrupt computes the samples and sends the screen; the 1 kHz loop no
+longer touches the bus. `cargo xtask flash`, then:
 
-0. The boot log has `audio interrupt on Crystal at 48000 Hz` or
-   `on Perclk at 47619 Hz` (the fallback when GPT2's crystal input does
-   not start), and about 95 runs in 2 ms; 0 runs, or far more, says where
-   it stops (counter, compare flag, NVIC line on the same line).
+0. The boot log has `audio at 47619 Hz, DAC by DMA`, then the
+   interrupts, the DAC bursts, the screen chunks and their releases counted
+   over 2 ms of the boot (`2 ms` by the cycle delay, which runs short: about
+   60 of each), and the DMA's error status. No burst means the DMA is not
+   triggered; chunks without releases, that LPSPI4's frame-complete
+   interrupt does not run. No chunk at that point is normal: the engine has
+   not presented a frame yet.
 1. The splash plays and every applet draws normally, as in 9.3d step 1,
    `TONE` included: it writes the DAC every period, which is what showed
    the OLED taking DAC bits when a transfer's end was misread.
 2. `cargo probe stats` on `DIAGNOSTIC`, then on `TONE`:
-   * `audio_period`: mean 20.8 µs (21.0 on PERCLK), max under twice that
-     — a longer one is a missed sample;
+   * `audio_period`: mean 21.0 µs, max under twice that — it times the
+     interrupt's entry, the DAC being written by DMA at the timer's
+     instants;
    * `audio`: the interrupt's own time; record mean and max with `TONE`
      (four channels written each period) and with `DIAGNOSTIC` at rest (no
      DAC words);
@@ -717,10 +722,11 @@ screen; the 1 kHz loop no longer touches the bus. `cargo xtask flash`, then:
 
 Record the values; with `oled-spi-8mhz`, repeat 1 and 2 (`frame` longer).
 
-On the TLM module this was written against (2026-11-18): PERCLK, 92 runs
-in 2 ms; in `TONE`, `audio` 12.5 µs mean and 14.9 µs max, `audio_period`
-17.9 to 24.0 µs, `frame` 1.18 ms, the loop at 1 000 µs; every screen
-stable, the four tones audible.
+On the TLM module this was written against (2026-11-18, DAC by DMA, lot
+7e): 60 interrupts and 59 bursts in the boot check; in `TONE`, `audio`
+3.4 µs mean and 6.1 µs max, `audio_period` 18.4 to 23.5 µs, `frame`
+1.34 ms, the loop at 1 000 µs; every screen stable, the four tones
+audible.
 
 ### 9.4 — Calibration
 

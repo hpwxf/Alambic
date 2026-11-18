@@ -19,7 +19,8 @@ lot 7c ; Rack non compilé faute de SDK sur cette machine). 7c écrit : GPT2 sur
 (PERCLK à 1 MHz : 48 kHz n'y tombe pas juste), l'interruption attend les mots du DAC avant le tronçon d'OLED, délai
 entre deux mots du DAC porté à 45 ns. Sur le module (2026-11-18, D-033) : quartz muet, repli PERCLK à 47 619 Hz ;
 fin d'envoi lue dans l'écho reçu ; interruption ≈ 60 % du processeur dans `TONE`, gigue ±3 µs sur l'écriture du
-DAC : arguments du lot 7e.
+DAC : arguments du lot 7e. 7e (2026-11-18) : DAC en DMA déclenché par le PIT, interruption du DMA pour l'échantillon et
+l'écran ; `audio` 3,4 µs sur 21, écran et son corrects (D-033, révisions du lot 7e).
 
 Ordre : 7a → 7b (indépendant du matériel, peut avancer en parallèle) → 7c → 7d → 7e éventuel.
 

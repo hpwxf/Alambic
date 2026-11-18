@@ -217,3 +217,54 @@ Quatre essais sur le module ont corrigé l'interruption (premier firmware : `21c
   instant d'écriture fixé par le matériel, l'interruption ne calcule plus que l'échantillon) ; le quartz reste à
   comprendre (horloge `ipg_clk_24M` à ouvrir côté CCM ?).
 
+## Révision du 2026-11-18 — lot 7e, le DAC en DMA
+
+Choix de l'utilisateur après le lot 7d (juste de C1 à C6, perturbé autour de C7, C8 lu une octave trop bas par
+l'accordeur) : passer le DAC en DMA. Ce que l'assistant a tranché :
+
+* **Déclenchement** : le canal 0 du PIT (PERCLK, 1 MHz, 21 coups : **47 619 Hz**, la cadence de fait depuis le lot
+  7c) déclenche le canal 0 du DMA par le DMAMUX (déclenchement périodique, source « toujours active », emplacement
+  54). L'instant d'écriture du DAC est fixé par le matériel ; la boucle et la durée de l'interruption ne le touchent
+  plus.
+* **Ce que le DMA écrit** : à chaque top, 8 mots dans la FIFO de LPSPI4, en alternant `TCR` et `TDR` (fenêtre de
+  8 octets, `DMOD = 3`) : quatre fois la commande de 24 bits sur PCS0 puis le mot de la voie. Les quatre voies sont
+  écrites à chaque période (≈ 5,5 µs de bus), changées ou non : un DMA de taille fixe ne sait pas sauter une voie.
+  Les mots viennent d'un anneau de 8 emplacements de 32 octets en DTCM (non caché), que le DMA parcourt en boucle.
+* **L'interruption** : le canal 1 du PIT, même horloge, démarré environ 13 µs avant le canal 0, tombe environ 8 µs
+  après chaque top, une fois la rafale du DAC sortie. Elle compte les rafales par leur écho (4 mots reçus chacune :
+  la réception n'est pas masquée pour le DAC), ce qui dit aussi où en est le DMA dans l'anneau ; elle calcule
+  l'échantillon et l'écrit deux emplacements plus loin (latence de 2 à 3 périodes, ≈ 60 µs) ; puis elle lance un
+  tronçon d'écran si la fenêtre jusqu'au top suivant le permet (compteur du canal 0 lu), et rend la main sans
+  attendre.
+* **Le CS de l'OLED** est relevé par une seconde interruption, celle de LPSPI4 sur « trame terminée » (le drapeau se
+  lève quand PCS3 retombe, après le dernier bit), avant le top suivant. Tronçons de ≈ 7 µs au plus (16 octets à
+  22 MHz) pour laisser une marge aux sections critiques de la boucle.
+* **Ce que ça coûte** : du `unsafe` de plus dans `audio_irq.rs` (programmation du DMA, l'anneau partagé avec lui,
+  les deux gestionnaires) ; GPT2 et l'essai du quartz disparaissent.
+* **Ce qui ferait revenir en arrière** : un DMAMUX qui ne déclenche pas (le journal de démarrage compte les rafales),
+  un CS d'OLED relevé trop tard (écran perturbé dans `TONE` à nouveau) : retour au lot 7c (`69e9099`).
+
+## Révision du 2026-11-18 — lot 7e sur le module
+
+Trois essais ont corrigé la conception ci-dessus ; ce qui tourne :
+
+* **Le DMAMUX du RT1060 n'a pas d'emplacement « toujours actif »** : avec l'emplacement 54, aucune rafale. Le canal
+  est configuré `ENBL | TRIG | A_ON` (demande permanente, laissée passer à chaque top du PIT), écrit directement :
+  `imxrt-dma` ne pose `TRIG` qu'avec une source et `A_ON` que sans `TRIG`.
+* **Chaque accès au PIT attend son domaine de 1 MHz** (plusieurs µs) : lire son compteur à chaque période coûtait
+  l'essentiel de l'interruption, et les écritures de démarrage allongeaient le décalage voulu entre ses deux canaux
+  (interruption 5 µs après la rafale au lieu de 7 : aucun tronçon d'écran ne trouvait sa place, écran noir).
+  **L'interruption n'est plus un canal du PIT : c'est celle du DMA**, en fin de copie de chaque emplacement (une
+  itération par boucle majeure, l'anneau parcouru par le modulo d'adresse source, aligné sur ses 256 octets). Elle
+  tombe donc juste après chaque top, par construction ; elle calcule l'échantillon pendant que la rafale sort, en
+  attend l'écho (borné), puis lance un tronçon d'écran de 20 octets si la place jusqu'au top suivant le permet,
+  calculée au compteur de cycles depuis l'exécution la plus précoce (le PIT et le cœur viennent du même quartz :
+  12 600 cycles par période). Le PIT n'est jamais lu après le démarrage.
+* **Le compteur de cycles démarre en tête de `main`** : lancé avec l'horloge du moteur, après l'audio, il restait
+  figé pendant l'auto-test et faisait prendre chaque exécution pour un double déclenchement.
+* **Mesures** (`TONE`, profil) : `audio` 3,4 µs en moyenne, 6,1 µs au plus (≈ 16 % du processeur, contre 60 % au
+  lot 7c) ; `audio_period` 18,4 à 23,5 µs, ce qui ne mesure plus que l'entrée de l'interruption, pas l'écriture du
+  DAC ; `frame` 1,34 ms ; boucle à 1 000 µs. Écran et son corrects. Observations sur un module.
+* **Ce qui reste** : la justesse et la stabilité autour de C7 à repasser à l'accordeur (gigue supprimée) ; les
+  quatre voies sont écrites à chaque période, changées ou non (≈ 5,5 µs de bus par période).
+
