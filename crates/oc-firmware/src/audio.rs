@@ -80,6 +80,8 @@ struct Mailbox {
     bursts: u32,
     /// Screen chunks sent, and OLED releases after them, wrapping.
     chunks: (u32, u32),
+    /// Whole frames sent to the screen, wrapping.
+    frames: u32,
     stats: Stats,
 }
 
@@ -112,6 +114,7 @@ static MAILBOX: Mutex<RefCell<Mailbox>> = Mutex::new(RefCell::new(Mailbox {
     periods: 0,
     bursts: 0,
     chunks: (0, 0),
+    frames: 0,
     stats: Stats::new(),
 }));
 
@@ -218,46 +221,101 @@ pub(crate) fn start(
     crate::audio_irq::enable();
 }
 
+/// What the audio path has done since start-up, each count wrapping.
+#[derive(Debug, Clone, Copy, Default)]
+pub(crate) struct Totals {
+    /// Runs of the interrupt.
+    pub(crate) periods: u32,
+    /// DAC bursts the DMA sent, counted by their echo.
+    pub(crate) bursts: u32,
+    /// Screen chunks sent.
+    pub(crate) chunks: u32,
+    /// OLED releases after a chunk.
+    pub(crate) releases: u32,
+    /// Whole frames sent to the screen.
+    pub(crate) frames: u32,
+}
+
+impl Totals {
+    /// What happened between `earlier` and `self`.
+    pub(crate) const fn since(self, earlier: Self) -> Self {
+        Self {
+            periods: self.periods.wrapping_sub(earlier.periods),
+            bursts: self.bursts.wrapping_sub(earlier.bursts),
+            chunks: self.chunks.wrapping_sub(earlier.chunks),
+            releases: self.releases.wrapping_sub(earlier.releases),
+            frames: self.frames.wrapping_sub(earlier.frames),
+        }
+    }
+}
+
+/// The audio path's counts so far.
+pub(crate) fn totals() -> Totals {
+    critical_section::with(|cs| {
+        let mail = MAILBOX.borrow_ref(cs);
+        Totals {
+            periods: mail.periods,
+            bursts: mail.bursts,
+            chunks: mail.chunks.0,
+            releases: mail.chunks.1,
+            frames: mail.frames,
+        }
+    })
+}
+
 /// What [`self_check`] saw of the audio path.
 #[derive(Debug)]
 pub(crate) struct Health {
-    /// Runs of the interrupt during the check.
-    pub(crate) periods: u32,
-    /// DAC bursts the DMA sent during the check.
-    pub(crate) bursts: u32,
+    /// How long the check lasted, on the cycle counter, in microseconds.
+    pub(crate) micros: u32,
+    /// What happened during it.
+    pub(crate) counts: Totals,
+    /// The interrupt's duration, mean and longest, in microseconds.
+    pub(crate) audio_micros: (u32, u32),
+    /// The time between two runs, shortest and longest, in microseconds.
+    pub(crate) period_micros: (u32, u32),
     /// Whether the period's NVIC line is enabled, and whether it is pending.
     pub(crate) line: (bool, bool),
-    /// Screen chunks sent, and OLED releases, during the check.
-    pub(crate) chunks: (u32, u32),
     /// The DMA channel's error flag and the controller's error status
     /// register, should it fail to read the ring or write LPSPI4.
     pub(crate) dma_error: (bool, u32),
 }
 
-/// Watches the audio path for `micros` microseconds, for the boot log: a
-/// silent DMA or interrupt shows on USB rather than as a black screen.
-pub(crate) fn self_check(delay: &mut impl embedded_hal::delay::DelayNs, micros: u32) -> Health {
-    let counts = || {
-        critical_section::with(|cs| {
-            let mail = MAILBOX.borrow_ref(cs);
-            (mail.periods, mail.bursts, mail.chunks)
-        })
-    };
-    let (periods, bursts, chunks) = counts();
-    delay.delay_us(micros);
-    let (periods_after, bursts_after, chunks_after) = counts();
+impl Health {
+    /// `count` events during the check, as a rate a second.
+    pub(crate) const fn per_second(&self, count: u32) -> u64 {
+        if self.micros == 0 {
+            return 0;
+        }
+        count as u64 * 1_000_000 / self.micros as u64
+    }
+}
+
+/// Watches the audio path for `micros` microseconds, timed on the cycle
+/// counter (a busy delay runs short on the M7), for the boot log: a silent
+/// DMA or interrupt shows on USB rather than as a black screen, and the
+/// rates and durations give a baseline to compare a later log with.
+pub(crate) fn self_check(micros: u32) -> Health {
+    critical_section::with(|cs| MAILBOX.borrow_ref_mut(cs).stats = Stats::new());
+    let before = totals();
+    let start = DWT::cycle_count();
+    while DWT::cycle_count().wrapping_sub(start) < micros.saturating_mul(CYCLES_PER_MICRO) {
+        core::hint::spin_loop();
+    }
+    let elapsed = DWT::cycle_count().wrapping_sub(start) / CYCLES_PER_MICRO;
+    let counts = totals().since(before);
+    let stats = critical_section::with(|cs| MAILBOX.borrow_ref(cs).stats);
+    let in_micros = |cycles: Option<u32>| cycles.map_or(0, |cycles| cycles / CYCLES_PER_MICRO);
     let dma_error = critical_section::with(|cs| {
         STATE.borrow_ref(cs).as_ref().map_or((false, 0), |state| {
             (state.dma.is_error(), state.dma.error_status().raw())
         })
     });
     Health {
-        periods: periods_after.wrapping_sub(periods),
-        bursts: bursts_after.wrapping_sub(bursts),
-        chunks: (
-            chunks_after.0.wrapping_sub(chunks.0),
-            chunks_after.1.wrapping_sub(chunks.1),
-        ),
+        micros: elapsed,
+        counts,
+        audio_micros: (in_micros(stats.audio.mean()), in_micros(stats.audio.max())),
+        period_micros: (in_micros(stats.period.min()), in_micros(stats.period.max())),
         line: crate::audio_irq::line_state(),
         dma_error,
     }
@@ -416,6 +474,7 @@ impl AudioState {
         if self.stream.is_idle() && !self.chunk_active {
             if let Some(started) = self.frame_started.take() {
                 mail.stats.frame.record(entry.wrapping_sub(started));
+                mail.frames = mail.frames.wrapping_add(1);
             }
             if mail.frame_ready {
                 self.stream.start(&mail.frame);

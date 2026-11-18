@@ -49,9 +49,10 @@ comportemental (`oc-core`, D-002). Les applets musicaux sont la suite.
 | **2** — plusieurs applets (2026-08-19 → 09-05) | ✅ menu par accord haut + bas, applets résidents, `ScopeApp`, haut / bas au relâchement (D-021) ; module Rack renommé `Alambic` (D-015) ; étude supersaw (base de D-023). Réserve : CI rouge avec `--all-features` depuis l'ajout de la feature `octant` (D-013) | [etape-2.md](docs/plan/avancement/etape-2.md) |
 | **3** — assainissement, sonde live, cadence (2026-11-16 → 11-17) | ✅ dette de revue (0.2.0) ; sonde live `oc-probe` (D-029) : profil au cycle, flux, sorties forcées, capture, redémarrage ; niveau 9 (CV, triggers, rebouclage, multimètre) ; D-023 adoptée en **C+** : fronts des triggers capturés (0,94 ms : 960 / 960), écran une page par tick (1 000 ticks/s au lieu de ≈ 947). Réserves : `signal_tick` / `ui_tick` reporté à l'option A ; DAC8565 simultané non vérifié ; entrées à ≈ 20 mV près | [etape-3.md](docs/plan/avancement/etape-3.md) |
 | **4** — réglages système, calibration, persistance (2026-11-16) | ✅ écran `SETUP` et gestes de démarrage façon Phazerville (D-026) ; conversion dans `oc-core`, valeurs d'usine de Phazerville, assistant de calibration (D-027) ; réglages dans la flash du Teensy par l'API ROM, fichier (sim), patch (Rack) (D-028) ; seuil de présence 50 mV mesuré (D-024). Version **0.3.0**. Réserve : C++ Rack non compilé | [etape-4.md](docs/plan/avancement/etape-4.md) |
+| **7** — chemin audio (2026-11-17 → 11-18) | ✅ `oc_core::audio` (paramètres de sortie, voix), applet `TONE` ; DAC en PCS0 à 22 MHz ; PIT → DMA → LPSPI4 à **47 619 Hz** (instant fixé par le matériel), interruption du DMA pour l'échantillon et l'écran par tronçons ; `audio` 3,4 µs sur 21 ; juste à l'accordeur jusqu'à B7 (D-033). Réserves : 48 kHz impossible (quartz de GPT2 muet), quatre voies écrites à chaque période, Rack non écouté. Version **0.5.0** (avec l'étape 6 ; plugin Rack 2.5.0) | [etape-7.md](docs/plan/avancement/etape-7.md), [rapport](docs/plan/rapport-etape-7-chemin-audio.md) |
 | **5** — primitives graphiques et applet de démo (2026-11-17) | ✅ texte par colonnes (Diagnostic 646 → 88 µs), six polices en paramètre ; `oc_core::gfx` (bases en octets, contrôles, courbes, motifs) ; applet `GFX DEMO` ; `embedded-graphics` en dépendance de test (D-030). Version **0.4.0** (avec l'étape 3 ; plugin Rack 2.4.0) | [etape-5.md](docs/plan/avancement/etape-5.md) |
 
-### Étape 7 — chemin audio : DAC à 48 kHz (en cours)
+### Étape 7 — chemin audio : DAC à 47,6 kHz par DMA (terminée)
 
 Demandée le 2026-11-17 (D-033) : générer des sons sur les sorties. Choix de l'utilisateur : 48 kHz, les quatre
 sorties, une applet `TONE` de test d'abord. Plan : [etape-7-chemin-audio.md](docs/plan/etape-7-chemin-audio.md).
@@ -59,10 +60,10 @@ sorties, une applet `TONE` de test d'abord. Plan : [etape-7-chemin-audio.md](doc
 | Lot | Contenu | État |
 |---|---|---|
 | **7a** — DAC rapide, encore à 1 kHz | `DAC_CS` en PCS0, OLED sur PCS3, DAC à 22 MHz, OLED à 22 ou 8 MHz (feature `oled-spi-8mhz`), voies écrites au changement (révision de D-010) ; mesuré sur le module : écran propre à 22 MHz, sorties justes, `outputs` 3,0 µs en moyenne (≈ 16 µs avant), page d'OLED 49 µs (≈ 145 µs) | ✅ |
-| **7b** — cœur audio | `oc_core::audio` : paramètres de sortie (niveau tenu ou tonalité), `Voice` à phases de 32 bits, sinus en table calculée à la compilation ; le moteur rend sa voix à 1 kHz ; applet `TONE` (A sinus, B triangle, C scie, D carré, note C1–C8, niveau 0–3 V, CV1 en V/oct) ; Rack à sa fréquence d'échantillonnage (`oc_engine_audio`) ; menu sans ligne vide sous le titre ; révision de D-033 | fait (Rack non compilé ici, sans SDK) |
+| **7b** — cœur audio | `oc_core::audio` : paramètres de sortie (niveau tenu ou tonalité), `Voice` à phases de 32 bits, sinus en table calculée à la compilation ; le moteur rend sa voix à 1 kHz ; applet `TONE` (A sinus, B triangle, C scie, D carré, note C1–C8, niveau 0–3 V, CV1 en V/oct) ; Rack à sa fréquence d'échantillonnage (`oc_engine_audio`, compilé, pas encore écouté) ; menu sans ligne vide sous le titre ; révision de D-033 | ✅ |
 | **7c** — interruption à 48 kHz | GPT2 sur le quartz (le PIT est à 1 MHz) ; l'interruption possède le bus : mots du DAC qui changent, échantillon suivant, tronçon d'OLED (`FrameStream`, 24 octets à 22 MHz) ; boîtes aux lettres sous section critique ; profil `audio`, `audio_period`, `frame` ; sorties au repos pendant SAVE ; révisions de D-008, D-009, D-010, D-033 ; sur le module : le quartz ne démarre pas, repli PERCLK / 21 = 47 619 Hz, fin d'envoi lue dans l'écho reçu (l'OLED prenait des bits du DAC dans `TONE`) ; `audio` 12,5 µs sur 21, gigue ±3 µs de l'écriture du DAC, écran stable, son présent | ✅ |
 | **7d** — module | `TONE` juste et stable de C1 à C6 à l'accordeur, perturbé autour de C7 (gigue ±3 µs, images), C8 lu une octave trop bas (limite de l'accordeur probable) : décide le DMA | ✅ |
-| **7e** — DMA | le PIT déclenche une copie DMA de quatre mots du DAC (DMAMUX `ENBL\|TRIG\|A_ON`) ; l'interruption du DMA calcule l'échantillon deux emplacements plus loin et envoie l'écran ; plus aucune lecture du PIT par période ; sur le module : `audio` 3,4 µs (12,5 avant), écran et son corrects ; reste l'accordeur autour de C7 | ✅ |
+| **7e** — DMA | le PIT déclenche une copie DMA de quatre mots du DAC (DMAMUX `ENBL\|TRIG\|A_ON`) ; l'interruption du DMA calcule l'échantillon deux emplacements plus loin et envoie l'écran ; plus aucune lecture du PIT par période ; sur le module : `audio` 3,4 µs (12,5 avant), écran et son corrects ; accordeur juste jusqu'à B7, C8 en limite de l'accordeur ; auto-test de 50 ms et rapport à 3 s dans le journal | ✅ |
 
 ### Étape 6 — premier applet musical : Ratchet (en cours)
 
@@ -74,7 +75,7 @@ Demandée le 2026-11-17 (D-032) : rafales de triggers sur B après une copie sur
 | **6a** — calcul | ✅ `oc_core::fixed` (`log2`, `exp2` en 16.16) ; `ratchet::burst` (`SHAPE` signé, placements `FIRST` / `SPAN`, entrées, bornes) ; `ratchet::tempo` | fait |
 | **6b** — applet | ✅ `RatchetApp`, `AppId::Ratchet` (« RATCHET ») : A copie, B rafale, `PASSTHRU`, `PROB`, `SYNC`, entrée au choix par réglage (`CVn=` / `CVn+`), `up` à la main ; tests tick par tick | fait |
 | **6c** — écran | ✅ deux pages et leur curseur, entrées, BPM, témoins, frise avec repère du prochain trigger ; scénarios dorés | fait |
-| **6d** — module | niveau 9 au Pamela, rebouclage vers TR2 / TR3 ; comparer `MODE FIRST` et `SPAN` à l'oreille | à faire |
+| **6d** — module | essayé par l'utilisateur, sur le chemin audio : correct ; `MODE FIRST` et `SPAN` gardés tous les deux pour l'instant | ✅ |
 
 ### Étape 5 — primitives graphiques et applet de démonstration (terminée)
 

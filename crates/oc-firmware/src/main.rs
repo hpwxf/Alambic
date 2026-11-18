@@ -106,6 +106,14 @@ static PROBE: ConstStaticCell<Server> = ConstStaticCell::new(Server::new(Identit
     can_reboot: false,
 }));
 
+/// How long the boot check of the audio path watches it, in microseconds:
+/// a few thousand periods, short enough not to delay the start-up.
+const AUDIO_CHECK_MICROS: u32 = 50_000;
+
+/// The tick, after the boot, at which the log reports what the audio path
+/// did since: the splash is over and frames go out by then.
+const AUDIO_REPORT_TICK: u64 = 3_000;
+
 /// How long the USB keeps being served before a restart into the
 /// bootloader, so the host sees the reply and the last log lines.
 const RESTART_DRAIN_MS: u32 = 50;
@@ -240,18 +248,27 @@ fn main() -> ! {
         clocks,
         board::OLED_CONTROLLER,
     );
-    // Expected: about 95 of each in 2 ms; anything else says which stops.
-    let health = audio::self_check(&mut delay, 2_000);
+    // Expected: interrupts and bursts at the audio rate, no chunk yet (the
+    // engine has drawn nothing); anything else says which part stops.
+    let health = audio::self_check(AUDIO_CHECK_MICROS);
     log::info!(
-        "audio at {} Hz, DAC by DMA, {} screen bytes a period: {} interrupts, {} DAC bursts, \
-         {} screen chunks and {} releases in 2 ms, line enabled {} pending {}, DMA error {} \
-         (status {:#010x})",
+        "audio at {} Hz, DAC by DMA, {} screen bytes a chunk; check over {} us: \
+         {} interrupts ({}/s), {} DAC bursts ({}/s), {} chunks, {} releases; \
+         interrupt {} us mean, {} us max; period {} to {} us; \
+         line enabled {} pending {}; DMA error {} (status {:#010x})",
         board::AUDIO_RATE_HZ,
         board::OLED_CHUNK_BYTES,
-        health.periods,
-        health.bursts,
-        health.chunks.0,
-        health.chunks.1,
+        health.micros,
+        health.counts.periods,
+        health.per_second(health.counts.periods),
+        health.counts.bursts,
+        health.per_second(health.counts.bursts),
+        health.counts.chunks,
+        health.counts.releases,
+        health.audio_micros.0,
+        health.audio_micros.1,
+        health.period_micros.0,
+        health.period_micros.1,
         health.line.0,
         health.line.1,
         health.dma_error.0,
@@ -328,6 +345,9 @@ fn main() -> ! {
     );
 
     let probe = PROBE.take();
+    // The audio path's counts as the loop starts, for the report a few
+    // seconds in.
+    let boot_audio = audio::totals();
     probe.set_can_reboot(reboot::is_supported());
 
     // The start of the current period, sampling included: pacing from the
@@ -349,6 +369,19 @@ fn main() -> ! {
         record_since(&mut engine, Stage::Sample, mark);
         let report = engine.tick();
         audio::publish(engine.params(), &engine.calibration().outputs);
+        if report.tick_count == AUDIO_REPORT_TICK {
+            let since = audio::totals().since(boot_audio);
+            log::info!(
+                "audio after {} ticks: {} interrupts, {} DAC bursts, {} chunks, {} releases, \
+                 {} frames",
+                AUDIO_REPORT_TICK,
+                since.periods,
+                since.bursts,
+                since.chunks,
+                since.releases,
+                since.frames
+            );
+        }
         audio::drain_stats(engine.profile_mut());
         probe.after_tick(&report, &mut engine);
         if engine.take_save_request() {

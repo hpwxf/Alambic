@@ -691,13 +691,15 @@ From this firmware on, the DAC is written by DMA at 47 619 Hz and an
 interrupt computes the samples and sends the screen; the 1 kHz loop no
 longer touches the bus. `cargo xtask flash`, then:
 
-0. The boot log has `audio at 47619 Hz, DAC by DMA`, then the
-   interrupts, the DAC bursts, the screen chunks and their releases counted
-   over 2 ms of the boot (`2 ms` by the cycle delay, which runs short: about
-   60 of each), and the DMA's error status. No burst means the DMA is not
-   triggered; chunks without releases, that LPSPI4's frame-complete
-   interrupt does not run. No chunk at that point is normal: the engine has
-   not presented a frame yet.
+0. The boot log has `audio at 47619 Hz, DAC by DMA`, then a 50 ms check
+   timed on the cycle counter: interrupts and DAC bursts with their rate
+   (about 47 600 a second each), screen chunks and releases (none yet: the
+   engine has drawn nothing), the interrupt's mean and longest duration, the
+   shortest and longest period, the NVIC line and the DMA's error status.
+   No burst means the DMA is not triggered; no interrupt, that its line or
+   handler is wrong. At tick 3 000 a second line counts what happened since
+   the boot: interrupts, bursts, chunks, releases and frames; chunks without
+   releases mean LPSPI4's frame-complete interrupt does not run.
 1. The splash plays and every applet draws normally, as in 9.3d step 1,
    `TONE` included: it writes the DAC every period, which is what showed
    the OLED taking DAC bits when a transfer's end was misread.
@@ -723,10 +725,11 @@ longer touches the bus. `cargo xtask flash`, then:
 Record the values; with `oled-spi-8mhz`, repeat 1 and 2 (`frame` longer).
 
 On the TLM module this was written against (2026-11-18, DAC by DMA, lot
-7e): 60 interrupts and 59 bursts in the boot check; in `TONE`, `audio`
+7e): in `TONE`, `audio`
 3.4 µs mean and 6.1 µs max, `audio_period` 18.4 to 23.5 µs, `frame`
 1.34 ms, the loop at 1 000 µs; every screen stable, the four tones
-audible.
+audible; a Korg NTS-2 tuner on the sine reads in tune up to B7, and C8 at
+the edge of its range (C7 or C8).
 
 ### 9.4 — Calibration
 

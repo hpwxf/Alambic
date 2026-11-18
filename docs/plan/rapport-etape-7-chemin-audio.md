@@ -536,7 +536,18 @@ moment du démarrage), aucune erreur. **Stats (`TONE`)** : `audio` **3,4 µs** e
 Remarque : l'auto-test compte ≈ 60 événements en « 2 ms » au lieu de ≈ 95. En régime, le profil compte bien
 47 600 exécutions par seconde. Explication probable, non vérifiée : `CycleDelay` repose sur
 `cortex_m::asm::delay`, qui compte des itérations de boucle supposées durer un cycle ; sur un M7 (double émission,
-prédiction de branchement), elles vont plus vite, et « 2 ms » durent moins.
+prédiction de branchement), elles vont plus vite, et « 2 ms » durent moins. [firmware] Corrigé à la clôture :
+l'auto-test dure 50 ms mesurées au compteur de cycles, et donne cadences, durée de l'interruption et bornes de sa
+période ; un second rapport, au tick 3 000, compte aussi les tronçons, relâchements et trames.
+
+### 10.5 Clôture — l'accordeur sur le DAC en DMA
+
+[ce module, observé] Korg NTS-2, sinus sur A : juste et stable jusqu'à **B7** ; **C8 lu tantôt C7, tantôt C8** ;
+l'affichage bouge de **±1** plus souvent qu'avant le DMA. [spécifié, à défaut] Le NTS-2 ne publie ni plage ni
+précision ; les accordeurs Korg comparables détectent jusqu'à C8 avec ±1 cent : C8 est en limite de détection, et
+±1 est un cent, la dernière décimale. La cause du ±1 plus fréquent n'est pas établie (pistes : les quatre voies du
+DAC désormais écrites à chaque période, l'accordeur). [ce module] `RATCHET` essayé par l'utilisateur sur ce chemin :
+correct.
 
 ---
 
@@ -658,19 +669,15 @@ Une assertion à la compilation vérifie que rafale + tronçon + relâchement ti
 
 ## 13. Ce qui reste ouvert
 
-* **Justesse autour de C7 et C8** à repasser à l'accordeur, sur le sinus (A), maintenant que la gigue d'écriture a
-  disparu ; s'il reste un tremblement, ce sont les images (essai du filtre RC proposé).
+* **Le ±1 cent plus fréquent à l'accordeur** depuis le DMA : cause non établie (§ 10.5).
 * **Le quartz de GPT2** ne démarre pas ; hypothèse non vérifiée : l'horloge `ipg_clk_24M` doit être ouverte côté CCM.
   Sans enjeu tant que le DMA est déclenché par le PIT (qui ne peut pas utiliser le quartz).
 * **Les quatre voies sont écrites à chaque période** (≈ 5,5 µs de bus en permanence) ; `ChangedCodes` reste dans
   `oc-drivers`, testé, mais le firmware ne s'en sert plus.
-* **L'auto-test compte « 2 ms » trop courtes** (`CycleDelay`) : à rendre exact (DWT) si l'on veut des comptes
-  absolus.
 * **Gigue d'entrée de l'interruption** (18,4 – 23,5 µs) : sans effet sur le DAC, mais elle réduit la marge du tronçon
   d'écran ; un tronçon qui ne trouve pas sa place est simplement reporté.
-* **Rack** : `oc_engine_audio` n'a été ni compilé (pas de SDK sur la machine) ni écouté.
-* Le compte rendu court de l'étape (`docs/plan/avancement/etape-7.md`) et la PR restent à faire quand l'étape sera
-  close.
+* **Rack** : `oc_engine_audio` compile et se lie (`cargo xtask vcv build --rack-dir Rack-SDK`), pas encore écouté.
+* L'étape est close : bilan court dans `docs/plan/avancement/etape-7.md`, version 0.5.0.
 
 ---
 

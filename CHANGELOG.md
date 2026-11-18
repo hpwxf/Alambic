@@ -41,6 +41,10 @@ Architectural decisions behind each change are in `journal/` (French).
 
 ### Changed
 
+- The boot log checks the audio path for 50 ms timed on the cycle counter
+  (interrupts and DAC bursts with their rate, the interrupt's duration, the
+  period's bounds, the DMA's error status) and, at tick 3 000, counts what
+  it did since the boot, screen chunks and frames included.
 - **The outputs and the screen run at audio rate** (journal/D-033, lots 7c
   and 7e): at 47 619 Hz the PIT triggers a DMA copy of the four DAC words,
   so the DAC is written at instants the hardware fixes; the DMA's interrupt

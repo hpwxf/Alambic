@@ -268,3 +268,16 @@ Trois essais ont corrigé la conception ci-dessus ; ce qui tourne :
 * **Ce qui reste** : la justesse et la stabilité autour de C7 à repasser à l'accordeur (gigue supprimée) ; les
   quatre voies sont écrites à chaque période, changées ou non (≈ 5,5 µs de bus par période).
 
+## Révision du 2026-11-18 — étape close
+
+* **Accordeur sur le DAC en DMA** (Korg NTS-2, sinus sur A) : juste et stable jusqu'à B7 ; C8 lu tantôt C7, tantôt
+  C8. Le NTS-2 ne publie ni plage ni précision ; les accordeurs Korg comparables s'arrêtent à C8 avec ±1 cent : C8
+  est en limite de détection, pas en défaut (`frequency(108, 0)` = 4 186,0 Hz, testé). Le chiffre affiché bouge de
+  ±1 (un cent) plus souvent qu'avant le DMA ; cause non établie (pistes : les quatre voies désormais écrites à chaque
+  période, l'accordeur lui-même) ; sans conséquence à cette précision.
+* **Rack** : le plugin compile et se lie avec `oc_engine_audio` (SDK dans `Rack-SDK/`) ; pas encore écouté.
+* **Auto-test du démarrage** : 50 ms mesurées au compteur de cycles (le délai par boucle du M7 courait trop vite),
+  cadences par seconde, durée de l'interruption et bornes de sa période ; un second rapport du journal, au tick 3 000,
+  compte les interruptions, rafales, tronçons, relâchements et trames depuis le démarrage.
+* L'étape 7 est close : chemin audio à 47 619 Hz, DAC en DMA, `TONE`.
+
