@@ -108,3 +108,9 @@ Demandée par l'utilisateur après l'essai sur le module. La décision ne change
   un front maintenant : une tête de lecture ▼ au-dessus suit le temps écoulé, les triggers partis sur B sont en
   trait épais, les répétitions écartées par `PROB` réduites à un point ; hors rafale, l'aperçu reste celui des
   réglages courants.
+
+## Révision du 2026-11-18 — entrées dans un sous-menu (D-035)
+
+Le choix d'entrée au clic (`--`, `CVn=`, `CVn+` à l'encodeur droit) est remplacé par un sous-menu d'assignation :
+entrée, lecture en direct et bornes vues, échelle, décalage, bornes réglables, effet `SET` / `ADD` / `MUL`. Les
+correspondances de ce § 4 restent celles de `SET` (l'ancien `=`) et `ADD` (l'ancien `+`). Voir D-035.

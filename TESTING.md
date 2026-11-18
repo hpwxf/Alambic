@@ -651,8 +651,24 @@ SPAN` with `SYNC ON` and `SPAN ×1`: the repeats sit within each step, evenly
 at `0.0`, crowding towards its end below 0, towards its start above; compare
 both modes by ear. Then check `GATE` (repeats only while `TR1` stays high),
 `PASSTHRU OFF` (four edges on `TR3`), `PROB 50%` (about half the repeats, on
-their places), and an input: click the right encoder on `FIRST`, turn to
-`CV2+`, click again, then put a volt on `CV2` (intervals halved). With a
+their places), and an input: click the right encoder on `FIRST`, turn
+`INPUT` to `CV2`, then put a volt on `CV2`: the `CV` bar's block moves to
++1 V, the frame's top edge shows the interval halved (and so do the repeats
+once the submenu is closed: click again, or `down`), the `VAL` bar a band
+from the panel's 100 ms to it. In the submenu, set `SCALE` to x0.50 (the
+`CV` bar's block and band shrink to +0.5 V, the reading's stroke stays at
++1 V; the interval now about 71 ms), `MAX` to +0.5 V (a bracket on the `CV` bar; back
+near 71 ms whatever the volt above), then `SCALE` back to x1.00, `MAX` to
++10 V and `EFFECT MUL` (with 5 V on `CV2` the interval stays 100 ms; with
+2.5 V, 50 ms); the main screen shows `100 MS *CV2`, and with `SET`, `=CV2`
+alone. Then `CENTER`: back to `ADD`, put an LFO on `CV2`, reopen the
+submenu, let it swing a few cycles, pick `CENTER` and click: the `CV` bar's
+signal swings about 0 V, the `VAL` bar's band either side of the panel's
+value. Halve the LFO's level (or change its waveform to a narrower one),
+wait 4 s for the range seen (the line along the top of the `CV` bar) to
+shrink, and click again: the scale doubles. Note the readings at the LFO's extremes: the inputs read about
+−3.3 V to +6.7 V with the factory calibration, so a wider LFO is clipped
+there before any `SCALE`. With a
 steady clock on `TR1`, the title bar shows its rate (120 BPM for a trigger
 every 500 ms); set `SYNC ON` and `FIRST` to `/4`: the repeats on `TR3` come a
 quarter of the clock's period apart from the second trigger on. On the

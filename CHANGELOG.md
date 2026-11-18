@@ -13,6 +13,23 @@ Architectural decisions behind each change are in `journal/` (French).
   place of the arrows in the title bar; the timeline is shorter (15 pixels),
   and while a burst runs it shows that burst, a playhead above it, the
   triggers sent drawn bold and the repeats `PROB` dropped as a dot.
+- `RATCHET`'s inputs (journal/D-035): a click on the right encoder opens the
+  setting's input submenu instead of turning through `CVn=` / `CVn+`. It
+  picks the input and sets a `SCALE` (−200 to +200 %, 5 % a detent), a `SHIFT` (±10 V,
+  50 mV), `MIN` and `MAX` bounds (100 mV) applied to the signal, then its
+  `EFFECT`: `SET` (follows it), `ADD` (adds it) or, new, `MUL` (multiplies
+  the panel's value, 5 V leaving it unchanged). It is a frame over the main
+  screen, the setting and the value a burst would take now in its top edge;
+  two bars show the input's signal (once scaled, shifted and bounded, the
+  reading as it comes, the range seen over the last 2 to 4 s, the bounds) and the setting it moves (the panel's value, the value now, the stretch between).
+  The right encoder's click or `down` closes it. A `CENTER` button sets the
+  scale and shift that carry the readings seen onto the range of signal that
+  sweeps the setting end to end: centred on 0 V (around the panel's value)
+  with `ADD`, from its least to its most value with `SET`, 0 to 10 V with
+  `MUL`. A `ratchet` group in `benches/engine.rs` times the main screen
+  and the submenu. The main screen names an
+  input as an operation on the panel's value, `+CV2` or `*CV2`, and `=CV2`
+  alone, in place of a value it no longer uses.
 
 ## 0.5.0 — 2026-11-18 (Rack plugin 2.5.0)
 

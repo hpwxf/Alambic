@@ -12,6 +12,7 @@ use std::hint::black_box;
 
 use oc_core::apps::AppId;
 use oc_core::apps::diagnostic::DiagnosticApp;
+use oc_core::apps::ratchet::RatchetApp;
 use oc_core::apps::tone::ToneApp;
 use oc_core::apps::{InputSnapshot, TickContext};
 use oc_core::audio::Voice;
@@ -100,6 +101,79 @@ fn applet(criterion: &mut Criterion) {
     group.finish();
 }
 
+/// The panel driving a Ratchet tick by tick, its buttons debounced.
+struct RatchetPanel {
+    app: RatchetApp,
+    reader: ButtonReader,
+}
+
+impl RatchetPanel {
+    /// One tick: the right encoder's switch down or up, the right encoder
+    /// turned, `CV1` at `cv`.
+    fn step(&mut self, switch: bool, turns: i8, cv: i32) {
+        let controls = ControlEvents {
+            encoder_delta: [0, turns],
+            button_down: [false, switch, false, false],
+        };
+        let snapshot = InputSnapshot {
+            cv: [cv, 0, 0, 0],
+            triggers: [false; 4],
+            buttons: self.reader.update(&controls),
+            controls,
+            elapsed_micros: 1_000,
+        };
+        self.app.update(&snapshot);
+    }
+
+    fn click(&mut self) {
+        for down in [true, true, true, true, false, false, false, false] {
+            self.step(down, 0, 0);
+        }
+    }
+}
+
+/// A Ratchet with `CV1` on `COUNT`, its input submenu open when `submenu`,
+/// `CV1` swinging so that both bars have a range to draw.
+fn ratchet_app(submenu: bool) -> RatchetApp {
+    let mut panel = RatchetPanel {
+        app: RatchetApp::new(),
+        reader: ButtonReader::new(),
+    };
+    panel.click();
+    panel.step(false, 1, 0);
+    for cv in [-3_000, 4_500, 1_200] {
+        panel.step(false, 0, cv);
+    }
+    if !submenu {
+        panel.click();
+    }
+    assert_eq!(panel.app.assigning().is_some(), submenu);
+    panel.app
+}
+
+fn ratchet(criterion: &mut Criterion) {
+    let mut group = criterion.benchmark_group("ratchet");
+    // The submenu is drawn over the main screen: its cost adds to it, to
+    // compare with `applet/render`, whose module cost is measured.
+    for (name, submenu) in [("render_main", false), ("render_submenu", true)] {
+        group.bench_function(name, |bencher| {
+            let app = ratchet_app(submenu);
+            let mut frame = FrameBuffer::new();
+            let context = TickContext {
+                tick_count: 0,
+                duration_micros: 0,
+                cv_out: [0; 4],
+                outputs_forced: false,
+            };
+            bencher.iter(|| {
+                app.render(&mut frame, &context);
+                black_box(frame.lit_pixels())
+            });
+        });
+    }
+    group.finish();
+}
+
 fn menu(criterion: &mut Criterion) {
     let mut group = criterion.benchmark_group("menu");
 
@@ -166,5 +240,13 @@ fn voice(criterion: &mut Criterion) {
     group.finish();
 }
 
-criterion_group!(benches, engine_tick, applet, menu, conversions, voice);
+criterion_group!(
+    benches,
+    engine_tick,
+    applet,
+    ratchet,
+    menu,
+    conversions,
+    voice
+);
 criterion_main!(benches);

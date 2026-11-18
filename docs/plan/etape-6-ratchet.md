@@ -11,8 +11,9 @@ utiles ; la première est un ratchet (rafales de triggers), la seconde reste à 
 | **6b** — applet | `RatchetApp` : front de TR1, copie sur A, rafale sur B (`PASSTHRU`), redémarrage, impulsions de 5 ms, `PROB`, `SYNC`, entrée au choix par réglage ; `AppId::Ratchet` en fin d'énumération | tests sur `mock_engine` : comptes, espacements, gate, redémarrage, probabilité, synchronisation, entrées ; scénarios dorés |
 | **6c** — écran | deux pages de réglages et leur curseur, entrées, BPM, témoins `1` / `A` / `B`, frise de la rafale avec le repère du prochain trigger | écrans dorés relus |
 | **6d** — module | niveau 9 (TESTING 9.3c) : TR1 au Pamela, rebouclage A → TR2, B → TR3, `cargo probe triggers` ; comparer `MODE FIRST` et `SPAN` à l'oreille | comptes et espacements conformes, au tick près ; choix du placement |
+| **6e** — écran et entrées | ascenseur, frise de la rafale en cours (révision de D-032) ; sous-menu d'assignation des entrées : entrée, lecture et bornes vues, échelle, décalage, bornes, effet `SET` / `ADD` / `MUL` (D-035) | tests sur `mock_engine`, écrans dorés relus ; TESTING 9.3c sur le module |
 
-Ordre : 6a → 6b → 6c → 6d.
+Ordre : 6a → 6b → 6c → 6d → 6e.
 
 ## Risques
 

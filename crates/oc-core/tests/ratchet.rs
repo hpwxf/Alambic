@@ -2,8 +2,8 @@
 //! outputs, tick by tick, for the edges `TR1` receives.
 
 use oc_core::apps::AppId;
-use oc_core::apps::ratchet::burst::{Count, Model};
-use oc_core::apps::ratchet::{Setting, Source, TRIGGER_MV};
+use oc_core::apps::ratchet::burst::{Count, Effect, Model};
+use oc_core::apps::ratchet::{Assign, AssignLine, Setting, TRIGGER_MV, usable_range};
 use oc_core::platform::{Button, CvChannel, TriggerChannel};
 use oc_core::settings::Settings;
 use oc_core::testing::{MockEngine, mock_engine_at_boot};
@@ -51,24 +51,51 @@ fn set(engine: &mut MockEngine, setting: Setting, turns: i8) {
     engine.tick();
 }
 
-/// Clicks the right encoder: the switch toggles value / input.
-fn click(engine: &mut MockEngine) {
+/// Presses and releases `button`.
+fn press(engine: &mut MockEngine, button: Button) {
     for down in [true, true, true, true, false, false, false, false] {
-        engine.parts_mut().3.hold(Button::RightEncoder, down);
+        engine.parts_mut().3.hold(button, down);
         engine.clock().advance(1_000);
         engine.tick();
     }
 }
 
-/// Sets `setting`'s input `detents` steps along `Source::ALL`, from the panel.
-fn source(engine: &mut MockEngine, setting: Setting, detents: i8) {
-    set(engine, setting, 0);
-    click(engine);
-    assert!(engine.apps().ratchet().editing_source());
-    engine.parts_mut().3.turn(1, detents);
+/// Clicks the right encoder: the switch opens and closes the input submenu.
+fn click(engine: &mut MockEngine) {
+    press(engine, Button::RightEncoder);
+}
+
+/// Turns encoder `index` by `detents`, one tick.
+fn turn(engine: &mut MockEngine, index: usize, detents: i8) {
+    engine.parts_mut().3.turn(index, detents);
     engine.clock().advance(1_000);
     engine.tick();
+}
+
+/// In the open submenu, picks `line` and turns it by `detents`.
+fn turn_line(engine: &mut MockEngine, line: AssignLine, detents: i8) {
+    while engine.apps().ratchet().assigning() != Some(line) {
+        turn(engine, 0, 1);
+    }
+    turn(engine, 1, detents);
+}
+
+/// Assigns input `cv` (1 to 4) to `setting` with `effect`, the signal
+/// otherwise as it comes, through the submenu.
+fn assign(engine: &mut MockEngine, setting: Setting, cv: i8, effect: Effect) {
+    set(engine, setting, 0);
     click(engine);
+    assert_eq!(engine.apps().ratchet().assigning(), Some(AssignLine::Input));
+    turn_line(engine, AssignLine::Input, cv);
+    // From ADD, the default: SET one detent down, MUL one up.
+    let effect_turns = match effect {
+        Effect::Set => -1,
+        Effect::Add => 0,
+        Effect::Mul => 1,
+    };
+    turn_line(engine, AssignLine::Effect, effect_turns);
+    click(engine);
+    assert_eq!(engine.apps().ratchet().assigning(), None);
 }
 
 /// Makes the intervals constant: a curve of 0, the default.
@@ -148,17 +175,18 @@ fn a_new_edge_restarts_the_burst() {
 fn an_input_adds_to_a_setting_or_sets_it() {
     let mut engine = ratchet();
     constant(&mut engine);
-    // COUNT takes CV1 added (5 steps: --, CV1= .. CV4=, CV1+), FIRST
-    // follows CV2 (2 steps).
-    source(&mut engine, Setting::Count, 5);
-    source(&mut engine, Setting::Time, 2);
+    // COUNT takes CV1 added, FIRST follows CV2.
+    assign(&mut engine, Setting::Count, 1, Effect::Add);
+    assign(&mut engine, Setting::Time, 2, Effect::Set);
+    let count = *engine.apps().ratchet().assign(Setting::Count).unwrap();
     assert_eq!(
-        engine.apps().ratchet().source(Setting::Count),
-        Some(Source::Add(CvChannel::One))
+        (count.input, count.effect),
+        (Some(CvChannel::One), Effect::Add)
     );
+    let time = *engine.apps().ratchet().assign(Setting::Time).unwrap();
     assert_eq!(
-        engine.apps().ratchet().source(Setting::Time),
-        Some(Source::Follow(CvChannel::Two))
+        (time.input, time.effect),
+        (Some(CvChannel::Two), Effect::Set)
     );
     {
         let (analog_in, ..) = engine.parts_mut();
@@ -186,8 +214,83 @@ fn an_input_only_counts_once_chosen_and_b_init_takes_none() {
     assert_eq!(b.len(), 5, "no input chosen: the panel's count");
     set(&mut engine, Setting::Passthru, 0);
     click(&mut engine);
-    assert!(!engine.apps().ratchet().editing_source());
-    assert_eq!(engine.apps().ratchet().source(Setting::Passthru), None);
+    assert_eq!(engine.apps().ratchet().assigning(), None);
+    assert_eq!(engine.apps().ratchet().assign(Setting::Passthru), None);
+}
+
+#[test]
+fn an_input_can_multiply_a_setting() {
+    let mut engine = ratchet();
+    constant(&mut engine);
+    assign(&mut engine, Setting::Count, 1, Effect::Mul);
+    // 2.5 V halves the four repeats.
+    engine.parts_mut().0.patch(CvChannel::One, 2_500);
+    let (_, b) = run(&mut engine, 1_000, pulse(10));
+    assert_eq!(b.len(), 1 + 2, "{b:?}");
+}
+
+#[test]
+fn the_signal_is_scaled_shifted_and_bounded_before_its_effect() {
+    let mut engine = ratchet();
+    constant(&mut engine);
+    set(&mut engine, Setting::Count, 0);
+    click(&mut engine);
+    turn_line(&mut engine, AssignLine::Input, 1);
+    // SCALE 50 %, SHIFT +0.50 V: 1 V reads 1.0 V, four repeats added.
+    turn_line(&mut engine, AssignLine::Scale, -10);
+    turn_line(&mut engine, AssignLine::Shift, 10);
+    let shaped = *engine.apps().ratchet().assign(Setting::Count).unwrap();
+    assert_eq!((shaped.scale_percent, shaped.shift_mv), (50, 500));
+    assert_eq!(shaped.shape(1_000), 1_000);
+    assert_eq!(shaped.shape(-1_000), 0, "the gain inverts nothing");
+    // MAX +0.5 V: four repeats plus two at most.
+    turn_line(&mut engine, AssignLine::Max, -95);
+    assert_eq!(
+        engine
+            .apps()
+            .ratchet()
+            .assign(Setting::Count)
+            .unwrap()
+            .max_mv,
+        500
+    );
+    // MIN never passes MAX.
+    turn_line(&mut engine, AssignLine::Min, 127);
+    assert_eq!(
+        engine
+            .apps()
+            .ratchet()
+            .assign(Setting::Count)
+            .unwrap()
+            .min_mv,
+        500
+    );
+    turn_line(&mut engine, AssignLine::Min, -100);
+    press(&mut engine, Button::Down);
+    assert_eq!(engine.apps().ratchet().assigning(), None, "down closes it");
+    engine.parts_mut().0.patch(CvChannel::One, 4_000);
+    let (_, b) = run(&mut engine, 1_000, pulse(10));
+    assert_eq!(b.len(), 1 + 4 + 2, "{b:?}");
+}
+
+#[test]
+fn the_submenu_reads_its_input_and_the_range_seen() {
+    let mut engine = ratchet();
+    set(&mut engine, Setting::Shape, 0);
+    click(&mut engine);
+    assert_eq!(engine.apps().ratchet().observed(), None, "no input yet");
+    turn_line(&mut engine, AssignLine::Input, 3);
+    for millivolts in [1_000, -2_000, 3_000, 500] {
+        engine.parts_mut().0.patch(CvChannel::Three, millivolts);
+        engine.clock().advance(1_000);
+        engine.tick();
+    }
+    let (low, high) = engine.apps().ratchet().observed().unwrap();
+    assert!((-2_010..=-1_990).contains(&low) && (2_990..=3_010).contains(&high));
+    // A new input starts the range again.
+    turn_line(&mut engine, AssignLine::Input, 1);
+    let (low, high) = engine.apps().ratchet().observed().unwrap();
+    assert!(low > -100 && high < 100, "{low} {high}");
 }
 
 #[test]
@@ -368,4 +471,200 @@ fn the_timeline_follows_the_burst_under_way() {
     let frame = engine.parts_mut().4.frame_mut().clone();
     assert!(frame.pixel(31, 55) && !frame.pixel(30, 55) && !frame.pixel(32, 55));
     assert!((0..128).all(|x| !frame.pixel(x, 46)));
+}
+
+#[test]
+fn the_submenu_is_a_frame_over_the_main_screen() {
+    use oc_core::platform::Display as _;
+    let mut engine = ratchet();
+    set(&mut engine, Setting::Count, 0);
+    click(&mut engine);
+    engine.parts_mut().2.set(TriggerChannel::One, true);
+    engine.clock().advance(1_000);
+    engine.tick();
+    let frame = engine.parts_mut().4.frame_mut().clone();
+    // No activity on top: the title bar's lights are covered.
+    assert!((0..128).all(|x| !frame.pixel(x, 0)));
+    // The frame's sides and bottom, and the edge broken by the title.
+    assert!(frame.pixel(0, 30) && frame.pixel(127, 30) && frame.pixel(64, 53));
+    assert!(frame.pixel(64, 3) && !frame.pixel(5, 3));
+    // Under it, the bottom of the timeline: its baseline.
+    assert!(frame.pixel(64, 63) && !frame.pixel(64, 54));
+}
+
+#[test]
+fn the_bars_show_the_signal_and_the_setting_it_moves() {
+    use oc_core::platform::Display as _;
+    let mut engine = ratchet();
+    assign(&mut engine, Setting::Count, 1, Effect::Add);
+    engine.parts_mut().0.patch(CvChannel::One, 5_000);
+    set(&mut engine, Setting::Count, 0);
+    click(&mut engine);
+    for millivolts in [1_000, 5_000] {
+        engine.parts_mut().0.patch(CvChannel::One, millivolts);
+        engine.clock().advance(1_000);
+        engine.tick();
+    }
+    let frame = engine.parts_mut().4.frame_mut().clone();
+    // The signal bar, x 26 to 123 for -10 V to +10 V: 5 V near x 99, the
+    // reading a stroke taller than the bar, the signal (unscaled) a band from
+    // 0 V (x 74); the readings seen, 1 V to 5 V, a line along the top.
+    let stroke: Vec<i32> = (26..124).filter(|&x| frame.pixel(x, 32)).collect();
+    assert!(
+        stroke.len() == 1 && (97..=99).contains(&stroke[0]),
+        "{stroke:?}"
+    );
+    assert!(frame.pixel(stroke[0], 40));
+    assert!(frame.pixel(76, 35) && frame.pixel(95, 37) && !frame.pixel(72, 35));
+    assert!(frame.pixel(85, 33) && !frame.pixel(76, 33));
+    // The setting's bar, x 26 to 123 for 1 to 33 (GATE) repeats: the
+    // panel's 4 a tick at x 35, 4 + 4 x 5 V (23 or 24 as the converter
+    // reads) a block near x 94, the stretch between a band.
+    assert!(frame.pixel(35, 43) && frame.pixel(35, 51));
+    let block: Vec<i32> = (36..123).filter(|&x| frame.pixel(x, 44)).collect();
+    assert!(
+        block.len() == 3 && (90..=97).contains(&block[1]),
+        "{block:?}"
+    );
+    assert!(frame.pixel(60, 46) && !frame.pixel(60, 44));
+    // Halved by SCALE, the signal ends near 2.5 V (x 86), the reading stays.
+    turn_line(&mut engine, AssignLine::Scale, -10);
+    let frame = engine.parts_mut().4.frame_mut().clone();
+    assert!(frame.pixel(80, 35) && !frame.pixel(92, 35));
+    assert!(frame.pixel(stroke[0], 32) && frame.pixel(stroke[0], 40));
+}
+
+#[test]
+fn an_input_that_sets_a_setting_stands_in_for_its_value() {
+    use oc_core::platform::Display as _;
+    let mut engine = ratchet();
+    let value_area = |frame: &oc_core::framebuffer::FrameBuffer| {
+        (60..98).any(|x| (17..23).any(|y| frame.pixel(x, y)))
+    };
+    // COUNT's row on the main screen, highlighted: its value shows dark on
+    // the lit row, so look at the next row, FIRST.
+    set(&mut engine, Setting::Count, 0);
+    let frame = engine.parts_mut().4.frame_mut().clone();
+    assert!(value_area(&frame), "100 MS");
+    assign(&mut engine, Setting::Time, 2, Effect::Set);
+    set(&mut engine, Setting::Count, 0);
+    let frame = engine.parts_mut().4.frame_mut().clone();
+    assert!(!value_area(&frame), "no panel value beside =CV2");
+    // Its input in its place.
+    assert!((101..125).any(|x| (17..23).any(|y| frame.pixel(x, y))));
+}
+
+#[test]
+fn the_usable_range_sweeps_each_setting_end_to_end() {
+    // Added, centred: COUNT 4 per volt over 1 to 32, SHAPE a volt per 1.0.
+    assert_eq!(
+        usable_range(Setting::Count, Model::First, Effect::Add),
+        (-3_875, 3_875)
+    );
+    assert_eq!(
+        usable_range(Setting::Shape, Model::First, Effect::Add),
+        (-3_000, 3_000)
+    );
+    assert_eq!(
+        usable_range(Setting::Chance, Model::First, Effect::Set),
+        (0, 5_000)
+    );
+    // Followed, the time is 100 ms at 0 V: about 4.3 octaves down to 2 s,
+    // 5.6 up to 2 ms; SPAN from 400 ms, up to 8 s.
+    let (slow, fast) = usable_range(Setting::Time, Model::First, Effect::Set);
+    assert!((-4_330..=-4_310).contains(&slow) && (5_630..=5_650).contains(&fast));
+    let (slow, fast) = usable_range(Setting::Time, Model::Span, Effect::Set);
+    assert!((-4_330..=-4_310).contains(&slow) && (7_630..=7_650).contains(&fast));
+    // Multiplying: x0 to x2 around x1, for any setting.
+    assert_eq!(
+        usable_range(Setting::Count, Model::First, Effect::Mul),
+        (0, 10_000)
+    );
+}
+
+#[test]
+fn center_carries_the_readings_seen_onto_the_usable_range() {
+    let mut assign = Assign::NONE;
+    // -3.6 V to 4.9 V onto +-3.875 V: x0.90 (8.5 V to 7.65 V), the middle,
+    // 0.65 V, brought to 0 V by -0.60 V; the steps round both.
+    assert!(assign.center((-3_600, 4_900), (-3_875, 3_875)));
+    assert_eq!((assign.scale_percent, assign.shift_mv), (90, -600));
+    assert_eq!((assign.shape(-3_600), assign.shape(4_900)), (-3_840, 3_810));
+    // A narrow signal is scaled up as far as x2.00, then centred.
+    assert!(assign.center((1_000, 2_000), (0, 10_000)));
+    assert_eq!((assign.scale_percent, assign.shift_mv), (200, 2_000));
+    // Too still to measure: left as it is.
+    assert!(!assign.center((1_000, 1_050), (-3_875, 3_875)));
+    assert_eq!((assign.scale_percent, assign.shift_mv), (200, 2_000));
+}
+
+#[test]
+fn center_is_a_click_in_the_submenu() {
+    let mut engine = ratchet();
+    set(&mut engine, Setting::Count, 0);
+    click(&mut engine);
+    turn_line(&mut engine, AssignLine::Input, 1);
+    // Within the converter's reach (about -3.3 V to +6.7 V).
+    for millivolts in [-3_000, 4_900, 0] {
+        engine.parts_mut().0.patch(CvChannel::One, millivolts);
+        engine.clock().advance(1_000);
+        engine.tick();
+    }
+    turn_line(&mut engine, AssignLine::Center, 0);
+    click(&mut engine);
+    let ratchet = engine.apps().ratchet();
+    assert_eq!(ratchet.assigning(), Some(AssignLine::Center), "still open");
+    // The readings seen, once shaped, sit centred on 0 V and span about the
+    // usable +-3.875 V, to the steps' rounding.
+    let assign = ratchet.assign(Setting::Count).unwrap();
+    let (low, high) = ratchet.observed().unwrap();
+    let (low, high) = (assign.shape(low), assign.shape(high));
+    assert!((low + high).abs() <= 100, "{low} {high}");
+    assert!((7_400..=8_100).contains(&(high - low)), "{low} {high}");
+    press(&mut engine, Button::Down);
+    assert_eq!(engine.apps().ratchet().assigning(), None);
+}
+
+#[test]
+fn center_follows_a_signal_that_changes_on_the_same_input() {
+    let mut engine = ratchet();
+    set(&mut engine, Setting::Count, 0);
+    click(&mut engine);
+    turn_line(&mut engine, AssignLine::Input, 1);
+    turn_line(&mut engine, AssignLine::Center, 0);
+    // A wave between -3 V and +3 V for a second, then a square between -1 V
+    // and +1 V on the same input: the first one leaves the range within
+    // twice the window.
+    let swing = |engine: &mut MockEngine, millivolts: i32, ticks: u32| {
+        for tick in 0..ticks {
+            let level = if tick % 200 < 100 {
+                millivolts
+            } else {
+                -millivolts
+            };
+            engine.parts_mut().0.patch(CvChannel::One, level);
+            engine.clock().advance(1_000);
+            engine.tick();
+        }
+    };
+    swing(&mut engine, 3_000, 1_000);
+    click(&mut engine);
+    let wide = engine
+        .apps()
+        .ratchet()
+        .assign(Setting::Count)
+        .unwrap()
+        .scale_percent;
+    swing(&mut engine, 1_000, 4_100);
+    let (low, high) = engine.apps().ratchet().observed().unwrap();
+    assert!(low > -1_100 && high < 1_100, "{low} {high}");
+    click(&mut engine);
+    let narrow = engine
+        .apps()
+        .ratchet()
+        .assign(Setting::Count)
+        .unwrap()
+        .scale_percent;
+    // 6 V, then 2 V, onto 7.75 V: x1.30, then x2.00 (the most).
+    assert_eq!((wide, narrow), (130, 200));
 }

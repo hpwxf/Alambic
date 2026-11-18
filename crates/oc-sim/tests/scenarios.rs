@@ -213,15 +213,16 @@ fn ratchet_marks_where_the_next_trigger_is_due() {
 }
 
 #[test]
-fn ratchet_shows_the_input_being_chosen() {
-    use oc_core::apps::ratchet::{Setting, Source};
+fn ratchet_shows_the_input_submenu() {
+    use oc_core::apps::ratchet::{AssignLine, Setting};
     use oc_core::platform::CvChannel;
     let mut simulator = replay("ratchet_inputs");
     let ratchet = simulator.ratchet();
-    assert!(ratchet.editing_source());
+    assert_eq!(ratchet.assigning(), Some(AssignLine::Scale));
+    let assign = ratchet.assign(Setting::Count).unwrap();
     assert_eq!(
-        ratchet.source(Setting::Count),
-        Some(Source::Add(CvChannel::One))
+        (assign.input, assign.scale_percent),
+        (Some(CvChannel::Two), 50)
     );
     assert_screen_matches(&mut simulator, "ratchet_inputs");
 }
