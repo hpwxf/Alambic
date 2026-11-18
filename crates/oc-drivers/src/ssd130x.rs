@@ -15,6 +15,11 @@
 //!
 //! The framebuffer already uses the controller's own byte order (see
 //! [`oc_core::framebuffer`]), so no repacking is needed on the way to the bus.
+//!
+//! [`Ssd130x`] sends over a blocking bus; [`FrameStream`] hands the same bytes
+//! out in pieces, for a sender that interleaves them with other traffic, such
+//! as the firmware's audio interrupt sharing the bus with the DAC
+//! (journal/D-033).
 
 use embedded_hal::delay::DelayNs;
 use embedded_hal::digital::OutputPin;
@@ -129,6 +134,164 @@ impl Controller {
     }
 }
 
+/// The longest page-addressing command sequence ([`page_commands`]).
+const MAX_PAGE_COMMANDS: usize = 6;
+
+/// The commands that point the controller at `page` before its 128 data
+/// bytes, and how many of the six bytes they use.
+///
+/// SH1106: the column offset, then the page (`SH1106_128x64_Driver::SendPage`
+/// in the reference firmware). SSD1306 / SSD1309: the column and page window
+/// of that page alone.
+fn page_commands(controller: Controller, page: usize) -> ([u8; MAX_PAGE_COMMANDS], usize) {
+    let page = u8::try_from(page).unwrap_or(0);
+    if controller.page_addressed() {
+        let offset = controller.column_offset();
+        (
+            [
+                command::SET_HIGH_COLUMN | (offset >> 4),
+                command::SET_LOW_COLUMN | (offset & 0x0F),
+                command::SET_PAGE_START | page,
+                0,
+                0,
+                0,
+            ],
+            3,
+        )
+    } else {
+        let last_column = u8::try_from(WIDTH - 1).unwrap_or(127);
+        (
+            [
+                command::SET_COLUMN_ADDRESS,
+                0,
+                last_column,
+                command::SET_PAGE_ADDRESS,
+                page,
+                page,
+            ],
+            6,
+        )
+    }
+}
+
+/// What a piece of a frame is to the controller, which the data / command
+/// line tells apart.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ChunkKind {
+    /// Commands: the line low.
+    Command,
+    /// Pixels: the line high.
+    Data,
+}
+
+/// One piece of a frame: commands or pixels, never both.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Chunk<'a> {
+    /// What the bytes are.
+    pub kind: ChunkKind,
+    /// The bytes, in the order they go out.
+    pub bytes: &'a [u8],
+}
+
+/// Where a [`FrameStream`] is in its frame.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Next {
+    /// Nothing to send.
+    Idle,
+    /// The addressing commands of this page.
+    Commands(usize),
+    /// The pixels of this page, from this column.
+    Data(usize, usize),
+}
+
+/// A frame sent piece by piece: the bytes [`Ssd130x`] would send, page by
+/// page, handed out in chunks of at most a given size, so that a sender can
+/// fit each between other transfers on the bus.
+///
+/// Commands always come whole (at most six bytes); a contrast change waits
+/// for the boundary between two pages.
+#[derive(Debug, Clone)]
+pub struct FrameStream {
+    controller: Controller,
+    frame: [u8; LEN],
+    next: Next,
+    contrast: Option<u8>,
+    commands: [u8; MAX_PAGE_COMMANDS],
+}
+
+impl FrameStream {
+    /// Nothing to send yet, for a panel with `controller`.
+    #[must_use]
+    pub const fn new(controller: Controller) -> Self {
+        Self {
+            controller,
+            frame: [0; LEN],
+            next: Next::Idle,
+            contrast: None,
+            commands: [0; MAX_PAGE_COMMANDS],
+        }
+    }
+
+    /// Whether the frame and any contrast change have gone out.
+    #[must_use]
+    pub const fn is_idle(&self) -> bool {
+        matches!(self.next, Next::Idle) && self.contrast.is_none()
+    }
+
+    /// Starts sending `frame` from its first page, dropping what is left of
+    /// the previous one.
+    pub const fn start(&mut self, frame: &[u8; LEN]) {
+        self.frame = *frame;
+        self.next = Next::Commands(0);
+    }
+
+    /// Sends a contrast change at the next boundary between two pages.
+    pub const fn set_contrast(&mut self, contrast: u8) {
+        self.contrast = Some(contrast);
+    }
+
+    /// The next piece, at most `max` pixel bytes (at least one), or `None`
+    /// once everything went out.
+    pub fn next_chunk(&mut self, max: usize) -> Option<Chunk<'_>> {
+        if matches!(self.next, Next::Idle | Next::Commands(_))
+            && let Some(contrast) = self.contrast.take()
+        {
+            self.commands[..2].copy_from_slice(&[command::SET_CONTRAST, contrast]);
+            return Some(Chunk {
+                kind: ChunkKind::Command,
+                bytes: &self.commands[..2],
+            });
+        }
+        match self.next {
+            Next::Idle => None,
+            Next::Commands(page) => {
+                let (commands, len) = page_commands(self.controller, page);
+                self.commands = commands;
+                self.next = Next::Data(page, 0);
+                Some(Chunk {
+                    kind: ChunkKind::Command,
+                    bytes: &self.commands[..len],
+                })
+            }
+            Next::Data(page, column) => {
+                let len = max.max(1).min(WIDTH - column);
+                self.next = if column + len < WIDTH {
+                    Next::Data(page, column + len)
+                } else if page + 1 < PAGES {
+                    Next::Commands(page + 1)
+                } else {
+                    Next::Idle
+                };
+                let start = page * WIDTH + column;
+                Some(Chunk {
+                    kind: ChunkKind::Data,
+                    bytes: &self.frame[start..start + len],
+                })
+            }
+        }
+    }
+}
+
 /// Errors the driver can report.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Ssd130xError {
@@ -177,6 +340,12 @@ where
             frame: FrameBuffer::new(),
             last_error: None,
         }
+    }
+
+    /// Gives the bus and the pins back, for a sender that takes the panel
+    /// over once it is initialised ([`FrameStream`]).
+    pub fn release(self) -> (SPI, CS, DC, RST) {
+        (self.spi, self.chip_select, self.data_command, self.reset)
     }
 
     /// Which controller this instance drives.
@@ -296,25 +465,8 @@ where
         if page >= PAGES {
             return Ok(());
         }
-        let page_u8 = u8::try_from(page).unwrap_or(0);
-        if self.controller.page_addressed() {
-            let offset = self.controller.column_offset();
-            self.commands(&[
-                command::SET_HIGH_COLUMN | (offset >> 4),
-                command::SET_LOW_COLUMN | (offset & 0x0F),
-                command::SET_PAGE_START | page_u8,
-            ])?;
-        } else {
-            let last_column = u8::try_from(WIDTH - 1).unwrap_or(127);
-            self.commands(&[
-                command::SET_COLUMN_ADDRESS,
-                0,
-                last_column,
-                command::SET_PAGE_ADDRESS,
-                page_u8,
-                page_u8,
-            ])?;
-        }
+        let (commands, len) = page_commands(self.controller, page);
+        self.commands(&commands[..len])?;
         self.data_command
             .set_high()
             .map_err(|_| Ssd130xError::Pin)?;
@@ -805,5 +957,80 @@ mod tests {
         assert_eq!(Controller::Ssd1306.name(), "SSD1306");
         assert_eq!(Controller::Ssd1309.name(), "SSD1309");
         assert_eq!(panel(Controller::Sh1106).controller(), Controller::Sh1106);
+    }
+
+    /// Sends every chunk of `stream` at most `max` pixel bytes long, the
+    /// commands and the pixels apart.
+    fn drain(stream: &mut super::FrameStream, max: usize) -> Vec<(super::ChunkKind, Vec<u8>)> {
+        let mut chunks = Vec::new();
+        while let Some(chunk) = stream.next_chunk(max) {
+            chunks.push((chunk.kind, chunk.bytes.to_vec()));
+        }
+        chunks
+    }
+
+    #[test]
+    fn a_streamed_frame_is_the_bytes_of_its_pages() {
+        use super::{ChunkKind, FrameStream};
+        for controller in [Controller::Sh1106, Controller::Ssd1306] {
+            let mut panel = panel(controller);
+            for x in 0..128 {
+                for y in 0..64 {
+                    panel.frame_mut().set_pixel(x, y, (x * 7 + y * 3) % 5 == 0);
+                }
+            }
+            let frame = *panel.frame_mut().as_bytes();
+            for page in 0..PAGES {
+                panel.flush_page(page).unwrap();
+            }
+
+            let mut stream = FrameStream::new(controller);
+            assert!(stream.is_idle());
+            stream.start(&frame);
+            let chunks = drain(&mut stream, 24);
+            assert!(stream.is_idle());
+            let sent: Vec<u8> = chunks.iter().flat_map(|(_, bytes)| bytes.clone()).collect();
+            assert_eq!(sent, panel.spi.written, "{controller:?}");
+            for (kind, bytes) in &chunks {
+                match kind {
+                    ChunkKind::Command => assert!(bytes.len() <= 6),
+                    ChunkKind::Data => assert!(bytes.len() <= 24),
+                }
+            }
+            let commands = chunks
+                .iter()
+                .filter(|(kind, _)| *kind == ChunkKind::Command)
+                .count();
+            assert_eq!(commands, PAGES, "one command chunk per page");
+        }
+    }
+
+    #[test]
+    fn a_contrast_change_waits_for_a_page_boundary() {
+        use super::{ChunkKind, FrameStream};
+        let mut stream = FrameStream::new(Controller::Sh1106);
+        stream.set_contrast(0x42);
+        assert!(!stream.is_idle());
+        assert_eq!(
+            drain(&mut stream, 64),
+            [(ChunkKind::Command, std::vec![command::SET_CONTRAST, 0x42])],
+            "sent alone when no frame is going out"
+        );
+
+        stream.start(&[0; LEN]);
+        let first = stream.next_chunk(64).unwrap().bytes.to_vec();
+        let _ = stream.next_chunk(64);
+        stream.set_contrast(7);
+        let middle = stream.next_chunk(64).unwrap();
+        assert_eq!(middle.kind, ChunkKind::Data, "not inside a page");
+        let after = stream.next_chunk(64).unwrap();
+        assert_eq!(after.bytes, [command::SET_CONTRAST, 7]);
+        assert_eq!(stream.next_chunk(64).unwrap().bytes[..2], first[..2]);
+    }
+
+    #[test]
+    fn a_released_panel_gives_its_parts_back() {
+        let (spi, ..) = panel(Controller::Sh1106).release();
+        assert_eq!(spi.written, [] as [u8; 0]);
     }
 }

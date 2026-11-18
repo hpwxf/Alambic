@@ -5,7 +5,7 @@
 | **Identifiant** | D-001 |
 | **Date** | 2026-11-16 |
 | **Auteur** | Pascal Havé |
-| **Statut** | adoptée |
+| **Statut** | adoptée, révisée |
 | **Commits** | commit d'ouverture du journal (D-001 à D-023) |
 
 ## 1. Contexte
@@ -74,3 +74,12 @@ pour consigner les doutes de la relecture sans changer le statut des décisions.
   entrée du journal : la convention n'est pas tenue et il faut la simplifier plutôt que la laisser pourrir.
 * Si `AGENTS.md` et le journal se mettent à se contredire, il faudra sortir l'architecture dans
   `docs/plan/architecture.md` (en français) et réduire `AGENTS.md` aux pièges.
+
+## Révision du 2026-11-18 — `HARDWARE.md` versionné sous `docs/hardware.md`
+
+À la demande de l'utilisateur, le guide du matériel, jusque-là un fichier local non suivi, devient
+`docs/hardware.md`, en français comme les autres documents de travail. Il distingue ce qui relève du principe, de la
+spécification (fiches, manuel de référence), de ce module (assemblage et mesures) et du firmware ; la même distinction
+vaut pour les rapports d'étape. La partie générique de l'ancien fichier (exemples RTIC, tableau Linux / embarqué,
+« ADC externes ») n'est pas reprise : elle ne décrivait pas ce module.
+

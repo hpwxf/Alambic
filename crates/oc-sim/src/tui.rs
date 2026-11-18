@@ -582,6 +582,12 @@ impl Tui {
                 self.simulator.gfx().page(),
                 self.simulator.gfx().knobs()
             ),
+            AppId::Tone => format!(
+                "{} {}mHz   peak {}mV",
+                oc_core::apps::tone::note_name(self.simulator.tone().note()).as_str(),
+                self.simulator.tone().frequency(),
+                self.simulator.tone().amplitude()
+            ),
         };
         let menu = if self.simulator.menu_is_open() {
             "   [MENU]"

@@ -78,6 +78,11 @@ Covers, from `crates/oc-core/tests/`:
   app state surviving a switch away and back.
 * `splash.rs` — the boot animation and the gate that holds the outputs at rest
   until it finishes.
+* `audio.rs` — the voice against `f64` (the sine within one step of 2^15, the
+  pitch of `TONE` within a tenth of a cent or a millihertz, 440 zero crossings
+  a second at 48 kHz), and `TONE` on the engine: the tones it publishes
+  (`Engine::params`), a probe holding an output over a tone, every CV applet
+  publishing the levels it writes (journal/D-033).
 
 Plus the in-file unit tests of every module, notably `buttons.rs` (debouncing
 and chord arbitration), `menu.rs`, `apps.rs` and `scope.rs`.
@@ -115,7 +120,9 @@ Covers `crates/oc-vcv-ffi/src/lib.rs`'s own unit tests and
 `engine` pointer or an out-of-range channel/index (documented no-op or a
 harmless default return, never a panic), two engines created back to back
 stay independent, and ticking a freshly created engine before any input is
-configured produces a defined, inert result. The engine wired behind the ABI
+configured produces a defined, inert result. `oc_engine_audio` reads a held
+level back as the tick wrote it at any rate, and plays `TONE` at the rate it
+is given between two ticks (journal/D-033). The engine wired behind the ABI
 is the same `oc_core::testing` mock backend `oc-core`'s own tests and
 `oc-sim` use, so the actual signal-path behaviour is already covered by
 Level 1; this level is only about the C ABI boundary itself.
@@ -139,8 +146,10 @@ cargo bench -p oc-core
 
 `crates/oc-core/benches/engine.rs` benchmarks `engine/tick_idle`,
 `engine/tick_busy`, `applet/update`, `applet/render`, `menu/render`,
-`conversions/adc_code_to_millivolts` and
-`conversions/millivolts_to_dac_code`. `crates/oc-core/benches/graphics.rs`
+`conversions/adc_code_to_millivolts`,
+`conversions/millivolts_to_dac_code` and `voice/tone_sample_to_codes` (one
+sample of `TONE`'s four waveforms turned into DAC codes: what the 48 kHz
+interrupt will compute each period, journal/D-033). `crates/oc-core/benches/graphics.rs`
 compares `oc_core::text` and `oc_core::gfx` with `embedded-graphics`, each
 comparison a group of two (`<name>/embedded_graphics`, `<name>/oc_core`),
 and times each page of the graphics demonstration (`gfx_demo/<page>`).
@@ -652,6 +661,76 @@ faster than the burst, the repeats past it are drawn short and are indeed
 cut on `TR3`. If `TR2` and `TR3` count nothing, the 5 V triggers do not cross the inputs' threshold: note it, it
 decides whether the trigger level has to change.
 
+### 9.3d — Fast DAC and shared bus (journal/D-033, lot 7a)
+
+The DAC's chip select is the SPI controller's own (PCS0) and the DAC runs at
+22 MHz; the OLED runs at 22 MHz too, or at 8 MHz with
+`cargo xtask flash --features oled-spi-8mhz`. With each firmware:
+
+1. The screen draws normally on every applet (no garbage, no frozen rows),
+   including after a minute of turning the encoders.
+2. The output levels are right: repeat 9.3b (`cargo probe sweep`) on the
+   four outputs, and `cargo probe out` at −3, 0 and +5 V with a multimeter.
+   A shift or a jump means the DAC took bytes meant for the OLED.
+3. Open `SCOPE` (it copies `CV1` to all four outputs) with an LFO on `CV1`,
+   then `cargo probe stats`: the `outputs` stage now writes four words at
+   22 MHz. For indication, about 16 µs at 8 MHz before this lot; record this
+   module's value.
+
+Keep the default if all three pass; otherwise note which failed and keep
+`oled-spi-8mhz`.
+
+On the TLM module this was written against (`b293d6a`, 2026-11-17): the
+screen stayed clean at 22 MHz, the four outputs read −3.000/−2.999 V and
++4.997 V, `outputs` took 3.0 µs on average and 8.0 µs at most, one OLED page
+49 µs (about 145 µs at 8 MHz). An observation on one module, not a target.
+
+### 9.3e — Audio path (journal/D-033, lots 7c and 7e)
+
+From this firmware on, the DAC is written by DMA at 47 619 Hz and an
+interrupt computes the samples and sends the screen; the 1 kHz loop no
+longer touches the bus. `cargo xtask flash`, then:
+
+0. The boot log has `audio at 47619 Hz, DAC by DMA`, then a 50 ms check
+   timed on the cycle counter: interrupts and DAC bursts with their rate
+   (about 47 600 a second each), screen chunks and releases (none yet: the
+   engine has drawn nothing), the interrupt's mean and longest duration, the
+   shortest and longest period, the NVIC line and the DMA's error status.
+   No burst means the DMA is not triggered; no interrupt, that its line or
+   handler is wrong. At tick 3 000 a second line counts what happened since
+   the boot: interrupts, bursts, chunks, releases and frames; chunks without
+   releases mean LPSPI4's frame-complete interrupt does not run.
+1. The splash plays and every applet draws normally, as in 9.3d step 1,
+   `TONE` included: it writes the DAC every period, which is what showed
+   the OLED taking DAC bits when a transfer's end was misread.
+2. `cargo probe stats` on `DIAGNOSTIC`, then on `TONE`:
+   * `audio_period`: mean 21.0 µs, max under twice that — it times the
+     interrupt's entry, the DAC being written by DMA at the timer's
+     instants;
+   * `audio`: the interrupt's own time; record mean and max with `TONE`
+     (four channels written each period) and with `DIAGNOSTIC` at rest (no
+     DAC words);
+   * `frame`: well under 20 ms (one frame drawn every 20 ticks);
+   * `period` still 1 000 µs on average and `tick` + `sample` + `usb`
+     well under a period: the loop keeps its rate with the interrupt
+     taking its share.
+3. The outputs are right: 9.3d step 2 again (`cargo probe sweep`,
+   `cargo probe out` with a multimeter).
+4. Settings: `SETUP` → `SAVE` still saves (toast), the outputs drop to 0 V
+   during it and come back.
+5. `TONE`, by ear only for now (lot 7d does the oscilloscope and the
+   tuner): every note from C1 to C8 sounds at its own pitch, C5 and above
+   included.
+
+Record the values; with `oled-spi-8mhz`, repeat 1 and 2 (`frame` longer).
+
+On the TLM module this was written against (2026-11-18, DAC by DMA, lot
+7e): in `TONE`, `audio`
+3.4 µs mean and 6.1 µs max, `audio_period` 18.4 to 23.5 µs, `frame`
+1.34 ms, the loop at 1 000 µs; every screen stable, the four tones
+audible; a Korg NTS-2 tuner on the sine reads in tune up to B7, and C8 at
+the edge of its range (C7 or C8).
+
 ### 9.4 — Calibration
 
 This step measures how far the module is from the factory calibration, then
@@ -760,7 +839,8 @@ under Eurorack power-supply noise; none of that is in scope for this plan.
   recorded check of patching cables to it. There is no automated way to do
   that; treat the panel layout, the knob-as-encoder interaction and the
   "Open/close app menu" context entry in `Alambic.cpp` as unverified until
-  someone has.
+  someone has. `TONE` played at Rack's sample rate through `oc_engine_audio`
+  (journal/D-033) has not been heard in Rack either.
 * **Renode boot smoke test** — dropped as originally specified because the
   firmware drives no UART (every LPUART on pins 0–23 collides with the
   panel, as documented in `crates/oc-firmware/src/main.rs`). The plan file

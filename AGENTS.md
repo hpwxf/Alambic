@@ -5,8 +5,9 @@ analogy with a typical embedded or workspace project. Read it before making
 structural changes. User-facing instructions (how to run the simulator, key
 maps, flashing) live in `README.md`; the test protocol lives in `TESTING.md`;
 the rationale for every architectural decision lives in the ADR journal,
-`journal/` (French; index in `journal/README.md`), and the project state in
-`PLAN.md`. The original foundation plan,
+`journal/` (French; index in `journal/README.md`), the project state in
+`PLAN.md`, and the hardware (principles, data-sheet facts, this module's
+assembly and measurements, kept apart) in `docs/hardware.md` (French). The original foundation plan,
 `.junie/plans/oc-rust-firmware-foundation.md`, is kept as the step-0 plan.
 This file is the shortest path to "how does this repository actually work".
 
@@ -69,6 +70,7 @@ cargo xtask build                           # cross-compile firmware (thumbv7em-
 cargo xtask size                            # section table + linker-layout checklist
 cargo xtask hex                             # dist/oc-firmware.hex
 cargo xtask build|hex --features ssd1306    # OLED override (default is SH1106); ssd1309 also available
+cargo xtask flash --features oled-spi-8mhz # OLED at 8 MHz, DAC at 22 MHz (TESTING.md 9.3d, journal/D-033)
 cargo xtask flash --features settings-stress # test firmware: 300 settings saves at power-up (TESTING.md 9.5c), never for a module in use
 cargo xtask flash --dry-run                 # validate only, upload nothing
 cargo xtask flash                           # validate, show SHA-256 digest, confirm, upload
@@ -94,17 +96,18 @@ engineering foundation rather than a musically rich firmware: cross-compiled
 firmware, a native simulator, a VCV Rack 2 module, and a safe flashing tool,
 all sharing one behavioural core. Several applets can be hosted and picked
 from a front-panel menu, but *musically rich* applets are explicitly out of
-scope for now: four are shipped: a diagnostic I/O screen, a scope, a
-demonstration of the graphics primitives (`GFX DEMO`, journal/D-030) and the
-first musical one, `RATCHET` (trigger bursts, journal/D-032).
+scope for now: five are shipped: a diagnostic I/O screen, a scope, a
+demonstration of the graphics primitives (`GFX DEMO`, journal/D-030), the
+first musical one, `RATCHET` (trigger bursts, journal/D-032), and `TONE`, a
+test tone for the audio path (journal/D-033).
 
 ## Workspace layout
 
 | Crate                | `no_std` | `unsafe` policy            | Role |
 |-----------------------|----------|-----------------------------|------|
-| `crates/oc-core`      | yes      | `forbid(unsafe_code)`       | **All** behaviour: platform traits, `Engine::tick`, the applets (`DiagnosticApp`, `ScopeApp`, `GfxDemoApp`, `RatchetApp`) and the app menu, the graphics primitives (`gfx`, `text`), button debouncing and chord arbitration, calibration, quadrature decoding, framebuffer. Knows nothing about registers or an OS. |
+| `crates/oc-core`      | yes      | `forbid(unsafe_code)`       | **All** behaviour: platform traits, `Engine::tick`, the applets (`DiagnosticApp`, `ScopeApp`, `GfxDemoApp`, `RatchetApp`, `ToneApp`) and the app menu, the output parameters and the voice that renders them (`audio`), the graphics primitives (`gfx`, `text`), button debouncing and chord arbitration, calibration, quadrature decoding, framebuffer. Knows nothing about registers or an OS. |
 | `crates/oc-drivers`   | yes      | `forbid(unsafe_code)`       | Peripheral protocols (DAC8565, SH1106/SSD1306/SSD1309, triggers, shared SPI bus) over `embedded-hal` 1.0 only; tested on the host against recording mock buses. |
-| `crates/oc-firmware`  | yes (bin)| `deny(unsafe_code)`; `unsafe` only in `flash_store.rs` (boot ROM calls) and `reboot.rs` (bootloader hand-over) | Pure wiring: turns `teensy4-bsp`/`imxrt-hal` resources into the `oc-core` platform traits, runs the 1 kHz loop. The one crate that cannot be tested on the host. |
+| `crates/oc-firmware`  | yes (bin)| `deny(unsafe_code)`; `unsafe` only in `flash_store.rs` (boot ROM calls), `reboot.rs` (bootloader hand-over) and `audio_irq.rs` (the DAC's DMA, its ring, the audio handlers) | Pure wiring: turns `teensy4-bsp`/`imxrt-hal` resources into the `oc-core` platform traits, runs the 1 kHz loop. The one crate that cannot be tested on the host. |
 | `crates/oc-protocol`  | yes      | `forbid(unsafe_code)`       | Messages between the firmware and the host probe (`Request`, `Reply`), `postcard` + COBS framing, `FrameReader`; tested on the host (journal/D-029). |
 | `crates/oc-probe`     | no       | ordinary                    | Host tool over the module's probe port (`serialport`, without `libudev`): a `Client` over any byte stream, tested against the real `oc_protocol::server` through an in-memory loopback on a mock engine; CLI `stats`, `stream`, `out`, `screen`, `reboot` (journal/D-029). |
 | `crates/oc-image`     | no       | ordinary                    | The pre-flash gate (`validate`, moved from `xtask`, which re-exports it as `xtask::validate`) and `flash::flash_image`, the flash contents laid out from a validated ELF's `PT_LOAD` segments (byte for byte what `llvm-objcopy -O ihex` gives); `hex` and `boot` read an Intel HEX file and check the boot header (FCB, IVT, boot data), the reduced checks a HEX allows; `flash::firmware_image` picks the path by format; pure over bytes, no OS dependency (journal/D-031). |
@@ -160,38 +163,58 @@ lives in `oc-core` and is tested once, on the host.
 
 ## The loop and the screen
 
-* **One loop, no separate display loop.** The firmware runs one cooperative
-  1 kHz loop (`crates/oc-firmware/src/main.rs`, journal/D-008, D-023 option
-  C+). Each tick: sample the inputs (four blocking ADC conversions, the
-  trigger edge latches, the panel), then `Engine::tick` (panel routing, the
-  applet, the four DAC outputs, then **at most one** screen action), then
-  wait for the deadline (previous deadline + 1 ms) while serving USB. The
-  signal path runs on every tick; the screen is a side task cut so that no
-  tick outlasts the period.
+* **Two contexts on the module** (journal/D-008, D-033). A cooperative
+  1 kHz loop (`crates/oc-firmware/src/main.rs`) is the control context:
+  each tick samples the inputs (four blocking ADC conversions, the trigger
+  edge latches, the panel), runs `Engine::tick` (panel routing, the applet,
+  drawing), publishes `Engine::params` and the output calibration to the
+  audio interrupt, then waits for the deadline (previous deadline + 1 ms)
+  while serving USB. The **audio path** (`crates/oc-firmware/src/audio.rs`,
+  journal/D-033) owns the SPI bus at **47 619 Hz** (PIT channel 0 on PERCLK,
+  21 counts): each timeout triggers a DMA copy of four DAC words from a ring
+  into LPSPI4, so the DAC is written at instants the hardware fixes; the
+  DMA's interrupt then computes the next sample with its own `Voice` (two
+  slots ahead), waits for the burst's echo and sends a piece of the screen;
+  LPSPI4's frame-complete interrupt releases the OLED's chip select. The
+  loop and the interrupts share mailboxes behind `critical_section::Mutex`
+  (short copies).
 * **Vocabulary.** The *framebuffer* is the screen's copy in RAM (128 x 64,
   1 024 bytes). A *frame* is one whole image. A *page* is one eighth of it,
   a horizontal band 8 pixels high (128 bytes), the unit the SH1106 / SSD130x
   controllers store and receive — not a screen. *Drawing* (`Stage::Render`)
-  computes pixels into the framebuffer, CPU only; *sending* (`Stage::Page`,
-  `Stage::Present`) copies it to the panel over the shared SPI bus. The panel
-  keeps showing what it last received.
-* **The screen action of a tick** is one of: nothing; draw a new frame
-  (`RENDER_INTERVAL_TICKS` = 20 ticks since the last one, and no page still
-  pending); send one page of the drawn frame. A display reports its parts
-  through `Display::page_count`: the module's `PagedPanel` answers 8, so a
-  frame goes out over the 8 ticks after the drawing; the simulator, Rack and
-  the tests keep the default 1 and get the frame in the tick that drew it.
-  The boot splash sends whole frames every tick (outputs at rest).
-* **Over 20 ticks**, with indicative costs from one module (the profile
-  measures them, `cargo probe stats`): tick 0 draws (≈ 0.29 ms sampling +
-  ≈ 0.09 ms drawing the diagnostic screen since text is laid as column
-  bytes, `oc_core::text`; ≈ 0.65 ms before); ticks 1–8 send pages 0–7
-  (≈ 0.145 ms each, now the longest ticks, ≈ 0.46 ms with the sampling);
-  ticks 9–19 have no screen work. 50 frames a second, 1 000 ticks a second. While the 8 pages go out,
-  the panel shows the new frame on top and the previous one below (≈ 8 ms
-  of each 20 ms frame); no page is ever sent half-redrawn.
+  computes pixels into the framebuffer, CPU only; *sending* copies it to the
+  panel over the shared SPI bus. The panel keeps showing what it last
+  received.
+* **The screen on the module.** The engine draws every
+  `RENDER_INTERVAL_TICKS` = 20 ticks and `present`s the frame, which on the
+  module (`audio::MailboxDisplay`) is a 1 KiB copy into the mailbox, the
+  latest frame winning. The interrupt sends it in chunks
+  (`oc_drivers::ssd130x::FrameStream`, commands or pixels, never both;
+  `board::OLED_CHUNK_BYTES` a period, 24 at 22 MHz), a frame in about a
+  millisecond. The engine still supports paged displays
+  (`Display::page_count`, one page per tick after the drawing) but no
+  backend uses them any more; the simulator, Rack and the tests send the
+  frame in the tick that drew it. The boot splash presents every tick.
+* **Costs** are measured, not assumed: `cargo probe stats` shows the loop's
+  stages and the interrupt's (`audio`, `audio_period`, `frame`). The end
+  of a transfer is read from its echo in the receive FIFO (the busy flag
+  and the transfer-complete flag answer early, and the OLED then takes DAC
+  bits). On the module the interrupt costs about 3.4 µs of each 21 µs
+  period; the four DAC channels are written every period. Every access to
+  the PIT waits on its 1 MHz domain for microseconds: never read it per
+  period.
 
 ## Signal representation
+
+* **An applet publishes what each output carries, not a sample**
+  (`oc_core::audio::Params`, journal/D-033): a level held, or a tone (shape,
+  frequency in millihertz, peak level). A `Voice` renders them one sample
+  at a time at a fixed rate, keeping each output's 32-bit phase across
+  changes. The engine runs its own voice at the tick rate (1 kHz) and writes
+  that sample, so CV applets behave exactly as before; a backend with an
+  audio context runs another voice at its own rate from `Engine::params`
+  (VCV Rack: `oc_engine_audio` once per `process()`; the module: the 48 kHz
+  interrupt, the engine's own outputs muted, `audio::MutedOutputs`).
 
 * **Internal unit: millivolts, `i32`** (`oc_core::platform::MilliVolts`).
   No floating point in the firmware's signal path; `f32` appears only at the
@@ -245,12 +268,15 @@ lives in `oc-core` and is tested once, on the host.
   claims that pad — see `crates/oc-firmware/src/boot_led.rs`.
 * `oc-core` and `oc-drivers` are `forbid(unsafe_code)`. `oc-firmware` is
   `deny(unsafe_code)`; register access is confined to `teensy4-bsp`/`imxrt-hal`,
-  and the two exceptions are `crates/oc-firmware/src/flash_store.rs`, which
+  and the three exceptions are `crates/oc-firmware/src/flash_store.rs`, which
   calls the i.MX RT1062 boot ROM's `FlexSPI` NOR driver to erase and program
   the settings sectors (no crate offers it; journal/D-028, D-003), and
   `crates/oc-firmware/src/reboot.rs`, which reads the secure-mode fuse and
   executes Teensyduino's `bkpt #251` to hand over to the bootloader
-  (journal/D-029). Each carries a module-level `#![allow(unsafe_code)]` and a
+  (journal/D-029), and `crates/oc-firmware/src/audio_irq.rs`, which
+  programs the DAC's DMA channel and its DMAMUX trigger, owns the ring the
+  DMA reads, and registers the DMA and LPSPI4 handlers and their NVIC lines
+  (journal/D-033; what the interrupts do is the safe `audio.rs`). Each carries a module-level `#![allow(unsafe_code)]` and a
   `SAFETY:` comment on every block. Any new `unsafe` must do the same, in a module of its own.
 * **The top 64 KiB of the flash (`0x601F_0000`..) is reserved**: the first
   four 4 KiB sectors hold the settings (`board::SETTINGS_FLASH_OFFSET`), the
@@ -364,6 +390,8 @@ Full protocol, per level, with exact commands and what each proves: see
 | The main control loop                             | `crates/oc-core/src/engine.rs` |
 | The diagnostic applet's logic and rendering       | `crates/oc-core/src/apps/diagnostic.rs` |
 | The scope applet                                  | `crates/oc-core/src/apps/scope.rs` |
+| The `TONE` test applet (four waveforms, V/oct)    | `crates/oc-core/src/apps/tone.rs` |
+| Output parameters, the voice, the waveforms (sine table built at compile time) | `crates/oc-core/src/audio/mod.rs`, `audio/wave.rs` (journal/D-033) |
 | The app registry and dispatch (`AppId`, `AppHost`) | `crates/oc-core/src/apps/mod.rs` |
 | The app menu (`up`+`down`) and its rendering      | `crates/oc-core/src/menu.rs` |
 | The system settings screen (`SETUP`, boot gestures) | `crates/oc-core/src/system.rs` (routing in `engine.rs`) |
@@ -380,6 +408,8 @@ Full protocol, per level, with exact commands and what each proves: see
 | The two USB serial ports and the log backend | `crates/oc-firmware/src/usb.rs`, `crates/oc-firmware/src/usb_log.rs` |
 | Persistent settings, their format and the flash store | `crates/oc-core/src/settings.rs` (`MemoryFlash` in `testing.rs`) |
 | The Teensy's settings flash (boot ROM calls, `unsafe`) | `crates/oc-firmware/src/flash_store.rs` |
+| The audio path: the DAC by DMA at 47 619 Hz, the sample and the screen chunks in its interrupt; the mailboxes | `crates/oc-firmware/src/audio.rs` (DMA, ring, handlers: `audio_irq.rs`; journal/D-033) |
+| The OLED's frame in chunks, the DAC's words, bytes as FIFO words | `crates/oc-drivers/src/ssd130x.rs` (`FrameStream`), `dac8565.rs` (`ChangedCodes`), `fifo.rs` |
 | Deterministic mocks used by every `oc-core` test  | `crates/oc-core/src/testing.rs` |
 | The pinout (the only file allowed to name a pin)  | `crates/oc-firmware/src/board.rs` (rule test: `xtask/tests/pin_rule.rs`) |
 | Memory map / boot sections rationale              | `crates/oc-firmware/MEMORY.md` |

@@ -34,6 +34,7 @@
 #![warn(missing_docs)]
 
 pub mod apps;
+pub mod audio;
 pub mod buttons;
 pub mod calibration;
 pub mod debounce;

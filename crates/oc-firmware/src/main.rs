@@ -30,24 +30,34 @@
 //!
 //! # Unsafe code
 //!
-//! `deny(unsafe_code)` holds everywhere but two modules, each with its own
+//! `deny(unsafe_code)` holds everywhere but three modules, each with its own
 //! `allow` and a `SAFETY:` comment on every block: [`flash_store`] (the boot
-//! ROM's flash driver) and [`reboot`] (a fuse read and the breakpoint that
-//! hands over to the bootloader). Other register access is confined to
+//! ROM's flash driver), [`reboot`] (a fuse read and the breakpoint that
+//! hands over to the bootloader) and [`audio_irq`] (the audio interrupt's
+//! handler and NVIC line). Other register access is confined to
 //! `teensy4-bsp` and `imxrt-hal`.
+//!
+//! # The audio interrupt
+//!
+//! From the end of the start-up on, the audio path owns the SPI bus: at
+//! 47 619 Hz a DMA copy writes the DAC and an interrupt computes the next
+//! sample and sends the screen in pieces between two bursts ([`audio`],
+//! journal/D-033). The 1 kHz loop below runs the engine
+//! and hands it what the outputs carry and what the screen shows.
 
 #![no_std]
 #![no_main]
 #![deny(unsafe_code)]
 #![warn(missing_docs)]
 
+mod audio;
+mod audio_irq;
 mod board;
 mod boot_led;
 mod clock;
 mod cv_in;
 mod delay;
 mod flash_store;
-mod paged_panel;
 mod reboot;
 #[cfg(feature = "settings-stress")]
 mod stress;
@@ -65,12 +75,10 @@ use teensy4_panic as _;
 use bsp::board as bsp_board;
 
 use oc_core::Engine;
-use oc_core::calibration::CvOutputCalibration;
 use oc_core::platform::{CV_CHANNELS, Clock as _, CvChannel};
 use oc_core::profile::Stage;
 use oc_core::settings::SettingsStore;
 use oc_core::toast::SaveOutcome;
-use oc_drivers::dac8565::Dac8565;
 use oc_drivers::panel::Panel;
 use oc_drivers::shared_bus::SharedBus;
 use oc_drivers::ssd130x::Ssd130x;
@@ -82,7 +90,6 @@ use crate::clock::SystemClock;
 use crate::cv_in::CvInputs;
 use crate::delay::CycleDelay;
 use crate::flash_store::SettingsFlash;
-use crate::paged_panel::PagedPanel;
 use crate::usb::Usb;
 
 /// How long to spin-poll USB after bringing the CDC backend up, so a host that
@@ -98,6 +105,14 @@ static PROBE: ConstStaticCell<Server> = ConstStaticCell::new(Server::new(Identit
     build: env!("OC_BUILD_ID"),
     can_reboot: false,
 }));
+
+/// How long the boot check of the audio path watches it, in microseconds:
+/// a few thousand periods, short enough not to delay the start-up.
+const AUDIO_CHECK_MICROS: u32 = 50_000;
+
+/// The tick, after the boot, at which the log reports what the audio path
+/// did since: the splash is over and frames go out by then.
+const AUDIO_REPORT_TICK: u64 = 3_000;
 
 /// How long the USB keeps being served before a restart into the
 /// bootloader, so the host sees the reply and the last log lines.
@@ -117,6 +132,8 @@ fn main() -> ! {
         lpspi4,
         adc1,
         gpt1,
+        pit,
+        mut dma,
         usb: usb_instances,
         ..
     } = bsp_board::t40(bsp_board::instances());
@@ -128,6 +145,11 @@ fn main() -> ! {
     // used, for the profile (journal/D-029). Nothing else takes them.
     let mut cortex =
         cortex_m::Peripherals::take().unwrap_or_else(|| panic!("core peripherals already taken"));
+    // The cycle counter runs from here: the audio interrupt times itself and
+    // its periods on it from its first run (`SystemClock` starts it again).
+    cortex.DCB.enable_trace();
+    cortex_m::peripheral::DWT::unlock();
+    cortex.DWT.enable_cycle_counter();
 
     // 1 flash: we reached `main`. The LED pad is still free for GPIO here.
     boot_led::signal(&mut gpio2, &mut pins.led_sck, &mut delay, 1);
@@ -172,25 +194,21 @@ fn main() -> ! {
 
     // ---- shared SPI bus -----------------------------------------------------
     // The DAC and the OLED share data and clock and are told apart by their
-    // chip selects, which the drivers own; hence a shared bus rather than two
-    // `SpiDevice`s.
+    // chip selects: the DAC's is the controller's PCS0, the OLED's a GPIO.
+    // The OLED is initialised over a blocking handle first; then the audio
+    // interrupt takes the bus over (journal/D-033).
     let bus = RefCell::new(bsp_board::lpspi(
         lpspi4,
         pins.spi.with_clock(pins.led_sck),
-        board::SPI_CLOCK_HZ,
+        board::OLED_SPI_HZ,
     ));
     log::info!("spi ok");
     usb.poll();
 
     let dac_lines = pins.dac.claim(&mut gpio2);
-    let dac = Dac8565::new(
-        SharedBus::new(&bus),
-        dac_lines.cs,
-        CvOutputCalibration::FACTORY.to_code(0),
-    );
     let oled_lines = pins.oled.claim(&mut gpio2);
     let mut display = Ssd130x::new(
-        SharedBus::new(&bus),
+        SharedBus::with_select(&bus, board::select_oled),
         oled_lines.cs,
         oled_lines.dc,
         oled_lines.reset,
@@ -213,6 +231,51 @@ fn main() -> ! {
     }
     usb.poll();
 
+    // ---- audio interrupt: the bus, the DAC and the screen from here on ----
+    // The reset line stays held here, high, for good.
+    let (_, oled_cs, oled_dc, _oled_reset) = display.release();
+    let mut spi = bus.into_inner();
+    let clocks = board::bus_clocks(&mut spi);
+    let dac_dma = dma[board::AUDIO_DMA_CHANNEL]
+        .take()
+        .unwrap_or_else(|| panic!("DMA channel {} already taken", board::AUDIO_DMA_CHANNEL));
+    audio::start(
+        spi,
+        oled_cs,
+        oled_dc,
+        pit,
+        dac_dma,
+        clocks,
+        board::OLED_CONTROLLER,
+    );
+    // Expected: interrupts and bursts at the audio rate, no chunk yet (the
+    // engine has drawn nothing); anything else says which part stops.
+    let health = audio::self_check(AUDIO_CHECK_MICROS);
+    log::info!(
+        "audio at {} Hz, DAC by DMA, {} screen bytes a chunk; check over {} us: \
+         {} interrupts ({}/s), {} DAC bursts ({}/s), {} chunks, {} releases; \
+         interrupt {} us mean, {} us max; period {} to {} us; \
+         line enabled {} pending {}; DMA error {} (status {:#010x})",
+        board::AUDIO_RATE_HZ,
+        board::OLED_CHUNK_BYTES,
+        health.micros,
+        health.counts.periods,
+        health.per_second(health.counts.periods),
+        health.counts.bursts,
+        health.per_second(health.counts.bursts),
+        health.counts.chunks,
+        health.counts.releases,
+        health.audio_micros.0,
+        health.audio_micros.1,
+        health.period_micros.0,
+        health.period_micros.1,
+        health.line.0,
+        health.line.1,
+        health.dma_error.0,
+        health.dma_error.1
+    );
+    usb.poll();
+
     // ---- panel controls -----------------------------------------------------
     // Encoders and buttons short to ground; `claim` applies the pull-up without
     // which neither detents nor presses ever reach the engine.
@@ -227,11 +290,11 @@ fn main() -> ! {
 
     let mut engine = Engine::new(
         cv_inputs,
-        dac,
+        audio::MutedOutputs,
         triggers,
         panel,
         SystemClock::new(gpt1, &mut cortex.DCB, &mut cortex.DWT),
-        PagedPanel::new(display),
+        audio::MailboxDisplay::new(),
     );
     engine.set_render_interval(board::RENDER_INTERVAL_TICKS);
     engine
@@ -282,6 +345,9 @@ fn main() -> ! {
     );
 
     let probe = PROBE.take();
+    // The audio path's counts as the loop starts, for the report a few
+    // seconds in.
+    let boot_audio = audio::totals();
     probe.set_can_reboot(reboot::is_supported());
 
     // The start of the current period, sampling included: pacing from the
@@ -302,10 +368,28 @@ fn main() -> ! {
         }
         record_since(&mut engine, Stage::Sample, mark);
         let report = engine.tick();
+        audio::publish(engine.params(), &engine.calibration().outputs);
+        if report.tick_count == AUDIO_REPORT_TICK {
+            let since = audio::totals().since(boot_audio);
+            log::info!(
+                "audio after {} ticks: {} interrupts, {} DAC bursts, {} chunks, {} releases, \
+                 {} frames",
+                AUDIO_REPORT_TICK,
+                since.periods,
+                since.bursts,
+                since.chunks,
+                since.releases,
+                since.frames
+            );
+        }
+        audio::drain_stats(engine.profile_mut());
         probe.after_tick(&report, &mut engine);
         if engine.take_save_request() {
             // Blocks for an erase now and then (tens of milliseconds); only
-            // ever after an explicit SAVE on the settings screen.
+            // ever after an explicit SAVE on the settings screen. The boot
+            // ROM masks the audio interrupt meanwhile: the outputs rest
+            // rather than freeze on a sample (journal/D-033).
+            audio::rest_outputs(&engine.calibration().outputs);
             let saved = settings_store
                 .as_mut()
                 .map(|store| store.save(engine.settings()));
@@ -326,6 +410,7 @@ fn main() -> ! {
                     SaveOutcome::SessionOnly
                 }
             };
+            audio::resume_outputs();
             engine.report_save(outcome);
             usb.poll();
         }
@@ -400,6 +485,7 @@ fn restart_into_loader<A, O, D, C, K, S>(
         usb.serve(probe, engine);
         delay.delay_ms(1);
     }
+    audio::stop();
     reboot::to_loader();
 }
 

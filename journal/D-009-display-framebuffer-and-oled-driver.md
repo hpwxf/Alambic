@@ -152,3 +152,9 @@ octet par colonne). Corrigé :
 
 Coût de la généralité (hôte, criterion, indicatif) : un écran de texte 1,06 → 1,72 µs ; `applet/render` ≈ 2,6 µs,
 inchangé à la mesure près.
+
+## Révision du 2026-11-17 — l'écran envoyé par tronçons (D-033, lot 7c)
+
+Sur le module, la trame n'est plus envoyée par la boucle, page par page : `present` la remet à l'interruption
+audio, qui l'envoie par tronçons de quelques dizaines d'octets entre deux échantillons (`ssd130x::FrameStream`,
+mêmes octets que `Ssd130x`, testés l'un contre l'autre). L'initialisation reste bloquante, avant l'interruption.

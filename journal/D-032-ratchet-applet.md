@@ -5,7 +5,7 @@
 | **Identifiant** | D-032 |
 | **Date** | 2026-11-17 |
 | **Auteur** | Pascal Havé |
-| **Statut** | adoptée |
+| **Statut** | adoptée, révisée |
 | **Commits** | ce commit (ADR, plan) ; implémentation dans le commit suivant (`docs/plan/etape-6-ratchet.md`) |
 | **Relations** | ajoute une applet à D-021 ; premier usage musical de C+ (D-023 : 1 kHz, fronts capturés D-019) ; sorties par la calibration de D-027 ; écran par `gfx` / `text` (D-030) ; pas de flottant (D-005) |
 
@@ -88,3 +88,9 @@ Choix de l'utilisateur (2026-11-17), avec les détails tranchés par l'assistant
   accélérées) : cadence plus fine pour le chemin trigger (D-023, option A).
 * Une largeur d'impulsion que des modules en aval ne voient pas : la rendre réglable.
 * Une modulation qui demande d'agir pendant la rafale (pas seulement au front) : échantillonnage continu.
+
+## Révision du 2026-11-18 — essai sur le module (lot 6d)
+
+L'utilisateur a essayé `RATCHET` sur le module, désormais sur le chemin audio (sorties par DMA, D-033) : correct.
+`MODE FIRST` et `SPAN` sont **gardés tous les deux** pour l'instant ; le choix reste ouvert (§ 5).
+

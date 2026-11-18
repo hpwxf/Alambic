@@ -23,6 +23,7 @@
 extern crate std;
 
 pub mod dac8565;
+pub mod fifo;
 pub mod panel;
 pub mod shared_bus;
 pub mod ssd130x;

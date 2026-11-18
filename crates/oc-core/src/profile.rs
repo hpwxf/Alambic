@@ -3,8 +3,10 @@
 //!
 //! The engine times its own stages ([`Stage::Tick`] down to
 //! [`Stage::Page`]) and the period between two ticks; a backend adds what
-//! happens outside the engine ([`Stage::Sample`], [`Stage::Usb`]) through
-//! [`crate::Engine::profile_mut`]. On the module the fine counter is the
+//! happens outside the engine ([`Stage::Sample`], [`Stage::Usb`], and the
+//! audio interrupt's [`Stage::Audio`], [`Stage::AudioPeriod`],
+//! [`Stage::Frame`]) through [`crate::Engine::profile_mut`], one duration at
+//! a time or a whole [`Stat`] gathered elsewhere ([`Profile::merge`]). On the module the fine counter is the
 //! core's cycle counter, so a stage costs a few cycles to time and is known
 //! to 1.7 ns; a clock without a fine counter leaves the profile empty.
 //!
@@ -36,11 +38,19 @@ pub enum Stage {
     Sample,
     /// Serving USB (backend).
     Usb,
+    /// One run of the audio interrupt: a sample to the DAC and a piece of
+    /// the screen (backend, journal/D-033).
+    Audio,
+    /// The time between two runs of the audio interrupt (backend).
+    AudioPeriod,
+    /// Sending one whole frame to the screen, piece by piece from the audio
+    /// interrupt (backend).
+    Frame,
 }
 
 impl Stage {
     /// Every stage, in report order.
-    pub const ALL: [Self; 9] = [
+    pub const ALL: [Self; 12] = [
         Self::Tick,
         Self::Acquire,
         Self::Update,
@@ -50,6 +60,9 @@ impl Stage {
         Self::Page,
         Self::Sample,
         Self::Usb,
+        Self::Audio,
+        Self::AudioPeriod,
+        Self::Frame,
     ];
 
     /// Number of stages.
@@ -74,6 +87,9 @@ impl Stage {
             Self::Page => "page",
             Self::Sample => "sample",
             Self::Usb => "usb",
+            Self::Audio => "audio",
+            Self::AudioPeriod => "audio_period",
+            Self::Frame => "frame",
         }
     }
 }
@@ -111,6 +127,22 @@ impl Stat {
         }
         self.count = self.count.saturating_add(1);
         self.total = self.total.saturating_add(u64::from(value));
+    }
+
+    /// Adds every duration of `other`, as if each had been recorded here.
+    pub fn merge(&mut self, other: &Self) {
+        if other.count == 0 {
+            return;
+        }
+        if self.count == 0 {
+            self.min = other.min;
+            self.max = other.max;
+        } else {
+            self.min = self.min.min(other.min);
+            self.max = self.max.max(other.max);
+        }
+        self.count = self.count.saturating_add(other.count);
+        self.total = self.total.saturating_add(other.total);
     }
 
     /// Number of durations recorded.
@@ -207,6 +239,14 @@ impl Profile {
         }
     }
 
+    /// Adds durations of `stage` gathered elsewhere, such as in an
+    /// interrupt that cannot reach the profile itself.
+    pub fn merge(&mut self, stage: Stage, stat: &Stat) {
+        if self.is_enabled() {
+            self.stages[stage.index()].merge(stat);
+        }
+    }
+
     /// The durations of `stage`.
     #[must_use]
     pub const fn stage(&self, stage: Stage) -> &Stat {
@@ -287,6 +327,30 @@ mod tests {
             (stat.min(), stat.max(), stat.mean()),
             (Some(10), Some(30), Some(20))
         );
+    }
+
+    #[test]
+    fn merging_is_recording_each_duration() {
+        let mut merged = Stat::new();
+        let mut first = Stat::new();
+        let mut second = Stat::new();
+        let mut direct = Stat::new();
+        for value in [30, 10] {
+            first.record(value);
+            direct.record(value);
+        }
+        for value in [5, 40, 20] {
+            second.record(value);
+            direct.record(value);
+        }
+        merged.merge(&Stat::new());
+        merged.merge(&first);
+        merged.merge(&second);
+        assert_eq!(merged, direct);
+
+        let mut profile = Profile::new(600);
+        profile.merge(Stage::Audio, &first);
+        assert_eq!(profile.stage(Stage::Audio), &first);
     }
 
     #[test]

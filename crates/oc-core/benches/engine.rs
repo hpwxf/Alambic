@@ -12,7 +12,9 @@ use std::hint::black_box;
 
 use oc_core::apps::AppId;
 use oc_core::apps::diagnostic::DiagnosticApp;
+use oc_core::apps::tone::ToneApp;
 use oc_core::apps::{InputSnapshot, TickContext};
+use oc_core::audio::Voice;
 use oc_core::buttons::ButtonReader;
 use oc_core::calibration::{CvInputCalibration, CvOutputCalibration};
 use oc_core::framebuffer::FrameBuffer;
@@ -145,5 +147,24 @@ fn conversions(criterion: &mut Criterion) {
     group.finish();
 }
 
-criterion_group!(benches, engine_tick, applet, menu, conversions);
+/// One sample of the four outputs, as the audio interrupt will compute it
+/// 48 000 times a second (journal/D-033): `TONE`'s four waveforms, then each
+/// sample to a DAC code.
+fn voice(criterion: &mut Criterion) {
+    let mut group = criterion.benchmark_group("voice");
+    let mut voice = Voice::new(48_000);
+    voice.set_params(&ToneApp::new().params());
+    let output = CvOutputCalibration::FACTORY;
+
+    group.bench_function("tone_sample_to_codes", |bencher| {
+        bencher.iter(|| {
+            let samples = voice.next_sample();
+            black_box(samples.map(|level| output.to_code(level)))
+        });
+    });
+
+    group.finish();
+}
+
+criterion_group!(benches, engine_tick, applet, menu, conversions, voice);
 criterion_main!(benches);

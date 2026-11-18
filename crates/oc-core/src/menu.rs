@@ -25,8 +25,10 @@ use crate::text::{self, TextStyle};
 /// time the version is bumped.
 const TITLE: &str = "SELECT APP";
 
-/// First screen row of the list, leaving the title and a blank line above it.
-const FIRST_ROW: i32 = 2;
+/// First screen row of the list, right under the title: the rows are all
+/// needed for five applets and `SETUP` (journal/D-033); past that, the list
+/// will have to scroll.
+const FIRST_ROW: i32 = 1;
 
 /// Horizontal padding of a list entry, so text does not touch the highlight edge.
 const TEXT_INSET: i32 = 2;

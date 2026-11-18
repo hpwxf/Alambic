@@ -10,11 +10,11 @@ use oc_core::platform::{BUTTONS, CV_CHANNELS, ENCODERS, TRIGGER_CHANNELS};
 use oc_core::splash::DURATION_MICROS;
 use oc_core::testing::adc_reading;
 use oc_vcv_ffi::{
-    OcEngine, oc_engine_button, oc_engine_buttons, oc_engine_cv_channels, oc_engine_cv_out,
-    oc_engine_encoder, oc_engine_encoders, oc_engine_framebuffer, oc_engine_framebuffer_len,
-    oc_engine_free, oc_engine_new, oc_engine_set_cv_in, oc_engine_set_trigger,
-    oc_engine_settings_load, oc_engine_settings_max_len, oc_engine_settings_save, oc_engine_tick,
-    oc_engine_trigger_channels,
+    OcEngine, oc_engine_audio, oc_engine_button, oc_engine_buttons, oc_engine_cv_channels,
+    oc_engine_cv_out, oc_engine_encoder, oc_engine_encoders, oc_engine_framebuffer,
+    oc_engine_framebuffer_len, oc_engine_free, oc_engine_new, oc_engine_set_cv_in,
+    oc_engine_set_trigger, oc_engine_settings_load, oc_engine_settings_max_len,
+    oc_engine_settings_save, oc_engine_tick, oc_engine_trigger_channels,
 };
 
 /// Ticks `engine` comfortably past the end of the boot splash screen, so a
@@ -45,6 +45,7 @@ fn null_engine_pointers_are_safe_everywhere() {
         oc_engine_encoder(null_mut, 0, 1, true);
         oc_engine_button(null_mut, 0, true);
         oc_engine_tick(null_mut, 1_000);
+        oc_engine_audio(null_mut, 48_000);
         oc_engine_free(null_mut);
 
         assert_eq!(oc_engine_cv_out(null_const, 0), 0);
@@ -181,5 +182,57 @@ fn settings_round_trip_through_the_patch_bytes() {
 
         oc_engine_free(source);
         oc_engine_free(target);
+    }
+}
+
+/// A held level reads back from the audio call as the tick wrote it, at any
+/// rate, a zero one included.
+#[test]
+fn the_audio_call_keeps_held_levels() {
+    let engine = oc_engine_new();
+    skip_boot(engine);
+    // SAFETY: `engine` is live until freed below.
+    unsafe {
+        oc_engine_set_cv_in(engine, 0, 2_000);
+        oc_engine_tick(engine, 1_000_000);
+        let ticked: Vec<i32> = (0..4)
+            .map(|channel| oc_engine_cv_out(engine, channel))
+            .collect();
+        for rate in [44_100, 96_000, 0] {
+            oc_engine_audio(engine, rate);
+            let sampled: Vec<i32> = (0..4)
+                .map(|channel| oc_engine_cv_out(engine, channel))
+                .collect();
+            assert_eq!(sampled, ticked, "at {rate} Hz");
+        }
+        oc_engine_free(engine);
+    }
+}
+
+/// `TONE` plays at the rate the audio call gives, between two ticks.
+#[test]
+fn the_audio_call_plays_a_tone_between_ticks() {
+    let mut settings = oc_core::settings::Settings::DEFAULT;
+    settings.startup_app = oc_core::apps::AppId::Tone;
+    let mut bytes = vec![0u8; oc_engine_settings_max_len()];
+    let len = oc_core::settings::encode(&settings, &mut bytes).expect("the buffer is long enough");
+
+    let engine = oc_engine_new();
+    // SAFETY: `engine` is live until freed below; `bytes` holds `len` bytes.
+    unsafe {
+        assert!(oc_engine_settings_load(engine, bytes.as_ptr(), len));
+        skip_boot(engine);
+        // A 440 Hz sine at 48 kHz: the first samples rise from zero.
+        let samples: Vec<i32> = (0..4)
+            .map(|_| {
+                oc_engine_audio(engine, 48_000);
+                oc_engine_cv_out(engine, 0)
+            })
+            .collect();
+        assert!(
+            samples.windows(2).all(|pair| pair[0] < pair[1]),
+            "{samples:?}"
+        );
+        oc_engine_free(engine);
     }
 }

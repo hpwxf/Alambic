@@ -5,7 +5,7 @@ plugin, which Rack 2 requires to have major version 2, ships as
 `2.<minor>.<patch>` of the same release (checked by `xtask/tests/versions.rs`).
 Architectural decisions behind each change are in `journal/` (French).
 
-## Unreleased
+## 0.5.0 — 2026-11-18 (Rack plugin 2.5.0)
 
 ### Added
 
@@ -31,9 +31,37 @@ Architectural decisions behind each change are in `journal/` (French).
   (adds it), chosen by a click on the right encoder; inputs are sampled at
   the edge, and a new edge restarts the burst.
 - `oc_core::fixed`: base-2 logarithm and exponential in 16.16 fixed point.
+- **`TONE`**, a test applet for the audio path (journal/D-033): one pitch on
+  the four outputs, a sine, a triangle, a sawtooth and a square; the note on
+  the left encoder (C1 to C8), the peak level on the right one (0 to 3 V),
+  `CV1` at one volt per octave. VCV Rack plays it at its sample rate.
+- `oc_core::audio`: the output parameters an applet publishes (a held level
+  or a tone per output, `Engine::params`) and the `Voice` that renders them
+  at a fixed rate with 32-bit phases; `oc_engine_audio` in the Rack ABI.
 
 ### Changed
 
+- The boot log checks the audio path for 50 ms timed on the cycle counter
+  (interrupts and DAC bursts with their rate, the interrupt's duration, the
+  period's bounds, the DMA's error status) and, at tick 3 000, counts what
+  it did since the boot, screen chunks and frames included.
+- **The outputs and the screen run at audio rate** (journal/D-033, lots 7c
+  and 7e): at 47 619 Hz the PIT triggers a DMA copy of the four DAC words,
+  so the DAC is written at instants the hardware fixes; the DMA's interrupt
+  computes the next sample of the engine's output parameters and sends a
+  piece of the screen; the 1 kHz loop publishes the parameters and hands
+  its frames over. `cargo probe stats` shows the interrupt
+  (`audio`, `audio_period`, `frame`). The outputs rest at 0 V while the
+  settings are saved.
+- `oc_drivers::ssd130x::FrameStream` (a frame in chunks),
+  `dac8565::ChangedCodes` and `fifo::words`, for a sender without a
+  blocking bus; `Ssd130x::release`; `Profile::merge`.
+- The DAC's chip select is LPSPI4's own (PCS0), the shared bus picks the chip
+  select and the clock of each device before each transfer, and the DAC and
+  the OLED run at 22 MHz (`oled-spi-8mhz` puts the OLED back at 8 MHz); a DAC
+  channel is written only when its code changes (journal/D-010, D-033).
+- The app menu lists its entries right under its title, to fit a fifth
+  applet.
 - `oc-probe`'s command line is behind a default `cli` feature;
   `render::screen_grey` gives the screen's pixels to any output.
 - `rust-toolchain.toml` also provisions `wasm32-unknown-unknown`.

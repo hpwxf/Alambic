@@ -66,14 +66,14 @@ une section datée en fin de fichier) au lieu d'en ouvrir une nouvelle. Les num�
 
 | ID | Décision | Statut |
 |---|---|---|
-| [D-001](D-001-repository-conventions.md) | conventions du dépôt : `PLAN.md` index, `docs/plan/`, journal, langue, définition de « fait » | adoptée |
+| [D-001](D-001-repository-conventions.md) | conventions du dépôt : `PLAN.md` index, `docs/plan/`, journal, langue, définition de « fait » | adoptée, révisée |
 | [D-002](D-002-single-behavioural-core.md) | un seul cœur comportemental `oc-core` (`no_std`, traits de plateforme, `Engine::tick`) | adoptée (rétrospective), révisée |
 | [D-003](D-003-crate-split.md) | découpage en crates ; `oc-drivers` apparu en cours de route ; firmware hors `default-members` | adoptée (rétrospective), révisée |
 | [D-004](D-004-cross-compilation-toolchain.md) | chaîne croisée : script de lien généré par `imxrt-rt`, ni `memory.x` ni `flip-link`, LLVM du sysroot, `RUSTFLAGS` proscrit | adoptée (rétrospective) |
 | [D-005](D-005-millivolt-signal-unit.md) | unité de signal interne : millivolts `i32`, flottant seulement à la frontière VCV | adoptée (rétrospective) |
 | [D-006](D-006-signed-slope-calibration.md) | calibration affine à pente signée ; étages inverseurs = pente négative ; constantes provisoires | adoptée (rétrospective), révisée |
 | [D-007](D-007-pinout-in-board-rs.md) | brochage centralisé dans `board.rs`, dérivé du firmware de référence | adoptée (rétrospective), révisée |
-| [D-008](D-008-cooperative-1khz-loop.md) | boucle coopérative à 1 kHz, sans RTOS ni interruption ; rendu découplé (1 tick sur 20) | adoptée (rétrospective) |
+| [D-008](D-008-cooperative-1khz-loop.md) | boucle coopérative à 1 kHz, sans RTOS ni interruption ; rendu découplé (1 tick sur 20) | adoptée (rétrospective), révisée |
 | [D-009](D-009-display-framebuffer-and-oled-driver.md) | écran : framebuffer 1 bpp dans l'ordre du contrôleur, pilote maison, SH1106 par défaut | adoptée (rétrospective), révisée |
 | [D-010](D-010-shared-spi-bus.md) | bus SPI partagé DAC / OLED : `SharedBus` sur `RefCell`, CS en GPIO, 8 MHz, tronçons ≤ 512 octets | adoptée (rétrospective), révisée |
 | [D-011](D-011-no-uart-usb-cdc-diagnostics.md) | aucun UART ; diagnostic par USB CDC sondé et LED de démarrage | adoptée (rétrospective), révisée |
@@ -98,3 +98,4 @@ une section datée en fin de fichier) au lieu d'en ouvrir une nouvelle. Les num�
 | [D-030](D-030-graphics-primitives-and-demo.md) | primitives graphiques `oc_core::gfx` (bases en octets, contrôles, courbes, motifs) et applet de démonstration dans le menu ; `embedded-graphics` en dépendance de test | adoptée, révisée |
 | [D-031](D-031-browser-host-tools.md) | outils hôte dans le navigateur : sonde par Web Serial, flash par WebHID (HalfKay), cœur sans E/S en WebAssembly, crates `oc-image`, `oc-halfkay`, `oc-web` | adoptée, révisée |
 | [D-032](D-032-ratchet-applet.md) | applet Ratchet : A copie de TR1, B rafale (nombre ou gate, `SHAPE` signé, placement `FIRST` / `SPAN`, probabilité, synchronisation sur TR1), triggers de 5 ms sur le DAC, entrées CV au choix | adoptée |
+| [D-033](D-033-audio-path.md) | chemin audio : DAC à 48 kHz dans une interruption de timer, CS matériel (PCS0), horloge par périphérique, bus possédé par l'interruption et cédé à l'OLED par tronçons, voix séparée du contrôle dans `oc-core`, applet `TONE` | adoptée, révisée |
