@@ -772,7 +772,8 @@ with `DETUNE` 100 %, `audio_period` 18.4 to 23.5 µs, `frame` 1.37 to 1.39 ms,
 the loop at 1 000 µs; the sound right, `STEREO` included. With `CV2` and
 `CV3` added unconditionally then, the unplugged inputs' noise (about
 ±5 codes, −22 to +12 mV) made the bars move at full detune, which Rack,
-reading exactly 0 V, did not show.
+reading exactly 0 V, did not show. With the inputs assignable (lot 8b′),
+the bars stay still, inputs unplugged, at full detune.
 
 ### 9.4 — Calibration
 
