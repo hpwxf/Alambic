@@ -779,7 +779,8 @@ Before the module, `cargo run -p oc-core --example aliasing --release --<dir>`
 gives the folding, the clipping and the difference from an ideal
 supersaw, and WAVs to listen to (lots 8c′ and 8c″): with the falling
 sawtooths, the highest level that clips nowhere is about 2.0 V; at 3 V,
-0.05 % of the samples touch the +6 V bound.
+0.05 % of the samples touch the +6 V bound. Flashed and listened to on the
+module with the falling sawtooths (2026-11-18): the sound is right.
 
 ### 9.4 — Calibration
 
