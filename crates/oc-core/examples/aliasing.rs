@@ -73,13 +73,19 @@ fn main() {
         "Supersaw at {RATE_HZ} Hz, mix {} %, {LENGTH} samples, Blackman-Harris window.",
         MIX / 10
     );
-    println!("Folded power over harmonic power (all, under 10 kHz) and the strongest");
-    println!("folded line against the strongest harmonic; PolyBLEP / naive ramps.\n");
+    println!("Folded power over harmonic power (dB), the whole band and under 10 kHz, and");
+    println!("the strongest folded line against the strongest harmonic (dBc), where it is;");
+    println!("PolyBLEP, then the naive ramps.\n");
     println!(
-        "| note | Hz | detune | folded, all (dB) | folded < 10 kHz (dB) | strongest line (dBc) | at (Hz) |"
+        "{:<4} {:>8} {:>6}  {:^15}  {:^15}  {:^15}",
+        "", "", "", "folded, all", "folded < 10 kHz", "strongest line"
     );
-    println!("|---|---|---|---|---|---|---|");
+    println!(
+        "{:<4} {:>8} {:>6}  {:>7} {:>7}  {:>7} {:>7}  {:>7} {:>7}  {:>7}",
+        "note", "Hz", "detune", "blep", "naive", "blep", "naive", "blep", "naive", "at Hz"
+    );
     for note in NOTES {
+        println!();
         for detune in DETUNES {
             let params = Supersaw {
                 frequency: tone::frequency(note, 0),
@@ -98,7 +104,7 @@ fn main() {
                 measure(&naive, &frequencies),
             ) {
                 (Some(blep), Some(naive)) => format!(
-                    "{:.1} / {:.1} | {:.1} / {:.1} | {:.1} / {:.1} | {:.0}",
+                    "{:>7.1} {:>7.1}  {:>7.1} {:>7.1}  {:>7.1} {:>7.1}  {:>7.0}",
                     blep.all_db,
                     naive.all_db,
                     blep.audible_db,
@@ -107,10 +113,13 @@ fn main() {
                     naive.line_dbc,
                     blep.line_hz
                 ),
-                _ => "— | — | — | (harmonics fill the spectrum)".to_owned(),
+                _ => format!(
+                    "{:>15}  {:>15}  {:>15}  {:>7}   harmonics fill the spectrum",
+                    "—", "—", "—", "—"
+                ),
             };
             println!(
-                "| {} | {hertz:.1} | {} % | {row} |",
+                "{:<4} {hertz:>8.1} {:>4} %  {row}",
                 name.as_str(),
                 detune / 10
             );
@@ -130,10 +139,9 @@ fn clipping() {
     println!("\nSamples clipped at the outputs' bounds, C4, detune 100 %:\n");
     let mixes: Vec<String> = CLIP_MIXES
         .iter()
-        .map(|mix| format!("mix {} %", mix / 10))
+        .map(|mix| format!("{:>10}", format!("mix {} %", mix / 10)))
         .collect();
-    println!("| level | {} |", mixes.join(" | "));
-    println!("|---|{}", "---|".repeat(CLIP_MIXES.len()));
+    println!("{:>7}  {}", "level", mixes.join(" "));
     for level in CLIP_LEVELS_MV {
         let shares: Vec<String> = CLIP_MIXES
             .iter()
@@ -151,13 +159,13 @@ fn clipping() {
                         sample <= f64::from(CV_OUT_MIN_MV) || sample >= f64::from(CV_OUT_MAX_MV)
                     })
                     .count();
-                format!("{:.2} %", 100.0 * count(clipped) / count(played.len()))
+                format!("{:>8.2} %", 100.0 * count(clipped) / count(played.len()))
             })
             .collect();
         println!(
-            "| {:.1} V | {} |",
+            "{:>5.1} V  {}",
             f64::from(level) / 1_000.0,
-            shares.join(" | ")
+            shares.join(" ")
         );
     }
 }
