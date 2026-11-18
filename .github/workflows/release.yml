@@ -1,0 +1,99 @@
+name: Release
+
+# Builds the firmware for a version tag and attaches it to a GitHub release
+# (journal/D-034): the ELF and HEX for the default SH1106 panel, the HEX for
+# the SSD1306 and SSD1309 variants, their SHA-256, and the CHANGELOG.md
+# section of that version as the notes.
+#
+# A tag pushed before this file existed (v0.5.0) does not trigger it: GitHub
+# reads the workflow from the tagged commit. Run it by hand then: Actions ›
+# Release › Run workflow, with the tag.
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag to build and release (e.g. v0.5.0)"
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+env:
+  CARGO_TERM_COLOR: always
+  # Do not set RUSTFLAGS: it would replace the firmware target's rustflags
+  # from .cargo/config.toml and drop -Tt4link.x (see ci.yml).
+  TAG: ${{ inputs.tag || github.ref_name }}
+
+jobs:
+  firmware:
+    name: firmware images
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TAG }}
+
+      - uses: Swatinem/rust-cache@v2
+
+      # The tag must be the workspace version: a release named v0.6.0 must
+      # not carry a firmware that says 0.5.0 on its splash screen.
+      - name: Check the tag against the workspace version
+        run: |
+          version=$(awk -F'"' '/^\[workspace.package\]/ { inside = 1 } inside && /^version = / { print $2; exit }' Cargo.toml)
+          if [ "v$version" != "$TAG" ]; then
+            echo "::error::tag $TAG does not match the workspace version $version"
+            exit 1
+          fi
+          echo "VERSION=$version" >> "$GITHUB_ENV"
+
+      - name: Build, measure and check the default image (SH1106)
+        run: |
+          cargo xtask build
+          cargo xtask size
+          cargo xtask hex
+          cargo xtask flash --dry-run
+          mkdir -p release
+          cp target/thumbv7em-none-eabihf/release/oc-firmware "release/oc-firmware-$VERSION.elf"
+          cp dist/oc-firmware.hex "release/oc-firmware-$VERSION.hex"
+
+      - name: Build the SSD1306 and SSD1309 variants
+        run: |
+          for panel in ssd1306 ssd1309; do
+            cargo xtask hex --features "$panel"
+            cargo xtask flash --dry-run --features "$panel"
+            cp dist/oc-firmware.hex "release/oc-firmware-$VERSION-$panel.hex"
+          done
+
+      - name: Checksums
+        working-directory: release
+        run: sha256sum * | tee SHA256SUMS
+
+      # The section of CHANGELOG.md between this version's heading and the
+      # next one.
+      - name: Release notes
+        run: |
+          awk -v version="$VERSION" '
+            /^## / { if (inside) exit; if (index($0, "## " version " ") == 1) { inside = 1; next } }
+            inside { print }
+          ' CHANGELOG.md > release/NOTES.md
+          if [ ! -s release/NOTES.md ]; then
+            echo "::error::CHANGELOG.md has no section for $VERSION"
+            exit 1
+          fi
+
+      - name: Create or update the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          title="Alambic $VERSION"
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release edit "$TAG" --title "$title" --notes-file release/NOTES.md
+          else
+            gh release create "$TAG" --verify-tag --title "$title" --notes-file release/NOTES.md
+          fi
+          gh release upload "$TAG" --clobber \
+            release/oc-firmware-*.elf release/oc-firmware-*.hex release/SHA256SUMS

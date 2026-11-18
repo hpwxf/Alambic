@@ -314,7 +314,11 @@ ends the session, which releases every held output.
 ### In the browser
 
 The same probe, and a flasher, run in a web page (journal/D-031), for anyone
-without the Rust toolchain:
+without the Rust toolchain. Each version tag publishes it at
+**https://hpwxf.github.io/Alambic/**, and attaches the firmware to the
+[GitHub release](https://github.com/hpwxf/Alambic/releases): the ELF and HEX
+for the stock SH1106 panel, the HEX for SSD1306 and SSD1309 panels, and their
+SHA-256 (journal/D-034). To build the page yourself:
 
 ```sh
 cargo xtask web                              # builds dist/web/
