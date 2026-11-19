@@ -822,6 +822,25 @@ the voice hidden inside it. Before journal/D-040 the bank was prepared in
 the interrupt, and case C took `audio` up to 11 µs and the frame from
 1 344 to 1 381 µs; both are back to cases A and B's.
 
+### 9.3h — Output noise floor against the millivolt (journal/D-041)
+
+What decides whether the outputs need a unit finer than the millivolt: the
+module's own noise floor, against the rounding to the millivolt (about
+0.29 mV RMS, 68 dB under a 1 V peak sine over 0 to 23.8 kHz).
+
+1. `TONE`, output A (sine), into an audio interface whose own floor is at
+   least 15 dB under what is measured, through an attenuator if its input
+   cannot take ±1 V; record at 48 kHz or more, a few seconds per case.
+2. Note A5 (880 Hz, no simple ratio to 47 619 Hz), level 1 V, then 100 mV
+   (the lowest step), the interface's gain the same for both.
+3. Spectrum of each: everything but the fundamental, over 0 to 23.8 kHz,
+   against the 1 V sine's fundamental (its RMS is 0.707 V), and the same
+   for the 100 mV case.
+
+Reading: a floor about 68 dB under the 1 V sine, the same in volts at
+100 mV, is the rounding: B or C of D-041 gain up to about 17 dB. A floor
+clearly higher is the analog stage's: the millivolt is enough for audio.
+
 ### 9.4 — Calibration
 
 This step measures how far the module is from the factory calibration, then
