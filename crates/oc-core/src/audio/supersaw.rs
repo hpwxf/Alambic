@@ -236,12 +236,16 @@ impl Bank {
         self.fixed.steps()
     }
 
-    /// Each voice's phase now in the integer bank, a turn being `2^32`: with
-    /// [`Self::steps`], what a reference rendering needs to start where the
-    /// bank does.
+    /// Each voice's phase now in the bank [`Supersaw::arithmetic`] picks, a
+    /// turn being `2^32`: with [`Self::steps`], what a reference rendering
+    /// needs to start where the bank playing does. The other bank's phases
+    /// stand where it stopped.
     #[must_use]
     pub fn phases(&self) -> [u32; VOICES] {
-        self.fixed.phases()
+        match self.params.arithmetic {
+            Arithmetic::Fixed => self.fixed.phases(),
+            Arithmetic::Float => self.float.phases(),
+        }
     }
 
     /// Plays `params` at `rate_hz` from the next sample on, keeping the
@@ -318,7 +322,8 @@ fn normaliser(centre: i64, side: i64, sides: i64) -> i64 {
 #[cfg(test)]
 mod tests {
     use super::{
-        Bank, CENTRE, FULL, LEFT, OFFSETS, RIGHT, Supersaw, UNIT, detune_curve, mix_gains,
+        Arithmetic, Bank, CENTRE, FULL, LEFT, OFFSETS, PHASES, RIGHT, Supersaw, UNIT, VOICES,
+        detune_curve, mix_gains,
     };
 
     #[test]
@@ -352,6 +357,46 @@ mod tests {
         for _ in 0..100 {
             assert_eq!(bank.next_frame(), super::Frame::default());
         }
+    }
+
+    #[test]
+    fn the_phases_are_those_of_the_bank_playing() {
+        // A thousand samples in each arithmetic: the bank playing has moved
+        // a thousand steps on, the other has not moved.
+        let mut params = Supersaw {
+            frequency: 440_000,
+            detune: FULL,
+            mix: FULL / 2,
+            amplitude: 1_000,
+            arithmetic: Arithmetic::Float,
+        };
+        let mut bank = Bank::new();
+        bank.set(&params, 47_619);
+        let start = bank.phases();
+        // The integer phases rounded to an `f32`'s 24 bits.
+        for (got, want) in start.iter().zip(PHASES) {
+            assert!(got.abs_diff(want) <= 1 << 8, "{got} against {want}");
+        }
+        for _ in 0..1_000 {
+            bank.next_frame();
+        }
+        let moved = |from: &[u32; VOICES], steps: &[u32; VOICES]| -> [u32; VOICES] {
+            core::array::from_fn(|index| from[index].wrapping_add(steps[index].wrapping_mul(1_000)))
+        };
+        let expected = moved(&start, &bank.steps());
+        for (got, want) in bank.phases().iter().zip(expected) {
+            // The `f32` phase drifts by its roundings: far below a
+            // thousandth of a turn over a thousand samples.
+            let apart = got.wrapping_sub(want).cast_signed().unsigned_abs();
+            assert!(apart < 1 << 22, "{got} against {want}");
+        }
+        params.arithmetic = Arithmetic::Fixed;
+        bank.set(&params, 47_619);
+        assert_eq!(bank.phases(), PHASES, "the integer bank has not moved");
+        for _ in 0..1_000 {
+            bank.next_frame();
+        }
+        assert_eq!(bank.phases(), moved(&PHASES, &bank.steps()));
     }
 
     #[test]

@@ -181,6 +181,19 @@ impl Bank {
         }
     }
 
+    /// Each voice's phase now, a turn being `2^32` as in the integer bank.
+    pub(super) fn phases(&self) -> [u32; VOICES] {
+        self.saws.map(|saw| {
+            // A power of two: the product is exact.
+            let phase = saw.phase * 4_294_967_296.0;
+            #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+            // The phase stays in `[0, 1)`: the product in `[0, 2^32)`, held at
+            // the top should it round up to `2^32`.
+            let phase = phase as u32;
+            phase
+        })
+    }
+
     /// Plays what `setup` prepared from the next sample on, keeping the
     /// phases and the filters' state.
     pub(super) fn apply(&mut self, setup: &Setup) {
