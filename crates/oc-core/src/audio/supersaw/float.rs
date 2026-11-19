@@ -5,8 +5,8 @@
 //! The phases run in `[0, 1)` and wrap by subtraction; the `PolyBLEP`
 //! correction multiplies by each voice's `1 / dt`, computed when the
 //! parameters change, so there is still no division per sample. What the
-//! integer bank already prepares as a table or a root (the detune curve, the
-//! mix laws, the normalisers) is taken from it and converted: `core` has no
+//! two banks share as a table or a root (the detune curve, the mix laws,
+//! the normalisers, prepared in integers by the parent module) is converted: `core` has no
 //! `sqrt` without `std`, and Szabo's polynomial loses all its precision in
 //! `f32`. Only the samples leave as millivolts, rounded and held within the
 //! outputs.
@@ -90,8 +90,8 @@ fn step_and_inverse(step: u32) -> (f32, f32) {
     (turn, if step == 0 { 0.0 } else { 1.0 / turn })
 }
 
-/// What the parameters decide for the `f32` bank, part of the integer
-/// bank's [`super::Setup`] (journal/D-040).
+/// What the parameters decide for the `f32` bank, part of the supersaw's
+/// [`super::Setup`] (journal/D-040).
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub(super) struct Setup {
     steps: [f32; VOICES],
@@ -117,8 +117,8 @@ impl Setup {
         amplitude: 0.0,
     };
 
-    /// From what the integer bank prepared: the voices' steps, the gains in
-    /// 1.15 and the normalisers `2^32 / root` of gains in 1.15.
+    /// From the preparation both banks share: the voices' steps, the gains
+    /// in 1.15 and the normalisers `2^32 / root` of gains in 1.15.
     pub(super) fn new(
         steps: &[u32; VOICES],
         gains: (i64, i64),
@@ -162,15 +162,14 @@ pub(super) struct Bank {
 }
 
 impl Bank {
-    /// A silent bank, its phases those of the integer bank's `saws`.
-    pub(super) const fn new(saws: &[super::Saw; VOICES]) -> Self {
-        let mut phases = [Saw::REST; VOICES];
+    /// A silent bank starting at `phases`, a turn being `2^32`.
+    pub(super) const fn new(phases: &[u32; VOICES]) -> Self {
+        let mut saws = [Saw::REST; VOICES];
         let mut index = 0;
         while index < VOICES {
-            phases[index].phase = turns(saws[index].phase);
+            saws[index].phase = turns(phases[index]);
             index += 1;
         }
-        let saws = phases;
         Self {
             saws,
             sub: Saw::REST,
