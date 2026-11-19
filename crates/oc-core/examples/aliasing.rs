@@ -19,7 +19,10 @@
 //! ```sh
 //! cargo run -p oc-core --example aliasing --release            # the table
 //! cargo run -p oc-core --example aliasing --release -- out/    # and the WAVs
+//! SUPERSAW_CALC=f32 cargo run -p oc-core --example aliasing --release   # the f32 bank
 //! ```
+//!
+//! `SUPERSAW_CALC=f32` measures the bank in `f32` instead (journal/D-039).
 //!
 //! A third table compares the bank with an ideal supersaw: each voice built
 //! from all its harmonics below the Nyquist frequency, at its exact pitch,
@@ -44,7 +47,7 @@ use std::io::Write as _;
 use std::path::Path;
 
 use oc_core::apps::tone;
-use oc_core::audio::supersaw::{Bank, CENTRE, FULL, Supersaw, VOICES, mix_gains};
+use oc_core::audio::supersaw::{Arithmetic, Bank, CENTRE, FULL, Supersaw, VOICES, mix_gains};
 use oc_core::calibration::{CV_OUT_MAX_MV, CV_OUT_MIN_MV};
 
 /// The module's sample rate: PERCLK over 21 (journal/D-033).
@@ -98,7 +101,16 @@ const DETUNES: [u16; 3] = [0, 500, FULL];
 /// The mix measured: the default, half way.
 const MIX: u16 = FULL / 2;
 
+/// The bank measured: integers unless `SUPERSAW_CALC` is `f32`.
+fn arithmetic() -> Arithmetic {
+    match std::env::var("SUPERSAW_CALC").as_deref() {
+        Ok("f32") => Arithmetic::Float,
+        _ => Arithmetic::Fixed,
+    }
+}
+
 fn main() {
+    println!("Bank: {:?}.", arithmetic());
     let wav_dir = std::env::args().nth(1);
     if let Some(dir) = &wav_dir {
         fs::create_dir_all(dir).expect("the WAV directory must be writable");
@@ -126,6 +138,7 @@ fn main() {
                 detune,
                 mix: MIX,
                 amplitude: LEVEL_MV,
+                arithmetic: arithmetic(),
             };
             let (played, steps) = render(&params);
             let naive = naive(&params, &steps);
@@ -185,6 +198,7 @@ fn write_pairs(dir: &Path) {
                 detune: FULL,
                 mix,
                 amplitude,
+                arithmetic: arithmetic(),
             };
             let clean: Vec<f64> = play(&at(LEVEL_MV), PAIR_LENGTH)
                 .iter()
@@ -248,6 +262,7 @@ fn against_ideal() {
                 detune,
                 mix: MIX,
                 amplitude: LEVEL_MV,
+                arithmetic: arithmetic(),
             };
             let (played, steps, phases) = render_for(&params, LENGTH);
             let ideal = ideal(&params, &steps, &phases, LENGTH);
@@ -287,6 +302,7 @@ fn clipping() {
                     detune: FULL,
                     mix,
                     amplitude: level,
+                    arithmetic: arithmetic(),
                 };
                 let (played, _) = render(&params);
                 let clipped = played
@@ -312,6 +328,7 @@ fn clipping() {
                 detune: FULL,
                 mix,
                 amplitude: LEVEL_MV,
+                arithmetic: arithmetic(),
             };
             let (played, _) = render(&params);
             let low = played.iter().copied().fold(0.0, f64::min);
@@ -337,6 +354,7 @@ fn worst_level() {
                     detune,
                     mix,
                     amplitude: LEVEL_MV,
+                    arithmetic: arithmetic(),
                 };
                 let played = play(&params, PAIR_LENGTH);
                 let low = played.iter().copied().fold(0.0, f64::min);

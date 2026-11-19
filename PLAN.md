@@ -54,6 +54,16 @@ comportemental (`oc-core`, D-002). Les applets musicaux sont la suite.
 | **8** — premier oscillateur : Supersaw (2026-11-18) | ✅ `oc_core::audio::supersaw` : sept scies PolyBLEP en entier (désaccord et mix de Szabo, passe-haut sur la fondamentale), A / B mono ou stéréo, C sub-octave ; applet `SUPERSAW`, entrées par `oc_core::modulation` ; `audio` 3,9 µs sur 21 ; repliement mesuré par FFT (exemple `aliasing`) : sous 10 kHz ≤ −45 dB, ×4 non nécessaire ; scies descendantes, sans écrêtage jusqu'à 2 V (D-037) ; budget mémoire (D-038). Réserves : bruit de CV1 sur `NOTE`, assignations non sauvegardées, Rack non écouté. Version **0.6.0** (plugin Rack 2.6.0) | [etape-8.md](docs/plan/avancement/etape-8.md) |
 | **5** — primitives graphiques et applet de démo (2026-11-17) | ✅ texte par colonnes (Diagnostic 646 → 88 µs), six polices en paramètre ; `oc_core::gfx` (bases en octets, contrôles, courbes, motifs) ; applet `GFX DEMO` ; `embedded-graphics` en dépendance de test (D-030). Version **0.4.0** (avec l'étape 3 ; plugin Rack 2.4.0) | [etape-5.md](docs/plan/avancement/etape-5.md) |
 
+### Étape 9 — essai du Supersaw en `f32` (en cours)
+
+Demandée le 2026-11-19 (D-039) : le Cortex-M7 a un FPU, le Supersaw est en virgule fixe sans que le choix ait été
+mesuré. Choix de l'utilisateur : les deux versions embarquées dans l'applet, choisies par un réglage.
+
+| Lot | Contenu | État |
+|---|---|---|
+| **9a** — banc `f32` et réglage | `audio/supersaw/float.rs` : phases dans `[0, 1)`, PolyBLEP par `1/dt` préparé, passe-haut et sommes en `f32`, millivolts arrondis en sortie ; préparation reprise du banc entier (courbe de désaccord, gains, normaliseurs), coefficient du passe-haut en `f32` ; `Supersaw::arithmetic` (`Fixed` / `Float`), les deux bancs suivent chaque changement, seul le choisi tourne ; ligne `CALC INT` / `F32` dans l'applet (sans entrée), éventail des voix sur une rangée ; tests : écart au banc entier < 2 mV RMS (mesuré < 1), hauteur, passe-haut, silence, bascule ; bench criterion `supersaw_f32_sample_to_codes` ; `SUPERSAW_CALC=f32` pour l'exemple `aliasing` ; `.text` +2,4 Kio ; sur l'hôte : criterion 31,6 ns (`INT`) contre 35,5 ns (`F32`) par échantillon ; repliement identique à quelques dixièmes de dB ; écart à la supersaw idéale plus grand en `F32` aux notes basses (C2 : −39,2 → −28,5 dB sous 10 kHz, identique dès C5), la phase en `f32` qui dérive (F1 de D-039, piste F2) | ✅ |
+| **9b** — module | `cargo probe stats` en `INT` et en `F32` (A2 et C8, désaccord 100 %), écoute, `aliasing` des deux bancs ; trancher D-039 (TESTING 9.3g) | à faire |
+
 ### Étape 8 — premier oscillateur : Supersaw (terminée)
 
 Demandée le 2026-11-18 (D-037) : l'applet de l'étude `docs/supersaw/` sur le chemin audio. Choix de l'utilisateur : A
@@ -145,7 +155,7 @@ Valeurs seules ; le raisonnement est dans `journal/`.
 | cœur | `oc-core` `no_std`, `forbid(unsafe_code)`, six traits de plateforme, `Engine::tick` seul point d'appel | D-002 |
 | crates | `oc-core`, `oc-drivers`, `oc-firmware` (hors `default-members`), `oc-sim`, `oc-vcv-ffi`, `oc-buildinfo` (dépendance de build), `xtask` ; `oc-image`, `oc-halfkay`, `oc-web` (outils web) | D-003, D-025, D-031 |
 | chaîne croisée | `thumbv7em-none-eabihf`, `t4link.x` généré par `imxrt-rt`, pas de `memory.x` ni `flip-link`, outils LLVM du sysroot, jamais `RUSTFLAGS` | D-004 |
-| signal | millivolts `i32` ; `f32` seulement dans le C++ du module Rack | D-005 |
+| signal | millivolts `i32` ; `f32` seulement dans le C++ du module Rack ; à l'essai : un banc Supersaw en `f32`, millivolts aux bords (D-039, proposée) | D-005, D-039 |
 | calibration | pente signée (négative : étages inverseurs) ; dans `oc-core`, codes bruts à la frontière ; entrées : zéro par canal (≈ 2730), gain commun ; sorties : table de 11 points par octave ; mesurée par assistant, persistée | D-006, D-027 |
 | brochage | table unique et réservation des broches dans `board.rs` (`split` + groupes par signal, test `xtask/tests/pin_rule.rs`), dérivée de `OC_gpio.cpp` ; pull-up 22 kΩ + hystérésis sur les entrées numériques | D-007 |
 | exécution | boucle coopérative 1 kHz, sans interruption ; rendu tous les 20 ticks (≈ 50 Hz) ; option C+ : fronts des triggers capturés, écran envoyé une page par tick ; A (ISR 16 kHz) et B (audio) en suites | D-008, D-023 |

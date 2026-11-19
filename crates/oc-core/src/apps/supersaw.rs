@@ -3,9 +3,11 @@
 //!
 //! A and B carry all seven voices, or the left and right halves with
 //! `STEREO ON`; C a sawtooth an octave below; D rests at 0 V. The left
-//! encoder picks a setting, the right one changes it.
+//! encoder picks a setting, the right one changes it. `CALC` picks the
+//! bank's arithmetic, integers or `f32`, to compare the two on the module
+//! (journal/D-039).
 //!
-//! Every setting but `STEREO` can take an input, chosen in the submenu the
+//! Every setting but `STEREO` and `CALC` can take an input, chosen in the submenu the
 //! right encoder's click opens (journal/D-036, [`Assign`]): it sets the
 //! setting, adds to the panel's value or multiplies it. `NOTE` takes `CV1`
 //! at start, added at one volt per octave; the others take none, so that an
@@ -16,7 +18,9 @@ use core::fmt::Write as _;
 
 use crate::apps::tone::{self, HIGHEST_NOTE, LOWEST_NOTE, note_name};
 use crate::apps::{InputSnapshot, TickContext};
-use crate::audio::supersaw::{CENTRE, FULL, OFFSETS, Part, Supersaw, detune_curve, mix_gains};
+use crate::audio::supersaw::{
+    Arithmetic, CENTRE, FULL, OFFSETS, Part, Supersaw, detune_curve, mix_gains,
+};
 use crate::audio::{Channel, MilliHertz, Params};
 use crate::fixed::{self, ONE};
 use crate::fmt::{TextBuf, write_volts};
@@ -67,16 +71,19 @@ pub enum Setting {
     Level,
     /// A and B as one mono output twice, or left and right.
     Stereo,
+    /// The bank in integers or in `f32` (journal/D-039).
+    Calc,
 }
 
 impl Setting {
     /// Every setting, top to bottom.
-    pub const ALL: [Self; 5] = [
+    pub const ALL: [Self; 6] = [
         Self::Note,
         Self::Detune,
         Self::Mix,
         Self::Level,
         Self::Stereo,
+        Self::Calc,
     ];
 
     /// The label on screen.
@@ -88,25 +95,27 @@ impl Setting {
             Self::Mix => "MIX",
             Self::Level => "LEVEL",
             Self::Stereo => "STEREO",
+            Self::Calc => "CALC",
         }
     }
 
-    /// Where this setting's input is kept, `None` for `STEREO`, which takes
-    /// none.
+    /// Where this setting's input is kept, `None` for `STEREO` and `CALC`,
+    /// which take none.
     const fn input_slot(self) -> Option<usize> {
         match self {
             Self::Note => Some(0),
             Self::Detune => Some(1),
             Self::Mix => Some(2),
             Self::Level => Some(3),
-            Self::Stereo => None,
+            Self::Stereo | Self::Calc => None,
         }
     }
 }
 
 /// The range of the signal that sweeps `setting` over all its values when
 /// it follows its input (journal/D-036), from the signal that gives its
-/// least value to the one that gives its most; `None` for `STEREO`.
+/// least value to the one that gives its most; `None` for `STEREO` and
+/// `CALC`.
 /// [`crate::modulation::usable_range`] derives from it the ranges of the
 /// other effects.
 #[must_use]
@@ -118,7 +127,7 @@ pub const fn sweep(setting: Setting) -> Option<(MilliVolts, MilliVolts)> {
             (HIGHEST_NOTE as MilliVolts - SET_NOTE as MilliVolts) * 1_000 / 12,
         )),
         Setting::Detune | Setting::Mix | Setting::Level => Some((0, COURSE_MV)),
-        Setting::Stereo => None,
+        Setting::Stereo | Setting::Calc => None,
     }
 }
 
@@ -186,11 +195,11 @@ const DEFAULT_ASSIGNS: [Assign; 4] = [
 /// Right edge of a setting's value, left of the input's name.
 const VALUE_RIGHT: i32 = 98;
 
-/// Top row of the voice spread drawing.
-const SPREAD_TOP: i32 = 6 * ROW_HEIGHT;
+/// Top row of the voice spread drawing, below the six settings.
+const SPREAD_TOP: i32 = 7 * ROW_HEIGHT;
 
 /// Height of the tallest voice in the drawing.
-const SPREAD_HEIGHT: i32 = 2 * ROW_HEIGHT - 1;
+const SPREAD_HEIGHT: i32 = ROW_HEIGHT - 1;
 
 /// Pixels from the centre to the widest voice at full detune.
 const SPREAD_HALF_WIDTH: i64 = 60;
@@ -204,6 +213,7 @@ pub struct SupersawApp {
     mix: u16,
     level: MilliVolts,
     stereo: bool,
+    arithmetic: Arithmetic,
     /// The input of each setting that takes one (see `Setting::input_slot`).
     assigns: [Assign; 4],
     /// The selected setting's input submenu, `None` while it is closed.
@@ -213,7 +223,8 @@ pub struct SupersawApp {
 }
 
 impl SupersawApp {
-    /// A2, half detuned, half mixed, 1 V, mono; `CV1` on the note.
+    /// A2, half detuned, half mixed, 1 V, mono, in integers; `CV1` on the
+    /// note.
     #[must_use]
     pub const fn new() -> Self {
         Self {
@@ -223,6 +234,7 @@ impl SupersawApp {
             mix: DEFAULT_AMOUNT,
             level: DEFAULT_LEVEL_MV,
             stereo: false,
+            arithmetic: Arithmetic::Fixed,
             assigns: DEFAULT_ASSIGNS,
             assigning: None,
             cv: [0; CV_CHANNELS],
@@ -280,6 +292,12 @@ impl SupersawApp {
             }
             // Any detent flips it.
             Setting::Stereo => self.stereo = !self.stereo,
+            Setting::Calc => {
+                self.arithmetic = match self.arithmetic {
+                    Arithmetic::Fixed => Arithmetic::Float,
+                    Arithmetic::Float => Arithmetic::Fixed,
+                };
+            }
         }
     }
 
@@ -300,6 +318,7 @@ impl SupersawApp {
             detune: self.played_detune(),
             mix: self.played_mix(),
             amplitude: self.played_level(),
+            arithmetic: self.arithmetic,
         };
         params
     }
@@ -340,7 +359,13 @@ impl SupersawApp {
         self.stereo
     }
 
-    /// The input `setting` takes, `None` for `STEREO`.
+    /// The bank's arithmetic.
+    #[must_use]
+    pub const fn arithmetic(&self) -> Arithmetic {
+        self.arithmetic
+    }
+
+    /// The input `setting` takes, `None` for `STEREO` and `CALC`.
     #[must_use]
     pub fn assign(&self, setting: Setting) -> Option<&Assign> {
         setting.input_slot().map(|slot| &self.assigns[slot])
@@ -459,7 +484,7 @@ impl SupersawApp {
                 write_percent(&mut now, played);
                 (i32::from(panel), i32::from(played))
             }
-            Setting::Level | Setting::Stereo => {
+            Setting::Level | Setting::Stereo | Setting::Calc => {
                 let played = self.played_level();
                 let _ = write_volts(&mut now, played, 1);
                 let _ = write!(now, " V");
@@ -499,6 +524,13 @@ impl SupersawApp {
             }
             Setting::Stereo => {
                 let _ = write!(line, "{}", if self.stereo { "ON" } else { "OFF" });
+            }
+            Setting::Calc => {
+                let name = match self.arithmetic {
+                    Arithmetic::Fixed => "INT",
+                    Arithmetic::Float => "F32",
+                };
+                let _ = write!(line, "{name}");
             }
         }
         // Only the level has a sign, and a peak is never negative: drop it.
@@ -571,7 +603,7 @@ mod tests {
     };
     use crate::apps::{InputSnapshot, tone};
     use crate::audio::Channel;
-    use crate::audio::supersaw::{FULL, Part};
+    use crate::audio::supersaw::{Arithmetic, FULL, Part};
     use crate::modulation::Effect;
 
     fn turn(left: i8, right: i8) -> InputSnapshot {
@@ -603,7 +635,7 @@ mod tests {
         app.update(&turn(1, 3));
         assert_eq!(app.selected(), Setting::Detune);
         assert_eq!(app.detune(), DEFAULT_AMOUNT + 3 * AMOUNT_STEP);
-        app.update(&turn(10, 1));
+        app.update(&turn(3, 1));
         assert_eq!(app.selected(), Setting::Stereo);
         let params = app.update(&InputSnapshot::default());
         assert!(app.stereo());
@@ -611,6 +643,19 @@ mod tests {
         assert_eq!(params.channels[1], Channel::Supersaw(Part::Right));
         app.update(&turn(-10, 0));
         assert_eq!(app.selected(), Setting::Note);
+    }
+
+    #[test]
+    fn calc_switches_the_bank_and_takes_no_input() {
+        let mut app = SupersawApp::new();
+        assert_eq!(app.params().supersaw.arithmetic, Arithmetic::Fixed);
+        app.update(&turn(10, 1));
+        assert_eq!(app.selected(), Setting::Calc);
+        assert_eq!(app.params().supersaw.arithmetic, Arithmetic::Float);
+        assert!(app.assign(Setting::Calc).is_none());
+        assert_eq!(sweep(Setting::Calc), None);
+        app.update(&turn(0, -1));
+        assert_eq!(app.arithmetic(), Arithmetic::Fixed);
     }
 
     #[test]

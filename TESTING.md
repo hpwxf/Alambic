@@ -782,6 +782,20 @@ sawtooths, the highest level that clips nowhere is about 2.0 V; at 3 V,
 0.05 % of the samples touch the +6 V bound. Flashed and listened to on the
 module with the falling sawtooths (2026-11-18): the sound is right.
 
+### 9.3g — Supersaw in integers and in `f32` (journal/D-039, lot 9b)
+
+`SUPERSAW`, `CALC` on the last line, A into a mixer or headphones amp:
+
+1. `cargo probe stats` just after a restart with `CALC INT`, then again
+   after a restart with `CALC F32` set before reading: `audio` mean and
+   max, at A2 and at C8 with `DETUNE` at 100 %, as in 9.3f step 1. The
+   difference between the two is what D-039 decides on.
+2. By ear, switching `CALC` while a note plays, from C1 to C8: no audible
+   difference, a click at most on the switch.
+3. Before the module, `cargo run -p oc-core --example aliasing --release`
+   with and without `SUPERSAW_CALC=f32`: the same folding to a few tenths
+   of a decibel.
+
 ### 9.4 — Calibration
 
 This step measures how far the module is from the factory calibration, then

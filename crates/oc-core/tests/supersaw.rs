@@ -3,7 +3,7 @@
 
 use std::f64::consts::TAU;
 
-use oc_core::audio::supersaw::{FULL, Part, Supersaw, detune_curve, mix_gains};
+use oc_core::audio::supersaw::{Arithmetic, FULL, Part, Supersaw, detune_curve, mix_gains};
 use oc_core::audio::wave::Waveform;
 use oc_core::audio::{Channel, Params, Tone, Voice};
 
@@ -80,6 +80,7 @@ fn supersaw(frequency: u32, detune: u16, mix: u16) -> Supersaw {
         detune,
         mix,
         amplitude: 1_000,
+        arithmetic: Arithmetic::Fixed,
     }
 }
 
@@ -239,5 +240,110 @@ fn the_parts_go_quiet_with_the_level() {
     });
     for _ in 0..1_000 {
         assert_eq!(voice.next_sample(), [0; 4]);
+    }
+}
+
+/// `supersaw` played by the `f32` bank (journal/D-039).
+fn float(supersaw: Supersaw) -> Supersaw {
+    Supersaw {
+        arithmetic: Arithmetic::Float,
+        ..supersaw
+    }
+}
+
+/// Root mean square of the difference between the two banks on `part`,
+/// over `samples`, and of the integer bank's part, in millivolts.
+fn banks_apart(supersaw: Supersaw, part: usize, samples: usize) -> (f64, f64) {
+    let mut fixed = bank_voice(supersaw);
+    let mut float = bank_voice(float(supersaw));
+    let (mut apart, mut level) = (0.0, 0.0);
+    for _ in 0..samples {
+        let (a, b) = (fixed.next_sample()[part], float.next_sample()[part]);
+        apart += f64::from(a - b).powi(2);
+        level += f64::from(a).powi(2);
+    }
+    #[allow(clippy::cast_precision_loss)]
+    // Fewer than 2^24 samples.
+    let samples = samples as f64;
+    ((apart / samples).sqrt(), (level / samples).sqrt())
+}
+
+#[test]
+fn the_float_bank_plays_what_the_integer_bank_plays() {
+    for (frequency, detune, mix) in [
+        (110_000, 0, 0),
+        (110_000, 500, 500),
+        (440_000, FULL, FULL),
+        (4_186_000, FULL, 500),
+    ] {
+        for part in 0..4 {
+            let (apart, level) = banks_apart(supersaw(frequency, detune, mix), part, 4_800);
+            // The roundings to the millivolt differ: under one millivolt
+            // apart measured, for levels of hundreds.
+            assert!(
+                apart < 2.0,
+                "{frequency} mHz, {detune}, {mix}, part {part}: {apart:.2} mV apart, level {level:.0} mV"
+            );
+        }
+    }
+}
+
+#[test]
+fn the_float_bank_plays_its_pitch() {
+    let tight = float(supersaw(440_000, 0, 0));
+    let centre = jumps(tight, 0);
+    assert!((439..=441).contains(&centre), "{centre}");
+    let sub = jumps(tight, 3);
+    assert!((219..=221).contains(&sub), "{sub}");
+}
+
+#[test]
+fn the_float_high_pass_leaves_no_offset() {
+    let mut voice = bank_voice(float(supersaw(110_000, 500, 500)));
+    let samples: Vec<i32> = (0..48_000).map(|_| voice.next_sample()[0]).collect();
+    let tail = &samples[4_800..];
+    #[allow(clippy::cast_precision_loss)]
+    // Fewer than 2^24 samples.
+    let mean = tail.iter().map(|&sample| f64::from(sample)).sum::<f64>() / tail.len() as f64;
+    assert!(mean.abs() < 5.0, "mean {mean} mV");
+}
+
+#[test]
+fn the_float_bank_goes_quiet_with_the_level() {
+    let mut voice = bank_voice(Supersaw {
+        amplitude: 0,
+        ..float(supersaw(440_000, FULL, FULL))
+    });
+    for _ in 0..1_000 {
+        assert_eq!(voice.next_sample(), [0; 4]);
+    }
+}
+
+#[test]
+fn switching_banks_resumes_each_where_it_stopped() {
+    // Playing the float bank for a while leaves the integer bank where it
+    // was: switching back gives the samples it would have given next.
+    let params = supersaw(220_000, 500, 500);
+    let mut switched = bank_voice(params);
+    let mut straight = bank_voice(params);
+    for _ in 0..100 {
+        assert_eq!(switched.next_sample(), straight.next_sample());
+    }
+    let mut both = Params::REST;
+    both.channels = [
+        Channel::Supersaw(Part::Mono),
+        Channel::Supersaw(Part::Left),
+        Channel::Supersaw(Part::Right),
+        Channel::Supersaw(Part::Sub),
+    ];
+    both.supersaw = float(params);
+    switched.set_params(&both);
+    for _ in 0..100 {
+        switched.next_sample();
+    }
+    both.supersaw = params;
+    switched.set_params(&both);
+    for _ in 0..100 {
+        assert_eq!(switched.next_sample(), straight.next_sample());
     }
 }

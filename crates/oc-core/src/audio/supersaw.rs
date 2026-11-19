@@ -14,6 +14,12 @@
 //! outputs have 6 V of room above 0 V for 3 V below, so the spikes go up;
 //! that doubles the level reached without clipping, and the ear does not
 //! hear a waveform's polarity (journal/D-037, revision of 2026-11-18).
+//!
+//! A second bank, in `f32` ([`Arithmetic::Float`], journal/D-039), plays the
+//! same supersaw for comparison; [`Supersaw::arithmetic`] picks which one
+//! runs.
+
+mod float;
 
 use super::wave::ONE;
 use super::{MilliHertz, phase_step, scale};
@@ -63,6 +69,16 @@ const TAU: u64 = 411_775;
 /// Eight keep the state times the coefficient below `2^58`.
 const FILTER_BITS: u32 = 8;
 
+/// How the bank computes its samples (journal/D-039).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash)]
+pub enum Arithmetic {
+    /// Fixed point, the bank of journal/D-037.
+    #[default]
+    Fixed,
+    /// Single-precision floating point, the trial of journal/D-039.
+    Float,
+}
+
 /// What a supersaw plays, as an applet publishes it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Supersaw {
@@ -74,6 +90,8 @@ pub struct Supersaw {
     pub mix: u16,
     /// Peak level of one sawtooth; the sum is scaled to sound about as loud.
     pub amplitude: MilliVolts,
+    /// Which of the two banks plays it.
+    pub arithmetic: Arithmetic,
 }
 
 impl Supersaw {
@@ -83,6 +101,7 @@ impl Supersaw {
         detune: 0,
         mix: 0,
         amplitude: 0,
+        arithmetic: Arithmetic::Fixed,
     };
 }
 
@@ -223,7 +242,10 @@ impl HighPass {
 }
 
 /// The running state of a supersaw: seven sawtooths, a sub-octave, the
-/// high-passes and the coefficients of the current parameters.
+/// high-passes and the coefficients of the current parameters, in integers,
+/// and the same in `f32` (journal/D-039). Both follow every change of
+/// parameters, only the one [`Supersaw::arithmetic`] picks runs: switching
+/// resumes the other where it stopped.
 #[derive(Debug, Clone)]
 pub struct Bank {
     params: Supersaw,
@@ -238,6 +260,8 @@ pub struct Bank {
     coefficient: i64,
     /// High-passes of [`Part::Mono`], [`Part::Left`], [`Part::Right`].
     filters: [HighPass; 3],
+    /// The `f32` bank.
+    float: float::Bank,
 }
 
 impl Bank {
@@ -263,6 +287,7 @@ impl Bank {
             normalisers: (0, 0),
             coefficient: 0,
             filters: [HighPass::NEW; 3],
+            float: float::Bank::new(&saws),
         }
     }
 
@@ -272,14 +297,16 @@ impl Bank {
         &self.params
     }
 
-    /// Each voice's phase step, a turn being `2^32`: what an analysis needs
+    /// Each voice's phase step, a turn being `2^32` (the `f32` bank's are
+    /// the same, converted): what an analysis needs
     /// to tell a voice's harmonics from what folds back.
     #[must_use]
     pub fn steps(&self) -> [u32; VOICES] {
         self.saws.map(|saw| saw.step)
     }
 
-    /// Each voice's phase now, a turn being `2^32`: with [`Self::steps`],
+    /// Each voice's phase now in the integer bank, a turn being `2^32`: with
+    /// [`Self::steps`],
     /// what a reference rendering needs to start where the bank does.
     #[must_use]
     pub fn phases(&self) -> [u32; VOICES] {
@@ -302,10 +329,25 @@ impl Bank {
         self.gains = (centre, side);
         self.normalisers = (normaliser(centre, side, 6), normaliser(centre, side, 3));
         self.coefficient = high_pass_coefficient(base);
+        self.float.set(
+            &self.steps(),
+            self.gains,
+            self.normalisers,
+            params.amplitude,
+        );
     }
 
-    /// One sample of every part, then advances.
+    /// One sample of every part from the bank [`Supersaw::arithmetic`]
+    /// picks, then advances.
     pub fn next_frame(&mut self) -> Frame {
+        match self.params.arithmetic {
+            Arithmetic::Fixed => self.next_fixed_frame(),
+            Arithmetic::Float => self.float.next_frame(),
+        }
+    }
+
+    /// One sample of every part from the integer bank, then advances.
+    fn next_fixed_frame(&mut self) -> Frame {
         let mut values = [0i64; VOICES];
         for (value, saw) in values.iter_mut().zip(&mut self.saws) {
             *value = i64::from(saw.next());
@@ -470,6 +512,7 @@ mod tests {
             detune: FULL,
             mix: FULL,
             amplitude: 3_000,
+            arithmetic: super::Arithmetic::Fixed,
         };
         bank.set(&params, 47_619);
         assert!(bank.saws.iter().all(|saw| saw.step < 1 << 31));

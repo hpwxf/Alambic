@@ -103,7 +103,9 @@ scope for now: six are shipped: a diagnostic I/O screen, a scope, a
 demonstration of the graphics primitives (`GFX DEMO`, journal/D-030), the
 first musical one, `RATCHET` (trigger bursts, journal/D-032), and `TONE`, a
 test tone for the audio path (journal/D-033), and `SUPERSAW`, the first
-oscillator (seven PolyBLEP sawtooths, journal/D-037).
+oscillator (seven PolyBLEP sawtooths, journal/D-037), whose bank exists in
+integers and, on trial, in `f32`, picked by its `CALC` setting
+(journal/D-039).
 
 ## Workspace layout
 
@@ -221,7 +223,10 @@ lives in `oc-core` and is tested once, on the host.
   interrupt, the engine's own outputs muted, `audio::MutedOutputs`).
 
 * **Internal unit: millivolts, `i32`** (`oc_core::platform::MilliVolts`).
-  No floating point in the firmware's signal path; `f32` appears only at the
+  No floating point in the firmware's signal path, with one exception on
+  trial: the `f32` supersaw bank (`audio/supersaw/float.rs`, journal/D-039),
+  millivolts at its edges, `core` only (no `sqrt` or `round` without `std`);
+  otherwise `f32` appears only at the
   VCV Rack boundary (`Alambic::process()` converting to/from Rack's
   volt-scaled `float`, never inside `oc-core` or `oc-vcv-ffi`'s own ABI,
   which stays `int32_t` millivolts). This keeps conversions exact and avoids
@@ -395,7 +400,7 @@ Full protocol, per level, with exact commands and what each proves: see
 | The diagnostic applet's logic and rendering       | `crates/oc-core/src/apps/diagnostic.rs` |
 | The scope applet                                  | `crates/oc-core/src/apps/scope.rs` |
 | The `TONE` test applet (four waveforms, V/oct)    | `crates/oc-core/src/apps/tone.rs` |
-| The `SUPERSAW` applet and its bank (PolyBLEP, Szabo's curves, stereo, sub) | `crates/oc-core/src/apps/supersaw.rs`, `audio/supersaw.rs` (journal/D-037) |
+| The `SUPERSAW` applet and its bank (PolyBLEP, Szabo's curves, stereo, sub) | `crates/oc-core/src/apps/supersaw.rs`, `audio/supersaw.rs` (journal/D-037); the `f32` bank on trial, `audio/supersaw/float.rs` (journal/D-039) |
 | Output parameters, the voice, the waveforms (sine table built at compile time) | `crates/oc-core/src/audio/mod.rs`, `audio/wave.rs` (journal/D-033) |
 | A parameter modulated by a CV input (scale, shift, bounds, `SET` / `ADD` / `MUL`, `CENTER`) and its submenu, for any applet; `RATCHET` is the first user | `crates/oc-core/src/modulation/mod.rs`, `modulation/editor.rs` (journal/D-035, D-036) |
 | The app registry and dispatch (`AppId`, `AppHost`) | `crates/oc-core/src/apps/mod.rs` |

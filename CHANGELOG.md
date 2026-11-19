@@ -5,6 +5,20 @@ plugin, which Rack 2 requires to have major version 2, ships as
 `2.<minor>.<patch>` of the same release (checked by `xtask/tests/versions.rs`).
 Architectural decisions behind each change are in `journal/` (French).
 
+## Unreleased
+
+### Added
+
+- **`SUPERSAW` in `f32`, on trial** (journal/D-039): a second bank, the same
+  voices, curves and parts in single-precision floating point, picked by a
+  new `CALC` setting (`INT` at start, `F32`), to compare the two on the
+  module (`cargo probe stats`, by ear). Both banks follow every change of
+  parameters and only the picked one runs, so switching resumes each where
+  it stopped. The two differ by under a millivolt RMS. The voice spread
+  drawing now takes one row, under the six settings.
+- `SUPERSAW_CALC=f32` makes the `aliasing` example measure the `f32` bank; a
+  criterion benchmark, `supersaw_f32_sample_to_codes`.
+
 ## 0.6.0 — 2026-11-18 (Rack plugin 2.6.0)
 
 ### Added

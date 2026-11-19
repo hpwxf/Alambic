@@ -15,7 +15,7 @@ use oc_core::apps::diagnostic::DiagnosticApp;
 use oc_core::apps::ratchet::RatchetApp;
 use oc_core::apps::tone::ToneApp;
 use oc_core::apps::{InputSnapshot, TickContext};
-use oc_core::audio::supersaw::{FULL, Part, Supersaw};
+use oc_core::audio::supersaw::{Arithmetic, FULL, Part, Supersaw};
 use oc_core::audio::{Channel, Params, Voice};
 use oc_core::buttons::ButtonReader;
 use oc_core::calibration::{CvInputCalibration, CvOutputCalibration};
@@ -253,9 +253,20 @@ fn voice(criterion: &mut Criterion) {
         detune: FULL / 2,
         mix: FULL / 2,
         amplitude: 1_000,
+        arithmetic: Arithmetic::Fixed,
     };
     bank.set_params(&params);
     group.bench_function("supersaw_sample_to_codes", |bencher| {
+        bencher.iter(|| {
+            let samples = bank.next_sample();
+            black_box(samples.map(|level| output.to_code(level)))
+        });
+    });
+
+    // The same in `f32` (journal/D-039).
+    params.supersaw.arithmetic = Arithmetic::Float;
+    bank.set_params(&params);
+    group.bench_function("supersaw_f32_sample_to_codes", |bencher| {
         bencher.iter(|| {
             let samples = bank.next_sample();
             black_box(samples.map(|level| output.to_code(level)))
