@@ -12,7 +12,9 @@ use embedded_graphics::prelude::{Primitive as _, Size};
 use embedded_graphics::primitives::{PrimitiveStyle, Rectangle};
 use oc_core::framebuffer::{FrameBuffer, HEIGHT_I32, WIDTH_I32};
 use oc_core::gfx::Point;
-use oc_core::gfx::controls::{bipolar_hbar, hbar, header, knob, selector, value_box, vbar};
+use oc_core::gfx::controls::{
+    bipolar_hbar, hbar, header, knob, scroll_bar, selector, value_box, vbar,
+};
 use oc_core::gfx::patterns::{dots, euclid_ring, keyboard, steps};
 use oc_core::gfx::plots::{Area, histogram, min_max, needle_scale, trace};
 use oc_core::gfx::trig::polar;
@@ -125,6 +127,33 @@ fn bars_fill_in_proportion() {
         frame.pixel(5, 12) && !frame.pixel(30, 12),
         "negative fills left"
     );
+}
+
+#[test]
+fn a_scroll_bar_puts_its_thumb_on_the_page_shown() {
+    for page in 0..2 {
+        let mut frame = FrameBuffer::new();
+        scroll_bar(&mut frame, 0, 8, 3, 32, page, 2);
+        let (left, top, right, bottom) = lit_box(&frame).unwrap();
+        assert!(
+            left >= 0 && top >= 8 && right <= 2 && bottom <= 39,
+            "inside its box"
+        );
+        let thumb = 8 + 16 * i32::try_from(page).unwrap();
+        // The thumb fills its half; the track is dotted elsewhere.
+        assert!((thumb..thumb + 16).all(|y| frame.pixel(0, y) && frame.pixel(2, y)));
+        let track = if page == 0 { 24..40 } else { 8..24 };
+        assert!(track.clone().all(|y| !frame.pixel(0, y)));
+        assert_eq!(track.filter(|&y| frame.pixel(1, y)).count(), 8);
+    }
+}
+
+#[test]
+fn a_scroll_bar_holds_a_page_beyond_the_last() {
+    let (mut beyond, mut last) = (FrameBuffer::new(), FrameBuffer::new());
+    scroll_bar(&mut beyond, 0, 0, 3, 30, 5, 3);
+    scroll_bar(&mut last, 0, 0, 3, 30, 2, 3);
+    assert_eq!(beyond, last);
 }
 
 #[test]

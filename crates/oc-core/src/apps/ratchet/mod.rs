@@ -42,6 +42,7 @@ use crate::apps::{InputSnapshot, TickContext};
 use crate::fixed::{self, ONE};
 use crate::fmt::TextBuf;
 use crate::framebuffer::{FrameBuffer, ROW_HEIGHT, WIDTH_I32};
+use crate::gfx::controls::scroll_bar;
 use crate::gfx::{self, Ink, Point};
 use crate::modulation::editor::{AssignEditor, Param};
 use crate::modulation::{Assign, AssignLine};
@@ -637,7 +638,16 @@ impl RatchetApp {
         self.render_lights(frame);
 
         let rows = i32::try_from(PAGE_ROWS).unwrap_or(4);
-        self.render_scroll_bar(frame, rows * ROW_HEIGHT);
+        // Left of the settings, under the title bar.
+        scroll_bar(
+            frame,
+            0,
+            ROW_HEIGHT,
+            SCROLL_WIDTH,
+            rows * ROW_HEIGHT,
+            self.page(),
+            PAGES,
+        );
         let first = self.page() * PAGE_ROWS;
         let shown = &Setting::ALL[first..(first + PAGE_ROWS).min(Setting::ALL.len())];
         for (row, &setting) in (1..).zip(shown) {
@@ -735,18 +745,6 @@ impl RatchetApp {
             now_permille: position(setting, &latched),
         };
         editor.render(frame, assign, &self.cv, &param);
-    }
-
-    /// The scroll bar left of the settings, `height` pixels under the title
-    /// bar: a dotted track, and a thumb over the share of it the page on
-    /// screen takes.
-    fn render_scroll_bar(&self, frame: &mut FrameBuffer, height: i32) {
-        let pages = i32::try_from(PAGES).unwrap_or(1);
-        let page = i32::try_from(self.page()).unwrap_or(0);
-        gfx::dotted_vline(frame, SCROLL_WIDTH / 2, ROW_HEIGHT, height, 2, Ink::Lit);
-        let top = ROW_HEIGHT + page * height / pages;
-        let bottom = ROW_HEIGHT + (page + 1) * height / pages;
-        gfx::fill_rect(frame, 0, top, SCROLL_WIDTH, bottom - top, Ink::Lit);
     }
 
     /// The value of `setting` in `settings`, as the screen shows it; the
