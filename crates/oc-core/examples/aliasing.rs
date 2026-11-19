@@ -25,9 +25,10 @@
 //!
 //! `SUPERSAW_CALC=f32` measures the bank in `f32` instead (journal/D-039);
 //! `SUPERSAW_SHAPE`, in thousandths, the voices' shape (0, a sawtooth, by
-//! default), the references blended the same way. The highest level that
-//! clips nowhere is given for a sawtooth, half way and a square whatever it
-//! says.
+//! default), and `SUPERSAW_WIDTH` the pulse's width (500, a square), the
+//! references blended the same way. The highest level that clips nowhere is
+//! given for a sawtooth, half way, a square and narrower pulses whatever
+//! they say.
 //!
 //! A third table compares the bank with an ideal supersaw: each voice built
 //! from all its harmonics below the Nyquist frequency, at its exact pitch,
@@ -52,7 +53,9 @@ use std::io::Write as _;
 use std::path::Path;
 
 use oc_core::apps::tone;
-use oc_core::audio::supersaw::{Arithmetic, Bank, CENTRE, FULL, Supersaw, VOICES, voice_gains};
+use oc_core::audio::supersaw::{
+    Arithmetic, Bank, CENTRE, FULL, NARROWEST_WIDTH, SQUARE_WIDTH, Supersaw, VOICES, voice_gains,
+};
 use oc_core::calibration::{CV_OUT_MAX_MV, CV_OUT_MIN_MV};
 
 /// The module's sample rate: PERCLK over 21 (journal/D-033).
@@ -123,13 +126,29 @@ fn shape() -> u16 {
         .map_or(0, |shape: u16| shape.min(FULL))
 }
 
+/// The pulse width measured, in thousandths of the period:
+/// `SUPERSAW_WIDTH`, a square (500) unless it says otherwise.
+fn width() -> u16 {
+    std::env::var("SUPERSAW_WIDTH")
+        .ok()
+        .and_then(|width| width.parse().ok())
+        .map_or(SQUARE_WIDTH, |width: u16| {
+            width.clamp(NARROWEST_WIDTH, SQUARE_WIDTH)
+        })
+}
+
 /// `shape` as a fraction, zero to one.
 fn shape_fraction(shape: u16) -> f64 {
     f64::from(shape) / f64::from(FULL)
 }
 
 fn main() {
-    println!("Bank: {:?}, shape {} %.", arithmetic(), shape() / 10);
+    println!(
+        "Bank: {:?}, shape {} %, width {} %.",
+        arithmetic(),
+        shape() / 10,
+        width() / 10
+    );
     let wav_dir = std::env::args().nth(1);
     if let Some(dir) = &wav_dir {
         fs::create_dir_all(dir).expect("the WAV directory must be writable");
@@ -157,6 +176,7 @@ fn main() {
                 detune,
                 mix: MIX,
                 shape: shape(),
+                width: width(),
                 amplitude: LEVEL_MV,
                 arithmetic: arithmetic(),
             };
@@ -218,6 +238,7 @@ fn write_pairs(dir: &Path) {
                 detune: FULL,
                 mix,
                 shape: shape(),
+                width: width(),
                 amplitude,
                 arithmetic: arithmetic(),
             };
@@ -283,6 +304,7 @@ fn against_ideal() {
                 detune,
                 mix: MIX,
                 shape: shape(),
+                width: width(),
                 amplitude: LEVEL_MV,
                 arithmetic: arithmetic(),
             };
@@ -324,6 +346,7 @@ fn clipping() {
                     detune: FULL,
                     mix,
                     shape: shape(),
+                    width: width(),
                     amplitude: level,
                     arithmetic: arithmetic(),
                 };
@@ -351,6 +374,7 @@ fn clipping() {
                 detune: FULL,
                 mix,
                 shape: shape(),
+                width: width(),
                 amplitude: LEVEL_MV,
                 arithmetic: arithmetic(),
             };
@@ -366,15 +390,27 @@ fn clipping() {
     worst_level();
 }
 
-/// The shapes the highest level is measured at: sawtooth, half, square.
-const SHAPES: [u16; 3] = [0, FULL / 2, FULL];
+/// The shapes and widths the highest level is measured at: sawtooth, half
+/// way to a square, square, then narrower pulses down to the narrowest.
+const FORMS: [(u16, u16); 6] = [
+    (0, SQUARE_WIDTH),
+    (FULL / 2, SQUARE_WIDTH),
+    (FULL, SQUARE_WIDTH),
+    (FULL, 250),
+    (FULL, 100),
+    (FULL, NARROWEST_WIDTH),
+];
 
-/// The highest level that clips nowhere, for each shape of [`SHAPES`]: over
+/// The level the room left is measured at: low enough that nothing clips
+/// there, or the bound itself would be read as the peak.
+const ROOM_LEVEL_MV: i32 = 250;
+
+/// The highest level that clips nowhere, for each form of [`FORMS`]: over
 /// every note, detune and mix measured, eight seconds each, the least room
 /// either bound leaves.
 fn worst_level() {
     println!();
-    for shape in SHAPES {
+    for (shape, width) in FORMS {
         let mut worst = (f64::MAX, 0, 0, 0);
         for note in NOTES {
             for detune in DETUNES {
@@ -384,7 +420,8 @@ fn worst_level() {
                         detune,
                         mix,
                         shape,
-                        amplitude: LEVEL_MV,
+                        width,
+                        amplitude: ROOM_LEVEL_MV,
                         arithmetic: arithmetic(),
                     };
                     let played = play(&params, PAIR_LENGTH);
@@ -400,10 +437,11 @@ fn worst_level() {
         }
         let (room, note, detune, mix) = worst;
         println!(
-            "Highest level clipping nowhere at shape {} %, every case above over eight seconds: \
-             {:.2} V (the least room at {}, detune {} %, mix {} %)",
+            "Highest level clipping nowhere at shape {} %, width {} %, every case above over \
+             eight seconds: {:.2} V (the least room at {}, detune {} %, mix {} %)",
             shape / 10,
-            room * f64::from(LEVEL_MV) / 1_000.0,
+            width / 10,
+            room * f64::from(ROOM_LEVEL_MV) / 1_000.0,
             tone::note_name(note).as_str(),
             detune / 10,
             mix / 10
@@ -444,9 +482,11 @@ fn ideal(
     let turn = 2f64.powi(32);
     let gains = gains_of(params);
     let s = shape_fraction(params.shape);
-    // The voices' power over that of sawtooths, `(1 + s + s^2)`: the bank
-    // keeps the loudness, so does the reference.
-    let norm = gains.iter().map(|gain| gain * gain).sum::<f64>().sqrt() * (1.0 + s + s * s).sqrt();
+    let w = f64::from(params.width) / f64::from(FULL);
+    // The voices' power over that of sawtooths, `(1 - s)^2 + 12 s w (1 - w)`:
+    // the bank keeps the loudness, so does the reference.
+    let norm = gains.iter().map(|gain| gain * gain).sum::<f64>().sqrt()
+        * ((1.0 - s).powi(2) + 12.0 * s * w * (1.0 - w)).sqrt();
     // The harmonics of each voice below the Nyquist frequency.
     let harmonics: Vec<u32> = steps
         .iter()
@@ -470,9 +510,9 @@ fn ideal(
             // The phase wraps round a turn, as the bank's does.
             let phase = phases[voice].wrapping_add(steps[voice].wrapping_mul(index as u32));
             let angle = TAU * f64::from(phase) / turn;
-            // A ramp less `s` of the same half a turn on: towards a square.
+            // A ramp less `s` of the same `w` back: towards a pulse.
             let wave = band_limited_ramp(angle, harmonics[voice])
-                - s * band_limited_ramp(angle + std::f64::consts::PI, harmonics[voice]);
+                - s * band_limited_ramp(angle - TAU * w, harmonics[voice]);
             sum += gains[voice] * wave;
         }
         let input = sum / norm;
@@ -536,13 +576,15 @@ fn naive(params: &Supersaw, steps: &[u32; VOICES], phases: &[u32; VOICES]) -> Ve
     let gains = gains_of(params);
     let s = shape_fraction(params.shape);
     let ramp = |phase: u32| 1.0 - f64::from(phase) / 2f64.powi(31);
+    // The second ramp's lead, a turn being `2^32`: the width back.
+    let lead = u32::try_from((u64::from(FULL - params.width) << 32) / u64::from(FULL)).unwrap_or(0);
     let mut phases = *phases;
     (0..SETTLE + LENGTH)
         .map(|_| {
             let mut sum = 0.0;
             for ((phase, step), gain) in phases.iter_mut().zip(steps).zip(&gains) {
                 // Falling, as the bank plays them, blended towards a square.
-                let wave = ramp(*phase) - s * ramp(phase.wrapping_add(1 << 31));
+                let wave = ramp(*phase) - s * ramp(phase.wrapping_add(lead));
                 sum += wave * gain;
                 *phase = phase.wrapping_add(*step);
             }

@@ -367,6 +367,7 @@ mod tests {
             detune: FULL,
             mix: FULL / 2,
             shape: 0,
+            width: super::supersaw::SQUARE_WIDTH,
             amplitude: 1_000,
             arithmetic,
         };

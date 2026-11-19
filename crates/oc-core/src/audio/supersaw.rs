@@ -38,6 +38,15 @@ pub const CENTRE: usize = 3;
 /// The whole course of [`Supersaw::detune`] and [`Supersaw::mix`].
 pub const FULL: u16 = 1_000;
 
+/// [`Supersaw::width`] of a square, half the period: the widest.
+pub const SQUARE_WIDTH: u16 = FULL / 2;
+
+/// The narrowest [`Supersaw::width`], 5 % of the period: narrower, a pulse
+/// has so little power that keeping its loudness would raise the rounding
+/// with it. A width and its complement sound the same, inverted, so half
+/// the period is the other end.
+pub const NARROWEST_WIDTH: u16 = 50;
+
 /// One in 16.16 fixed point.
 const UNIT: i64 = 1 << 16;
 
@@ -88,6 +97,11 @@ pub struct Supersaw {
     /// [`FULL`], their blend between (journal/D-037, revision of
     /// 2026-11-19); the loudness stays about the same over the course.
     pub shape: u16,
+    /// The pulse's width at a full [`Self::shape`], in thousandths of the
+    /// period, from [`NARROWEST_WIDTH`] to [`SQUARE_WIDTH`], the square
+    /// (journal/D-037, revision of 2026-11-19): the blend's second sawtooth
+    /// is that far back.
+    pub width: u16,
     /// Peak level of one sawtooth; the sum is scaled to sound about as loud.
     pub amplitude: MilliVolts,
     /// Which of the two banks plays it.
@@ -101,6 +115,7 @@ impl Supersaw {
         detune: 0,
         mix: 0,
         shape: 0,
+        width: SQUARE_WIDTH,
         amplitude: 0,
         arithmetic: Arithmetic::Fixed,
     };
@@ -196,17 +211,23 @@ impl Setup {
                 .map(|&index| gains[index] * gains[index])
                 .sum::<i64>();
         let all = gains.iter().map(|gain| gain * gain).sum::<i64>();
-        let loudness = shape_loudness(params.shape);
+        let width = params.width.clamp(NARROWEST_WIDTH, SQUARE_WIDTH);
+        let loudness = shape_loudness(params.shape, width);
         let normalisers = (
             normaliser(all) * UNIT / loudness,
             normaliser(one_side) * UNIT / loudness,
         );
         // In 1.15, from 0 (a sawtooth) to one (a square).
         let shape = fraction(params.shape) >> 1;
+        // The second sawtooth's lead, a turn being `2^32`: the width back,
+        // its complement on. The same pulse, but its narrow part comes out
+        // upwards, where the outputs have 6 V of room instead of 3.
+        let lead = u32::try_from((u64::from(FULL - width) << 32) / u64::from(FULL)).unwrap_or(0);
+        let blend = (shape, lead);
         Self {
             params: *params,
-            fixed: fixed::Setup::new(&steps, &gains, normalisers, shape, params.amplitude),
-            float: float::Setup::new(&steps, &gains, normalisers, shape, params.amplitude),
+            fixed: fixed::Setup::new(&steps, &gains, normalisers, blend, params.amplitude),
+            float: float::Setup::new(&steps, &gains, normalisers, blend, params.amplitude),
         }
     }
 
@@ -339,16 +360,20 @@ pub fn voice_gains(mix: u16) -> [i64; VOICES] {
     core::array::from_fn(|index| if index == CENTRE { centre } else { side })
 }
 
-/// How much louder, in root mean square, a voice at `shape` is than a
-/// sawtooth, in 16.16: one at the sawtooth, `sqrt(3)` at the square.
+/// How much louder, in root mean square, a voice at `shape` and `width` is
+/// than a sawtooth, in 16.16: one at the sawtooth, `sqrt(3)` at the square.
 ///
-/// A voice at `s` is `saw(t) - s saw(t + 1/2)`, whose mean square is
-/// `(1 + s + s^2) / 3` (the two sawtooths' product averages `-1/6`), against
-/// `1/3` for the sawtooth: the ratio's root.
+/// A voice at `s` and `w` is `saw(t) - s saw(t - w)`. The two sawtooths'
+/// product averages `1/3 - 2 w (1 - w)`, so its mean square is
+/// `(1 - s)^2 / 3 + 4 s w (1 - w)`, against `1/3` for the sawtooth: the
+/// ratio's root. At `w = 1/2`, `(1 + s + s^2) / 3`.
 #[must_use]
-pub fn shape_loudness(shape: u16) -> i64 {
+pub fn shape_loudness(shape: u16, width: u16) -> i64 {
     let s = fraction(shape);
-    let ratio = UNIT + s + ((s * s) >> 16);
+    let w = fraction(width);
+    let rest = UNIT - s;
+    // `(1 - s)^2 + 12 s w (1 - w)`, in 16.16.
+    let ratio = ((rest * rest) >> 16) + ((12 * s * ((w * (UNIT - w)) >> 16)) >> 16);
     // The root of a 16.16 value, in 16.16; exact at one.
     let root = u64::try_from(ratio << 16).unwrap_or(0).isqrt();
     i64::try_from(root).unwrap_or(UNIT).max(1)
@@ -367,8 +392,8 @@ fn normaliser(power: i64) -> i64 {
 #[cfg(test)]
 mod tests {
     use super::{
-        Arithmetic, Bank, CENTRE, FULL, LEFT, OFFSETS, PHASES, RIGHT, Supersaw, UNIT, VOICES,
-        detune_curve, mix_gains, shape_loudness,
+        Arithmetic, Bank, CENTRE, FULL, LEFT, NARROWEST_WIDTH, OFFSETS, PHASES, RIGHT,
+        SQUARE_WIDTH, Supersaw, UNIT, VOICES, detune_curve, mix_gains, shape_loudness,
     };
 
     #[test]
@@ -406,10 +431,19 @@ mod tests {
 
     #[test]
     fn a_square_is_louder_by_the_root_of_three() {
-        assert_eq!(shape_loudness(0), UNIT, "exactly one: a sawtooth unchanged");
-        let square = shape_loudness(FULL);
+        assert_eq!(
+            shape_loudness(0, SQUARE_WIDTH),
+            UNIT,
+            "exactly one: a sawtooth unchanged"
+        );
+        // At no shape, the width does not matter.
+        assert_eq!(shape_loudness(0, NARROWEST_WIDTH), UNIT);
+        let square = shape_loudness(FULL, SQUARE_WIDTH);
         assert!((square - 113_512).abs() <= 2, "{square}");
-        assert!(shape_loudness(FULL / 2) < square);
+        assert!(shape_loudness(FULL / 2, SQUARE_WIDTH) < square);
+        // A quarter-width pulse: `12 / 4 * 3 / 4 = 2.25`, a root of 1.5.
+        let quarter = shape_loudness(FULL, FULL / 4);
+        assert!((quarter - 98_304).abs() <= 2, "{quarter}");
     }
 
     #[test]
@@ -419,6 +453,7 @@ mod tests {
             detune: FULL,
             mix: FULL / 2,
             shape: 0,
+            width: SQUARE_WIDTH,
             amplitude: 1_000,
             arithmetic: Arithmetic::Fixed,
         };
@@ -442,6 +477,7 @@ mod tests {
             detune: FULL,
             mix: FULL / 2,
             shape: 0,
+            width: SQUARE_WIDTH,
             amplitude: 1_000,
             arithmetic: Arithmetic::Float,
         };
@@ -482,6 +518,7 @@ mod tests {
             detune: FULL,
             mix: FULL,
             shape: 0,
+            width: SQUARE_WIDTH,
             amplitude: 3_000,
             arithmetic: super::Arithmetic::Fixed,
         };

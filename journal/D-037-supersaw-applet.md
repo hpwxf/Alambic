@@ -250,3 +250,25 @@ près à ce qu'il était.
 * **Coût** : une scie corrigée de plus par voix ; sur l'hôte, 37 → 48 ns par échantillon en carré.
 * Écrit dans les deux bancs, entier et `f32`, D-039 n'étant pas tranchée.
 
+## Révision du 2026-11-19 — `WIDTH` : la largeur de l'impulsion
+
+Demande de l'utilisateur, après `SHAPE`. La seconde scie du mélange n'est plus décalée d'une demi-période mais de
+`w`, de 5 à 50 % de la période : `saw(t) − s · saw(t − w)`, une impulsion de largeur `w` à `SHAPE` 100 %, le carré à
+50 %, et toujours à bande limitée. `w` et `1 − w` donnent le même timbre, inversé : 50 % est donc l'autre bout de la
+course. En dessous de 5 %, une impulsion a si peu de puissance que garder son volume amplifierait l'arrondi avec lui.
+
+* **Sens** : le décalage est pris en arrière (`t − w`) plutôt qu'en avant. C'est la même impulsion, mais sa partie
+  étroite sort vers le haut, du côté où les sorties ont 6 V de marge au lieu de 3 (même raison que les scies
+  descendantes) : niveau le plus haut sans écrêtage 1,55 V à 25 %, 1,77 V à 10 %, 1,37 V à 5 %, contre 1,23 V puis
+  moins de 1 V dans l'autre sens.
+* **Volume** : le produit des deux scies vaut `1/3 − 2 w (1 − w)` en moyenne, donc la puissance d'une voix est
+  `(1 − s)² / 3 + 4 s w (1 − w)` ; `shape_loudness(shape, width)` en tient compte et redonne exactement l'ancienne
+  formule à 50 %. À 50 %, le banc est identique au bit près à ce qu'il était.
+* **Applet** : `WIDTH` en page 1, après `SHAPE`, un pour cent par cran, carré au démarrage, entrée assignable (sa
+  course de 5 à 50 % sur 0 à 5 V) ; `LEVEL` passe en page 2 avec `STEREO` et `CALC` (choix de l'utilisateur, pour
+  garder l'éventail sur deux rangées). Le picto de `SHAPE` suit la largeur, chaque colonne échantillonnée en son
+  milieu pour qu'une impulsion de 5 % en allume encore une, sa partie étroite vers le haut comme la sortie la joue.
+* **Mesuré** (exemple `aliasing`, `SUPERSAW_WIDTH`) : à 5 %, repli sous 10 kHz ≤ −46 dB jusqu'à C7, −33 à −37 dB sur
+  B7 et C8 : une impulsion étroite porte beaucoup d'aigu. L'exemple mesure désormais la marge à 250 mV : à 1 V, un cas
+  qui écrête déjà lisait la borne comme crête et rendait 1,00 V.
+

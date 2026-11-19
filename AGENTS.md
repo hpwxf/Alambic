@@ -408,7 +408,7 @@ Full protocol, per level, with exact commands and what each proves: see
 | The diagnostic applet's logic and rendering       | `crates/oc-core/src/apps/diagnostic.rs` |
 | The scope applet                                  | `crates/oc-core/src/apps/scope.rs` |
 | The `TONE` test applet (four waveforms, V/oct)    | `crates/oc-core/src/apps/tone.rs` |
-| The `SUPERSAW` applet and its bank (PolyBLEP, Szabo's curves, `SHAPE` saw to square, stereo, sub) | `crates/oc-core/src/apps/supersaw.rs`; `audio/supersaw.rs` holds what both arithmetics share (parameters, parts, Szabo's curves, the preparation in integers, `Setup` / `Bank` dispatch), `audio/supersaw/fixed.rs` the integer bank (journal/D-037), `audio/supersaw/float.rs` the `f32` one on trial (journal/D-039) |
+| The `SUPERSAW` applet and its bank (PolyBLEP, Szabo's curves, `SHAPE` saw to pulse and its `WIDTH`, stereo, sub) | `crates/oc-core/src/apps/supersaw.rs`; `audio/supersaw.rs` holds what both arithmetics share (parameters, parts, Szabo's curves, the preparation in integers, `Setup` / `Bank` dispatch), `audio/supersaw/fixed.rs` the integer bank (journal/D-037), `audio/supersaw/float.rs` the `f32` one on trial (journal/D-039) |
 | Output parameters, the voice, the waveforms (sine table built at compile time) | `crates/oc-core/src/audio/mod.rs`, `audio/wave.rs` (journal/D-033) |
 | A parameter modulated by a CV input (scale, shift, bounds, `SET` / `ADD` / `MUL`, `CENTER`) and its submenu, for any applet; `RATCHET` is the first user | `crates/oc-core/src/modulation/mod.rs`, `modulation/editor.rs` (journal/D-035, D-036) |
 | The app registry and dispatch (`AppId`, `AppHost`) | `crates/oc-core/src/apps/mod.rs` |

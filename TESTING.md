@@ -761,7 +761,9 @@ the edge of its range (C7 or C8).
    does not follow the note (aliasing would decide the ×4 of lot 8d).
 3. `STEREO ON`: A and B differ, the field widens; `OFF`: the same on both.
    `SHAPE` from 0 to 100 %: from a sawtooth to a hollow square, about as
-   loud all the way, no click as it turns.
+   loud all the way, no click as it turns. At `SHAPE` 100 %, `WIDTH` from
+   50 down to 5 %: from the square to a thin, nasal pulse, about as loud.
+   `LEVEL` is on the second page.
 4. Inputs unplugged, `DETUNE` at 100 %: the seven bars stay still (an input
    nobody assigned moves nothing). `NOTE`'s `CV1`: a volt raises the pitch
    an octave (the header's hertz double). Assign `CV2` to `DETUNE` (right

@@ -15,7 +15,7 @@ use oc_core::apps::diagnostic::DiagnosticApp;
 use oc_core::apps::ratchet::RatchetApp;
 use oc_core::apps::tone::ToneApp;
 use oc_core::apps::{InputSnapshot, TickContext};
-use oc_core::audio::supersaw::{Arithmetic, FULL, Part, Supersaw};
+use oc_core::audio::supersaw::{Arithmetic, FULL, Part, SQUARE_WIDTH, Supersaw};
 use oc_core::audio::{Channel, Params, Voice};
 use oc_core::buttons::ButtonReader;
 use oc_core::calibration::{CvInputCalibration, CvOutputCalibration};
@@ -253,6 +253,7 @@ fn voice(criterion: &mut Criterion) {
         detune: FULL / 2,
         mix: FULL / 2,
         shape: 0,
+        width: SQUARE_WIDTH,
         amplitude: 1_000,
         arithmetic: Arithmetic::Fixed,
     };

@@ -13,7 +13,13 @@ Architectural decisions behind each change are in `journal/` (French).
   square, band-limited all the way, at about the same loudness
   (journal/D-037, revision of 2026-11-19); on the first page, takes an
   input like `DETUNE` and `MIX`, and a picture of the waveform played
-  beside its label. The sub-octave stays a sawtooth. Squares
+  beside its label. The sub-octave stays a sawtooth.
+- **`WIDTH`** in `SUPERSAW`: the pulse's width at a full `SHAPE`, 5 to
+  50 % (a square), its narrow part upwards where the outputs have the most
+  room, at about the same loudness; on the first page after `SHAPE`, takes
+  an input. `LEVEL` moves to the second page with `STEREO` and `CALC`.
+  `SUPERSAW_WIDTH` sets the width the `aliasing` example measures, which
+  now reads the room left before clipping at 250 mV. Squares
   clip from about 1.5 V of `LEVEL`, against 2 V for sawtooths.
   `SUPERSAW_SHAPE` sets the shape the `aliasing` example measures.
 

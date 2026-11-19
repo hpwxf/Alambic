@@ -35,14 +35,15 @@ impl Saw {
         }
     }
 
-    /// The band-limited value at the current phase, in `-ONE..=ONE`, then
-    /// advances: a sawtooth less `shape` (1.15, zero to one) of the same half
-    /// a turn on, which blends it into a square of the same peak.
-    fn next(&mut self, shape: i32) -> i32 {
+    /// The band-limited value at the current phase, then advances: a
+    /// sawtooth less `shape` (1.15, zero to one) of the same `lead` on (a
+    /// turn being `2^32`), which blends it into a pulse of that width, a
+    /// square at half a turn.
+    fn next(&mut self, shape: i32, lead: u32) -> i32 {
         let mut value = polyblep_saw(self.phase, self.step, self.inverse);
         if shape != 0 {
-            let half = polyblep_saw(self.phase.wrapping_add(1 << 31), self.step, self.inverse);
-            value -= (shape * half) >> 15;
+            let ahead = polyblep_saw(self.phase.wrapping_add(lead), self.step, self.inverse);
+            value -= (shape * ahead) >> 15;
         }
         self.phase = self.phase.wrapping_add(self.step);
         value
@@ -133,8 +134,11 @@ pub(super) struct Setup {
     normalisers: (i64, i64),
     /// High-pass coefficient, in 2.30.
     coefficient: i64,
-    /// The voices' waveform, in 1.15: 0 a sawtooth, one a square.
+    /// The voices' waveform, in 1.15: 0 a sawtooth, one a pulse.
     shape: i32,
+    /// The pulse's width, the blend's second sawtooth's lead, a turn being
+    /// `2^32`.
+    lead: u32,
     /// Peak level of one sawtooth.
     amplitude: MilliVolts,
 }
@@ -150,17 +154,18 @@ impl Setup {
         normalisers: (0, 0),
         coefficient: 0,
         shape: 0,
+        lead: 1 << 31,
         amplitude: 0,
     };
 
     /// From the preparation both banks share: the voices' steps, their gains
-    /// in 1.15, the normalisers `2^32 / root` of gains in 1.15 and the shape
-    /// in 1.15.
+    /// in 1.15, the normalisers `2^32 / root` of gains in 1.15, and the
+    /// blend: the shape in 1.15 and the lead a turn being `2^32`.
     pub(super) fn new(
         steps: &[u32; VOICES],
         gains: &[i64; VOICES],
         normalisers: (i64, i64),
-        shape: i64,
+        (shape, lead): (i64, u32),
         amplitude: MilliVolts,
     ) -> Self {
         let base = steps[CENTRE];
@@ -173,6 +178,7 @@ impl Setup {
             normalisers,
             coefficient: high_pass_coefficient(base),
             shape: i32::try_from(shape).unwrap_or(0),
+            lead,
             amplitude,
         }
     }
@@ -187,6 +193,7 @@ pub(super) struct Bank {
     normalisers: (i64, i64),
     coefficient: i64,
     shape: i32,
+    lead: u32,
     amplitude: MilliVolts,
     /// High-passes of the mono, left and right parts.
     filters: [HighPass; 3],
@@ -208,6 +215,7 @@ impl Bank {
             normalisers: (0, 0),
             coefficient: 0,
             shape: 0,
+            lead: 1 << 31,
             amplitude: 0,
             filters: [HighPass::NEW; 3],
         }
@@ -237,6 +245,7 @@ impl Bank {
         self.normalisers = setup.normalisers;
         self.coefficient = setup.coefficient;
         self.shape = setup.shape;
+        self.lead = setup.lead;
         self.amplitude = setup.amplitude;
     }
 
@@ -246,7 +255,7 @@ impl Bank {
         // 1.15, in 2.30.
         let mut values = [0i64; VOICES];
         for ((value, saw), gain) in values.iter_mut().zip(&mut self.saws).zip(self.gains) {
-            *value = i64::from(saw.next(self.shape)) * gain;
+            *value = i64::from(saw.next(self.shape, self.lead)) * gain;
         }
         let centre = values[CENTRE];
         let left = LEFT.iter().map(|&index| values[index]).sum::<i64>();
@@ -271,7 +280,7 @@ impl Bank {
         }
         // Falling too, to keep its phase against the voices'.
         // A sawtooth whatever the shape.
-        let sub = scale(-self.sub.next(0), self.amplitude);
+        let sub = scale(-self.sub.next(0, 0), self.amplitude);
         Frame {
             mono: parts[0],
             left: parts[1],
@@ -330,7 +339,7 @@ mod tests {
                 step,
                 inverse,
             };
-            assert_eq!(saw.next(ONE), level, "at {phase}");
+            assert_eq!(saw.next(ONE, 1 << 31), level, "at {phase}");
         }
     }
 }
