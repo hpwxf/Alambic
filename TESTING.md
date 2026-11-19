@@ -805,15 +805,22 @@ into a mixer or headphones amp:
    with and without `SUPERSAW_CALC=f32`: the same folding to a few tenths
    of a decibel.
 
-On the TLM module (2026-11-19, before `voice` and `voice_params` existed):
-`audio` the same in `INT` and `F32` to 0.1 µs, 3.0 / 3.9 / 4.9 µs (min /
-mean / max) in cases A and B alike, 3.0 / 4.0 / 10.9-11.0 µs in case C;
-`frame` 1 344 µs in A and B, 1 381 µs in C (fewer periods with room for a
-piece of the screen); `update` 4.7 µs in A and B, 10.7 µs in C (the
-modulation). That A equals B showed `audio` to be the DAC's burst, not the
-voice; the peak of C is the bank's preparation in `set_params`, run for
-both banks whatever `CALC` picks, and the reason to move it out of the
-interrupt.
+On the TLM module (2026-11-19, `voice` and `voice_params` timed, the voice
+prepared by the loop), `voice` mean / max in µs:
+
+| Case | `INT` | `F32` |
+|---|---|---|
+| A — A2, 0 % | 1.16 / 1.22 | 1.07 / 1.11 |
+| B — C8, 100 % | 1.19 / 1.34 | 1.06 / 1.14 |
+| C — C8, 100 %, CV on `NOTE` | 1.17 / 1.35 | 1.07 / 1.14 |
+
+`F32` is about 0.1 µs (8 %) cheaper on the mean and 0.2 µs on the worst
+case, and the note barely moves it. `voice_params` 0.30 µs in both, at
+every change of parameters (about 9 900 in 10 s in case C): a copy.
+`audio` 3.2 to 3.4 / 4.0 / 4.9 to 5.0 µs in every case: the DAC's burst,
+the voice hidden inside it. Before journal/D-040 the bank was prepared in
+the interrupt, and case C took `audio` up to 11 µs and the frame from
+1 344 to 1 381 µs; both are back to cases A and B's.
 
 ### 9.4 — Calibration
 
