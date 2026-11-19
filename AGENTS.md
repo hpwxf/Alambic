@@ -202,7 +202,10 @@ lives in `oc-core` and is tested once, on the host.
   backend uses them any more; the simulator, Rack and the tests send the
   frame in the tick that drew it. The boot splash presents every tick.
 * **Costs** are measured, not assumed: `cargo probe stats` shows the loop's
-  stages and the interrupt's (`audio`, `audio_period`, `frame`). The end
+  stages and the interrupt's (`audio`, `audio_period`, `frame`, and inside
+  `audio` the voice's own `voice` and `voice_params`: the interrupt spins
+  until the DAC's burst echoes, so `audio` hides any computation shorter
+  than the burst, journal/D-039). The end
   of a transfer is read from its echo in the receive FIFO (the busy flag
   and the transfer-complete flag answer early, and the OLED then takes DAC
   bits). On the module the interrupt costs about 3.4 µs of each 21 µs

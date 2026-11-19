@@ -23,6 +23,11 @@ Architectural decisions behind each change are in `journal/` (French).
   take no input.
 - Ratchet's scroll bar is now a control of its own,
   `oc_core::gfx::controls::scroll_bar`.
+- Two profile stages inside the audio interrupt, `voice` (one sample) and
+  `voice_params` (taking new parameters): `audio` spins until the DAC's
+  burst echoes, so it hides the voice's computation. `cargo probe stats`
+  prints two decimals. The probe protocol is now version 3: host tools and
+  firmware must be updated together.
 - `SUPERSAW_CALC=f32` makes the `aliasing` example measure the `f32` bank; a
   criterion benchmark, `supersaw_f32_sample_to_codes`.
 

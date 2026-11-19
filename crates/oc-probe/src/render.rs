@@ -9,10 +9,11 @@ use oc_core::framebuffer::{FrameBuffer, HEIGHT, LEN, WIDTH};
 use oc_core::profile::{JITTER_BUCKETS, Profile, Stage, Stat};
 use oc_protocol::Sample;
 
-/// `fine` counts as microseconds, one decimal.
+/// `fine` counts as microseconds, two decimals: the voice's stages take
+/// a fraction of a microsecond (journal/D-039).
 fn micros(profile: &Profile, fine: u32) -> String {
     let nanos = profile.nanos(fine);
-    format!("{}.{}", nanos / 1_000, nanos % 1_000 / 100)
+    format!("{}.{:02}", nanos / 1_000, nanos % 1_000 / 10)
 }
 
 /// Width of the stage column: the longest stage's name (`audio_period`), so

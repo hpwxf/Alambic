@@ -787,15 +787,31 @@ module with the falling sawtooths (2026-11-18): the sound is right.
 `SUPERSAW`, `CALC` on the second page (the left encoder past `LEVEL`), A
 into a mixer or headphones amp:
 
-1. `cargo probe stats` just after a restart with `CALC INT`, then again
-   after a restart with `CALC F32` set before reading: `audio` mean and
-   max, at A2 and at C8 with `DETUNE` at 100 %, as in 9.3f step 1. The
-   difference between the two is what D-039 decides on.
+1. `cargo probe stats` just after a restart, in three cases, each with
+   `CALC INT` then `CALC F32`: **A**, A2, `DETUNE` 0 %, `NOTE` without an
+   input (its `INPUT` at `NONE`); **B**, C8, `DETUNE` 100 %, `NOTE` without
+   an input (the worst case per sample: the `PolyBLEP` correction runs on
+   about 2 f / fs of the samples of each voice); **C**, as B with a fast LFO
+   or noise into `CV1` on `NOTE` (`ADD`), so the parameters change every
+   tick. Read `voice` (one sample: what D-039 decides on, case B) and
+   `voice_params` (taking new parameters, case C), not `audio`: the
+   interrupt spins until the DAC's burst echoes, so `audio` measures the
+   burst and hides the computation.
 2. By ear, switching `CALC` while a note plays, from C1 to C8: no audible
    difference, a click at most on the switch.
 3. Before the module, `cargo run -p oc-core --example aliasing --release`
    with and without `SUPERSAW_CALC=f32`: the same folding to a few tenths
    of a decibel.
+
+On the TLM module (2026-11-19, before `voice` and `voice_params` existed):
+`audio` the same in `INT` and `F32` to 0.1 µs, 3.0 / 3.9 / 4.9 µs (min /
+mean / max) in cases A and B alike, 3.0 / 4.0 / 10.9-11.0 µs in case C;
+`frame` 1 344 µs in A and B, 1 381 µs in C (fewer periods with room for a
+piece of the screen); `update` 4.7 µs in A and B, 10.7 µs in C (the
+modulation). That A equals B showed `audio` to be the DAC's burst, not the
+voice; the peak of C is the bank's preparation in `set_params`, run for
+both banks whatever `CALC` picks, and the reason to move it out of the
+interrupt.
 
 ### 9.4 — Calibration
 

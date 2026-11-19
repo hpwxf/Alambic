@@ -90,6 +90,8 @@ struct Mailbox {
 #[derive(Clone, Copy)]
 struct Stats {
     audio: Stat,
+    voice: Stat,
+    voice_params: Stat,
     period: Stat,
     frame: Stat,
 }
@@ -98,6 +100,8 @@ impl Stats {
     const fn new() -> Self {
         Self {
             audio: Stat::new(),
+            voice: Stat::new(),
+            voice_params: Stat::new(),
             period: Stat::new(),
             frame: Stat::new(),
         }
@@ -391,6 +395,8 @@ pub(crate) fn drain_stats(profile: &mut oc_core::profile::Profile) {
         core::mem::replace(&mut mail.stats, Stats::new())
     });
     profile.merge(Stage::Audio, &stats.audio);
+    profile.merge(Stage::Voice, &stats.voice);
+    profile.merge(Stage::VoiceParams, &stats.voice_params);
     profile.merge(Stage::AudioPeriod, &stats.period);
     profile.merge(Stage::Frame, &stats.frame);
 }
@@ -454,12 +460,22 @@ impl AudioState {
 
         // The next sample, two slots ahead of the DMA: the one after its
         // next read.
+        // Timed apart from the rest (journal/D-039): within the wait for
+        // the burst's echo, `audio` cannot see them.
         if mail.fresh {
+            let start = DWT::cycle_count();
             self.voice.set_params(&mail.params);
+            mail.stats
+                .voice_params
+                .record(DWT::cycle_count().wrapping_sub(start));
             self.calibration = mail.calibration;
             mail.fresh = false;
         }
+        let start = DWT::cycle_count();
         let samples = self.voice.next_sample();
+        mail.stats
+            .voice
+            .record(DWT::cycle_count().wrapping_sub(start));
         let mut codes = [0; CV_CHANNELS];
         for channel in CvChannel::ALL {
             let index = channel.index();
