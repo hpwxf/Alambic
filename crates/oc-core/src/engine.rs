@@ -208,7 +208,7 @@ where
     /// Runs one complete cycle: acquire, update, output, render.
     ///
     /// While the boot splash screen has not yet finished tracing its border
-    /// around the screen, this instead runs [`Self::tick_splash`]: the
+    /// around the screen, this instead runs `tick_splash`: the
     /// diagnostic applet does not see any input and the outputs stay at
     /// rest, so nothing downstream can react to a signal before the module
     /// has visibly finished starting up.

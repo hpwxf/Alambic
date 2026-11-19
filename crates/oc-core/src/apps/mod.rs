@@ -19,7 +19,7 @@
 //! [`tone`], [`supersaw`]).
 //!
 //! An applet's `update` returns what the outputs carry as
-//! [`Params`](crate::audio::Params): the CV applets hold levels, `TONE`
+//! [`Params`]: the CV applets hold levels, `TONE`
 //! asks for tones and `SUPERSAW` for parts of a supersaw bank that a
 //! [`Voice`](crate::audio::Voice) renders (journal/D-033, D-037).
 

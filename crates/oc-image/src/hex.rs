@@ -28,7 +28,7 @@ pub fn is_hex(file: &[u8]) -> bool {
 /// A line that is not a valid record (syntax, length, checksum, unknown
 /// type), data outside the application flash or written twice, data after
 /// the end record, a missing end record, or no data at all; at most
-/// [`LISTED_REJECTIONS`] are listed, the rest counted.
+/// `LISTED_REJECTIONS` are listed, the rest counted.
 pub fn read_hex(file: &[u8]) -> Result<Vec<u8>, Vec<Rejection>> {
     let mut reader = Reader::default();
     let text = String::from_utf8_lossy(file);
