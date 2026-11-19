@@ -33,11 +33,6 @@ impl Saw {
         inverse: 0.0,
     };
 
-    fn set_step(&mut self, step: u32) {
-        self.step = turns(step);
-        self.inverse = if step == 0 { 0.0 } else { 1.0 / self.step };
-    }
-
     /// The band-limited value at the current phase, in `-1..=1`, then
     /// advances.
     fn next(&mut self) -> f32 {
@@ -88,6 +83,66 @@ impl HighPass {
     }
 }
 
+/// A step of the integer bank as a fraction of a turn, and its inverse,
+/// zero at rest.
+fn step_and_inverse(step: u32) -> (f32, f32) {
+    let turn = turns(step);
+    (turn, if step == 0 { 0.0 } else { 1.0 / turn })
+}
+
+/// What the parameters decide for the `f32` bank, part of the integer
+/// bank's [`super::Setup`] (journal/D-040).
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(super) struct Setup {
+    steps: [f32; VOICES],
+    inverses: [f32; VOICES],
+    sub_step: f32,
+    sub_inverse: f32,
+    gains: (f32, f32),
+    normalisers: (f32, f32),
+    coefficient: f32,
+    amplitude: f32,
+}
+
+impl Setup {
+    /// Nothing played.
+    pub(super) const OFF: Self = Self {
+        steps: [0.0; VOICES],
+        inverses: [0.0; VOICES],
+        sub_step: 0.0,
+        sub_inverse: 0.0,
+        gains: (0.0, 0.0),
+        normalisers: (0.0, 0.0),
+        coefficient: 0.0,
+        amplitude: 0.0,
+    };
+
+    /// From what the integer bank prepared: the voices' steps, the gains in
+    /// 1.15 and the normalisers `2^32 / root` of gains in 1.15.
+    pub(super) fn new(
+        steps: &[u32; VOICES],
+        gains: (i64, i64),
+        normalisers: (i64, i64),
+        amplitude: MilliVolts,
+    ) -> Self {
+        let pairs = steps.map(step_and_inverse);
+        let base = steps[CENTRE];
+        let (sub_step, sub_inverse) = step_and_inverse(base / 2);
+        Self {
+            steps: pairs.map(|(step, _)| step),
+            inverses: pairs.map(|(_, inverse)| inverse),
+            sub_step,
+            sub_inverse,
+            gains: (fraction(gains.0, 15), fraction(gains.1, 15)),
+            // `2^32 / (root 2^15)`: one over the root is it over `2^17`.
+            normalisers: (fraction(normalisers.0, 17), fraction(normalisers.1, 17)),
+            // `1 / (1 + 2 pi f / fs)`, the integer bank's coefficient.
+            coefficient: 1.0 / (1.0 + core::f32::consts::TAU * turns(base)),
+            amplitude: fraction(i64::from(amplitude), 0),
+        }
+    }
+}
+
 /// The running state of the `f32` supersaw.
 #[derive(Debug, Clone)]
 pub(super) struct Bank {
@@ -127,27 +182,20 @@ impl Bank {
         }
     }
 
-    /// Plays from the next sample on what the integer bank prepared: the
-    /// voices' steps, the gains in 1.15 and the normalisers `2^32 / root`
-    /// of gains in 1.15, keeping the phases and the filters' state.
-    pub(super) fn set(
-        &mut self,
-        steps: &[u32; VOICES],
-        gains: (i64, i64),
-        normalisers: (i64, i64),
-        amplitude: MilliVolts,
-    ) {
-        for (saw, &step) in self.saws.iter_mut().zip(steps) {
-            saw.set_step(step);
+    /// Plays what `setup` prepared from the next sample on, keeping the
+    /// phases and the filters' state.
+    pub(super) fn apply(&mut self, setup: &Setup) {
+        for ((saw, &step), &inverse) in self.saws.iter_mut().zip(&setup.steps).zip(&setup.inverses)
+        {
+            saw.step = step;
+            saw.inverse = inverse;
         }
-        let base = steps[CENTRE];
-        self.sub.set_step(base / 2);
-        self.gains = (fraction(gains.0, 15), fraction(gains.1, 15));
-        // `2^32 / (root 2^15)`: one over the root is it over `2^17`.
-        self.normalisers = (fraction(normalisers.0, 17), fraction(normalisers.1, 17));
-        // `1 / (1 + 2 pi f / fs)`, the integer bank's coefficient.
-        self.coefficient = 1.0 / (1.0 + core::f32::consts::TAU * turns(base));
-        self.amplitude = fraction(i64::from(amplitude), 0);
+        self.sub.step = setup.sub_step;
+        self.sub.inverse = setup.sub_inverse;
+        self.gains = setup.gains;
+        self.normalisers = setup.normalisers;
+        self.coefficient = setup.coefficient;
+        self.amplitude = setup.amplitude;
     }
 
     /// One sample of every part, then advances.

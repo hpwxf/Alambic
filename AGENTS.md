@@ -181,6 +181,10 @@ lives in `oc-core` and is tested once, on the host.
   into LPSPI4, so the DAC is written at instants the hardware fixes; the
   DMA's interrupt then computes the next sample with its own `Voice` (two
   slots ahead), waits for the burst's echo and sends a piece of the screen;
+  the loop prepares that voice's `oc_core::audio::Setup` when the
+  parameters change, outside any critical section, and the interrupt only
+  copies it (`Voice::apply`, journal/D-040): anything that depends on the
+  parameters alone belongs in `Setup::new`, never per sample;
   LPSPI4's frame-complete interrupt releases the OLED's chip select. The
   loop and the interrupts share mailboxes behind `critical_section::Mutex`
   (short copies).

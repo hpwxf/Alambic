@@ -796,7 +796,9 @@ into a mixer or headphones amp:
    tick. Read `voice` (one sample: what D-039 decides on, case B) and
    `voice_params` (taking new parameters, case C), not `audio`: the
    interrupt spins until the DAC's burst echoes, so `audio` measures the
-   burst and hides the computation.
+   burst and hides the computation. Since journal/D-040, `voice_params` is
+   only the copy of a voice prepared by the loop: well under a
+   microsecond, and the 11 µs peak of `audio` in case C gone.
 2. By ear, switching `CALC` while a note plays, from C1 to C8: no audible
    difference, a click at most on the switch.
 3. Before the module, `cargo run -p oc-core --example aliasing --release`

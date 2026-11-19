@@ -7,7 +7,8 @@
 //! polynomial (`PolyBLEP`), which removes most of the aliasing a naive ramp
 //! folds back into the audible band; the sum goes through a one-pole
 //! high-pass tuned on the fundamental. Everything that needs a division is
-//! computed when the parameters change, never per sample.
+//! computed when the parameters change, never per sample, by [`Setup::new`],
+//! which a backend may run outside its audio context (journal/D-040).
 //!
 //! The parts come out as falling sawtooths: the high-pass turns each jump
 //! into a spike several times higher than the rest of the wave, and the
@@ -163,15 +164,6 @@ impl Saw {
         }
     }
 
-    fn set_step(&mut self, step: u32) {
-        self.step = step;
-        self.inverse = if step == 0 {
-            0
-        } else {
-            (1u64 << 48) / u64::from(step)
-        };
-    }
-
     /// The band-limited value at the current phase, in `-ONE..=ONE`, then
     /// advances.
     fn next(&mut self) -> i32 {
@@ -238,6 +230,79 @@ impl HighPass {
         // The output of a high-pass stays within twice its input's range.
         let output = (self.state >> FILTER_BITS) as i32;
         output
+    }
+}
+
+/// `2^48 / step`, zero at rest: what [`Saw::inverse`] holds.
+fn inverse(step: u32) -> u64 {
+    if step == 0 {
+        0
+    } else {
+        (1u64 << 48) / u64::from(step)
+    }
+}
+
+/// Everything a supersaw's parameters decide for both banks, computed once
+/// when they change: the steps and their inverses, the gains, the
+/// normalisers and the high-pass coefficient (journal/D-040). Building it
+/// touches no bank, so it can run outside the audio context;
+/// [`Bank::apply`] only copies it.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Setup {
+    params: Supersaw,
+    steps: [u32; VOICES],
+    inverses: [u64; VOICES],
+    sub_step: u32,
+    sub_inverse: u64,
+    gains: (i64, i64),
+    normalisers: (i64, i64),
+    coefficient: i64,
+    float: float::Setup,
+}
+
+impl Setup {
+    /// Nothing played: what a new bank holds.
+    pub const OFF: Self = Self {
+        params: Supersaw::OFF,
+        steps: [0; VOICES],
+        inverses: [0; VOICES],
+        sub_step: 0,
+        sub_inverse: 0,
+        gains: (0, 0),
+        normalisers: (0, 0),
+        coefficient: 0,
+        float: float::Setup::OFF,
+    };
+
+    /// What `params` decide at `rate_hz`: every division a bank needs.
+    #[must_use]
+    pub fn new(params: &Supersaw, rate_hz: u32) -> Self {
+        let base = phase_step(params.frequency, rate_hz);
+        let spread = detune_curve(params.detune);
+        let steps = OFFSETS.map(|offset| {
+            let shift = (i64::from(base) * offset * spread) >> 32;
+            let step = (i64::from(base) + shift).clamp(0, i64::from(i32::MAX - 1));
+            u32::try_from(step).unwrap_or(0)
+        });
+        let (centre, side) = mix_gains(params.mix);
+        let normalisers = (normaliser(centre, side, 6), normaliser(centre, side, 3));
+        Self {
+            params: *params,
+            steps,
+            inverses: steps.map(inverse),
+            sub_step: base / 2,
+            sub_inverse: inverse(base / 2),
+            gains: (centre, side),
+            normalisers,
+            coefficient: high_pass_coefficient(base),
+            float: float::Setup::new(&steps, (centre, side), normalisers, params.amplitude),
+        }
+    }
+
+    /// The parameters it was built from.
+    #[must_use]
+    pub const fn params(&self) -> &Supersaw {
+        &self.params
     }
 }
 
@@ -316,25 +381,24 @@ impl Bank {
     /// Plays `params` at `rate_hz` from the next sample on, keeping the
     /// phases and the filters' state.
     pub fn set(&mut self, params: &Supersaw, rate_hz: u32) {
-        self.params = *params;
-        let base = phase_step(params.frequency, rate_hz);
-        let spread = detune_curve(params.detune);
-        for (saw, offset) in self.saws.iter_mut().zip(OFFSETS) {
-            let shift = (i64::from(base) * offset * spread) >> 32;
-            let step = (i64::from(base) + shift).clamp(0, i64::from(i32::MAX - 1));
-            saw.set_step(u32::try_from(step).unwrap_or(0));
+        self.apply(&Setup::new(params, rate_hz));
+    }
+
+    /// Plays what `setup` prepared from the next sample on, keeping the
+    /// phases and the filters' state: copies only, no division.
+    pub fn apply(&mut self, setup: &Setup) {
+        self.params = setup.params;
+        for ((saw, &step), &inverse) in self.saws.iter_mut().zip(&setup.steps).zip(&setup.inverses)
+        {
+            saw.step = step;
+            saw.inverse = inverse;
         }
-        self.sub.set_step(base / 2);
-        let (centre, side) = mix_gains(params.mix);
-        self.gains = (centre, side);
-        self.normalisers = (normaliser(centre, side, 6), normaliser(centre, side, 3));
-        self.coefficient = high_pass_coefficient(base);
-        self.float.set(
-            &self.steps(),
-            self.gains,
-            self.normalisers,
-            params.amplitude,
-        );
+        self.sub.step = setup.sub_step;
+        self.sub.inverse = setup.sub_inverse;
+        self.gains = setup.gains;
+        self.normalisers = setup.normalisers;
+        self.coefficient = setup.coefficient;
+        self.float.apply(&setup.float);
     }
 
     /// One sample of every part from the bank [`Supersaw::arithmetic`]

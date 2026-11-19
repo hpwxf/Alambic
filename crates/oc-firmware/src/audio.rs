@@ -23,7 +23,9 @@
 //!
 //! The engine keeps its output and display traits: [`MutedOutputs`] drops
 //! its codes, [`MailboxDisplay`] hands its frames over; after each tick the
-//! loop calls [`publish`] with [`oc_core::Engine::params`]. Everything the
+//! loop calls [`publish`] with [`oc_core::Engine::params`], which prepares
+//! the voice's [`Setup`] there, outside any critical section: the
+//! interrupt only copies it (journal/D-040). Everything the
 //! contexts share sits in [`critical_section::Mutex`]es: the loop's sections
 //! are copies of a few hundred bytes (a frame: 1 KiB). They delay the
 //! interrupts a little, never the DAC.
@@ -42,7 +44,7 @@ use teensy4_bsp::hal::lpspi::{ClockConfigs, Interrupts, Lpspi, Status, Transacti
 use teensy4_bsp::hal::pit::{self, Pit};
 use teensy4_bsp::ral::lpspi::TCR;
 
-use oc_core::audio::{Params, Voice};
+use oc_core::audio::{Params, Setup, Voice};
 use oc_core::calibration::CvOutputCalibration;
 use oc_core::framebuffer::{FrameBuffer, LEN};
 use oc_core::platform::{AnalogOut, CV_CHANNELS, CvChannel, Display};
@@ -65,9 +67,10 @@ const DAC_TCR: u32 = (23 << TCR::FRAMESZ::offset) | ((board::DAC_PCS as u32) << 
 
 /// What the loop leaves for the interrupt, and what the interrupt measured.
 struct Mailbox {
-    params: Params,
+    /// The voice prepared for the engine's last parameters.
+    setup: Setup,
     calibration: [CvOutputCalibration; CV_CHANNELS],
-    /// Set when `params` or `calibration` changed since the interrupt took
+    /// Set when `setup` or `calibration` changed since the interrupt took
     /// them.
     fresh: bool,
     frame: [u8; LEN],
@@ -109,7 +112,7 @@ impl Stats {
 }
 
 static MAILBOX: Mutex<RefCell<Mailbox>> = Mutex::new(RefCell::new(Mailbox {
-    params: Params::REST,
+    setup: Setup::rest(board::AUDIO_RATE_HZ),
     calibration: [CvOutputCalibration::FACTORY; CV_CHANNELS],
     fresh: false,
     frame: [0; LEN],
@@ -337,15 +340,29 @@ pub(crate) fn stop() {
 }
 
 /// Hands the interrupt what the outputs carry and how to convert it, from
-/// the next period on; copies only when something changed.
+/// the next period on; copies only when something changed. New parameters
+/// are prepared here, between the two critical sections, so the interrupt
+/// never waits for their divisions (journal/D-040); the loop being the only
+/// writer, nothing changes the mailbox between them.
 pub(crate) fn publish(params: &Params, calibration: &[CvOutputCalibration; CV_CHANNELS]) {
+    let (new_params, new_calibration) = critical_section::with(|cs| {
+        let mail = MAILBOX.borrow_ref(cs);
+        (
+            mail.setup.params() != params,
+            mail.calibration != *calibration,
+        )
+    });
+    if !new_params && !new_calibration {
+        return;
+    }
+    let setup = new_params.then(|| Setup::new(params, board::AUDIO_RATE_HZ));
     critical_section::with(|cs| {
         let mut mail = MAILBOX.borrow_ref_mut(cs);
-        if mail.params != *params || mail.calibration != *calibration {
-            mail.params = *params;
-            mail.calibration = *calibration;
-            mail.fresh = true;
+        if let Some(setup) = setup {
+            mail.setup = setup;
         }
+        mail.calibration = *calibration;
+        mail.fresh = true;
     });
 }
 
@@ -461,10 +478,11 @@ impl AudioState {
         // The next sample, two slots ahead of the DMA: the one after its
         // next read.
         // Timed apart from the rest (journal/D-039): within the wait for
-        // the burst's echo, `audio` cannot see them.
+        // the burst's echo, `audio` cannot see them. The parameters come
+        // prepared: taking them is a copy (journal/D-040).
         if mail.fresh {
             let start = DWT::cycle_count();
-            self.voice.set_params(&mail.params);
+            self.voice.apply(&mail.setup);
             mail.stats
                 .voice_params
                 .record(DWT::cycle_count().wrapping_sub(start));

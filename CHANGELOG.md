@@ -18,6 +18,14 @@ Architectural decisions behind each change are in `journal/` (French).
 
 ### Changed
 
+- The audio interrupt no longer prepares its voice: the loop computes an
+  `oc_core::audio::Setup` (every phase step and the supersaw's
+  coefficients) when the parameters change, outside any critical section,
+  and the interrupt only copies it (`Voice::apply`, journal/D-040). On the
+  module a CV moving the supersaw's note took the interrupt up to 11 µs of
+  its 21; `Voice::set_params` stays for the other backends, unchanged in
+  behaviour.
+
 - `SUPERSAW`'s settings are on two pages, with a scroll bar as in
   `RATCHET`: `NOTE`, `DETUNE`, `MIX`, `LEVEL`, then `STEREO` and `CALC`, which
   take no input.
