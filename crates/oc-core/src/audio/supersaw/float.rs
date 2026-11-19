@@ -181,17 +181,15 @@ impl Bank {
         }
     }
 
+    /// Each voice's phase step, a turn being `2^32` as in the integer bank:
+    /// the step it plays, the integer one rounded to an `f32`.
+    pub(super) fn steps(&self) -> [u32; VOICES] {
+        self.saws.map(|saw| from_turns(saw.step))
+    }
+
     /// Each voice's phase now, a turn being `2^32` as in the integer bank.
     pub(super) fn phases(&self) -> [u32; VOICES] {
-        self.saws.map(|saw| {
-            // A power of two: the product is exact.
-            let phase = saw.phase * 4_294_967_296.0;
-            #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
-            // The phase stays in `[0, 1)`: the product in `[0, 2^32)`, held at
-            // the top should it round up to `2^32`.
-            let phase = phase as u32;
-            phase
-        })
+        self.saws.map(|saw| from_turns(saw.phase))
     }
 
     /// Plays what `setup` prepared from the next sample on, keeping the
@@ -250,6 +248,18 @@ const fn turns(phase: u32) -> f32 {
     phase / 4_294_967_296.0
 }
 
+/// A fraction of a turn in `[0, 1)` as a phase or a step of the integer
+/// bank, a turn being `2^32`: the inverse of [`turns`].
+fn from_turns(turn: f32) -> u32 {
+    // A power of two: the product is exact.
+    let turn = turn * 4_294_967_296.0;
+    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+    // A fraction in `[0, 1)`: the product in `[0, 2^32)`, held at the top
+    // should it round up to `2^32`.
+    let turn = turn as u32;
+    turn
+}
+
 /// `value` with `bits` fractional bits.
 fn fraction(value: i64, bits: u32) -> f32 {
     #[allow(clippy::cast_precision_loss)]
@@ -277,7 +287,7 @@ fn millivolts(level: f32) -> MilliVolts {
 
 #[cfg(test)]
 mod tests {
-    use super::{millivolts, polyblep_saw, turns};
+    use super::{from_turns, millivolts, polyblep_saw, turns};
 
     #[test]
     fn the_saw_is_naive_away_from_its_jump() {
@@ -291,6 +301,14 @@ mod tests {
         let step = turns(1 << 24);
         assert!(polyblep_saw(0.0, step, 1.0 / step).abs() < 1e-6);
         assert!(polyblep_saw(1.0 - 1e-7, step, 1.0 / step).abs() < 1e-3);
+    }
+
+    #[test]
+    fn turns_go_there_and_back() {
+        // A step of 24 bits or fewer survives the round trip exactly.
+        for step in [0, 1 << 8, 0x00AB_CDEF << 8, 1 << 31] {
+            assert_eq!(from_turns(turns(step)), step);
+        }
     }
 
     #[test]

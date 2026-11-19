@@ -228,12 +228,16 @@ impl Bank {
         &self.params
     }
 
-    /// Each voice's phase step, a turn being `2^32` (the `f32` bank's are
-    /// the same, converted): what an analysis needs to tell a voice's
-    /// harmonics from what folds back.
+    /// Each voice's phase step in the bank [`Supersaw::arithmetic`] picks, a
+    /// turn being `2^32` (the `f32` bank's are the integer ones rounded to 24
+    /// bits): what an analysis needs to tell a voice's harmonics from what
+    /// folds back.
     #[must_use]
     pub fn steps(&self) -> [u32; VOICES] {
-        self.fixed.steps()
+        match self.params.arithmetic {
+            Arithmetic::Fixed => self.fixed.steps(),
+            Arithmetic::Float => self.float.steps(),
+        }
     }
 
     /// Each voice's phase now in the bank [`Supersaw::arithmetic`] picks, a
@@ -356,6 +360,26 @@ mod tests {
         let mut bank = Bank::new();
         for _ in 0..100 {
             assert_eq!(bank.next_frame(), super::Frame::default());
+        }
+    }
+
+    #[test]
+    fn the_steps_are_those_of_the_bank_playing() {
+        let mut params = Supersaw {
+            frequency: 440_000,
+            detune: FULL,
+            mix: FULL / 2,
+            amplitude: 1_000,
+            arithmetic: Arithmetic::Fixed,
+        };
+        let mut bank = Bank::new();
+        bank.set(&params, 47_619);
+        let fixed = bank.steps();
+        params.arithmetic = Arithmetic::Float;
+        bank.set(&params, 47_619);
+        // The same steps, rounded to an `f32`'s 24 bits.
+        for (float, fixed) in bank.steps().iter().zip(fixed) {
+            assert!(float.abs_diff(fixed) <= 1 << 8, "{float} against {fixed}");
         }
     }
 
