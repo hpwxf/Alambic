@@ -14,8 +14,15 @@ Architectural decisions behind each change are in `journal/` (French).
   new `CALC` setting (`INT` at start, `F32`), to compare the two on the
   module (`cargo probe stats`, by ear). Both banks follow every change of
   parameters and only the picked one runs, so switching resumes each where
-  it stopped. The two differ by under a millivolt RMS. The voice spread
-  drawing now takes one row, under the six settings.
+  it stopped. The two differ by under a millivolt RMS.
+
+### Changed
+
+- `SUPERSAW`'s settings are on two pages, with a scroll bar as in
+  `RATCHET`: `NOTE`, `DETUNE`, `MIX`, `LEVEL`, then `STEREO` and `CALC`, which
+  take no input.
+- Ratchet's scroll bar is now a control of its own,
+  `oc_core::gfx::controls::scroll_bar`.
 - `SUPERSAW_CALC=f32` makes the `aliasing` example measure the `f32` bank; a
   criterion benchmark, `supersaw_f32_sample_to_codes`.
 

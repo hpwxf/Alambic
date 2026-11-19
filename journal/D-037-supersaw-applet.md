@@ -218,3 +218,11 @@ une modulation rapide de `DETUNE` ou `MIX`) : plafonner `LEVEL` à 2 V. Un étag
 fabrication aux bornes différentes) : refaire la mesure, les bornes venant de `calibration::CV_OUT_MIN_MV` et
 `CV_OUT_MAX_MV`.
 
+## Révision du 2026-11-19 — réglages sur deux pages, avec l'ascenseur de `RATCHET`
+
+Avec `CALC` (D-039), six réglages ne tenaient plus à côté de l'éventail des voix sans le réduire à une rangée.
+Demande de l'utilisateur : les réglages sans entrée assignable (`STEREO`, `CALC`) passent en page 2, avec un ascenseur
+comme dans `RATCHET`. Quatre réglages par page (`NOTE`, `DETUNE`, `MIX`, `LEVEL` ; puis `STEREO`, `CALC`), la page
+suit le réglage choisi par l'encodeur gauche, l'ascenseur est `gfx::controls::scroll_bar` (sorti de `RATCHET` pour
+l'occasion, D-030) ; l'éventail retrouve ses deux rangées. Scénario doré `supersaw_page2`.
+

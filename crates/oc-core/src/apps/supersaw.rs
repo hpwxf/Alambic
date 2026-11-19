@@ -5,7 +5,9 @@
 //! `STEREO ON`; C a sawtooth an octave below; D rests at 0 V. The left
 //! encoder picks a setting, the right one changes it. `CALC` picks the
 //! bank's arithmetic, integers or `f32`, to compare the two on the module
-//! (journal/D-039).
+//! (journal/D-039). The settings an input can move are on the first page,
+//! `STEREO` and `CALC` on the second, a scroll bar left of them showing
+//! which.
 //!
 //! Every setting but `STEREO` and `CALC` can take an input, chosen in the submenu the
 //! right encoder's click opens (journal/D-036, [`Assign`]): it sets the
@@ -25,6 +27,7 @@ use crate::audio::{Channel, MilliHertz, Params};
 use crate::fixed::{self, ONE};
 use crate::fmt::{TextBuf, write_volts};
 use crate::framebuffer::{FrameBuffer, ROW_HEIGHT, WIDTH_I32};
+use crate::gfx::controls::scroll_bar;
 use crate::gfx::{self, Ink, Point};
 use crate::modulation::editor::{AssignEditor, Param};
 use crate::modulation::{Assign, AssignLine, Effect, multiplied};
@@ -195,11 +198,24 @@ const DEFAULT_ASSIGNS: [Assign; 4] = [
 /// Right edge of a setting's value, left of the input's name.
 const VALUE_RIGHT: i32 = 98;
 
-/// Top row of the voice spread drawing, below the six settings.
-const SPREAD_TOP: i32 = 7 * ROW_HEIGHT;
+/// Settings shown per page: those an input can move on the first, `STEREO`
+/// and `CALC` on the second.
+const PAGE_ROWS: usize = 4;
+
+/// Pages of settings.
+const PAGES: usize = Setting::ALL.len().div_ceil(PAGE_ROWS);
+
+/// Width of the scroll bar left of the settings, which shows the page.
+const SCROLL_WIDTH: i32 = 3;
+
+/// Left edge of the settings' rows, right of the scroll bar and a gap.
+const ROW_LEFT: i32 = SCROLL_WIDTH + 1;
+
+/// Top row of the voice spread drawing, a row below the settings.
+const SPREAD_TOP: i32 = 6 * ROW_HEIGHT;
 
 /// Height of the tallest voice in the drawing.
-const SPREAD_HEIGHT: i32 = ROW_HEIGHT - 1;
+const SPREAD_HEIGHT: i32 = 2 * ROW_HEIGHT - 1;
 
 /// Pixels from the centre to the widest voice at full detune.
 const SPREAD_HALF_WIDTH: i64 = 60;
@@ -329,6 +345,12 @@ impl SupersawApp {
         Setting::ALL[self.selected]
     }
 
+    /// The page of settings on screen, from 0: the selected setting's.
+    #[must_use]
+    pub const fn page(&self) -> usize {
+        self.selected / PAGE_ROWS
+    }
+
     /// The note set on the panel, as a MIDI number.
     #[must_use]
     pub const fn note(&self) -> u8 {
@@ -436,9 +458,22 @@ impl SupersawApp {
         let hertz = write_hertz(self.frequency());
         text::draw(frame, hertz.as_str(), Point::new(last, 0), right);
 
-        for (row, setting) in (1..).zip(Setting::ALL) {
+        let rows = i32::try_from(PAGE_ROWS).unwrap_or(4);
+        // Left of the settings, under the title.
+        scroll_bar(
+            frame,
+            0,
+            ROW_HEIGHT,
+            SCROLL_WIDTH,
+            rows * ROW_HEIGHT,
+            self.page(),
+            PAGES,
+        );
+        let first = self.page() * PAGE_ROWS;
+        let shown = &Setting::ALL[first..(first + PAGE_ROWS).min(Setting::ALL.len())];
+        for (row, &setting) in (1..).zip(shown) {
             let top = row * ROW_HEIGHT;
-            text::draw(frame, setting.label(), Point::new(1, top), lit);
+            text::draw(frame, setting.label(), Point::new(ROW_LEFT + 1, top), lit);
             let assign = self.assign(setting);
             // A setting that follows its input has no use for the panel's
             // value: its input stands in its place.
@@ -452,7 +487,14 @@ impl SupersawApp {
                 text::draw(frame, name.as_str(), Point::new(last - 1, top), right);
             }
             if setting == self.selected() {
-                gfx::fill_rect(frame, 0, top, WIDTH_I32, ROW_HEIGHT, Ink::Invert);
+                gfx::fill_rect(
+                    frame,
+                    ROW_LEFT,
+                    top,
+                    WIDTH_I32 - ROW_LEFT,
+                    ROW_HEIGHT,
+                    Ink::Invert,
+                );
             }
         }
         self.draw_spread(frame);
@@ -643,6 +685,18 @@ mod tests {
         assert_eq!(params.channels[1], Channel::Supersaw(Part::Right));
         app.update(&turn(-10, 0));
         assert_eq!(app.selected(), Setting::Note);
+    }
+
+    #[test]
+    fn stereo_and_calc_are_on_the_second_page() {
+        let mut app = SupersawApp::new();
+        assert_eq!(app.page(), 0);
+        app.update(&turn(3, 0));
+        assert_eq!((app.selected(), app.page()), (Setting::Level, 0));
+        app.update(&turn(1, 0));
+        assert_eq!((app.selected(), app.page()), (Setting::Stereo, 1));
+        app.update(&turn(1, 0));
+        assert_eq!((app.selected(), app.page()), (Setting::Calc, 1));
     }
 
     #[test]

@@ -784,7 +784,8 @@ module with the falling sawtooths (2026-11-18): the sound is right.
 
 ### 9.3g — Supersaw in integers and in `f32` (journal/D-039, lot 9b)
 
-`SUPERSAW`, `CALC` on the last line, A into a mixer or headphones amp:
+`SUPERSAW`, `CALC` on the second page (the left encoder past `LEVEL`), A
+into a mixer or headphones amp:
 
 1. `cargo probe stats` just after a restart with `CALC INT`, then again
    after a restart with `CALC F32` set before reading: `audio` mean and

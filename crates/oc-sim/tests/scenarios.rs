@@ -255,6 +255,18 @@ fn supersaw_shows_the_input_submenu() {
 }
 
 #[test]
+fn supersaw_shows_stereo_and_calc_on_its_second_page() {
+    use oc_core::apps::supersaw::Setting;
+    use oc_core::audio::supersaw::Arithmetic;
+    let mut simulator = replay("supersaw_page2");
+    let supersaw = simulator.supersaw();
+    assert_eq!((supersaw.selected(), supersaw.page()), (Setting::Calc, 1));
+    assert!(supersaw.stereo());
+    assert_eq!(supersaw.arithmetic(), Arithmetic::Float);
+    assert_screen_matches(&mut simulator, "supersaw_page2");
+}
+
+#[test]
 fn tone_plays_its_note_raised_by_cv1() {
     let simulator = replay("tone");
     assert_eq!(simulator.current_app(), AppId::Tone);
@@ -368,6 +380,7 @@ fn every_scenario_file_has_a_test_and_a_snapshot() {
         "tone",
         "supersaw",
         "supersaw_inputs",
+        "supersaw_page2",
     ];
 
     let mut found: Vec<String> = std::fs::read_dir(scenario_dir())
