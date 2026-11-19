@@ -366,6 +366,7 @@ mod tests {
             frequency,
             detune: FULL,
             mix: FULL / 2,
+            shape: 0,
             amplitude: 1_000,
             arithmetic,
         };

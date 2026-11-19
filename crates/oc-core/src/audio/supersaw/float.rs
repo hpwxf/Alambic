@@ -34,9 +34,18 @@ impl Saw {
     };
 
     /// The band-limited value at the current phase, in `-1..=1`, then
-    /// advances.
-    fn next(&mut self) -> f32 {
-        let value = polyblep_saw(self.phase, self.step, self.inverse);
+    /// advances: a sawtooth less `shape` (zero to one) of the same half a
+    /// turn on, which blends it into a square of the same peak.
+    fn next(&mut self, shape: f32) -> f32 {
+        let mut value = polyblep_saw(self.phase, self.step, self.inverse);
+        if shape != 0.0 {
+            let half = if self.phase < 0.5 {
+                self.phase + 0.5
+            } else {
+                self.phase - 0.5
+            };
+            value -= shape * polyblep_saw(half, self.step, self.inverse);
+        }
         self.phase += self.step;
         if self.phase >= 1.0 {
             self.phase -= 1.0;
@@ -101,6 +110,7 @@ pub(super) struct Setup {
     gains: [f32; VOICES],
     normalisers: (f32, f32),
     coefficient: f32,
+    shape: f32,
     amplitude: f32,
 }
 
@@ -114,15 +124,18 @@ impl Setup {
         gains: [0.0; VOICES],
         normalisers: (0.0, 0.0),
         coefficient: 0.0,
+        shape: 0.0,
         amplitude: 0.0,
     };
 
     /// From the preparation both banks share: the voices' steps, their gains
-    /// in 1.15 and the normalisers `2^32 / root` of gains in 1.15.
+    /// in 1.15, the normalisers `2^32 / root` of gains in 1.15 and the shape
+    /// in 1.15.
     pub(super) fn new(
         steps: &[u32; VOICES],
         gains: &[i64; VOICES],
         normalisers: (i64, i64),
+        shape: i64,
         amplitude: MilliVolts,
     ) -> Self {
         let pairs = steps.map(step_and_inverse);
@@ -138,6 +151,7 @@ impl Setup {
             normalisers: (fraction(normalisers.0, 17), fraction(normalisers.1, 17)),
             // `1 / (1 + 2 pi f / fs)`, the integer bank's coefficient.
             coefficient: 1.0 / (1.0 + core::f32::consts::TAU * turns(base)),
+            shape: fraction(shape, 15),
             amplitude: fraction(i64::from(amplitude), 0),
         }
     }
@@ -155,6 +169,8 @@ pub(super) struct Bank {
     normalisers: (f32, f32),
     /// High-pass coefficient.
     coefficient: f32,
+    /// The voices' waveform: 0 a sawtooth, one a square.
+    shape: f32,
     /// Peak level of one sawtooth, in millivolts.
     amplitude: f32,
     /// High-passes of the mono, left and right parts.
@@ -176,6 +192,7 @@ impl Bank {
             gains: [0.0; VOICES],
             normalisers: (0.0, 0.0),
             coefficient: 0.0,
+            shape: 0.0,
             amplitude: 0.0,
             filters: [HighPass::NEW; 3],
         }
@@ -205,6 +222,7 @@ impl Bank {
         self.gains = setup.gains;
         self.normalisers = setup.normalisers;
         self.coefficient = setup.coefficient;
+        self.shape = setup.shape;
         self.amplitude = setup.amplitude;
     }
 
@@ -213,7 +231,7 @@ impl Bank {
         // Each voice weighed by its gain.
         let mut values = [0.0f32; VOICES];
         for ((value, saw), gain) in values.iter_mut().zip(&mut self.saws).zip(self.gains) {
-            *value = saw.next() * gain;
+            *value = saw.next(self.shape) * gain;
         }
         let centre = values[CENTRE];
         let left = LEFT.iter().map(|&index| values[index]).sum::<f32>();
@@ -229,7 +247,8 @@ impl Bank {
             // Falling sawtooths, as in the integer bank.
             *part = millivolts(-filter.next(sum, self.coefficient) * self.amplitude);
         }
-        let sub = millivolts(-self.sub.next() * self.amplitude);
+        // A sawtooth whatever the shape.
+        let sub = millivolts(-self.sub.next(0.0) * self.amplitude);
         Frame {
             mono: parts[0],
             left: parts[1],

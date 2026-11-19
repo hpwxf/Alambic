@@ -252,6 +252,7 @@ fn voice(criterion: &mut Criterion) {
         frequency: 110_000,
         detune: FULL / 2,
         mix: FULL / 2,
+        shape: 0,
         amplitude: 1_000,
         arithmetic: Arithmetic::Fixed,
     };
@@ -262,6 +263,17 @@ fn voice(criterion: &mut Criterion) {
             black_box(samples.map(|level| output.to_code(level)))
         });
     });
+
+    // The same as squares: one more corrected sawtooth per voice.
+    params.supersaw.shape = FULL;
+    bank.set_params(&params);
+    group.bench_function("supersaw_square_sample_to_codes", |bencher| {
+        bencher.iter(|| {
+            let samples = bank.next_sample();
+            black_box(samples.map(|level| output.to_code(level)))
+        });
+    });
+    params.supersaw.shape = 0;
 
     // The same in `f32` (journal/D-039).
     params.supersaw.arithmetic = Arithmetic::Float;

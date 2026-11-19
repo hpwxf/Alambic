@@ -79,6 +79,7 @@ fn supersaw(frequency: u32, detune: u16, mix: u16) -> Supersaw {
         frequency,
         detune,
         mix,
+        shape: 0,
         amplitude: 1_000,
         arithmetic: Arithmetic::Fixed,
     }
@@ -270,14 +271,20 @@ fn banks_apart(supersaw: Supersaw, part: usize, samples: usize) -> (f64, f64) {
 
 #[test]
 fn the_float_bank_plays_what_the_integer_bank_plays() {
-    for (frequency, detune, mix) in [
-        (110_000, 0, 0),
-        (110_000, 500, 500),
-        (440_000, FULL, FULL),
-        (4_186_000, FULL, 500),
+    for (frequency, detune, mix, shape) in [
+        (110_000, 0, 0, 0),
+        (110_000, 500, 500, 0),
+        (440_000, FULL, FULL, 0),
+        (4_186_000, FULL, 500, 0),
+        (110_000, 500, 500, FULL / 2),
+        (440_000, FULL, FULL, FULL),
     ] {
         for part in 0..4 {
-            let (apart, level) = banks_apart(supersaw(frequency, detune, mix), part, 4_800);
+            let params = Supersaw {
+                shape,
+                ..supersaw(frequency, detune, mix)
+            };
+            let (apart, level) = banks_apart(params, part, 4_800);
             // The roundings to the millivolt differ: under one millivolt
             // apart measured, for levels of hundreds.
             assert!(
@@ -345,5 +352,87 @@ fn switching_banks_resumes_each_where_it_stopped() {
     switched.set_params(&both);
     for _ in 0..100 {
         assert_eq!(switched.next_sample(), straight.next_sample());
+    }
+}
+
+/// `supersaw` as squares, or blended, at `shape`.
+fn shaped(supersaw: Supersaw, shape: u16) -> Supersaw {
+    Supersaw { shape, ..supersaw }
+}
+
+/// Root mean square of the mono part over a second.
+fn mono_rms(supersaw: Supersaw) -> f64 {
+    let mut voice = bank_voice(supersaw);
+    let sum: f64 = (0..48_000)
+        .map(|_| f64::from(voice.next_sample()[0]).powi(2))
+        .sum();
+    (sum / 48_000.0).sqrt()
+}
+
+#[test]
+fn the_shape_keeps_the_loudness() {
+    // Squares are louder than sawtooths of the same peak by about 4.8 dB;
+    // the normalisers take it back (journal/D-037, revision of 2026-11-19).
+    for arithmetic in [Arithmetic::Fixed, Arithmetic::Float] {
+        let saws = Supersaw {
+            arithmetic,
+            ..supersaw(220_000, 500, 500)
+        };
+        let reference = mono_rms(saws);
+        for shape in [FULL / 4, FULL / 2, FULL] {
+            let ratio = 20.0 * (mono_rms(shaped(saws, shape)) / reference).log10();
+            assert!(
+                ratio.abs() < 1.5,
+                "{arithmetic:?}, shape {shape}: {ratio:.2} dB"
+            );
+        }
+    }
+}
+
+/// The second and third harmonics of the mono part against its
+/// fundamental, in dB, at 500 Hz.
+fn harmonics_db(supersaw: Supersaw) -> (f64, f64) {
+    let mut voice = bank_voice(supersaw);
+    let samples: Vec<f64> = (0..4_800)
+        .map(|_| f64::from(voice.next_sample()[0]))
+        .skip(480)
+        .collect();
+    let first = power(&samples, 500.0);
+    (
+        10.0 * (power(&samples, 1_000.0) / first).log10(),
+        10.0 * (power(&samples, 1_500.0) / first).log10(),
+    )
+}
+
+#[test]
+fn a_square_has_no_even_harmonics() {
+    // One voice in practice: no detune, no side voices to speak of. A
+    // sawtooth's harmonics go as 1/k, a square's as 1/k for odd k only: the
+    // same third, no second, whatever the high-pass does to both.
+    for arithmetic in [Arithmetic::Fixed, Arithmetic::Float] {
+        let saw = Supersaw {
+            arithmetic,
+            ..supersaw(500_000, 0, 0)
+        };
+        let (saw_second, saw_third) = harmonics_db(saw);
+        let (second, third) = harmonics_db(shaped(saw, FULL));
+        assert!(
+            second < saw_second - 30.0,
+            "{arithmetic:?}: second harmonic {second:.1} dB, the sawtooth's {saw_second:.1}"
+        );
+        assert!(
+            (third - saw_third).abs() < 0.5,
+            "{arithmetic:?}: third harmonic {third:.1} dB, the sawtooth's {saw_third:.1}"
+        );
+    }
+}
+
+#[test]
+fn a_sawtooth_shape_changes_nothing() {
+    // At 0 the shape adds nothing: the samples are the sawtooths' own.
+    let mut plain = bank_voice(supersaw(330_000, FULL, 500));
+    let mut zero = bank_voice(shaped(supersaw(330_000, FULL, 500), 0));
+    for _ in 0..4_800 {
+        assert_eq!(plain.next_sample(), zero.next_sample());
     }
 }

@@ -226,3 +226,26 @@ comme dans `RATCHET`. Quatre réglages par page (`NOTE`, `DETUNE`, `MIX`, `LEVEL
 suit le réglage choisi par l'encodeur gauche, l'ascenseur est `gfx::controls::scroll_bar` (sorti de `RATCHET` pour
 l'occasion, D-030) ; l'éventail retrouve ses deux rangées. Scénario doré `supersaw_page2`.
 
+## Révision du 2026-11-19 — `SHAPE` : de la scie au carré
+
+Demande de l'utilisateur, d'après le paramètre *Shape* du Ripsaw d'Acid Rain Technology (scie fondue vers un carré,
+sur toutes les voix). Chaque voix devient `saw(t) − s · saw(t + ½)`, `s` de 0 à 1 : c'est exactement le mélange
+`(1 − s) · scie + s · carré`, de même crête, et chaque terme étant corrigé par PolyBLEP, le mélange reste à bande
+limitée à toute valeur de `s`. La demi-période ne coûte qu'une addition à la phase (2³¹ en `u32`, ½ en `f32`), pas un
+accumulateur de plus ; la seconde scie n'est calculée que si `s` n'est pas nul, et à 0 le banc est identique au bit
+près à ce qu'il était.
+
+* **Volume** : la puissance d'une voix à `s` est `(1 + s + s²) / 3` (le produit des deux scies vaut −1/6 en
+  moyenne), contre 1/3 pour la scie ; la racine du rapport (`shape_loudness`, √3 au carré, +4,8 dB) entre dans les
+  normaliseurs du `Setup` (D-040), comme les lois de mix : le volume reste à peu près le même sur toute la course,
+  sans coût par échantillon.
+* **Applet** : `SHAPE` en page 1, entre `MIX` et `LEVEL` (cinq réglages par page, l'éventail des voix garde ses deux
+  rangées), en pour cent, scie au démarrage ; entrée assignable comme `DETUNE` et `MIX` (0 à 5 V sur la course).
+  Le sous-octave reste une scie.
+* **Mesuré** (exemple `aliasing`, `SUPERSAW_SHAPE`, références `ideal` et `naive` fondues de la même façon) : en carré,
+  repli sous 10 kHz ≤ −44 dB partout (scie : ≤ −45 dB) ; le carré saute dans les deux sens, donc le passe-haut fait
+  aussi des pointes vers −3 V : niveau le plus haut sans écrêtage 2,01 V en scie, 1,90 V à mi-course, 1,49 V en
+  carré. `LEVEL` garde 3 V au plus, comme après la révision précédente.
+* **Coût** : une scie corrigée de plus par voix ; sur l'hôte, 37 → 48 ns par échantillon en carré.
+* Écrit dans les deux bancs, entier et `f32`, D-039 n'étant pas tranchée.
+

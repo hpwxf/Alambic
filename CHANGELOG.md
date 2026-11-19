@@ -9,6 +9,13 @@ Architectural decisions behind each change are in `journal/` (French).
 
 ### Added
 
+- **`SHAPE`** in `SUPERSAW`: each voice blends from a sawtooth into a
+  square, band-limited all the way, at about the same loudness
+  (journal/D-037, revision of 2026-11-19); on the first page, takes an
+  input like `DETUNE` and `MIX`. The sub-octave stays a sawtooth. Squares
+  clip from about 1.5 V of `LEVEL`, against 2 V for sawtooths.
+  `SUPERSAW_SHAPE` sets the shape the `aliasing` example measures.
+
 - **`SUPERSAW` in `f32`, on trial** (journal/D-039): a second bank, the same
   voices, curves and parts in single-precision floating point, picked by a
   new `CALC` setting (`INT` at start, `F32`), to compare the two on the

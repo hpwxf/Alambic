@@ -760,6 +760,8 @@ the edge of its range (C7 or C8).
 2. By ear from C1 to C8 at `DETUNE` 0, 50 and 100 %: no click, no tone that
    does not follow the note (aliasing would decide the ×4 of lot 8d).
 3. `STEREO ON`: A and B differ, the field widens; `OFF`: the same on both.
+   `SHAPE` from 0 to 100 %: from a sawtooth to a hollow square, about as
+   loud all the way, no click as it turns.
 4. Inputs unplugged, `DETUNE` at 100 %: the seven bars stay still (an input
    nobody assigned moves nothing). `NOTE`'s `CV1`: a volt raises the pitch
    an octave (the header's hertz double). Assign `CV2` to `DETUNE` (right

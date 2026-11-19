@@ -84,6 +84,10 @@ pub struct Supersaw {
     pub detune: u16,
     /// How loud the side voices are against the centre, in thousandths.
     pub mix: u16,
+    /// Each voice's waveform, in thousandths: a sawtooth at 0, a square at
+    /// [`FULL`], their blend between (journal/D-037, revision of
+    /// 2026-11-19); the loudness stays about the same over the course.
+    pub shape: u16,
     /// Peak level of one sawtooth; the sum is scaled to sound about as loud.
     pub amplitude: MilliVolts,
     /// Which of the two banks plays it.
@@ -96,6 +100,7 @@ impl Supersaw {
         frequency: 0,
         detune: 0,
         mix: 0,
+        shape: 0,
         amplitude: 0,
         arithmetic: Arithmetic::Fixed,
     };
@@ -191,11 +196,17 @@ impl Setup {
                 .map(|&index| gains[index] * gains[index])
                 .sum::<i64>();
         let all = gains.iter().map(|gain| gain * gain).sum::<i64>();
-        let normalisers = (normaliser(all), normaliser(one_side));
+        let loudness = shape_loudness(params.shape);
+        let normalisers = (
+            normaliser(all) * UNIT / loudness,
+            normaliser(one_side) * UNIT / loudness,
+        );
+        // In 1.15, from 0 (a sawtooth) to one (a square).
+        let shape = fraction(params.shape) >> 1;
         Self {
             params: *params,
-            fixed: fixed::Setup::new(&steps, &gains, normalisers, params.amplitude),
-            float: float::Setup::new(&steps, &gains, normalisers, params.amplitude),
+            fixed: fixed::Setup::new(&steps, &gains, normalisers, shape, params.amplitude),
+            float: float::Setup::new(&steps, &gains, normalisers, shape, params.amplitude),
         }
     }
 
@@ -328,6 +339,21 @@ pub fn voice_gains(mix: u16) -> [i64; VOICES] {
     core::array::from_fn(|index| if index == CENTRE { centre } else { side })
 }
 
+/// How much louder, in root mean square, a voice at `shape` is than a
+/// sawtooth, in 16.16: one at the sawtooth, `sqrt(3)` at the square.
+///
+/// A voice at `s` is `saw(t) - s saw(t + 1/2)`, whose mean square is
+/// `(1 + s + s^2) / 3` (the two sawtooths' product averages `-1/6`), against
+/// `1/3` for the sawtooth: the ratio's root.
+#[must_use]
+pub fn shape_loudness(shape: u16) -> i64 {
+    let s = fraction(shape);
+    let ratio = UNIT + s + ((s * s) >> 16);
+    // The root of a 16.16 value, in 16.16; exact at one.
+    let root = u64::try_from(ratio << 16).unwrap_or(0).isqrt();
+    i64::try_from(root).unwrap_or(UNIT).max(1)
+}
+
 /// `2^32 / sqrt(power)`, `power` the summed squares of the gains in 1.15 of
 /// the voices a part sums: dividing the sum by it keeps the loudness about
 /// the same whatever the mix.
@@ -342,7 +368,7 @@ fn normaliser(power: i64) -> i64 {
 mod tests {
     use super::{
         Arithmetic, Bank, CENTRE, FULL, LEFT, OFFSETS, PHASES, RIGHT, Supersaw, UNIT, VOICES,
-        detune_curve, mix_gains,
+        detune_curve, mix_gains, shape_loudness,
     };
 
     #[test]
@@ -379,11 +405,20 @@ mod tests {
     }
 
     #[test]
+    fn a_square_is_louder_by_the_root_of_three() {
+        assert_eq!(shape_loudness(0), UNIT, "exactly one: a sawtooth unchanged");
+        let square = shape_loudness(FULL);
+        assert!((square - 113_512).abs() <= 2, "{square}");
+        assert!(shape_loudness(FULL / 2) < square);
+    }
+
+    #[test]
     fn the_steps_are_those_of_the_bank_playing() {
         let mut params = Supersaw {
             frequency: 440_000,
             detune: FULL,
             mix: FULL / 2,
+            shape: 0,
             amplitude: 1_000,
             arithmetic: Arithmetic::Fixed,
         };
@@ -406,6 +441,7 @@ mod tests {
             frequency: 440_000,
             detune: FULL,
             mix: FULL / 2,
+            shape: 0,
             amplitude: 1_000,
             arithmetic: Arithmetic::Float,
         };
@@ -445,6 +481,7 @@ mod tests {
             frequency: 20_000_000,
             detune: FULL,
             mix: FULL,
+            shape: 0,
             amplitude: 3_000,
             arithmetic: super::Arithmetic::Fixed,
         };

@@ -3,7 +3,9 @@
 //!
 //! A and B carry all seven voices, or the left and right halves with
 //! `STEREO ON`; C a sawtooth an octave below; D rests at 0 V. The left
-//! encoder picks a setting, the right one changes it. `CALC` picks the
+//! encoder picks a setting, the right one changes it. `SHAPE` blends each
+//! voice from a sawtooth into a square (journal/D-037, revision of
+//! 2026-11-19). `CALC` picks the
 //! bank's arithmetic, integers or `f32`, to compare the two on the module
 //! (journal/D-039). The settings an input can move are on the first page,
 //! `STEREO` and `CALC` on the second, a scroll bar left of them showing
@@ -70,6 +72,8 @@ pub enum Setting {
     Detune,
     /// The side voices against the centre.
     Mix,
+    /// Each voice's waveform, from a sawtooth to a square.
+    Shape,
     /// The peak level of one sawtooth.
     Level,
     /// A and B as one mono output twice, or left and right.
@@ -80,10 +84,11 @@ pub enum Setting {
 
 impl Setting {
     /// Every setting, top to bottom.
-    pub const ALL: [Self; 6] = [
+    pub const ALL: [Self; 7] = [
         Self::Note,
         Self::Detune,
         Self::Mix,
+        Self::Shape,
         Self::Level,
         Self::Stereo,
         Self::Calc,
@@ -96,6 +101,7 @@ impl Setting {
             Self::Note => "NOTE",
             Self::Detune => "DETUNE",
             Self::Mix => "MIX",
+            Self::Shape => "SHAPE",
             Self::Level => "LEVEL",
             Self::Stereo => "STEREO",
             Self::Calc => "CALC",
@@ -110,6 +116,7 @@ impl Setting {
             Self::Detune => Some(1),
             Self::Mix => Some(2),
             Self::Level => Some(3),
+            Self::Shape => Some(4),
             Self::Stereo | Self::Calc => None,
         }
     }
@@ -129,7 +136,7 @@ pub const fn sweep(setting: Setting) -> Option<(MilliVolts, MilliVolts)> {
             (LOWEST_NOTE as MilliVolts - SET_NOTE as MilliVolts) * 1_000 / 12,
             (HIGHEST_NOTE as MilliVolts - SET_NOTE as MilliVolts) * 1_000 / 12,
         )),
-        Setting::Detune | Setting::Mix | Setting::Level => Some((0, COURSE_MV)),
+        Setting::Detune | Setting::Mix | Setting::Shape | Setting::Level => Some((0, COURSE_MV)),
         Setting::Stereo | Setting::Calc => None,
     }
 }
@@ -185,11 +192,12 @@ fn swept(value: i64, full: i64, millivolts: MilliVolts, effect: Effect) -> i64 {
 
 /// What each setting takes at start: `CV1` added to the note, the V/oct an
 /// oscillator is patched by; nothing for the others.
-const DEFAULT_ASSIGNS: [Assign; 4] = [
+const DEFAULT_ASSIGNS: [Assign; 5] = [
     Assign {
         input: Some(CvChannel::One),
         ..Assign::NONE
     },
+    Assign::NONE,
     Assign::NONE,
     Assign::NONE,
     Assign::NONE,
@@ -200,7 +208,7 @@ const VALUE_RIGHT: i32 = 98;
 
 /// Settings shown per page: those an input can move on the first, `STEREO`
 /// and `CALC` on the second.
-const PAGE_ROWS: usize = 4;
+const PAGE_ROWS: usize = 5;
 
 /// Pages of settings.
 const PAGES: usize = Setting::ALL.len().div_ceil(PAGE_ROWS);
@@ -227,11 +235,12 @@ pub struct SupersawApp {
     note: u8,
     detune: u16,
     mix: u16,
+    shape: u16,
     level: MilliVolts,
     stereo: bool,
     arithmetic: Arithmetic,
     /// The input of each setting that takes one (see `Setting::input_slot`).
-    assigns: [Assign; 4],
+    assigns: [Assign; 5],
     /// The selected setting's input submenu, `None` while it is closed.
     assigning: Option<AssignEditor>,
     /// The last inputs.
@@ -248,6 +257,7 @@ impl SupersawApp {
             note: DEFAULT_NOTE,
             detune: DEFAULT_AMOUNT,
             mix: DEFAULT_AMOUNT,
+            shape: 0,
             level: DEFAULT_LEVEL_MV,
             stereo: false,
             arithmetic: Arithmetic::Fixed,
@@ -303,6 +313,7 @@ impl SupersawApp {
             }
             Setting::Detune => self.detune = step_amount(self.detune, detents),
             Setting::Mix => self.mix = step_amount(self.mix, detents),
+            Setting::Shape => self.shape = step_amount(self.shape, detents),
             Setting::Level => {
                 self.level = (self.level + detents * LEVEL_STEP_MV).clamp(0, MAX_LEVEL_MV);
             }
@@ -333,6 +344,7 @@ impl SupersawApp {
             frequency: self.frequency(),
             detune: self.played_detune(),
             mix: self.played_mix(),
+            shape: self.played_shape(),
             amplitude: self.played_level(),
             arithmetic: self.arithmetic,
         };
@@ -367,6 +379,13 @@ impl SupersawApp {
     #[must_use]
     pub const fn mix(&self) -> u16 {
         self.mix
+    }
+
+    /// The shape set on the panel, in thousandths: 0 a sawtooth, all a
+    /// square.
+    #[must_use]
+    pub const fn shape(&self) -> u16 {
+        self.shape
     }
 
     /// The peak level of one sawtooth.
@@ -425,6 +444,15 @@ impl SupersawApp {
         self.reading(Setting::Detune)
             .map_or(self.detune, |(millivolts, effect)| {
                 amount_from(self.detune, millivolts, effect)
+            })
+    }
+
+    /// The shape played: the panel's and its input.
+    #[must_use]
+    pub fn played_shape(&self) -> u16 {
+        self.reading(Setting::Shape)
+            .map_or(self.shape, |(millivolts, effect)| {
+                amount_from(self.shape, millivolts, effect)
             })
     }
 
@@ -517,11 +545,11 @@ impl SupersawApp {
                     pitch_permille(self.frequency()),
                 )
             }
-            Setting::Detune | Setting::Mix => {
-                let (panel, played) = if setting == Setting::Detune {
-                    (self.detune, self.played_detune())
-                } else {
-                    (self.mix, self.played_mix())
+            Setting::Detune | Setting::Mix | Setting::Shape => {
+                let (panel, played) = match setting {
+                    Setting::Detune => (self.detune, self.played_detune()),
+                    Setting::Mix => (self.mix, self.played_mix()),
+                    _ => (self.shape, self.played_shape()),
                 };
                 write_percent(&mut now, played);
                 (i32::from(panel), i32::from(played))
@@ -560,6 +588,7 @@ impl SupersawApp {
             }
             Setting::Detune => write_percent(&mut line, self.detune),
             Setting::Mix => write_percent(&mut line, self.mix),
+            Setting::Shape => write_percent(&mut line, self.shape),
             Setting::Level => {
                 let _ = write_volts(&mut line, self.level, 1);
                 let _ = write!(line, " V");
@@ -676,7 +705,7 @@ mod tests {
         app.update(&turn(1, 3));
         assert_eq!(app.selected(), Setting::Detune);
         assert_eq!(app.detune(), DEFAULT_AMOUNT + 3 * AMOUNT_STEP);
-        app.update(&turn(3, 1));
+        app.update(&turn(4, 1));
         assert_eq!(app.selected(), Setting::Stereo);
         let params = app.update(&InputSnapshot::default());
         assert!(app.stereo());
@@ -691,11 +720,28 @@ mod tests {
         let mut app = SupersawApp::new();
         assert_eq!(app.page(), 0);
         app.update(&turn(3, 0));
+        assert_eq!((app.selected(), app.page()), (Setting::Shape, 0));
+        app.update(&turn(1, 0));
         assert_eq!((app.selected(), app.page()), (Setting::Level, 0));
         app.update(&turn(1, 0));
         assert_eq!((app.selected(), app.page()), (Setting::Stereo, 1));
         app.update(&turn(1, 0));
         assert_eq!((app.selected(), app.page()), (Setting::Calc, 1));
+    }
+
+    #[test]
+    fn shape_starts_as_a_sawtooth_and_takes_an_input() {
+        let mut app = SupersawApp::new();
+        assert_eq!(app.params().supersaw.shape, 0);
+        app.update(&turn(3, 25));
+        assert_eq!(app.selected(), Setting::Shape);
+        assert_eq!(app.shape(), 25 * AMOUNT_STEP);
+        assert_eq!(app.params().supersaw.shape, 250);
+        assert_eq!(sweep(Setting::Shape), Some((0, 5_000)));
+        assert!(app.assign(Setting::Shape).is_some());
+        // Beyond the square, it stays a square.
+        app.update(&turn(0, 100));
+        assert_eq!(app.shape(), FULL);
     }
 
     #[test]
