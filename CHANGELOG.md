@@ -12,7 +12,8 @@ Architectural decisions behind each change are in `journal/` (French).
 - **`SHAPE`** in `SUPERSAW`: each voice blends from a sawtooth into a
   square, band-limited all the way, at about the same loudness
   (journal/D-037, revision of 2026-11-19); on the first page, takes an
-  input like `DETUNE` and `MIX`. The sub-octave stays a sawtooth. Squares
+  input like `DETUNE` and `MIX`, and a picture of the waveform played
+  beside its label. The sub-octave stays a sawtooth. Squares
   clip from about 1.5 V of `LEVEL`, against 2 V for sawtooths.
   `SUPERSAW_SHAPE` sets the shape the `aliasing` example measures.
 

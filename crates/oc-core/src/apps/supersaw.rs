@@ -30,6 +30,7 @@ use crate::fixed::{self, ONE};
 use crate::fmt::{TextBuf, write_volts};
 use crate::framebuffer::{FrameBuffer, ROW_HEIGHT, WIDTH_I32};
 use crate::gfx::controls::scroll_bar;
+use crate::gfx::plots::Area;
 use crate::gfx::{self, Ink, Point};
 use crate::modulation::editor::{AssignEditor, Param};
 use crate::modulation::{Assign, AssignLine, Effect, multiplied};
@@ -218,6 +219,13 @@ const SCROLL_WIDTH: i32 = 3;
 
 /// Left edge of the settings' rows, right of the scroll bar and a gap.
 const ROW_LEFT: i32 = SCROLL_WIDTH + 1;
+
+/// Left column of the waveform beside `SHAPE`, between its label and its
+/// value.
+const SHAPE_ICON_LEFT: i32 = 40;
+
+/// Columns of one period of that waveform: two periods show the jumps.
+const SHAPE_ICON_PERIOD: i32 = 10;
 
 /// Top row of the voice spread drawing, a row below the settings.
 const SPREAD_TOP: i32 = 6 * ROW_HEIGHT;
@@ -514,6 +522,9 @@ impl SupersawApp {
                 assign.write(&mut name);
                 text::draw(frame, name.as_str(), Point::new(last - 1, top), right);
             }
+            if setting == Setting::Shape {
+                self.draw_shape(frame, top);
+            }
             if setting == self.selected() {
                 gfx::fill_rect(
                     frame,
@@ -610,6 +621,42 @@ impl SupersawApp {
         shown
     }
 
+    /// Two periods of a voice's waveform as played, from the sawtooth to the
+    /// square, in the row from `top`: `saw(t) - s saw(t + 1/2)`, as the bank
+    /// computes it (journal/D-037), without its correction, as steps.
+    fn draw_shape(&self, frame: &mut FrameBuffer, top: i32) {
+        let shape = i32::from(self.played_shape());
+        let full = i32::from(FULL);
+        // A rising ramp over a period, in thousandths of its peak.
+        let saw = |column: i32| (column % SHAPE_ICON_PERIOD) * 2 * full / SHAPE_ICON_PERIOD - full;
+        let samples: [i32; 2 * SHAPE_ICON_PERIOD as usize] = core::array::from_fn(|index| {
+            let column = i32::try_from(index).unwrap_or(0);
+            saw(column) - shape * saw(column + SHAPE_ICON_PERIOD / 2) / full
+        });
+        // Scaled on its own extremes, so every shape takes the same rows:
+        // sampled, a ramp stops a step short of its peak, a square does not.
+        let low = samples.iter().copied().min().unwrap_or(-full);
+        let high = samples.iter().copied().max().unwrap_or(full);
+        let area = Area {
+            x: SHAPE_ICON_LEFT,
+            y: top,
+            width: 2 * SHAPE_ICON_PERIOD,
+            height: ROW_HEIGHT - 1,
+            range: (low, high),
+        };
+        // As steps: each column rises or falls from the last value to its
+        // own, so a jump stands upright instead of leaning over two columns.
+        let mut last = samples[0];
+        let points = (area.x..).zip(samples).flat_map(|(x, value)| {
+            let from = core::mem::replace(&mut last, value);
+            [
+                Point::new(x, area.row(from)),
+                Point::new(x, area.row(value)),
+            ]
+        });
+        gfx::polyline(frame, points, Ink::Lit);
+    }
+
     /// One bar per voice, at its offset from the fundamental as played, as
     /// tall as its gain.
     fn draw_spread(&self, frame: &mut FrameBuffer) {
@@ -668,12 +715,14 @@ fn write_percent<const N: usize>(line: &mut TextBuf<N>, amount: u16) {
 mod tests {
     use super::{
         AMOUNT_STEP, DEFAULT_AMOUNT, DEFAULT_LEVEL_MV, DEFAULT_NOTE, HIGHEST_NOTE, LOWEST_NOTE,
-        MAX_LEVEL_MV, SET_NOTE, Setting, SupersawApp, amount_from, frequency_from, level_from,
-        pitch_permille, sweep,
+        MAX_LEVEL_MV, SET_NOTE, SHAPE_ICON_LEFT, SHAPE_ICON_PERIOD, Setting, SupersawApp,
+        VALUE_RIGHT, amount_from, frequency_from, level_from, pitch_permille, sweep,
     };
+    use crate::apps::TickContext;
     use crate::apps::{InputSnapshot, tone};
     use crate::audio::Channel;
     use crate::audio::supersaw::{Arithmetic, FULL, Part};
+    use crate::framebuffer::{FrameBuffer, ROW_HEIGHT, WIDTH_I32};
     use crate::modulation::Effect;
 
     fn turn(left: i8, right: i8) -> InputSnapshot {
@@ -808,5 +857,59 @@ mod tests {
         assert_eq!(pitch_permille(tone::frequency(HIGHEST_NOTE, 0)), 1_000);
         let middle = pitch_permille(tone::frequency(LOWEST_NOTE + 42, 0));
         assert!((499..=501).contains(&middle), "{middle}");
+    }
+
+    /// The screen with `SHAPE` selected at `shape`.
+    fn shape_screen(shape: u16) -> FrameBuffer {
+        let mut app = SupersawApp::new();
+        app.update(&turn(3, 0));
+        app.shape = shape;
+        let mut frame = FrameBuffer::new();
+        app.render(&mut frame, &TickContext::default());
+        frame
+    }
+
+    #[test]
+    fn shape_shows_its_waveform() {
+        let (saw, square) = (shape_screen(0), shape_screen(FULL));
+        let top = 4 * ROW_HEIGHT;
+        let icon = |x: i32, y: i32| {
+            (SHAPE_ICON_LEFT..SHAPE_ICON_LEFT + 2 * SHAPE_ICON_PERIOD).contains(&x)
+                && y < top + ROW_HEIGHT - 1
+        };
+        let mut changed = 0;
+        for y in top..top + ROW_HEIGHT {
+            for x in 0..WIDTH_I32 {
+                if icon(x, y) {
+                    changed += usize::from(saw.pixel(x, y) != square.pixel(x, y));
+                } else if x < VALUE_RIGHT - 30 {
+                    // The label and the gap: nothing else moves.
+                    assert_eq!(saw.pixel(x, y), square.pixel(x, y), "at {x}, {y}");
+                }
+            }
+        }
+        assert!(changed > 0, "the waveform must change with the shape");
+    }
+
+    #[test]
+    fn every_shape_takes_the_same_rows() {
+        let rows = |shape: u16| {
+            let mut app = SupersawApp::new();
+            app.shape = shape;
+            let mut frame = FrameBuffer::new();
+            app.render(&mut frame, &TickContext::default());
+            let top = 4 * ROW_HEIGHT;
+            let lit = |y: i32| {
+                (SHAPE_ICON_LEFT..SHAPE_ICON_LEFT + 2 * SHAPE_ICON_PERIOD)
+                    .any(|x| frame.pixel(x, y))
+            };
+            let used: [bool; 8] =
+                core::array::from_fn(|row| lit(top + i32::try_from(row).unwrap_or(0)));
+            used
+        };
+        let saw = rows(0);
+        for shape in [1, 250, 500, 750, 999, FULL] {
+            assert_eq!(rows(shape), saw, "shape {shape}");
+        }
     }
 }

@@ -241,7 +241,8 @@ près à ce qu'il était.
   sans coût par échantillon.
 * **Applet** : `SHAPE` en page 1, entre `MIX` et `LEVEL` (cinq réglages par page, l'éventail des voix garde ses deux
   rangées), en pour cent, scie au démarrage ; entrée assignable comme `DETUNE` et `MIX` (0 à 5 V sur la course).
-  Le sous-octave reste une scie.
+  Un picto à côté du libellé trace deux périodes de la forme jouée (panneau et entrée), sans la correction. Le
+  sous-octave reste une scie.
 * **Mesuré** (exemple `aliasing`, `SUPERSAW_SHAPE`, références `ideal` et `naive` fondues de la même façon) : en carré,
   repli sous 10 kHz ≤ −44 dB partout (scie : ≤ −45 dB) ; le carré saute dans les deux sens, donc le passe-haut fait
   aussi des pointes vers −3 V : niveau le plus haut sans écrêtage 2,01 V en scie, 1,90 V à mi-course, 1,49 V en
