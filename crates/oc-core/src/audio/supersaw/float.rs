@@ -98,7 +98,7 @@ pub(super) struct Setup {
     inverses: [f32; VOICES],
     sub_step: f32,
     sub_inverse: f32,
-    gains: (f32, f32),
+    gains: [f32; VOICES],
     normalisers: (f32, f32),
     coefficient: f32,
     amplitude: f32,
@@ -111,17 +111,17 @@ impl Setup {
         inverses: [0.0; VOICES],
         sub_step: 0.0,
         sub_inverse: 0.0,
-        gains: (0.0, 0.0),
+        gains: [0.0; VOICES],
         normalisers: (0.0, 0.0),
         coefficient: 0.0,
         amplitude: 0.0,
     };
 
-    /// From the preparation both banks share: the voices' steps, the gains
+    /// From the preparation both banks share: the voices' steps, their gains
     /// in 1.15 and the normalisers `2^32 / root` of gains in 1.15.
     pub(super) fn new(
         steps: &[u32; VOICES],
-        gains: (i64, i64),
+        gains: &[i64; VOICES],
         normalisers: (i64, i64),
         amplitude: MilliVolts,
     ) -> Self {
@@ -133,7 +133,7 @@ impl Setup {
             inverses: pairs.map(|(_, inverse)| inverse),
             sub_step,
             sub_inverse,
-            gains: (fraction(gains.0, 15), fraction(gains.1, 15)),
+            gains: gains.map(|gain| fraction(gain, 15)),
             // `2^32 / (root 2^15)`: one over the root is it over `2^17`.
             normalisers: (fraction(normalisers.0, 17), fraction(normalisers.1, 17)),
             // `1 / (1 + 2 pi f / fs)`, the integer bank's coefficient.
@@ -148,8 +148,8 @@ impl Setup {
 pub(super) struct Bank {
     saws: [Saw; VOICES],
     sub: Saw,
-    /// Centre and side gains.
-    gains: (f32, f32),
+    /// Each voice's gain.
+    gains: [f32; VOICES],
     /// One over the root of the summed squared gains, for all seven voices
     /// and for one side.
     normalisers: (f32, f32),
@@ -173,7 +173,7 @@ impl Bank {
         Self {
             saws,
             sub: Saw::REST,
-            gains: (0.0, 0.0),
+            gains: [0.0; VOICES],
             normalisers: (0.0, 0.0),
             coefficient: 0.0,
             amplitude: 0.0,
@@ -210,14 +210,14 @@ impl Bank {
 
     /// One sample of every part, then advances.
     pub(super) fn next_frame(&mut self) -> Frame {
+        // Each voice weighed by its gain.
         let mut values = [0.0f32; VOICES];
-        for (value, saw) in values.iter_mut().zip(&mut self.saws) {
-            *value = saw.next();
+        for ((value, saw), gain) in values.iter_mut().zip(&mut self.saws).zip(self.gains) {
+            *value = saw.next() * gain;
         }
-        let (centre_gain, side_gain) = self.gains;
-        let centre = values[CENTRE] * centre_gain;
-        let left = LEFT.iter().map(|&index| values[index]).sum::<f32>() * side_gain;
-        let right = RIGHT.iter().map(|&index| values[index]).sum::<f32>() * side_gain;
+        let centre = values[CENTRE];
+        let left = LEFT.iter().map(|&index| values[index]).sum::<f32>();
+        let right = RIGHT.iter().map(|&index| values[index]).sum::<f32>();
         let (all, one_side) = self.normalisers;
         let sums = [
             (centre + left + right) * all,

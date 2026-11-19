@@ -47,7 +47,7 @@ use std::io::Write as _;
 use std::path::Path;
 
 use oc_core::apps::tone;
-use oc_core::audio::supersaw::{Arithmetic, Bank, CENTRE, FULL, Supersaw, VOICES, mix_gains};
+use oc_core::audio::supersaw::{Arithmetic, Bank, CENTRE, FULL, Supersaw, VOICES, voice_gains};
 use oc_core::calibration::{CV_OUT_MAX_MV, CV_OUT_MIN_MV};
 
 /// The module's sample rate: PERCLK over 21 (journal/D-033).
@@ -140,8 +140,8 @@ fn main() {
                 amplitude: LEVEL_MV,
                 arithmetic: arithmetic(),
             };
-            let (played, steps) = render(&params);
-            let naive = naive(&params, &steps);
+            let (played, steps, phases) = render(&params);
+            let naive = naive(&params, &steps, &phases);
             let frequencies =
                 steps.map(|step| f64::from(step) * f64::from(RATE_HZ) / 2f64.powi(32));
             let name = tone::note_name(note);
@@ -304,7 +304,7 @@ fn clipping() {
                     amplitude: level,
                     arithmetic: arithmetic(),
                 };
-                let (played, _) = render(&params);
+                let (played, ..) = render(&params);
                 let clipped = played
                     .iter()
                     .filter(|&&sample| {
@@ -330,7 +330,7 @@ fn clipping() {
                 amplitude: LEVEL_MV,
                 arithmetic: arithmetic(),
             };
-            let (played, _) = render(&params);
+            let (played, ..) = render(&params);
             let low = played.iter().copied().fold(0.0, f64::min);
             let high = played.iter().copied().fold(0.0, f64::max);
             // The level scales the samples: the bound reached first sets it.
@@ -378,10 +378,14 @@ fn worst_level() {
 }
 
 /// `params` played on the mono part, in millivolts, after the high-pass has
-/// settled; and each voice's phase step.
-fn render(params: &Supersaw) -> (Vec<f64>, [u32; VOICES]) {
-    let (samples, steps, _) = render_for(params, LENGTH);
-    (samples, steps)
+/// settled; and each voice's phase step and starting phase.
+fn render(params: &Supersaw) -> (Vec<f64>, [u32; VOICES], [u32; VOICES]) {
+    render_for(params, LENGTH)
+}
+
+/// Each voice's gain at `params`'s mix, as the bank weighs it, in 1.15.
+fn gains_of(params: &Supersaw) -> [f64; VOICES] {
+    voice_gains(params.mix).map(|gain| i32::try_from(gain).map_or(0.0, f64::from))
 }
 
 /// `length` samples of `params`, as [`render`] plays them, with each voice's
@@ -404,11 +408,7 @@ fn ideal(
     length: usize,
 ) -> Vec<f64> {
     let turn = 2f64.powi(32);
-    let (centre, side) = mix_gains(params.mix);
-    let gains: Vec<f64> = (0..VOICES)
-        .map(|index| if index == CENTRE { centre } else { side })
-        .map(|gain| i32::try_from(gain).map_or(0.0, f64::from))
-        .collect();
+    let gains = gains_of(params);
     let norm = gains.iter().map(|gain| gain * gain).sum::<f64>().sqrt();
     // The harmonics of each voice below the Nyquist frequency.
     let harmonics: Vec<u32> = steps
@@ -490,14 +490,11 @@ fn played(bank: &mut Bank, length: usize) -> Vec<f64> {
         .collect()
 }
 
-/// The same voices as naive ramps, at the same steps and gains, unfiltered.
-fn naive(params: &Supersaw, steps: &[u32; VOICES]) -> Vec<f64> {
-    let (centre, side) = mix_gains(params.mix);
-    let gains: Vec<f64> = (0..VOICES)
-        .map(|index| if index == CENTRE { centre } else { side })
-        .map(|gain| i32::try_from(gain).map_or(0.0, f64::from))
-        .collect();
-    let mut phases = [0u32; VOICES];
+/// The same voices as naive ramps, at the same steps, starting phases and
+/// gains, unfiltered.
+fn naive(params: &Supersaw, steps: &[u32; VOICES], phases: &[u32; VOICES]) -> Vec<f64> {
+    let gains = gains_of(params);
+    let mut phases = *phases;
     (0..SETTLE + LENGTH)
         .map(|_| {
             let mut sum = 0.0;

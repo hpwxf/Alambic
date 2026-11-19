@@ -19,7 +19,7 @@
 //!
 //! This module holds what both arithmetics share: the parameters and the
 //! parts, Szabo's curves, and the preparation they both start from (each
-//! voice's phase step, the gains, the normalisers), in integers. Each
+//! voice's phase step, each voice's gain, the normalisers), in integers. Each
 //! submodule turns that preparation into its own coefficients and renders
 //! the samples; [`Supersaw::arithmetic`] picks which one runs.
 
@@ -184,13 +184,18 @@ impl Setup {
             let step = (i64::from(base) + shift).clamp(0, i64::from(i32::MAX - 1));
             u32::try_from(step).unwrap_or(0)
         });
-        let (centre, side) = mix_gains(params.mix);
-        let gains = (centre, side);
-        let normalisers = (normaliser(centre, side, 6), normaliser(centre, side, 3));
+        let gains = voice_gains(params.mix);
+        let one_side = gains[CENTRE] * gains[CENTRE]
+            + LEFT
+                .iter()
+                .map(|&index| gains[index] * gains[index])
+                .sum::<i64>();
+        let all = gains.iter().map(|gain| gain * gain).sum::<i64>();
+        let normalisers = (normaliser(all), normaliser(one_side));
         Self {
             params: *params,
-            fixed: fixed::Setup::new(&steps, gains, normalisers, params.amplitude),
-            float: float::Setup::new(&steps, gains, normalisers, params.amplitude),
+            fixed: fixed::Setup::new(&steps, &gains, normalisers, params.amplitude),
+            float: float::Setup::new(&steps, &gains, normalisers, params.amplitude),
         }
     }
 
@@ -314,10 +319,20 @@ pub fn mix_gains(mix: u16) -> (i64, i64) {
     (centre >> 1, side >> 1)
 }
 
-/// `2^32 / sqrt(centre^2 + sides * side^2)`, the gains in 1.15: dividing the
-/// sum by it keeps the loudness about the same whatever the mix.
-fn normaliser(centre: i64, side: i64, sides: i64) -> i64 {
-    let power = u64::try_from(centre * centre + sides * side * side).unwrap_or(0);
+/// Each voice's gain at `mix`, in 1.15: the centre's law for [`CENTRE`],
+/// the sides' for the six others ([`mix_gains`]). What both banks, and any
+/// reference rendering, weigh the voices by.
+#[must_use]
+pub fn voice_gains(mix: u16) -> [i64; VOICES] {
+    let (centre, side) = mix_gains(mix);
+    core::array::from_fn(|index| if index == CENTRE { centre } else { side })
+}
+
+/// `2^32 / sqrt(power)`, `power` the summed squares of the gains in 1.15 of
+/// the voices a part sums: dividing the sum by it keeps the loudness about
+/// the same whatever the mix.
+fn normaliser(power: i64) -> i64 {
+    let power = u64::try_from(power).unwrap_or(0);
     // The centre gain stays above 0.44, so the root is far from zero.
     let root = i64::try_from(power.isqrt()).unwrap_or(1).max(1);
     (1 << 32) / root

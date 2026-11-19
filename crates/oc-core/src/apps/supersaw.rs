@@ -21,7 +21,7 @@ use core::fmt::Write as _;
 use crate::apps::tone::{self, HIGHEST_NOTE, LOWEST_NOTE, note_name};
 use crate::apps::{InputSnapshot, TickContext};
 use crate::audio::supersaw::{
-    Arithmetic, CENTRE, FULL, OFFSETS, Part, Supersaw, detune_curve, mix_gains,
+    Arithmetic, FULL, OFFSETS, Part, Supersaw, detune_curve, voice_gains,
 };
 use crate::audio::{Channel, MilliHertz, Params};
 use crate::fixed::{self, ONE};
@@ -585,16 +585,15 @@ impl SupersawApp {
     /// tall as its gain.
     fn draw_spread(&self, frame: &mut FrameBuffer) {
         let spread = detune_curve(self.played_detune());
-        let (centre, side) = mix_gains(self.played_mix());
+        let gains = voice_gains(self.played_mix());
         let middle = WIDTH_I32 / 2;
         let base = SPREAD_TOP + SPREAD_HEIGHT;
         gfx::dotted_hline(frame, 0, base, WIDTH_I32, 2, Ink::Lit);
-        for (index, offset) in OFFSETS.iter().enumerate() {
+        for (offset, gain) in OFFSETS.iter().zip(gains) {
             // The widest offset, the lowest voice's, reaches the half width
             // at full detune.
             let reach = offset * spread * SPREAD_HALF_WIDTH / (-OFFSETS[0] * (1 << 16));
             let x = middle + i32::try_from(reach).unwrap_or(0);
-            let gain = if index == CENTRE { centre } else { side };
             let height = i64::from(SPREAD_HEIGHT) * gain / (1 << 15);
             let height = i32::try_from(height).unwrap_or(0).max(1);
             gfx::vline(frame, x, base - height, height, Ink::Lit);

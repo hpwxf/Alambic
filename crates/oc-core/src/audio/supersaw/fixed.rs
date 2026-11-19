@@ -121,8 +121,8 @@ pub(super) struct Setup {
     inverses: [u64; VOICES],
     sub_step: u32,
     sub_inverse: u64,
-    /// Centre and side gains, in 1.15.
-    gains: (i64, i64),
+    /// Each voice's gain, in 1.15.
+    gains: [i64; VOICES],
     /// `2^32` over the root of the summed squared gains, for all seven voices
     /// and for one side.
     normalisers: (i64, i64),
@@ -139,17 +139,17 @@ impl Setup {
         inverses: [0; VOICES],
         sub_step: 0,
         sub_inverse: 0,
-        gains: (0, 0),
+        gains: [0; VOICES],
         normalisers: (0, 0),
         coefficient: 0,
         amplitude: 0,
     };
 
-    /// From the preparation both banks share: the voices' steps, the gains
+    /// From the preparation both banks share: the voices' steps, their gains
     /// in 1.15 and the normalisers `2^32 / root` of gains in 1.15.
     pub(super) fn new(
         steps: &[u32; VOICES],
-        gains: (i64, i64),
+        gains: &[i64; VOICES],
         normalisers: (i64, i64),
         amplitude: MilliVolts,
     ) -> Self {
@@ -159,7 +159,7 @@ impl Setup {
             inverses: steps.map(inverse),
             sub_step: base / 2,
             sub_inverse: inverse(base / 2),
-            gains,
+            gains: *gains,
             normalisers,
             coefficient: high_pass_coefficient(base),
             amplitude,
@@ -172,7 +172,7 @@ impl Setup {
 pub(super) struct Bank {
     saws: [Saw; VOICES],
     sub: Saw,
-    gains: (i64, i64),
+    gains: [i64; VOICES],
     normalisers: (i64, i64),
     coefficient: i64,
     amplitude: MilliVolts,
@@ -192,7 +192,7 @@ impl Bank {
         Self {
             saws,
             sub: Saw::at(0),
-            gains: (0, 0),
+            gains: [0; VOICES],
             normalisers: (0, 0),
             coefficient: 0,
             amplitude: 0,
@@ -228,14 +228,15 @@ impl Bank {
 
     /// One sample of every part, then advances.
     pub(super) fn next_frame(&mut self) -> Frame {
+        // Each voice weighed by its gain: a value in 1.15 times a gain in
+        // 1.15, in 2.30.
         let mut values = [0i64; VOICES];
-        for (value, saw) in values.iter_mut().zip(&mut self.saws) {
-            *value = i64::from(saw.next());
+        for ((value, saw), gain) in values.iter_mut().zip(&mut self.saws).zip(self.gains) {
+            *value = i64::from(saw.next()) * gain;
         }
-        let (centre_gain, side_gain) = self.gains;
-        let centre = values[CENTRE] * centre_gain;
-        let left = LEFT.iter().map(|&index| values[index]).sum::<i64>() * side_gain;
-        let right = RIGHT.iter().map(|&index| values[index]).sum::<i64>() * side_gain;
+        let centre = values[CENTRE];
+        let left = LEFT.iter().map(|&index| values[index]).sum::<i64>();
+        let right = RIGHT.iter().map(|&index| values[index]).sum::<i64>();
         let (all, one_side) = self.normalisers;
         let sums = [
             (centre + left + right, all),
