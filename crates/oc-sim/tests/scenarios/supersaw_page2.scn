@@ -1,0 +1,26 @@
+# oc-sim scenario v1
+# The SUPERSAW applet's second page (journal/D-039): open the app menu, move
+# the highlight down five times to SUPERSAW, launch it, pick STEREO (six
+# detents of the left encoder, the second page) and turn it ON, pick CALC
+# and turn it to F32.
+ticks 300
+20  button up down
+60  button down down
+70  button up up
+70  button down up
+90  button down down
+100 button down up
+110 button down down
+120 button down up
+130 button down down
+140 button down up
+150 button down down
+160 button down up
+170 button down down
+176 button down up
+190 button left down
+196 button left up
+210 encoder 1 +6
+220 encoder 2 +1
+230 encoder 1 +1
+240 encoder 2 +1

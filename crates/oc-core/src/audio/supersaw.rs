@@ -1,5 +1,6 @@
-//! Seven detuned band-limited sawtooths around one pitch, in integers
-//! (journal/D-037).
+//! Seven detuned band-limited sawtooths around one pitch (journal/D-037),
+//! computed in two arithmetics: fixed point (`fixed`, the bank of D-037)
+//! and `f32` (`float`, the trial of journal/D-039).
 //!
 //! The detune curve, the spread of the seven voices and the two mix laws are
 //! Adam Szabo's measurements of the JP-8000 (*How to Emulate the Super Saw*,
@@ -7,16 +8,25 @@
 //! polynomial (`PolyBLEP`), which removes most of the aliasing a naive ramp
 //! folds back into the audible band; the sum goes through a one-pole
 //! high-pass tuned on the fundamental. Everything that needs a division is
-//! computed when the parameters change, never per sample.
+//! computed when the parameters change, never per sample, by [`Setup::new`],
+//! which a backend may run outside its audio context (journal/D-040).
 //!
 //! The parts come out as falling sawtooths: the high-pass turns each jump
 //! into a spike several times higher than the rest of the wave, and the
 //! outputs have 6 V of room above 0 V for 3 V below, so the spikes go up;
 //! that doubles the level reached without clipping, and the ear does not
 //! hear a waveform's polarity (journal/D-037, revision of 2026-11-18).
+//!
+//! This module holds what both arithmetics share: the parameters and the
+//! parts, Szabo's curves, and the preparation they both start from (each
+//! voice's phase step, each voice's gain, the normalisers), in integers. Each
+//! submodule turns that preparation into its own coefficients and renders
+//! the samples; [`Supersaw::arithmetic`] picks which one runs.
 
-use super::wave::ONE;
-use super::{MilliHertz, phase_step, scale};
+mod fixed;
+mod float;
+
+use super::{MilliHertz, phase_step};
 use crate::platform::MilliVolts;
 
 /// Sawtooths in the bank.
@@ -27,6 +37,15 @@ pub const CENTRE: usize = 3;
 
 /// The whole course of [`Supersaw::detune`] and [`Supersaw::mix`].
 pub const FULL: u16 = 1_000;
+
+/// [`Supersaw::width`] of a square, half the period: the widest.
+pub const SQUARE_WIDTH: u16 = FULL / 2;
+
+/// The narrowest [`Supersaw::width`], 5 % of the period: narrower, a pulse
+/// has so little power that keeping its loudness would raise the rounding
+/// with it. A width and its complement sound the same, inverted, so half
+/// the period is the other end.
+pub const NARROWEST_WIDTH: u16 = 50;
 
 /// One in 16.16 fixed point.
 const UNIT: i64 = 1 << 16;
@@ -55,13 +74,15 @@ const DETUNE_CURVE: [i64; 65] = [
     65_523,
 ];
 
-/// `2 pi` in 16.16.
-const TAU: u64 = 411_775;
-
-/// Bits below the last place of the high-pass state: without them, a
-/// one-pole filter in integers settles on a small offset instead of zero.
-/// Eight keep the state times the coefficient below `2^58`.
-const FILTER_BITS: u32 = 8;
+/// How the bank computes its samples (journal/D-039).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash)]
+pub enum Arithmetic {
+    /// Fixed point, the bank of journal/D-037.
+    #[default]
+    Fixed,
+    /// Single-precision floating point, the trial of journal/D-039.
+    Float,
+}
 
 /// What a supersaw plays, as an applet publishes it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -72,8 +93,19 @@ pub struct Supersaw {
     pub detune: u16,
     /// How loud the side voices are against the centre, in thousandths.
     pub mix: u16,
+    /// Each voice's waveform, in thousandths: a sawtooth at 0, a square at
+    /// [`FULL`], their blend between (journal/D-037, revision of
+    /// 2026-11-19); the loudness stays about the same over the course.
+    pub shape: u16,
+    /// The pulse's width at a full [`Self::shape`], in thousandths of the
+    /// period, from [`NARROWEST_WIDTH`] to [`SQUARE_WIDTH`], the square
+    /// (journal/D-037, revision of 2026-11-19): the blend's second sawtooth
+    /// is that far back.
+    pub width: u16,
     /// Peak level of one sawtooth; the sum is scaled to sound about as loud.
     pub amplitude: MilliVolts,
+    /// Which of the two banks plays it.
+    pub arithmetic: Arithmetic,
 }
 
 impl Supersaw {
@@ -82,7 +114,10 @@ impl Supersaw {
         frequency: 0,
         detune: 0,
         mix: 0,
+        shape: 0,
+        width: SQUARE_WIDTH,
         amplitude: 0,
+        arithmetic: Arithmetic::Fixed,
     };
 }
 
@@ -125,144 +160,102 @@ impl Frame {
     }
 }
 
-/// One free-running sawtooth with what its correction needs.
-#[derive(Debug, Clone, Copy)]
-struct Saw {
-    phase: u32,
-    step: u32,
-    /// `2^48 / step`: turns a phase within a step of the jump into its
-    /// distance in 16.16 steps with a multiplication.
-    inverse: u64,
+/// Each voice's starting phase, a turn being `2^32`: multiples of the golden
+/// ratio of a turn, as far apart as can be, so no two voices start together.
+const PHASES: [u32; VOICES] = {
+    let mut phases = [0; VOICES];
+    let mut index = 0;
+    while index < VOICES {
+        #[allow(clippy::cast_possible_truncation)]
+        // `index < VOICES`.
+        let turn = (index as u32).wrapping_mul(0x9E37_79B9);
+        phases[index] = turn;
+        index += 1;
+    }
+    phases
+};
+
+/// Everything a supersaw's parameters decide for both banks, computed once
+/// when they change (journal/D-040). Building it touches no bank, so it can
+/// run outside the audio context; [`Bank::apply`] only copies it.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Setup {
+    params: Supersaw,
+    fixed: fixed::Setup,
+    float: float::Setup,
 }
 
-impl Saw {
-    const fn at(phase: u32) -> Self {
+impl Setup {
+    /// Nothing played: what a new bank holds.
+    pub const OFF: Self = Self {
+        params: Supersaw::OFF,
+        fixed: fixed::Setup::OFF,
+        float: float::Setup::OFF,
+    };
+
+    /// What `params` decide at `rate_hz`: the preparation both banks share,
+    /// then each bank's coefficients from it.
+    #[must_use]
+    pub fn new(params: &Supersaw, rate_hz: u32) -> Self {
+        let base = phase_step(params.frequency, rate_hz);
+        let spread = detune_curve(params.detune);
+        let steps = OFFSETS.map(|offset| {
+            let shift = (i64::from(base) * offset * spread) >> 32;
+            let step = (i64::from(base) + shift).clamp(0, i64::from(i32::MAX - 1));
+            u32::try_from(step).unwrap_or(0)
+        });
+        let gains = voice_gains(params.mix);
+        let one_side = gains[CENTRE] * gains[CENTRE]
+            + LEFT
+                .iter()
+                .map(|&index| gains[index] * gains[index])
+                .sum::<i64>();
+        let all = gains.iter().map(|gain| gain * gain).sum::<i64>();
+        let width = params.width.clamp(NARROWEST_WIDTH, SQUARE_WIDTH);
+        let loudness = shape_loudness(params.shape, width);
+        let normalisers = (
+            normaliser(all) * UNIT / loudness,
+            normaliser(one_side) * UNIT / loudness,
+        );
+        // In 1.15, from 0 (a sawtooth) to one (a square).
+        let shape = fraction(params.shape) >> 1;
+        // The second sawtooth's lead, a turn being `2^32`: the width back,
+        // its complement on. The same pulse, but its narrow part comes out
+        // upwards, where the outputs have 6 V of room instead of 3.
+        let lead = u32::try_from((u64::from(FULL - width) << 32) / u64::from(FULL)).unwrap_or(0);
+        let blend = (shape, lead);
         Self {
-            phase,
-            step: 0,
-            inverse: 0,
+            params: *params,
+            fixed: fixed::Setup::new(&steps, &gains, normalisers, blend, params.amplitude),
+            float: float::Setup::new(&steps, &gains, normalisers, blend, params.amplitude),
         }
     }
 
-    fn set_step(&mut self, step: u32) {
-        self.step = step;
-        self.inverse = if step == 0 {
-            0
-        } else {
-            (1u64 << 48) / u64::from(step)
-        };
-    }
-
-    /// The band-limited value at the current phase, in `-ONE..=ONE`, then
-    /// advances.
-    fn next(&mut self) -> i32 {
-        let value = polyblep_saw(self.phase, self.step, self.inverse);
-        self.phase = self.phase.wrapping_add(self.step);
-        value
+    /// The parameters it was built from.
+    #[must_use]
+    pub const fn params(&self) -> &Supersaw {
+        &self.params
     }
 }
 
-/// A sawtooth at `phase`, rising from `-ONE` to `ONE` over the turn, with
-/// its jump at the wrap smoothed over the samples on either side.
-///
-/// `inverse` is `2^48 / step`. Within a step after the jump, at `x` steps,
-/// the residual is `-(1 - x)^2`; within a step before it, at `x` steps to go,
-/// `(1 - x)^2`; zero elsewhere.
-#[must_use]
-fn polyblep_saw(phase: u32, step: u32, inverse: u64) -> i32 {
-    #[allow(clippy::cast_possible_wrap)]
-    // The top 16 bits of a `u32`, so below `2^16`.
-    let naive = (phase >> 16) as i32 - ONE;
-    let residual = if phase < step {
-        -square_of_rest(u64::from(phase), inverse)
-    } else if phase > u32::MAX - step {
-        square_of_rest((1u64 << 32) - u64::from(phase), inverse)
-    } else {
-        0
-    };
-    naive - residual
-}
-
-/// `(1 - distance / step)^2` scaled by [`ONE`], for a distance of at most a
-/// step.
-fn square_of_rest(distance: u64, inverse: u64) -> i32 {
-    // `distance <= step`, so the product stays below `2^48` and `x <= 1`.
-    let x = (distance * inverse) >> 32;
-    let rest = u64::from(1u32 << 16).saturating_sub(x);
-    #[allow(clippy::cast_possible_truncation)]
-    // `rest <= 2^16`, so the square over `2^17` is at most `2^15`.
-    let value = ((rest * rest) >> 17) as i32;
-    value
-}
-
-/// A one-pole high-pass, `y = a (y + x - x_prev)`.
-#[derive(Debug, Clone, Copy)]
-struct HighPass {
-    previous: i32,
-    /// The output, [`FILTER_BITS`] below the last place.
-    state: i64,
-}
-
-impl HighPass {
-    /// At rest.
-    const NEW: Self = Self {
-        previous: 0,
-        state: 0,
-    };
-
-    /// Filters `input` with the coefficient `a` in 2.30.
-    fn next(&mut self, input: i32, coefficient: i64) -> i32 {
-        let change = i64::from(input - self.previous) << FILTER_BITS;
-        self.previous = input;
-        self.state = ((self.state + change) * coefficient) >> 30;
-        #[allow(clippy::cast_possible_truncation)]
-        // The output of a high-pass stays within twice its input's range.
-        let output = (self.state >> FILTER_BITS) as i32;
-        output
-    }
-}
-
-/// The running state of a supersaw: seven sawtooths, a sub-octave, the
-/// high-passes and the coefficients of the current parameters.
+/// The running state of a supersaw in both arithmetics. Both follow every
+/// change of parameters, only the one [`Supersaw::arithmetic`] picks runs:
+/// switching resumes the other where it stopped.
 #[derive(Debug, Clone)]
 pub struct Bank {
     params: Supersaw,
-    saws: [Saw; VOICES],
-    sub: Saw,
-    /// Centre and side gains, in 1.15.
-    gains: (i64, i64),
-    /// `2^32` over the root of the summed squared gains, for all seven voices
-    /// and for one side.
-    normalisers: (i64, i64),
-    /// High-pass coefficient, in 2.30.
-    coefficient: i64,
-    /// High-passes of [`Part::Mono`], [`Part::Left`], [`Part::Right`].
-    filters: [HighPass; 3],
+    fixed: fixed::Bank,
+    float: float::Bank,
 }
 
 impl Bank {
     /// A silent bank, its phases spread so no two voices start together.
     #[must_use]
     pub const fn new() -> Self {
-        // Multiples of the golden ratio of a turn: as far apart as can be.
-        let mut saws = [Saw::at(0); VOICES];
-        let mut index = 0;
-        while index < VOICES {
-            #[allow(clippy::cast_possible_truncation)]
-            // `index < VOICES`.
-            let turn = (index as u32).wrapping_mul(0x9E37_79B9);
-            saws[index] = Saw::at(turn);
-            index += 1;
-        }
-        // Silent until set: no gain, no level.
         Self {
             params: Supersaw::OFF,
-            saws,
-            sub: Saw::at(0),
-            gains: (0, 0),
-            normalisers: (0, 0),
-            coefficient: 0,
-            filters: [HighPass::NEW; 3],
+            fixed: fixed::Bank::new(&PHASES),
+            float: float::Bank::new(&PHASES),
         }
     }
 
@@ -272,76 +265,50 @@ impl Bank {
         &self.params
     }
 
-    /// Each voice's phase step, a turn being `2^32`: what an analysis needs
-    /// to tell a voice's harmonics from what folds back.
+    /// Each voice's phase step in the bank [`Supersaw::arithmetic`] picks, a
+    /// turn being `2^32` (the `f32` bank's are the integer ones rounded to 24
+    /// bits): what an analysis needs to tell a voice's harmonics from what
+    /// folds back.
     #[must_use]
     pub fn steps(&self) -> [u32; VOICES] {
-        self.saws.map(|saw| saw.step)
+        match self.params.arithmetic {
+            Arithmetic::Fixed => self.fixed.steps(),
+            Arithmetic::Float => self.float.steps(),
+        }
     }
 
-    /// Each voice's phase now, a turn being `2^32`: with [`Self::steps`],
-    /// what a reference rendering needs to start where the bank does.
+    /// Each voice's phase now in the bank [`Supersaw::arithmetic`] picks, a
+    /// turn being `2^32`: with [`Self::steps`], what a reference rendering
+    /// needs to start where the bank playing does. The other bank's phases
+    /// stand where it stopped.
     #[must_use]
     pub fn phases(&self) -> [u32; VOICES] {
-        self.saws.map(|saw| saw.phase)
+        match self.params.arithmetic {
+            Arithmetic::Fixed => self.fixed.phases(),
+            Arithmetic::Float => self.float.phases(),
+        }
     }
 
     /// Plays `params` at `rate_hz` from the next sample on, keeping the
     /// phases and the filters' state.
     pub fn set(&mut self, params: &Supersaw, rate_hz: u32) {
-        self.params = *params;
-        let base = phase_step(params.frequency, rate_hz);
-        let spread = detune_curve(params.detune);
-        for (saw, offset) in self.saws.iter_mut().zip(OFFSETS) {
-            let shift = (i64::from(base) * offset * spread) >> 32;
-            let step = (i64::from(base) + shift).clamp(0, i64::from(i32::MAX - 1));
-            saw.set_step(u32::try_from(step).unwrap_or(0));
-        }
-        self.sub.set_step(base / 2);
-        let (centre, side) = mix_gains(params.mix);
-        self.gains = (centre, side);
-        self.normalisers = (normaliser(centre, side, 6), normaliser(centre, side, 3));
-        self.coefficient = high_pass_coefficient(base);
+        self.apply(&Setup::new(params, rate_hz));
     }
 
-    /// One sample of every part, then advances.
+    /// Plays what `setup` prepared from the next sample on, keeping the
+    /// phases and the filters' state: copies only, no division.
+    pub fn apply(&mut self, setup: &Setup) {
+        self.params = setup.params;
+        self.fixed.apply(&setup.fixed);
+        self.float.apply(&setup.float);
+    }
+
+    /// One sample of every part from the bank [`Supersaw::arithmetic`]
+    /// picks, then advances.
     pub fn next_frame(&mut self) -> Frame {
-        let mut values = [0i64; VOICES];
-        for (value, saw) in values.iter_mut().zip(&mut self.saws) {
-            *value = i64::from(saw.next());
-        }
-        let (centre_gain, side_gain) = self.gains;
-        let centre = values[CENTRE] * centre_gain;
-        let left = LEFT.iter().map(|&index| values[index]).sum::<i64>() * side_gain;
-        let right = RIGHT.iter().map(|&index| values[index]).sum::<i64>() * side_gain;
-        let (all, one_side) = self.normalisers;
-        let sums = [
-            (centre + left + right, all),
-            (centre + left, one_side),
-            (centre + right, one_side),
-        ];
-        let mut parts = [0; 3];
-        for ((part, filter), (sum, normaliser)) in parts.iter_mut().zip(&mut self.filters).zip(sums)
-        {
-            // A sum in 2.30 times `2^32 / norm` in 1.15, back to 1.15.
-            #[allow(clippy::cast_possible_truncation)]
-            // At most the seven gains' sum over their root: a few `ONE`.
-            let normalised = ((sum * normaliser) >> 32) as i32;
-            // Falling sawtooths: the high-pass turns each jump into a
-            // spike, and the outputs have 6 V of room above 0 V for 3 V
-            // below, so the spikes go up.
-            *part = scale(
-                -filter.next(normalised, self.coefficient),
-                self.params.amplitude,
-            );
-        }
-        // Falling too, to keep its phase against the voices'.
-        let sub = scale(-self.sub.next(), self.params.amplitude);
-        Frame {
-            mono: parts[0],
-            left: parts[1],
-            right: parts[2],
-            sub,
+        match self.params.arithmetic {
+            Arithmetic::Fixed => self.fixed.next_frame(),
+            Arithmetic::Float => self.float.next_frame(),
         }
     }
 }
@@ -384,50 +351,50 @@ pub fn mix_gains(mix: u16) -> (i64, i64) {
     (centre >> 1, side >> 1)
 }
 
-/// `2^32 / sqrt(centre^2 + sides * side^2)`, the gains in 1.15: dividing the
-/// sum by it keeps the loudness about the same whatever the mix.
-fn normaliser(centre: i64, side: i64, sides: i64) -> i64 {
-    let power = u64::try_from(centre * centre + sides * side * side).unwrap_or(0);
+/// Each voice's gain at `mix`, in 1.15: the centre's law for [`CENTRE`],
+/// the sides' for the six others ([`mix_gains`]). What both banks, and any
+/// reference rendering, weigh the voices by.
+#[must_use]
+pub fn voice_gains(mix: u16) -> [i64; VOICES] {
+    let (centre, side) = mix_gains(mix);
+    core::array::from_fn(|index| if index == CENTRE { centre } else { side })
+}
+
+/// How much louder, in root mean square, a voice at `shape` and `width` is
+/// than a sawtooth, in 16.16: one at the sawtooth, `sqrt(3)` at the square.
+///
+/// A voice at `s` and `w` is `saw(t) - s saw(t - w)`. The two sawtooths'
+/// product averages `1/3 - 2 w (1 - w)`, so its mean square is
+/// `(1 - s)^2 / 3 + 4 s w (1 - w)`, against `1/3` for the sawtooth: the
+/// ratio's root. At `w = 1/2`, `(1 + s + s^2) / 3`.
+#[must_use]
+pub fn shape_loudness(shape: u16, width: u16) -> i64 {
+    let s = fraction(shape);
+    let w = fraction(width);
+    let rest = UNIT - s;
+    // `(1 - s)^2 + 12 s w (1 - w)`, in 16.16.
+    let ratio = ((rest * rest) >> 16) + ((12 * s * ((w * (UNIT - w)) >> 16)) >> 16);
+    // The root of a 16.16 value, in 16.16; exact at one.
+    let root = u64::try_from(ratio << 16).unwrap_or(0).isqrt();
+    i64::try_from(root).unwrap_or(UNIT).max(1)
+}
+
+/// `2^32 / sqrt(power)`, `power` the summed squares of the gains in 1.15 of
+/// the voices a part sums: dividing the sum by it keeps the loudness about
+/// the same whatever the mix.
+fn normaliser(power: i64) -> i64 {
+    let power = u64::try_from(power).unwrap_or(0);
     // The centre gain stays above 0.44, so the root is far from zero.
     let root = i64::try_from(power.isqrt()).unwrap_or(1).max(1);
     (1 << 32) / root
 }
 
-/// The coefficient of a one-pole high-pass at the pitch of `step`, in 2.30:
-/// `1 / (1 + 2 pi f / fs)`.
-fn high_pass_coefficient(step: u32) -> i64 {
-    // `2 pi step` over a turn, in 0.32: below `2^34`, since `step < 2^31`.
-    let omega = (u64::from(step) * TAU) >> 16;
-    i64::try_from((1u64 << 62) / ((1u64 << 32) + omega)).unwrap_or(0)
-}
-
 #[cfg(test)]
 mod tests {
     use super::{
-        Bank, CENTRE, FULL, LEFT, OFFSETS, RIGHT, Supersaw, UNIT, detune_curve, mix_gains,
-        polyblep_saw,
+        Arithmetic, Bank, CENTRE, FULL, LEFT, NARROWEST_WIDTH, OFFSETS, PHASES, RIGHT,
+        SQUARE_WIDTH, Supersaw, UNIT, VOICES, detune_curve, mix_gains, shape_loudness,
     };
-    use crate::audio::wave::ONE;
-
-    #[test]
-    fn the_saw_is_naive_away_from_its_jump() {
-        let step = 1 << 24;
-        let inverse = (1u64 << 48) / u64::from(step);
-        assert_eq!(polyblep_saw(1 << 31, step, inverse), 0);
-        assert_eq!(polyblep_saw(3 << 30, step, inverse), ONE / 2);
-    }
-
-    #[test]
-    fn the_saw_is_continuous_across_its_jump() {
-        // Right on the jump the residual cancels it: both sides meet at zero.
-        let step = 1 << 24;
-        let inverse = (1u64 << 48) / u64::from(step);
-        assert_eq!(polyblep_saw(0, step, inverse), 0);
-        assert!(polyblep_saw(u32::MAX, step, inverse).abs() <= 1);
-        // Half a step after it: a quarter of the jump still to go.
-        // The naive ramp has risen 128 by then.
-        assert_eq!(polyblep_saw(step / 2, step, inverse), 128 - ONE + ONE / 4);
-    }
 
     #[test]
     fn the_curve_starts_near_zero_and_ends_at_one() {
@@ -463,16 +430,100 @@ mod tests {
     }
 
     #[test]
+    fn a_square_is_louder_by_the_root_of_three() {
+        assert_eq!(
+            shape_loudness(0, SQUARE_WIDTH),
+            UNIT,
+            "exactly one: a sawtooth unchanged"
+        );
+        // At no shape, the width does not matter.
+        assert_eq!(shape_loudness(0, NARROWEST_WIDTH), UNIT);
+        let square = shape_loudness(FULL, SQUARE_WIDTH);
+        assert!((square - 113_512).abs() <= 2, "{square}");
+        assert!(shape_loudness(FULL / 2, SQUARE_WIDTH) < square);
+        // A quarter-width pulse: `12 / 4 * 3 / 4 = 2.25`, a root of 1.5.
+        let quarter = shape_loudness(FULL, FULL / 4);
+        assert!((quarter - 98_304).abs() <= 2, "{quarter}");
+    }
+
+    #[test]
+    fn the_steps_are_those_of_the_bank_playing() {
+        let mut params = Supersaw {
+            frequency: 440_000,
+            detune: FULL,
+            mix: FULL / 2,
+            shape: 0,
+            width: SQUARE_WIDTH,
+            amplitude: 1_000,
+            arithmetic: Arithmetic::Fixed,
+        };
+        let mut bank = Bank::new();
+        bank.set(&params, 47_619);
+        let fixed = bank.steps();
+        params.arithmetic = Arithmetic::Float;
+        bank.set(&params, 47_619);
+        // The same steps, rounded to an `f32`'s 24 bits.
+        for (float, fixed) in bank.steps().iter().zip(fixed) {
+            assert!(float.abs_diff(fixed) <= 1 << 8, "{float} against {fixed}");
+        }
+    }
+
+    #[test]
+    fn the_phases_are_those_of_the_bank_playing() {
+        // A thousand samples in each arithmetic: the bank playing has moved
+        // a thousand steps on, the other has not moved.
+        let mut params = Supersaw {
+            frequency: 440_000,
+            detune: FULL,
+            mix: FULL / 2,
+            shape: 0,
+            width: SQUARE_WIDTH,
+            amplitude: 1_000,
+            arithmetic: Arithmetic::Float,
+        };
+        let mut bank = Bank::new();
+        bank.set(&params, 47_619);
+        let start = bank.phases();
+        // The integer phases rounded to an `f32`'s 24 bits.
+        for (got, want) in start.iter().zip(PHASES) {
+            assert!(got.abs_diff(want) <= 1 << 8, "{got} against {want}");
+        }
+        for _ in 0..1_000 {
+            bank.next_frame();
+        }
+        let moved = |from: &[u32; VOICES], steps: &[u32; VOICES]| -> [u32; VOICES] {
+            core::array::from_fn(|index| from[index].wrapping_add(steps[index].wrapping_mul(1_000)))
+        };
+        let expected = moved(&start, &bank.steps());
+        for (got, want) in bank.phases().iter().zip(expected) {
+            // The `f32` phase drifts by its roundings: far below a
+            // thousandth of a turn over a thousand samples.
+            let apart = got.wrapping_sub(want).cast_signed().unsigned_abs();
+            assert!(apart < 1 << 22, "{got} against {want}");
+        }
+        params.arithmetic = Arithmetic::Fixed;
+        bank.set(&params, 47_619);
+        assert_eq!(bank.phases(), PHASES, "the integer bank has not moved");
+        for _ in 0..1_000 {
+            bank.next_frame();
+        }
+        assert_eq!(bank.phases(), moved(&PHASES, &bank.steps()));
+    }
+
+    #[test]
     fn full_detune_keeps_every_voice_below_half_a_turn() {
         let mut bank = Bank::new();
         let params = Supersaw {
             frequency: 20_000_000,
             detune: FULL,
             mix: FULL,
+            shape: 0,
+            width: SQUARE_WIDTH,
             amplitude: 3_000,
+            arithmetic: super::Arithmetic::Fixed,
         };
         bank.set(&params, 47_619);
-        assert!(bank.saws.iter().all(|saw| saw.step < 1 << 31));
+        assert!(bank.steps().iter().all(|&step| step < 1 << 31));
         for _ in 0..1_000 {
             let frame = bank.next_frame();
             assert!(frame.mono.abs() <= 7_000, "{frame:?}");

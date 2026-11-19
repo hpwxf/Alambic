@@ -5,6 +5,54 @@ plugin, which Rack 2 requires to have major version 2, ships as
 `2.<minor>.<patch>` of the same release (checked by `xtask/tests/versions.rs`).
 Architectural decisions behind each change are in `journal/` (French).
 
+## Unreleased
+
+### Added
+
+- **`SHAPE`** in `SUPERSAW`: each voice blends from a sawtooth into a
+  square, band-limited all the way, at about the same loudness
+  (journal/D-037, revision of 2026-11-19); on the first page, takes an
+  input like `DETUNE` and `MIX`, and a picture of the waveform played
+  beside its label. The sub-octave stays a sawtooth.
+- **`WIDTH`** in `SUPERSAW`: the pulse's width at a full `SHAPE`, 5 to
+  50 % (a square), its narrow part upwards where the outputs have the most
+  room, at about the same loudness; on the first page after `SHAPE`, takes
+  an input. `LEVEL` moves to the second page with `STEREO` and `CALC`.
+  `SUPERSAW_WIDTH` sets the width the `aliasing` example measures, which
+  now reads the room left before clipping at 250 mV. Squares
+  clip from about 1.5 V of `LEVEL`, against 2 V for sawtooths.
+  `SUPERSAW_SHAPE` sets the shape the `aliasing` example measures.
+
+- **`SUPERSAW` in `f32`, on trial** (journal/D-039): a second bank, the same
+  voices, curves and parts in single-precision floating point, picked by a
+  new `CALC` setting (`INT` at start, `F32`), to compare the two on the
+  module (`cargo probe stats`, by ear). Both banks follow every change of
+  parameters and only the picked one runs, so switching resumes each where
+  it stopped. The two differ by under a millivolt RMS.
+
+### Changed
+
+- The audio interrupt no longer prepares its voice: the loop computes an
+  `oc_core::audio::Setup` (every phase step and the supersaw's
+  coefficients) when the parameters change, outside any critical section,
+  and the interrupt only copies it (`Voice::apply`, journal/D-040). On the
+  module a CV moving the supersaw's note took the interrupt up to 11 µs of
+  its 21; `Voice::set_params` stays for the other backends, unchanged in
+  behaviour.
+
+- `SUPERSAW`'s settings are on two pages, with a scroll bar as in
+  `RATCHET`: `NOTE`, `DETUNE`, `MIX`, `LEVEL`, then `STEREO` and `CALC`, which
+  take no input.
+- Ratchet's scroll bar is now a control of its own,
+  `oc_core::gfx::controls::scroll_bar`.
+- Two profile stages inside the audio interrupt, `voice` (one sample) and
+  `voice_params` (taking new parameters): `audio` spins until the DAC's
+  burst echoes, so it hides the voice's computation. `cargo probe stats`
+  prints two decimals. The probe protocol is now version 3: host tools and
+  firmware must be updated together.
+- `SUPERSAW_CALC=f32` makes the `aliasing` example measure the `f32` bank; a
+  criterion benchmark, `supersaw_f32_sample_to_codes`.
+
 ## 0.6.0 — 2026-11-18 (Rack plugin 2.6.0)
 
 ### Added

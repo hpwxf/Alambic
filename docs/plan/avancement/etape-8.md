@@ -29,7 +29,8 @@ mémoire) ouverte en chemin. Valeurs mesurées sur un module : indicatives.
 * **Bruit des entrées débranchées** (`cargo probe stream`) : ≈ ±5 codes, de −22 à +12 mV ; ajouté sans seuil au
   désaccord, il faisait bouger les barres à 100 % ; plus rien une fois les entrées assignables (8b′).
 * **Repliement** (exemple `aliasing`, à 1 V, de C2 à C8) : sous 10 kHz, ≤ −45 dB des harmoniques (≤ −57 dB jusqu'à
-  C5), 13 à 35 dB sous les rampes naïves ; raies repliées les plus fortes entre 20 et 23,8 kHz (−22 dBc à C8).
+  C5), 30 à 35 dB sous les rampes naïves parties des mêmes phases ; raies repliées les plus fortes entre 20 et
+  23,8 kHz (−22 dBc à C8).
 * **Écart à l'idéal** : −15 à −33 dB, à 82–98 % sur les harmoniques mêmes : l'aigu que PolyBLEP atténue (−0,6 dB à
   6,5 kHz, −2,2 dB à 13 kHz, −5,3 dB vers 20 kHz).
 * **Écrêtage** : niveau le plus haut sans écrêtage sur tous les cas, 1,00 V avec des scies montantes, **2,01 V**

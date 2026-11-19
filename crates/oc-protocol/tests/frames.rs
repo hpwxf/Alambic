@@ -105,7 +105,10 @@ fn the_fullest_profile_fits_in_a_frame() {
     }
     let mut buffer = [0; MAX_FRAME];
     let frame = encode(&Reply::Profile(profile.clone()), &mut buffer).unwrap();
-    assert!(frame.len() < MAX_FRAME / 2, "{} bytes", frame.len());
+    // Every count at its longest encoding: real profiles are shorter. A
+    // quarter of the frame stays free for stages to come (262 bytes with
+    // the voice's two, journal/D-039).
+    assert!(frame.len() < MAX_FRAME * 3 / 4, "{} bytes", frame.len());
     let mut frame = frame.to_vec();
     assert_eq!(decode::<Reply<'_>>(&mut frame), Ok(Reply::Profile(profile)));
 }

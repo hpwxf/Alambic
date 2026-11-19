@@ -4,8 +4,8 @@
 //! The engine times its own stages ([`Stage::Tick`] down to
 //! [`Stage::Page`]) and the period between two ticks; a backend adds what
 //! happens outside the engine ([`Stage::Sample`], [`Stage::Usb`], and the
-//! audio interrupt's [`Stage::Audio`], [`Stage::AudioPeriod`],
-//! [`Stage::Frame`]) through [`crate::Engine::profile_mut`], one duration at
+//! audio interrupt's [`Stage::Audio`], [`Stage::Voice`],
+//! [`Stage::VoiceParams`], [`Stage::AudioPeriod`], [`Stage::Frame`]) through [`crate::Engine::profile_mut`], one duration at
 //! a time or a whole [`Stat`] gathered elsewhere ([`Profile::merge`]). On the module the fine counter is the
 //! core's cycle counter, so a stage costs a few cycles to time and is known
 //! to 1.7 ns; a clock without a fine counter leaves the profile empty.
@@ -41,6 +41,14 @@ pub enum Stage {
     /// One run of the audio interrupt: a sample to the DAC and a piece of
     /// the screen (backend, journal/D-033).
     Audio,
+    /// Rendering one sample of the audio interrupt's voice, inside
+    /// [`Self::Audio`]: what the wait for the DAC's burst hides there
+    /// (backend, journal/D-039).
+    Voice,
+    /// Taking new parameters into the audio interrupt's voice, inside
+    /// [`Self::Audio`], on the runs that receive them (backend,
+    /// journal/D-039).
+    VoiceParams,
     /// The time between two runs of the audio interrupt (backend).
     AudioPeriod,
     /// Sending one whole frame to the screen, piece by piece from the audio
@@ -50,7 +58,7 @@ pub enum Stage {
 
 impl Stage {
     /// Every stage, in report order.
-    pub const ALL: [Self; 12] = [
+    pub const ALL: [Self; 14] = [
         Self::Tick,
         Self::Acquire,
         Self::Update,
@@ -61,6 +69,8 @@ impl Stage {
         Self::Sample,
         Self::Usb,
         Self::Audio,
+        Self::Voice,
+        Self::VoiceParams,
         Self::AudioPeriod,
         Self::Frame,
     ];
@@ -88,6 +98,8 @@ impl Stage {
             Self::Sample => "sample",
             Self::Usb => "usb",
             Self::Audio => "audio",
+            Self::Voice => "voice",
+            Self::VoiceParams => "voice_params",
             Self::AudioPeriod => "audio_period",
             Self::Frame => "frame",
         }

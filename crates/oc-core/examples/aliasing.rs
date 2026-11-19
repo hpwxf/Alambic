@@ -19,7 +19,16 @@
 //! ```sh
 //! cargo run -p oc-core --example aliasing --release            # the table
 //! cargo run -p oc-core --example aliasing --release -- out/    # and the WAVs
+//! SUPERSAW_CALC=f32 cargo run -p oc-core --example aliasing --release   # the f32 bank
+//! SUPERSAW_SHAPE=1000 cargo run -p oc-core --example aliasing --release # squares
 //! ```
+//!
+//! `SUPERSAW_CALC=f32` measures the bank in `f32` instead (journal/D-039);
+//! `SUPERSAW_SHAPE`, in thousandths, the voices' shape (0, a sawtooth, by
+//! default), and `SUPERSAW_WIDTH` the pulse's width (500, a square), the
+//! references blended the same way. The highest level that clips nowhere is
+//! given for a sawtooth, half way, a square and narrower pulses whatever
+//! they say.
 //!
 //! A third table compares the bank with an ideal supersaw: each voice built
 //! from all its harmonics below the Nyquist frequency, at its exact pitch,
@@ -44,7 +53,9 @@ use std::io::Write as _;
 use std::path::Path;
 
 use oc_core::apps::tone;
-use oc_core::audio::supersaw::{Bank, CENTRE, FULL, Supersaw, VOICES, mix_gains};
+use oc_core::audio::supersaw::{
+    Arithmetic, Bank, CENTRE, FULL, NARROWEST_WIDTH, SQUARE_WIDTH, Supersaw, VOICES, voice_gains,
+};
 use oc_core::calibration::{CV_OUT_MAX_MV, CV_OUT_MIN_MV};
 
 /// The module's sample rate: PERCLK over 21 (journal/D-033).
@@ -98,7 +109,46 @@ const DETUNES: [u16; 3] = [0, 500, FULL];
 /// The mix measured: the default, half way.
 const MIX: u16 = FULL / 2;
 
+/// The bank measured: integers unless `SUPERSAW_CALC` is `f32`.
+fn arithmetic() -> Arithmetic {
+    match std::env::var("SUPERSAW_CALC").as_deref() {
+        Ok("f32") => Arithmetic::Float,
+        _ => Arithmetic::Fixed,
+    }
+}
+
+/// The voices' shape measured, in thousandths: `SUPERSAW_SHAPE`, a
+/// sawtooth (0) unless it says otherwise.
+fn shape() -> u16 {
+    std::env::var("SUPERSAW_SHAPE")
+        .ok()
+        .and_then(|shape| shape.parse().ok())
+        .map_or(0, |shape: u16| shape.min(FULL))
+}
+
+/// The pulse width measured, in thousandths of the period:
+/// `SUPERSAW_WIDTH`, a square (500) unless it says otherwise.
+fn width() -> u16 {
+    std::env::var("SUPERSAW_WIDTH")
+        .ok()
+        .and_then(|width| width.parse().ok())
+        .map_or(SQUARE_WIDTH, |width: u16| {
+            width.clamp(NARROWEST_WIDTH, SQUARE_WIDTH)
+        })
+}
+
+/// `shape` as a fraction, zero to one.
+fn shape_fraction(shape: u16) -> f64 {
+    f64::from(shape) / f64::from(FULL)
+}
+
 fn main() {
+    println!(
+        "Bank: {:?}, shape {} %, width {} %.",
+        arithmetic(),
+        shape() / 10,
+        width() / 10
+    );
     let wav_dir = std::env::args().nth(1);
     if let Some(dir) = &wav_dir {
         fs::create_dir_all(dir).expect("the WAV directory must be writable");
@@ -125,10 +175,13 @@ fn main() {
                 frequency: tone::frequency(note, 0),
                 detune,
                 mix: MIX,
+                shape: shape(),
+                width: width(),
                 amplitude: LEVEL_MV,
+                arithmetic: arithmetic(),
             };
-            let (played, steps) = render(&params);
-            let naive = naive(&params, &steps);
+            let (played, steps, phases) = render(&params);
+            let naive = naive(&params, &steps, &phases);
             let frequencies =
                 steps.map(|step| f64::from(step) * f64::from(RATE_HZ) / 2f64.powi(32));
             let name = tone::note_name(note);
@@ -184,7 +237,10 @@ fn write_pairs(dir: &Path) {
                 frequency: tone::frequency(note, 0),
                 detune: FULL,
                 mix,
+                shape: shape(),
+                width: width(),
                 amplitude,
+                arithmetic: arithmetic(),
             };
             let clean: Vec<f64> = play(&at(LEVEL_MV), PAIR_LENGTH)
                 .iter()
@@ -247,7 +303,10 @@ fn against_ideal() {
                 frequency: tone::frequency(note, 0),
                 detune,
                 mix: MIX,
+                shape: shape(),
+                width: width(),
                 amplitude: LEVEL_MV,
+                arithmetic: arithmetic(),
             };
             let (played, steps, phases) = render_for(&params, LENGTH);
             let ideal = ideal(&params, &steps, &phases, LENGTH);
@@ -286,9 +345,12 @@ fn clipping() {
                     frequency: tone::frequency(60, 0),
                     detune: FULL,
                     mix,
+                    shape: shape(),
+                    width: width(),
                     amplitude: level,
+                    arithmetic: arithmetic(),
                 };
-                let (played, _) = render(&params);
+                let (played, ..) = render(&params);
                 let clipped = played
                     .iter()
                     .filter(|&&sample| {
@@ -311,9 +373,12 @@ fn clipping() {
                 frequency: tone::frequency(60, 0),
                 detune: FULL,
                 mix,
+                shape: shape(),
+                width: width(),
                 amplitude: LEVEL_MV,
+                arithmetic: arithmetic(),
             };
-            let (played, _) = render(&params);
+            let (played, ..) = render(&params);
             let low = played.iter().copied().fold(0.0, f64::min);
             let high = played.iter().copied().fold(0.0, f64::max);
             // The level scales the samples: the bound reached first sets it.
@@ -325,45 +390,74 @@ fn clipping() {
     worst_level();
 }
 
-/// The highest level that clips nowhere: over every note, detune and mix
-/// measured, eight seconds each, the least room either bound leaves.
+/// The shapes and widths the highest level is measured at: sawtooth, half
+/// way to a square, square, then narrower pulses down to the narrowest.
+const FORMS: [(u16, u16); 6] = [
+    (0, SQUARE_WIDTH),
+    (FULL / 2, SQUARE_WIDTH),
+    (FULL, SQUARE_WIDTH),
+    (FULL, 250),
+    (FULL, 100),
+    (FULL, NARROWEST_WIDTH),
+];
+
+/// The level the room left is measured at: low enough that nothing clips
+/// there, or the bound itself would be read as the peak.
+const ROOM_LEVEL_MV: i32 = 250;
+
+/// The highest level that clips nowhere, for each form of [`FORMS`]: over
+/// every note, detune and mix measured, eight seconds each, the least room
+/// either bound leaves.
 fn worst_level() {
-    let mut worst = (f64::MAX, 0, 0, 0);
-    for note in NOTES {
-        for detune in DETUNES {
-            for mix in CLIP_MIXES {
-                let params = Supersaw {
-                    frequency: tone::frequency(note, 0),
-                    detune,
-                    mix,
-                    amplitude: LEVEL_MV,
-                };
-                let played = play(&params, PAIR_LENGTH);
-                let low = played.iter().copied().fold(0.0, f64::min);
-                let high = played.iter().copied().fold(0.0, f64::max);
-                let room = (f64::from(CV_OUT_MIN_MV) / low).min(f64::from(CV_OUT_MAX_MV) / high);
-                if room < worst.0 {
-                    worst = (room, note, detune, mix);
+    println!();
+    for (shape, width) in FORMS {
+        let mut worst = (f64::MAX, 0, 0, 0);
+        for note in NOTES {
+            for detune in DETUNES {
+                for mix in CLIP_MIXES {
+                    let params = Supersaw {
+                        frequency: tone::frequency(note, 0),
+                        detune,
+                        mix,
+                        shape,
+                        width,
+                        amplitude: ROOM_LEVEL_MV,
+                        arithmetic: arithmetic(),
+                    };
+                    let played = play(&params, PAIR_LENGTH);
+                    let low = played.iter().copied().fold(0.0, f64::min);
+                    let high = played.iter().copied().fold(0.0, f64::max);
+                    let room =
+                        (f64::from(CV_OUT_MIN_MV) / low).min(f64::from(CV_OUT_MAX_MV) / high);
+                    if room < worst.0 {
+                        worst = (room, note, detune, mix);
+                    }
                 }
             }
         }
+        let (room, note, detune, mix) = worst;
+        println!(
+            "Highest level clipping nowhere at shape {} %, width {} %, every case above over \
+             eight seconds: {:.2} V (the least room at {}, detune {} %, mix {} %)",
+            shape / 10,
+            width / 10,
+            room * f64::from(ROOM_LEVEL_MV) / 1_000.0,
+            tone::note_name(note).as_str(),
+            detune / 10,
+            mix / 10
+        );
     }
-    let (room, note, detune, mix) = worst;
-    println!(
-        "\nHighest level clipping nowhere, every case above over eight seconds: {:.2} V \
-         (the least room at {}, detune {} %, mix {} %)",
-        room * f64::from(LEVEL_MV) / 1_000.0,
-        tone::note_name(note).as_str(),
-        detune / 10,
-        mix / 10
-    );
 }
 
 /// `params` played on the mono part, in millivolts, after the high-pass has
-/// settled; and each voice's phase step.
-fn render(params: &Supersaw) -> (Vec<f64>, [u32; VOICES]) {
-    let (samples, steps, _) = render_for(params, LENGTH);
-    (samples, steps)
+/// settled; and each voice's phase step and starting phase.
+fn render(params: &Supersaw) -> (Vec<f64>, [u32; VOICES], [u32; VOICES]) {
+    render_for(params, LENGTH)
+}
+
+/// Each voice's gain at `params`'s mix, as the bank weighs it, in 1.15.
+fn gains_of(params: &Supersaw) -> [f64; VOICES] {
+    voice_gains(params.mix).map(|gain| i32::try_from(gain).map_or(0.0, f64::from))
 }
 
 /// `length` samples of `params`, as [`render`] plays them, with each voice's
@@ -386,12 +480,13 @@ fn ideal(
     length: usize,
 ) -> Vec<f64> {
     let turn = 2f64.powi(32);
-    let (centre, side) = mix_gains(params.mix);
-    let gains: Vec<f64> = (0..VOICES)
-        .map(|index| if index == CENTRE { centre } else { side })
-        .map(|gain| i32::try_from(gain).map_or(0.0, f64::from))
-        .collect();
-    let norm = gains.iter().map(|gain| gain * gain).sum::<f64>().sqrt();
+    let gains = gains_of(params);
+    let s = shape_fraction(params.shape);
+    let w = f64::from(params.width) / f64::from(FULL);
+    // The voices' power over that of sawtooths, `(1 - s)^2 + 12 s w (1 - w)`:
+    // the bank keeps the loudness, so does the reference.
+    let norm = gains.iter().map(|gain| gain * gain).sum::<f64>().sqrt()
+        * ((1.0 - s).powi(2) + 12.0 * s * w * (1.0 - w)).sqrt();
     // The harmonics of each voice below the Nyquist frequency.
     let harmonics: Vec<u32> = steps
         .iter()
@@ -414,8 +509,11 @@ fn ideal(
             #[allow(clippy::cast_possible_truncation)]
             // The phase wraps round a turn, as the bank's does.
             let phase = phases[voice].wrapping_add(steps[voice].wrapping_mul(index as u32));
-            sum +=
-                gains[voice] * band_limited_ramp(TAU * f64::from(phase) / turn, harmonics[voice]);
+            let angle = TAU * f64::from(phase) / turn;
+            // A ramp less `s` of the same `w` back: towards a pulse.
+            let wave = band_limited_ramp(angle, harmonics[voice])
+                - s * band_limited_ramp(angle - TAU * w, harmonics[voice]);
+            sum += gains[voice] * wave;
         }
         let input = sum / norm;
         output = coefficient * (output + input - previous);
@@ -472,21 +570,22 @@ fn played(bank: &mut Bank, length: usize) -> Vec<f64> {
         .collect()
 }
 
-/// The same voices as naive ramps, at the same steps and gains, unfiltered.
-fn naive(params: &Supersaw, steps: &[u32; VOICES]) -> Vec<f64> {
-    let (centre, side) = mix_gains(params.mix);
-    let gains: Vec<f64> = (0..VOICES)
-        .map(|index| if index == CENTRE { centre } else { side })
-        .map(|gain| i32::try_from(gain).map_or(0.0, f64::from))
-        .collect();
-    let mut phases = [0u32; VOICES];
+/// The same voices as naive ramps, at the same steps, starting phases and
+/// gains, unfiltered.
+fn naive(params: &Supersaw, steps: &[u32; VOICES], phases: &[u32; VOICES]) -> Vec<f64> {
+    let gains = gains_of(params);
+    let s = shape_fraction(params.shape);
+    let ramp = |phase: u32| 1.0 - f64::from(phase) / 2f64.powi(31);
+    // The second ramp's lead, a turn being `2^32`: the width back.
+    let lead = u32::try_from((u64::from(FULL - params.width) << 32) / u64::from(FULL)).unwrap_or(0);
+    let mut phases = *phases;
     (0..SETTLE + LENGTH)
         .map(|_| {
             let mut sum = 0.0;
             for ((phase, step), gain) in phases.iter_mut().zip(steps).zip(&gains) {
-                // Falling, as the bank plays them.
-                let ramp = 1.0 - f64::from(*phase) / 2f64.powi(31);
-                sum += ramp * gain;
+                // Falling, as the bank plays them, blended towards a square.
+                let wave = ramp(*phase) - s * ramp(phase.wrapping_add(lead));
+                sum += wave * gain;
                 *phase = phase.wrapping_add(*step);
             }
             sum

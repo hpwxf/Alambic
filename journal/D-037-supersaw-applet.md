@@ -7,7 +7,7 @@
 | **Auteur** | Pascal Havé |
 | **Statut** | adoptée, révisée |
 | **Commits** | ce commit (ADR, plan) ; implémentation dans les lots de l'étape 8 (`docs/plan/etape-8-supersaw.md`) |
-| **Relations** | premier oscillateur sur le chemin audio de D-033 ; étend `oc_core::audio` (D-033, révision du lot 7b) ; ajoute une applet à D-021 ; pas de flottant (D-005) ; sorties par la calibration (D-027) ; étude `docs/supersaw/` § 2–14 |
+| **Relations** | premier oscillateur sur le chemin audio de D-033 ; étend `oc_core::audio` (D-033, révision du lot 7b) ; ajoute une applet à D-021 ; pas de flottant (D-005) ; sorties par la calibration (D-027) ; étude `docs/supersaw/` § 2–14 ; un banc `f32` s'ajoute à l'essai (D-039) |
 
 ## 1. Contexte
 
@@ -217,4 +217,58 @@ sans écart mesurable à l'idéal.
 une modulation rapide de `DETUNE` ou `MIX`) : plafonner `LEVEL` à 2 V. Un étage de sortie autre (une autre
 fabrication aux bornes différentes) : refaire la mesure, les bornes venant de `calibration::CV_OUT_MIN_MV` et
 `CV_OUT_MAX_MV`.
+
+## Révision du 2026-11-19 — réglages sur deux pages, avec l'ascenseur de `RATCHET`
+
+Avec `CALC` (D-039), six réglages ne tenaient plus à côté de l'éventail des voix sans le réduire à une rangée.
+Demande de l'utilisateur : les réglages sans entrée assignable (`STEREO`, `CALC`) passent en page 2, avec un ascenseur
+comme dans `RATCHET`. Quatre réglages par page (`NOTE`, `DETUNE`, `MIX`, `LEVEL` ; puis `STEREO`, `CALC`), la page
+suit le réglage choisi par l'encodeur gauche, l'ascenseur est `gfx::controls::scroll_bar` (sorti de `RATCHET` pour
+l'occasion, D-030) ; l'éventail retrouve ses deux rangées. Scénario doré `supersaw_page2`.
+
+## Révision du 2026-11-19 — `SHAPE` : de la scie au carré
+
+Demande de l'utilisateur, d'après le paramètre *Shape* du Ripsaw d'Acid Rain Technology (scie fondue vers un carré,
+sur toutes les voix). Chaque voix devient `saw(t) − s · saw(t + ½)`, `s` de 0 à 1 : c'est exactement le mélange
+`(1 − s) · scie + s · carré`, de même crête, et chaque terme étant corrigé par PolyBLEP, le mélange reste à bande
+limitée à toute valeur de `s`. La demi-période ne coûte qu'une addition à la phase (2³¹ en `u32`, ½ en `f32`), pas un
+accumulateur de plus ; la seconde scie n'est calculée que si `s` n'est pas nul, et à 0 le banc est identique au bit
+près à ce qu'il était.
+
+* **Volume** : la puissance d'une voix à `s` est `(1 + s + s²) / 3` (le produit des deux scies vaut −1/6 en
+  moyenne), contre 1/3 pour la scie ; la racine du rapport (`shape_loudness`, √3 au carré, +4,8 dB) entre dans les
+  normaliseurs du `Setup` (D-040), comme les lois de mix : le volume reste à peu près le même sur toute la course,
+  sans coût par échantillon.
+* **Applet** : `SHAPE` en page 1, entre `MIX` et `LEVEL` (cinq réglages par page, l'éventail des voix garde ses deux
+  rangées), en pour cent, scie au démarrage ; entrée assignable comme `DETUNE` et `MIX` (0 à 5 V sur la course).
+  Un picto à côté du libellé trace deux périodes de la forme jouée (panneau et entrée), sans la correction. Le
+  sous-octave reste une scie.
+* **Mesuré** (exemple `aliasing`, `SUPERSAW_SHAPE`, références `ideal` et `naive` fondues de la même façon) : en carré,
+  repli sous 10 kHz ≤ −44 dB partout (scie : ≤ −45 dB) ; le carré saute dans les deux sens, donc le passe-haut fait
+  aussi des pointes vers −3 V : niveau le plus haut sans écrêtage 2,01 V en scie, 1,90 V à mi-course, 1,49 V en
+  carré. `LEVEL` garde 3 V au plus, comme après la révision précédente.
+* **Coût** : une scie corrigée de plus par voix ; sur l'hôte, 37 → 48 ns par échantillon en carré.
+* Écrit dans les deux bancs, entier et `f32`, D-039 n'étant pas tranchée.
+
+## Révision du 2026-11-19 — `WIDTH` : la largeur de l'impulsion
+
+Demande de l'utilisateur, après `SHAPE`. La seconde scie du mélange n'est plus décalée d'une demi-période mais de
+`w`, de 5 à 50 % de la période : `saw(t) − s · saw(t − w)`, une impulsion de largeur `w` à `SHAPE` 100 %, le carré à
+50 %, et toujours à bande limitée. `w` et `1 − w` donnent le même timbre, inversé : 50 % est donc l'autre bout de la
+course. En dessous de 5 %, une impulsion a si peu de puissance que garder son volume amplifierait l'arrondi avec lui.
+
+* **Sens** : le décalage est pris en arrière (`t − w`) plutôt qu'en avant. C'est la même impulsion, mais sa partie
+  étroite sort vers le haut, du côté où les sorties ont 6 V de marge au lieu de 3 (même raison que les scies
+  descendantes) : niveau le plus haut sans écrêtage 1,55 V à 25 %, 1,77 V à 10 %, 1,37 V à 5 %, contre 1,23 V puis
+  moins de 1 V dans l'autre sens.
+* **Volume** : le produit des deux scies vaut `1/3 − 2 w (1 − w)` en moyenne, donc la puissance d'une voix est
+  `(1 − s)² / 3 + 4 s w (1 − w)` ; `shape_loudness(shape, width)` en tient compte et redonne exactement l'ancienne
+  formule à 50 %. À 50 %, le banc est identique au bit près à ce qu'il était.
+* **Applet** : `WIDTH` en page 1, après `SHAPE`, un pour cent par cran, carré au démarrage, entrée assignable (sa
+  course de 5 à 50 % sur 0 à 5 V) ; `LEVEL` passe en page 2 avec `STEREO` et `CALC` (choix de l'utilisateur, pour
+  garder l'éventail sur deux rangées). Le picto de `SHAPE` suit la largeur, chaque colonne échantillonnée en son
+  milieu pour qu'une impulsion de 5 % en allume encore une, sa partie étroite vers le haut comme la sortie la joue.
+* **Mesuré** (exemple `aliasing`, `SUPERSAW_WIDTH`) : à 5 %, repli sous 10 kHz ≤ −46 dB jusqu'à C7, −33 à −37 dB sur
+  B7 et C8 : une impulsion étroite porte beaucoup d'aigu. L'exemple mesure désormais la marge à 250 mV : à 1 V, un cas
+  qui écrête déjà lisait la borne comme crête et rendait 1,00 V.
 

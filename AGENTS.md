@@ -103,7 +103,9 @@ scope for now: six are shipped: a diagnostic I/O screen, a scope, a
 demonstration of the graphics primitives (`GFX DEMO`, journal/D-030), the
 first musical one, `RATCHET` (trigger bursts, journal/D-032), and `TONE`, a
 test tone for the audio path (journal/D-033), and `SUPERSAW`, the first
-oscillator (seven PolyBLEP sawtooths, journal/D-037).
+oscillator (seven PolyBLEP sawtooths, journal/D-037), whose bank exists in
+integers and, on trial, in `f32`, picked by its `CALC` setting
+(journal/D-039).
 
 ## Workspace layout
 
@@ -179,6 +181,10 @@ lives in `oc-core` and is tested once, on the host.
   into LPSPI4, so the DAC is written at instants the hardware fixes; the
   DMA's interrupt then computes the next sample with its own `Voice` (two
   slots ahead), waits for the burst's echo and sends a piece of the screen;
+  the loop prepares that voice's `oc_core::audio::Setup` when the
+  parameters change, outside any critical section, and the interrupt only
+  copies it (`Voice::apply`, journal/D-040): anything that depends on the
+  parameters alone belongs in `Setup::new`, never per sample;
   LPSPI4's frame-complete interrupt releases the OLED's chip select. The
   loop and the interrupts share mailboxes behind `critical_section::Mutex`
   (short copies).
@@ -200,7 +206,10 @@ lives in `oc-core` and is tested once, on the host.
   backend uses them any more; the simulator, Rack and the tests send the
   frame in the tick that drew it. The boot splash presents every tick.
 * **Costs** are measured, not assumed: `cargo probe stats` shows the loop's
-  stages and the interrupt's (`audio`, `audio_period`, `frame`). The end
+  stages and the interrupt's (`audio`, `audio_period`, `frame`, and inside
+  `audio` the voice's own `voice` and `voice_params`: the interrupt spins
+  until the DAC's burst echoes, so `audio` hides any computation shorter
+  than the burst, journal/D-039). The end
   of a transfer is read from its echo in the receive FIFO (the busy flag
   and the transfer-complete flag answer early, and the OLED then takes DAC
   bits). On the module the interrupt costs about 3.4 µs of each 21 µs
@@ -221,7 +230,11 @@ lives in `oc-core` and is tested once, on the host.
   interrupt, the engine's own outputs muted, `audio::MutedOutputs`).
 
 * **Internal unit: millivolts, `i32`** (`oc_core::platform::MilliVolts`).
-  No floating point in the firmware's signal path; `f32` appears only at the
+  No floating point in the firmware's signal path, with one exception on
+  trial: the `f32` supersaw bank (`audio/supersaw/float.rs`, journal/D-039;
+  its integer twin is `audio/supersaw/fixed.rs`),
+  millivolts at its edges, `core` only (no `sqrt` or `round` without `std`);
+  otherwise `f32` appears only at the
   VCV Rack boundary (`Alambic::process()` converting to/from Rack's
   volt-scaled `float`, never inside `oc-core` or `oc-vcv-ffi`'s own ABI,
   which stays `int32_t` millivolts). This keeps conversions exact and avoids
@@ -395,7 +408,7 @@ Full protocol, per level, with exact commands and what each proves: see
 | The diagnostic applet's logic and rendering       | `crates/oc-core/src/apps/diagnostic.rs` |
 | The scope applet                                  | `crates/oc-core/src/apps/scope.rs` |
 | The `TONE` test applet (four waveforms, V/oct)    | `crates/oc-core/src/apps/tone.rs` |
-| The `SUPERSAW` applet and its bank (PolyBLEP, Szabo's curves, stereo, sub) | `crates/oc-core/src/apps/supersaw.rs`, `audio/supersaw.rs` (journal/D-037) |
+| The `SUPERSAW` applet and its bank (PolyBLEP, Szabo's curves, `SHAPE` saw to pulse and its `WIDTH`, stereo, sub) | `crates/oc-core/src/apps/supersaw.rs`; `audio/supersaw.rs` holds what both arithmetics share (parameters, parts, Szabo's curves, the preparation in integers, `Setup` / `Bank` dispatch), `audio/supersaw/fixed.rs` the integer bank (journal/D-037), `audio/supersaw/float.rs` the `f32` one on trial (journal/D-039) |
 | Output parameters, the voice, the waveforms (sine table built at compile time) | `crates/oc-core/src/audio/mod.rs`, `audio/wave.rs` (journal/D-033) |
 | A parameter modulated by a CV input (scale, shift, bounds, `SET` / `ADD` / `MUL`, `CENTER`) and its submenu, for any applet; `RATCHET` is the first user | `crates/oc-core/src/modulation/mod.rs`, `modulation/editor.rs` (journal/D-035, D-036) |
 | The app registry and dispatch (`AppId`, `AppHost`) | `crates/oc-core/src/apps/mod.rs` |

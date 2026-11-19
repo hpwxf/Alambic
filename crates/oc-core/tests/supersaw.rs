@@ -3,7 +3,9 @@
 
 use std::f64::consts::TAU;
 
-use oc_core::audio::supersaw::{FULL, Part, Supersaw, detune_curve, mix_gains};
+use oc_core::audio::supersaw::{
+    Arithmetic, FULL, NARROWEST_WIDTH, Part, SQUARE_WIDTH, Supersaw, detune_curve, mix_gains,
+};
 use oc_core::audio::wave::Waveform;
 use oc_core::audio::{Channel, Params, Tone, Voice};
 
@@ -79,7 +81,10 @@ fn supersaw(frequency: u32, detune: u16, mix: u16) -> Supersaw {
         frequency,
         detune,
         mix,
+        shape: 0,
+        width: SQUARE_WIDTH,
         amplitude: 1_000,
+        arithmetic: Arithmetic::Fixed,
     }
 }
 
@@ -239,5 +244,286 @@ fn the_parts_go_quiet_with_the_level() {
     });
     for _ in 0..1_000 {
         assert_eq!(voice.next_sample(), [0; 4]);
+    }
+}
+
+/// `supersaw` played by the `f32` bank (journal/D-039).
+fn float(supersaw: Supersaw) -> Supersaw {
+    Supersaw {
+        arithmetic: Arithmetic::Float,
+        ..supersaw
+    }
+}
+
+/// Root mean square of the difference between the two banks on `part`,
+/// over `samples`, and of the integer bank's part, in millivolts.
+fn banks_apart(supersaw: Supersaw, part: usize, samples: usize) -> (f64, f64) {
+    let mut fixed = bank_voice(supersaw);
+    let mut float = bank_voice(float(supersaw));
+    let (mut apart, mut level) = (0.0, 0.0);
+    for _ in 0..samples {
+        let (a, b) = (fixed.next_sample()[part], float.next_sample()[part]);
+        apart += f64::from(a - b).powi(2);
+        level += f64::from(a).powi(2);
+    }
+    #[allow(clippy::cast_precision_loss)]
+    // Fewer than 2^24 samples.
+    let samples = samples as f64;
+    ((apart / samples).sqrt(), (level / samples).sqrt())
+}
+
+#[test]
+fn the_float_bank_plays_what_the_integer_bank_plays() {
+    for (frequency, detune, mix, shape) in [
+        (110_000, 0, 0, 0),
+        (110_000, 500, 500, 0),
+        (440_000, FULL, FULL, 0),
+        (4_186_000, FULL, 500, 0),
+        (110_000, 500, 500, FULL / 2),
+        (440_000, FULL, FULL, FULL),
+    ] {
+        for part in 0..4 {
+            let params = Supersaw {
+                shape,
+                width: SQUARE_WIDTH,
+                ..supersaw(frequency, detune, mix)
+            };
+            let (apart, level) = banks_apart(params, part, 4_800);
+            // The roundings to the millivolt differ: under one millivolt
+            // apart measured, for levels of hundreds.
+            assert!(
+                apart < 2.0,
+                "{frequency} mHz, {detune}, {mix}, part {part}: {apart:.2} mV apart, level {level:.0} mV"
+            );
+        }
+    }
+}
+
+#[test]
+fn the_float_bank_plays_its_pitch() {
+    let tight = float(supersaw(440_000, 0, 0));
+    let centre = jumps(tight, 0);
+    assert!((439..=441).contains(&centre), "{centre}");
+    let sub = jumps(tight, 3);
+    assert!((219..=221).contains(&sub), "{sub}");
+}
+
+#[test]
+fn the_float_high_pass_leaves_no_offset() {
+    let mut voice = bank_voice(float(supersaw(110_000, 500, 500)));
+    let samples: Vec<i32> = (0..48_000).map(|_| voice.next_sample()[0]).collect();
+    let tail = &samples[4_800..];
+    #[allow(clippy::cast_precision_loss)]
+    // Fewer than 2^24 samples.
+    let mean = tail.iter().map(|&sample| f64::from(sample)).sum::<f64>() / tail.len() as f64;
+    assert!(mean.abs() < 5.0, "mean {mean} mV");
+}
+
+#[test]
+fn the_float_bank_goes_quiet_with_the_level() {
+    let mut voice = bank_voice(Supersaw {
+        amplitude: 0,
+        ..float(supersaw(440_000, FULL, FULL))
+    });
+    for _ in 0..1_000 {
+        assert_eq!(voice.next_sample(), [0; 4]);
+    }
+}
+
+#[test]
+fn switching_banks_resumes_each_where_it_stopped() {
+    // Playing the float bank for a while leaves the integer bank where it
+    // was: switching back gives the samples it would have given next.
+    let params = supersaw(220_000, 500, 500);
+    let mut switched = bank_voice(params);
+    let mut straight = bank_voice(params);
+    for _ in 0..100 {
+        assert_eq!(switched.next_sample(), straight.next_sample());
+    }
+    let mut both = Params::REST;
+    both.channels = [
+        Channel::Supersaw(Part::Mono),
+        Channel::Supersaw(Part::Left),
+        Channel::Supersaw(Part::Right),
+        Channel::Supersaw(Part::Sub),
+    ];
+    both.supersaw = float(params);
+    switched.set_params(&both);
+    for _ in 0..100 {
+        switched.next_sample();
+    }
+    both.supersaw = params;
+    switched.set_params(&both);
+    for _ in 0..100 {
+        assert_eq!(switched.next_sample(), straight.next_sample());
+    }
+}
+
+/// `supersaw` as squares, or blended, at `shape`.
+fn shaped(supersaw: Supersaw, shape: u16) -> Supersaw {
+    Supersaw { shape, ..supersaw }
+}
+
+/// Root mean square of the mono part over a second.
+fn mono_rms(supersaw: Supersaw) -> f64 {
+    let mut voice = bank_voice(supersaw);
+    let sum: f64 = (0..48_000)
+        .map(|_| f64::from(voice.next_sample()[0]).powi(2))
+        .sum();
+    (sum / 48_000.0).sqrt()
+}
+
+#[test]
+fn the_shape_keeps_the_loudness() {
+    // Squares are louder than sawtooths of the same peak by about 4.8 dB;
+    // the normalisers take it back (journal/D-037, revision of 2026-11-19).
+    for arithmetic in [Arithmetic::Fixed, Arithmetic::Float] {
+        let saws = Supersaw {
+            arithmetic,
+            ..supersaw(220_000, 500, 500)
+        };
+        let reference = mono_rms(saws);
+        for shape in [FULL / 4, FULL / 2, FULL] {
+            let ratio = 20.0 * (mono_rms(shaped(saws, shape)) / reference).log10();
+            assert!(
+                ratio.abs() < 1.5,
+                "{arithmetic:?}, shape {shape}: {ratio:.2} dB"
+            );
+        }
+    }
+}
+
+/// The second and third harmonics of the mono part against its
+/// fundamental, in dB, at 500 Hz.
+fn harmonics_db(supersaw: Supersaw) -> (f64, f64) {
+    let mut voice = bank_voice(supersaw);
+    let samples: Vec<f64> = (0..4_800)
+        .map(|_| f64::from(voice.next_sample()[0]))
+        .skip(480)
+        .collect();
+    let first = power(&samples, 500.0);
+    (
+        10.0 * (power(&samples, 1_000.0) / first).log10(),
+        10.0 * (power(&samples, 1_500.0) / first).log10(),
+    )
+}
+
+#[test]
+fn a_square_has_no_even_harmonics() {
+    // One voice in practice: no detune, no side voices to speak of. A
+    // sawtooth's harmonics go as 1/k, a square's as 1/k for odd k only: the
+    // same third, no second, whatever the high-pass does to both.
+    for arithmetic in [Arithmetic::Fixed, Arithmetic::Float] {
+        let saw = Supersaw {
+            arithmetic,
+            ..supersaw(500_000, 0, 0)
+        };
+        let (saw_second, saw_third) = harmonics_db(saw);
+        let (second, third) = harmonics_db(shaped(saw, FULL));
+        assert!(
+            second < saw_second - 30.0,
+            "{arithmetic:?}: second harmonic {second:.1} dB, the sawtooth's {saw_second:.1}"
+        );
+        assert!(
+            (third - saw_third).abs() < 0.5,
+            "{arithmetic:?}: third harmonic {third:.1} dB, the sawtooth's {saw_third:.1}"
+        );
+    }
+}
+
+#[test]
+fn a_sawtooth_shape_changes_nothing() {
+    // At 0 the shape adds nothing: the samples are the sawtooths' own.
+    let mut plain = bank_voice(supersaw(330_000, FULL, 500));
+    let mut zero = bank_voice(shaped(supersaw(330_000, FULL, 500), 0));
+    for _ in 0..4_800 {
+        assert_eq!(plain.next_sample(), zero.next_sample());
+    }
+}
+
+/// `supersaw` as pulses of `width` at a full shape.
+fn pulses(supersaw: Supersaw, width: u16) -> Supersaw {
+    Supersaw {
+        width,
+        ..shaped(supersaw, FULL)
+    }
+}
+
+/// The `k`-th harmonic of the mono part against its fundamental, in dB, at
+/// 500 Hz.
+fn harmonic_db(supersaw: Supersaw, k: u32) -> f64 {
+    let mut voice = bank_voice(supersaw);
+    let samples: Vec<f64> = (0..4_800)
+        .map(|_| f64::from(voice.next_sample()[0]))
+        .skip(480)
+        .collect();
+    10.0 * (power(&samples, f64::from(500 * k)) / power(&samples, 500.0)).log10()
+}
+
+#[test]
+fn a_quarter_pulse_has_no_fourth_harmonic() {
+    // A pulse of width w weighs harmonic k by |1 - e^(2 pi i k w)|: at a
+    // quarter, nothing at 4, the second louder than the sawtooth's.
+    for arithmetic in [Arithmetic::Fixed, Arithmetic::Float] {
+        let saw = Supersaw {
+            arithmetic,
+            ..supersaw(500_000, 0, 0)
+        };
+        let quarter = pulses(saw, 250);
+        let (saw_second, saw_fourth) = (harmonic_db(saw, 2), harmonic_db(saw, 4));
+        let (second, fourth) = (harmonic_db(quarter, 2), harmonic_db(quarter, 4));
+        assert!(
+            fourth < saw_fourth - 30.0,
+            "{arithmetic:?}: fourth harmonic {fourth:.1} dB, the sawtooth's {saw_fourth:.1}"
+        );
+        // |1 - e^(i pi)| / |1 - e^(i pi / 2)| = sqrt(2): +3 dB on the second.
+        assert!(
+            (second - saw_second - 3.0).abs() < 1.0,
+            "{arithmetic:?}: second harmonic {second:.1} dB, the sawtooth's {saw_second:.1}"
+        );
+    }
+}
+
+#[test]
+fn the_width_keeps_the_loudness() {
+    for arithmetic in [Arithmetic::Fixed, Arithmetic::Float] {
+        let saws = Supersaw {
+            arithmetic,
+            ..supersaw(220_000, 500, 500)
+        };
+        let reference = mono_rms(saws);
+        for width in [SQUARE_WIDTH, 250, 100, NARROWEST_WIDTH] {
+            let ratio = 20.0 * (mono_rms(pulses(saws, width)) / reference).log10();
+            assert!(
+                ratio.abs() < 1.5,
+                "{arithmetic:?}, width {width}: {ratio:.2} dB"
+            );
+        }
+    }
+}
+
+#[test]
+fn the_float_bank_plays_the_integer_banks_pulses() {
+    for width in [250, NARROWEST_WIDTH] {
+        for part in 0..3 {
+            let (apart, level) =
+                banks_apart(pulses(supersaw(440_000, FULL, 500), width), part, 4_800);
+            assert!(
+                apart < 2.0,
+                "width {width}, part {part}: {apart:.2} mV apart, level {level:.0}"
+            );
+        }
+    }
+}
+
+#[test]
+fn the_width_changes_nothing_without_a_shape() {
+    let mut square = bank_voice(supersaw(330_000, FULL, 500));
+    let mut narrow = bank_voice(Supersaw {
+        width: NARROWEST_WIDTH,
+        ..supersaw(330_000, FULL, 500)
+    });
+    for _ in 0..4_800 {
+        assert_eq!(square.next_sample(), narrow.next_sample());
     }
 }

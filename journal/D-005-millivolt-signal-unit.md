@@ -5,7 +5,7 @@
 | **Identifiant** | D-005 |
 | **Date** | 2026-11-16 (rétrospective ; décision prise le 2026-08-01) |
 | **Auteur** | Pascal Havé |
-| **Statut** | adoptée (rétrospective) |
+| **Statut** | adoptée (rétrospective), révisée |
 | **Commits** | `555f492` (`platform::MilliVolts`, calibration), `40e8c3f` (conversion en `float` dans le module Rack) |
 
 ## 1. Contexte
@@ -46,3 +46,14 @@ plage.
   applet. Signal : le premier applet qui convertit en `f32` en interne.
 * Si un besoin de précision sous le millivolt apparaissait côté sortie (1 V/oct : 1 mV ≈ 1,2 cent), il faudrait
   passer en dixièmes de millivolt ou en codes DAC pour l'accord fin. À mesurer au niveau 9 de `TESTING.md`.
+
+## Révision du 2026-11-19 — un banc audio en `f32`, à l'essai (D-039)
+
+Le signal du § 5 est arrivé : le Supersaw (D-037) a été écrit en virgule fixe sans rouvrir cette entrée. D-039 ajoute
+un second banc du Supersaw en `f32`, choisi par le réglage `CALC` de l'applet, pour mesurer sur le module ce que
+coûte le flottant dans l'interruption audio. La frontière posée par D-039 : le flottant n'entre dans `oc-core` que
+dans le calcul d'un banc audio ; les paramètres publiés (`Params`), le contrôle, les conversions et la calibration
+restent en millivolts `i32`, et le banc rend des millivolts arrondis. La raison « tests d'égalité contre tests de
+tolérance » ne vaut qu'en partie : les opérations de base `f32` sont déterministes (IEEE 754, sans contraction en
+FMA), donc simulateur, Rack et module rendent les mêmes échantillons ; seules les comparaisons au banc entier se font
+avec une tolérance. La décision de fond (garder l'entier ou passer au `f32` pour le DSP) attend la mesure de D-039.

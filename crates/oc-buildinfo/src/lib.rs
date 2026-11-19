@@ -11,7 +11,7 @@
 //! The repository is read by [`vergen_gix`] (gitoxide, pure Rust): no `git`
 //! binary is needed. vergen only reruns the build script when `HEAD` or the
 //! current ref moves, so an edit would leave the identifier clean until the
-//! next commit; [`watch_sources`] (unstaged source edits) and [`watch_index`]
+//! next commit; `watch_sources` (unstaged source edits) and `watch_index`
 //! (anything staged) close that gap.
 //!
 //! `oc-core` deliberately does not use this: it only displays the string it

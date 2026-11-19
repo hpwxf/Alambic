@@ -135,3 +135,10 @@ sans conséquence tant qu'aucune page n'en trace beaucoup.
 
 **Étape 5 close** : pages de `GFX DEMO` validées à l'œil par l'utilisateur sur le module, page des courbes à
 105 µs de dessin, périodes inchangées (`docs/plan/avancement/etape-5.md`).
+
+## Révision (2026-11-19) — l'ascenseur devient un contrôle
+
+L'ascenseur de `RATCHET` (piste pointillée, curseur sur la part de la page affichée, D-032 révision du lot 6e) était
+une méthode privée de l'applet. `SUPERSAW` en a besoin aussi (réglages sur deux pages) : il passe dans
+`gfx::controls::scroll_bar`, même tracé au pixel près (écrans dorés de `RATCHET` inchangés), testé par propriété dans
+`tests/gfx.rs`.

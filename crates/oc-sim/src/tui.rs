@@ -1,7 +1,7 @@
 //! Terminal user interface for the simulated module.
 //!
 //! The UI is a thin shell: it turns keystrokes into
-//! [`Event`](crate::scenario::Event)s, asks the [`Simulator`] to run ticks, and
+//! [`Event`]s, asks the [`Simulator`] to run ticks, and
 //! draws what it reports. It contains no module behaviour whatsoever.
 
 use std::fmt::Write as _;

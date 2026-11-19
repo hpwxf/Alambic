@@ -760,6 +760,10 @@ the edge of its range (C7 or C8).
 2. By ear from C1 to C8 at `DETUNE` 0, 50 and 100 %: no click, no tone that
    does not follow the note (aliasing would decide the ×4 of lot 8d).
 3. `STEREO ON`: A and B differ, the field widens; `OFF`: the same on both.
+   `SHAPE` from 0 to 100 %: from a sawtooth to a hollow square, about as
+   loud all the way, no click as it turns. At `SHAPE` 100 %, `WIDTH` from
+   50 down to 5 %: from the square to a thin, nasal pulse, about as loud.
+   `LEVEL` is on the second page.
 4. Inputs unplugged, `DETUNE` at 100 %: the seven bars stay still (an input
    nobody assigned moves nothing). `NOTE`'s `CV1`: a volt raises the pitch
    an octave (the header's hertz double). Assign `CV2` to `DETUNE` (right
@@ -781,6 +785,65 @@ supersaw, and WAVs to listen to (lots 8c′ and 8c″): with the falling
 sawtooths, the highest level that clips nowhere is about 2.0 V; at 3 V,
 0.05 % of the samples touch the +6 V bound. Flashed and listened to on the
 module with the falling sawtooths (2026-11-18): the sound is right.
+
+### 9.3g — Supersaw in integers and in `f32` (journal/D-039, lot 9b)
+
+`SUPERSAW`, `CALC` on the second page (the left encoder past `LEVEL`), A
+into a mixer or headphones amp:
+
+1. `cargo probe stats` just after a restart, in three cases, each with
+   `CALC INT` then `CALC F32`: **A**, A2, `DETUNE` 0 %, `NOTE` without an
+   input (its `INPUT` at `NONE`); **B**, C8, `DETUNE` 100 %, `NOTE` without
+   an input (the worst case per sample: the `PolyBLEP` correction runs on
+   about 2 f / fs of the samples of each voice); **C**, as B with a fast LFO
+   or noise into `CV1` on `NOTE` (`ADD`), so the parameters change every
+   tick. Read `voice` (one sample: what D-039 decides on, case B) and
+   `voice_params` (taking new parameters, case C), not `audio`: the
+   interrupt spins until the DAC's burst echoes, so `audio` measures the
+   burst and hides the computation. Since journal/D-040, `voice_params` is
+   only the copy of a voice prepared by the loop: well under a
+   microsecond, and the 11 µs peak of `audio` in case C gone.
+2. By ear, switching `CALC` while a note plays, from C1 to C8: no audible
+   difference, a click at most on the switch.
+3. Before the module, `cargo run -p oc-core --example aliasing --release`
+   with and without `SUPERSAW_CALC=f32`: the same folding to a few tenths
+   of a decibel.
+
+On the TLM module (2026-11-19, `voice` and `voice_params` timed, the voice
+prepared by the loop), `voice` mean / max in µs:
+
+| Case | `INT` | `F32` |
+|---|---|---|
+| A — A2, 0 % | 1.16 / 1.22 | 1.07 / 1.11 |
+| B — C8, 100 % | 1.19 / 1.34 | 1.06 / 1.14 |
+| C — C8, 100 %, CV on `NOTE` | 1.17 / 1.35 | 1.07 / 1.14 |
+
+`F32` is about 0.1 µs (8 %) cheaper on the mean and 0.2 µs on the worst
+case, and the note barely moves it. `voice_params` 0.30 µs in both, at
+every change of parameters (about 9 900 in 10 s in case C): a copy.
+`audio` 3.2 to 3.4 / 4.0 / 4.9 to 5.0 µs in every case: the DAC's burst,
+the voice hidden inside it. Before journal/D-040 the bank was prepared in
+the interrupt, and case C took `audio` up to 11 µs and the frame from
+1 344 to 1 381 µs; both are back to cases A and B's.
+
+### 9.3h — Output noise floor against the millivolt (journal/D-041)
+
+What decides whether the outputs need a unit finer than the millivolt: the
+module's own noise floor, against the rounding to the millivolt (about
+0.29 mV RMS, 68 dB under a 1 V peak sine over 0 to 23.8 kHz).
+
+1. `TONE`, output A (sine), into an audio interface whose own floor is at
+   least 15 dB under what is measured, through an attenuator if its input
+   cannot take ±1 V; record at 48 kHz or more, a few seconds per case.
+2. Note A5 (880 Hz, no simple ratio to 47 619 Hz), level 1 V, then 100 mV
+   (the lowest step), the interface's gain the same for both.
+3. Spectrum of each: everything but the fundamental, over 0 to 23.8 kHz,
+   against the 1 V sine's fundamental (its RMS is 0.707 V), and the same
+   for the 100 mV case.
+
+Reading: a floor about 68 dB under the 1 V sine, the same in volts at
+100 mV, is the rounding: B or C of D-041 gain up to about 17 dB. A floor
+clearly higher is the analog stage's: the millivolt is enough for audio.
 
 ### 9.4 — Calibration
 

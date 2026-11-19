@@ -281,3 +281,10 @@ Trois essais ont corrigé la conception ci-dessus ; ce qui tourne :
   compte les interruptions, rafales, tronçons, relâchements et trames depuis le démarrage.
 * L'étape 7 est close : chemin audio à 47 619 Hz, DAC en DMA, `TONE`.
 
+## Révision du 2026-11-19 — la voix préparée dans la boucle (D-040)
+
+L'interruption recalculait la voix (`Voice::set_params`) à chaque changement de paramètres : jusqu'à 11 µs sur 21
+quand une CV bouge, mesuré avec le Supersaw (D-039). La boucle prépare désormais un `oc_core::audio::Setup` hors
+section critique et le dépose dans la boîte aux lettres à la place des `Params` ; l'interruption l'applique par
+`Voice::apply`, une copie. Le reste de cette entrée est inchangé.
+
