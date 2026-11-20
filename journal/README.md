@@ -50,6 +50,9 @@ portent `Statut: adoptée (rétrospective)` (D-023 : `proposée`). Deux conséqu
 * `git log --diff-filter=A -- journal/` montre ces entrées ajoutées **d'un seul commit**. C'est la vérité : le
   journal commence là. La progression étalée que cette commande vérifie ne vaut qu'à partir de D-024.
 
+D-042 est aussi rétrospective : elle formalise, sans code, le couplage du calcul audio et du DMA que D-033 avait laissé
+implicite (2026-11-20).
+
 ## Règle d'antériorité
 
 À partir de D-024, l'entrée est commitée **avant ou avec** le code qu'elle décrit, en premier fichier du commit
@@ -107,3 +110,4 @@ une section datée en fin de fichier) au lieu d'en ouvrir une nouvelle. Les num�
 | [D-039](D-039-supersaw-float-trial.md) | essai du Supersaw en `f32` : les deux bancs embarqués, choisis par le réglage `CALC` (`INT` / `F32`) ; flottant dans le calcul d'un banc audio seulement, millivolts aux bords ; à trancher par le profil `audio` sur le module | proposée |
 | [D-040](D-040-voice-setup-in-the-loop.md) | voix préparée dans la boucle : `Setup::new` (pas, inverses, coefficients des deux bancs), fonction pure calculée hors section critique ; l'interruption audio ne fait que copier (`Voice::apply`) | adoptée |
 | [D-041](D-041-output-unit-below-the-millivolt.md) | unité des sorties sous le millivolt : micro-volts `i32` partout (B) ou volts `f32` pour le chemin audio seul (C), contre le millivolt de D-005 (A) ; à trancher par le plancher de bruit de la sortie mesuré sous `TONE` | proposée |
+| [D-042](D-042-per-sample-audio-rendering.md) | rendu audio échantillon par échantillon dans l'interruption de fin de copie du DMA (anneau de 8, deux d'avance), pas par blocs ; blocs si `voice` approche la moitié de la période, API par blocs dans `oc-core` au premier backend par blocs | adoptée (rétrospective) |
