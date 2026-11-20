@@ -51,9 +51,9 @@ comportemental (`oc-core`, D-002). Les applets musicaux sont la suite.
 | **2** — plusieurs applets (2026-08-19 → 09-05) | ✅ menu par accord haut + bas, applets résidents, `ScopeApp`, haut / bas au relâchement (D-021) ; module Rack renommé `Alambic` (D-015) ; étude supersaw (base de D-023). Réserve : CI rouge avec `--all-features` depuis l'ajout de la feature `octant` (D-013) | [etape-2.md](docs/plan/avancement/etape-2.md) |
 | **3** — assainissement, sonde live, cadence (2026-11-16 → 11-17) | ✅ dette de revue (0.2.0) ; sonde live `oc-probe` (D-029) : profil au cycle, flux, sorties forcées, capture, redémarrage ; niveau 9 (CV, triggers, rebouclage, multimètre) ; D-023 adoptée en **C+** : fronts des triggers capturés (0,94 ms : 960 / 960), écran une page par tick (1 000 ticks/s au lieu de ≈ 947). Réserves : `signal_tick` / `ui_tick` reporté à l'option A ; DAC8565 simultané non vérifié ; entrées à ≈ 20 mV près | [etape-3.md](docs/plan/avancement/etape-3.md) |
 | **4** — réglages système, calibration, persistance (2026-11-16) | ✅ écran `SETUP` et gestes de démarrage façon Phazerville (D-026) ; conversion dans `oc-core`, valeurs d'usine de Phazerville, assistant de calibration (D-027) ; réglages dans la flash du Teensy par l'API ROM, fichier (sim), patch (Rack) (D-028) ; seuil de présence 50 mV mesuré (D-024). Version **0.3.0**. Réserve : C++ Rack non compilé | [etape-4.md](docs/plan/avancement/etape-4.md) |
+| **5** — primitives graphiques et applet de démo (2026-11-17) | ✅ texte par colonnes (Diagnostic 646 → 88 µs), six polices en paramètre ; `oc_core::gfx` (bases en octets, contrôles, courbes, motifs) ; applet `GFX DEMO` ; `embedded-graphics` en dépendance de test (D-030). Version **0.4.0** (avec l'étape 3 ; plugin Rack 2.4.0) | [etape-5.md](docs/plan/avancement/etape-5.md) |
 | **7** — chemin audio (2026-11-17 → 11-18) | ✅ `oc_core::audio` (paramètres de sortie, voix), applet `TONE` ; DAC en PCS0 à 22 MHz ; PIT → DMA → LPSPI4 à **47 619 Hz** (instant fixé par le matériel), interruption du DMA pour l'échantillon et l'écran par tronçons ; `audio` 3,4 µs sur 21 ; juste à l'accordeur jusqu'à B7 (D-033). Réserves : 48 kHz impossible (quartz de GPT2 muet), quatre voies écrites à chaque période, Rack non écouté. Version **0.5.0** (avec l'étape 6 ; plugin Rack 2.5.0) | [etape-7.md](docs/plan/avancement/etape-7.md), [rapport](docs/plan/rapport-etape-7-chemin-audio.md) |
 | **8** — premier oscillateur : Supersaw (2026-11-18) | ✅ `oc_core::audio::supersaw` : sept scies PolyBLEP en entier (désaccord et mix de Szabo, passe-haut sur la fondamentale), A / B mono ou stéréo, C sub-octave ; applet `SUPERSAW`, entrées par `oc_core::modulation` ; `audio` 3,9 µs sur 21 ; repliement mesuré par FFT (exemple `aliasing`) : sous 10 kHz ≤ −45 dB, ×4 non nécessaire ; scies descendantes, sans écrêtage jusqu'à 2 V (D-037) ; budget mémoire (D-038). Réserves : bruit de CV1 sur `NOTE`, assignations non sauvegardées, Rack non écouté. Version **0.6.0** (plugin Rack 2.6.0) | [etape-8.md](docs/plan/avancement/etape-8.md) |
-| **5** — primitives graphiques et applet de démo (2026-11-17) | ✅ texte par colonnes (Diagnostic 646 → 88 µs), six polices en paramètre ; `oc_core::gfx` (bases en octets, contrôles, courbes, motifs) ; applet `GFX DEMO` ; `embedded-graphics` en dépendance de test (D-030). Version **0.4.0** (avec l'étape 3 ; plugin Rack 2.4.0) | [etape-5.md](docs/plan/avancement/etape-5.md) |
 
 ### Étape 9 — essai du Supersaw en `f32` (en cours)
 
@@ -71,35 +71,6 @@ mesuré. Choix de l'utilisateur : les deux versions embarquées dans l'applet, c
 | **9h** — `WIDTH` | largeur d'impulsion de 5 à 50 % : `saw(t) − s · saw(t − w)`, le décalage en arrière pour que la partie étroite sorte vers +6 V (sans écrêtage : 1,55 V à 25 %, 1,77 V à 10 %, 1,37 V à 5 %) ; volume gardé (`shape_loudness(shape, width)`, identique à 50 %) ; à 50 %, banc identique au bit près ; page 1 `NOTE` `DETUNE` `MIX` `SHAPE` `WIDTH`, page 2 `LEVEL` `STEREO` `CALC` ; picto de la largeur ; tests : 4ᵉ harmonique nulle à 25 %, volume sur la largeur, bancs d'accord ; à 5 %, repli sous 10 kHz ≤ −46 dB jusqu'à C7, −33 à −37 dB sur B7–C8 ; `aliasing` mesure la marge à 250 mV ; `.text` +1,9 Kio ; révision de D-037 | ✅ |
 | **9b** — module | relevés du 2026-11-19 (TESTING 9.3g), `voice` en moyenne / au plus : `INT` 1,16–1,19 / 1,22–1,35 µs, `F32` 1,06–1,07 / 1,11–1,14 µs, de A2 à C8 / 100 %, CV sur `NOTE` ou non : **`F32` ≈ 8 % moins cher**, et plus régulier ; `voice_params` 0,30 µs (la copie du `Setup`, D-040) ; `audio` 4,0 / 5,0 µs dans tous les cas, le pic de 11 µs disparu, trame revenue à 1 345 µs. `audio` mesure la rafale du DAC, d'où les étapes `voice` et `voice_params` (protocole de sonde v3). Reste : trancher D-039 | en cours |
 
-### Étape 8 — premier oscillateur : Supersaw (terminée)
-
-Demandée le 2026-11-18 (D-037) : l'applet de l'étude `docs/supersaw/` sur le chemin audio. Choix de l'utilisateur : A
-et B stéréo, C sub-octave ; note, désaccord et mix ; PolyBLEP d'abord, ×4 si le repliement s'entend. Plan :
-[etape-8-supersaw.md](docs/plan/etape-8-supersaw.md).
-
-| Lot | Contenu | État |
-|---|---|---|
-| **8a** — calcul | `oc_core::audio::supersaw` : scie PolyBLEP entière, désaccord et mix de Szabo, passe-haut sur la fondamentale, parts `Mono` / `Left` / `Right` / `Sub` ; banc partagé dans `Voice` ; alias sous 10 kHz ≥ 25 dB sous la scie naïve (≈ 35 dB estimés), banc criterion 36 ns / échantillon sur l'hôte (`TONE` 20 ns) | ✅ |
-| **8b** — applet | `SupersawApp` (« SUPERSAW ») : `NOTE`, `DETUNE`, `MIX`, `LEVEL`, `STEREO` ; CV1 V/oct, CV2, CV3 (+20 %/V, valeur jouée affichée `60>80%`) ; menu à six applets, `SETUP` sans ligne vide ; écran : réglages et les sept voix (écart, gain) ; scénario doré `supersaw` | ✅ |
-| **8b′** — entrées assignables | `NOTE`, `DETUNE`, `MIX`, `LEVEL` prennent leur entrée par `oc_core::modulation` (clic de l'encodeur droit, comme `RATCHET`) ; `NOTE` prend CV1 en `ADD` au démarrage, les autres rien : le bruit d'une entrée débranchée (≈ ±5 codes, mesuré) ne bouge plus l'écran ; `SET` de la note depuis C4, `MUL` du niveau en VCA ; révision de D-037 ; `tests/supersaw_inputs.rs`, scénario doré `supersaw_inputs` ; `.text` +3,5 Kio ; la ligne ne montre plus que la valeur du panneau (plus de `60>80%`), comme `RATCHET` : la valeur jouée est dans le sous-menu | ✅ |
-| **8c** — module | profil `audio` relevé (3,9 µs en moyenne, 10,2 au plus, A2 comme C8 à 100 % : marge large) ; son et `STEREO` corrects ; écran stable à 100 % de désaccord une fois les entrées assignables (le gigotement venait bien du bruit des CV) ; entrées assignables essayées sur le module (TESTING 9.3f, étape 4) ; ×4 tranché par 8c′ | ✅ |
-| **8c′** — repliement mesuré | `cargo run -p oc-core --example aliasing --release` : le banc réel à 47 619 Hz, en mV, FFT de 65 536 points (Blackman-Harris), harmoniques de chaque voix tirées de son pas exact ; à 1 V, de C2 à C8 et 0 / 50 / 100 % de désaccord : sous 10 kHz, repli ≤ −45 dB partout (≤ −57 dB jusqu'à C5), 30 à 35 dB sous les rampes naïves parties des mêmes phases ; raies repliées les plus fortes entre 20 et 23,8 kHz (−22 dBc à C8), donc hors de l'audible ; **×4 non nécessaire**. Constat à part : au-delà d'environ 1,1 V de `LEVEL`, la somme des sept voix touche la borne de −3 V et est écrêtée (3 % des échantillons à 3 V, mix 50 %) | ✅ |
-| **8c″** — polarité inversée | les parts sont des scies descendantes : le passe-haut fait de chaque saut une pointe, qui va maintenant vers +6 V (6 V de marge) au lieu de −3 V (3 V) ; niveau sans écrêtage sur tous les cas de 1,00 à **2,01 V** (+6 dB), 0,05 % d'échantillons écrêtés à 3 V (2,9 % avant) ; spectre inchangé ; `LEVEL` garde 3 V au plus, l'utilisateur ayant jugé à l'écoute le pire cas d'avant très correct (révision de D-037) ; flashé et écouté sur le module : correct | ✅ |
-| **8d** — ×4 | suréchantillonnage et décimation, si 8c le demande | non nécessaire (8c′) |
-
-### Étape 7 — chemin audio : DAC à 47,6 kHz par DMA (terminée)
-
-Demandée le 2026-11-17 (D-033) : générer des sons sur les sorties. Choix de l'utilisateur : 48 kHz, les quatre
-sorties, une applet `TONE` de test d'abord. Plan : [etape-7-chemin-audio.md](docs/plan/etape-7-chemin-audio.md).
-
-| Lot | Contenu | État |
-|---|---|---|
-| **7a** — DAC rapide, encore à 1 kHz | `DAC_CS` en PCS0, OLED sur PCS3, DAC à 22 MHz, OLED à 22 ou 8 MHz (feature `oled-spi-8mhz`), voies écrites au changement (révision de D-010) ; mesuré sur le module : écran propre à 22 MHz, sorties justes, `outputs` 3,0 µs en moyenne (≈ 16 µs avant), page d'OLED 49 µs (≈ 145 µs) | ✅ |
-| **7b** — cœur audio | `oc_core::audio` : paramètres de sortie (niveau tenu ou tonalité), `Voice` à phases de 32 bits, sinus en table calculée à la compilation ; le moteur rend sa voix à 1 kHz ; applet `TONE` (A sinus, B triangle, C scie, D carré, note C1–C8, niveau 0–3 V, CV1 en V/oct) ; Rack à sa fréquence d'échantillonnage (`oc_engine_audio`, compilé, pas encore écouté) ; menu sans ligne vide sous le titre ; révision de D-033 | ✅ |
-| **7c** — interruption à 48 kHz | GPT2 sur le quartz (le PIT est à 1 MHz) ; l'interruption possède le bus : mots du DAC qui changent, échantillon suivant, tronçon d'OLED (`FrameStream`, 24 octets à 22 MHz) ; boîtes aux lettres sous section critique ; profil `audio`, `audio_period`, `frame` ; sorties au repos pendant SAVE ; révisions de D-008, D-009, D-010, D-033 ; sur le module : le quartz ne démarre pas, repli PERCLK / 21 = 47 619 Hz, fin d'envoi lue dans l'écho reçu (l'OLED prenait des bits du DAC dans `TONE`) ; `audio` 12,5 µs sur 21, gigue ±3 µs de l'écriture du DAC, écran stable, son présent | ✅ |
-| **7d** — module | `TONE` juste et stable de C1 à C6 à l'accordeur, perturbé autour de C7 (gigue ±3 µs, images), C8 lu une octave trop bas (limite de l'accordeur probable) : décide le DMA | ✅ |
-| **7e** — DMA | le PIT déclenche une copie DMA de quatre mots du DAC (DMAMUX `ENBL\|TRIG\|A_ON`) ; l'interruption du DMA calcule l'échantillon deux emplacements plus loin et envoie l'écran ; plus aucune lecture du PIT par période ; sur le module : `audio` 3,4 µs (12,5 avant), écran et son corrects ; accordeur juste jusqu'à B7, C8 en limite de l'accordeur ; auto-test de 50 ms et rapport à 3 s dans le journal | ✅ |
-
 ### Étape 6 — premier applet musical : Ratchet (en cours)
 
 Demandée le 2026-11-17 (D-032) : rafales de triggers sur B après une copie sur A, à chaque front de TR1. Plan :
@@ -114,44 +85,6 @@ Demandée le 2026-11-17 (D-032) : rafales de triggers sur B après une copie sur
 | **6e** — écran et entrées | ascenseur à gauche des réglages, frise plus basse qui suit la rafale en cours (révision de D-032) ; sous-menu d'assignation des entrées par réglage : entrée, lecture et bornes vues, `SCALE`, `SHIFT`, `MIN` / `MAX`, effet `SET` / `ADD` / `MUL` (D-035) ; tests et écrans dorés. Reste : essai sur le module (TESTING 9.3c) | en cours |
 | **6f** — modulation partagée | la mécanique du sous-menu sortie dans `oc_core::modulation` (`Assign`, `Effect`, `AssignEditor`, `Param`), `RATCHET` branchée dessus sans changement de comportement (écrans dorés identiques) ; `tests/modulation.rs` (D-036) | ✅ |
 
-### Étape 5 — primitives graphiques et applet de démonstration (terminée)
-
-Demandée le 2026-11-17 (D-030) : primitives tirées des écrans de Squares-and-Circles, applet de démo à quatre
-pages. Plan : [etape-5-gfx.md](docs/plan/etape-5-gfx.md).
-
-| Lot | Contenu | État |
-|---|---|---|
-| **5a** — bases | ✅ `oc_core::gfx` : rectangles, lignes droites, zone inversée en octets (mêmes pixels qu'`embedded-graphics`) ; ligne, cercle, disque, pointillés ; `Ink::{Lit, Dark, Invert}` ; sinus entier | fait |
-| **5b** — contrôles et motifs | ✅ `gfx::controls` (potentiomètre, sélecteur, valeur encadrée, légende, barres, bandeau), `gfx::plots` (`Area`, trace, min / max, histogramme, échelle à aiguille), `gfx::patterns` (cases, points, anneau euclidien, mini-clavier) ; `Ratio` ; tests par propriétés | fait |
-| **5c** — applet de démo | ✅ `AppId::Gfx` (« GFX DEMO »), cinq pages (polices, potentiomètres, courbes, séquenceur, mesures), sorties simulées, écrans dorés par page, banc par page | fait |
-| **5d** — mesure | ✅ courbes 105 µs de dessin, périodes inchangées ; pages validées à l'œil ; banc `graphics.rs` et rapports HTML | fait |
-
-### Étape 3 — assainissement, puis choix de la cadence (terminée)
-
-Ouverte par la revue du 2026-11-16 ([revue-decisions-2026-11-16.md](docs/plan/revue-decisions-2026-11-16.md)).
-D-023 est **adoptée en option C+** (2026-11-17) : 1 kHz sans trous ; A et B restent des suites.
-
-| Lot | Contenu | État |
-|---|---|---|
-| **3a** — dette de revue | ✅ CI verte avec `--all-features` (R1, D-013) ; ✅ triggers sans anti-rebond mécanique (R2, D-019) ; ✅ règle du brochage rendue vraie et testée (R3, D-007) ; ✅ docs « jamais sur matériel » / « jamais dans Rack » corrigées (R4, D-011, D-015) ; ✅ `flash --dry-run` en CI (V5, D-016) ; ✅ plus de présence de câble, backends alignés (R5, D-019) ; ✅ plan de cadence suivi par git, conflit avec l'étude audio consigné, OLED par pages proposé (R6, D-023) | fait — version **0.2.0** (plugin Rack 2.2.0, `CHANGELOG.md`) |
-| **3b** — sonde et mesure sur module | ✅ sonde live (D-029 adoptée, plan : [etape-3b-sonde.md](docs/plan/etape-3b-sonde.md)) : profilage dans le cœur (`CYCCNT`), protocole `oc-protocol`, deux ports CDC et redémarrage par 134 bauds, outil `oc-probe` (`stats`, `stream`, `out`, `inputs`, `triggers`, `sweep`, `screen`, `reboot`) ; boucle recalée (≈ 775 Hz depuis l'étape 1) ; niveau 9 CV, triggers, rebouclage. Mesures indicatives : trame OLED ≈ 1,16 ms (page ≈ 145 µs), rendu ≈ 0,63 ms, ADC ≈ 0,29 ms, ≈ 947 ticks/s ([etape-3.md](docs/plan/avancement/etape-3.md)) | fait |
-| **3c** — cadence | ✅ D-023 option C+ (plan : [etape-3c-cadence.md](docs/plan/etape-3c-cadence.md)) : 3c1 fronts des triggers capturés par le détecteur des GPIO ; 3c2 écran envoyé une page par tick ; 3c3 `signal_tick` / `ui_tick` **reporté à l'option A** ; 3c4 mesures et clôture | fait |
-
-### Étape 4 — réglages système, calibration, persistance (terminée)
-
-Demandée le 2026-11-16 : menu de réglages utilisable sur le module, assistant de calibration, persistance ; Teensy 4.0
-seul ; interaction et modèle de calibration repris de Phazerville. Plan détaillé :
-[etape-4-reglages-systeme.md](docs/plan/etape-4-reglages-systeme.md). Les lots 3b et 3c reprennent après l'étape 4.
-
-| Lot | Contenu | État |
-|---|---|---|
-| **4a** — conversion dans le cœur | ✅ traits en codes bruts (`read_code` / `write_code`) ; `Engine` convertit avec sa `Calibration` (entrées affines par canal, sorties en table de 11 points) ; `Calibration::FACTORY` de Phazerville partagée par les trois backends (révision de D-027) ; `board.rs` sans calibration | fait |
-| **4b** — modèle et stockage | ✅ `oc_core::settings` (`Settings`, `SettingsStore` sur `NorFlash`, `encode`/`decode`), `Engine::apply_settings` ; simulateur `run --settings` ; ABI Rack + JSON du patch (C++ non compilé ici : pas de Rack SDK) ; firmware sans persistance jusqu'à 4e | fait |
-| **4c** — écran système | ✅ `oc_core::system` (`Screen::System`), item `SETUP`, gestes au démarrage (encodeur gauche, `up` + `down` = secours), brouillon appliqué en direct, `SAVE` / `EXIT` ; rotation et décalage dans le cœur, `Display::set_contrast` ; demande de sauvegarde consommée par les backends (révision de D-026) | fait |
-| **4d** — assistant de calibration | ✅ `oc_core::wizard` : 13 étapes Phazerville (fresh, DAC A–D à −3 V / +5 V, zéros ADC, gain CV1 à 1 V / 3 V, save), moyennes après stabilisation, fenêtres d'acceptation ; test de bout en bout par rebouclage (révision de D-027) | fait |
-| **4e** — flash du module | ✅ `flash_store.rs` : `NorFlash` par l'API ROM du RT1062 (vérifiée sur les sources NXP), lectures par la ROM, zone `0x601F_0000`–`0x601F_3FFF` ; `xtask` refuse une image qui l'atteint ; chargement au démarrage, sauvegarde sur demande (révision de D-028) ; vérifié sur module | fait |
-| **4f** — mesure | ✅ calibration du module TLM, réglages relus après coupure ; firmware d'essai `settings-stress` : 300/300, coupures sans échec ; seuil D-024 à 50 mV ; version 0.3.0 | fait |
-
 ## Décisions actées
 
 Valeurs seules ; le raisonnement est dans `journal/`.
@@ -165,9 +98,9 @@ Valeurs seules ; le raisonnement est dans `journal/`.
 | signal | millivolts `i32` ; `f32` seulement dans le C++ du module Rack ; à l'essai : un banc Supersaw en `f32`, millivolts aux bords (D-039, proposée) | D-005, D-039 |
 | calibration | pente signée (négative : étages inverseurs) ; dans `oc-core`, codes bruts à la frontière ; entrées : zéro par canal (≈ 2730), gain commun ; sorties : table de 11 points par octave ; mesurée par assistant, persistée | D-006, D-027 |
 | brochage | table unique et réservation des broches dans `board.rs` (`split` + groupes par signal, test `xtask/tests/pin_rule.rs`), dérivée de `OC_gpio.cpp` ; pull-up 22 kΩ + hystérésis sur les entrées numériques | D-007 |
-| exécution | boucle coopérative 1 kHz, sans interruption ; rendu tous les 20 ticks (≈ 50 Hz) ; option C+ : fronts des triggers capturés, écran envoyé une page par tick ; A (ISR 16 kHz) et B (audio) en suites | D-008, D-023 |
-| écran | framebuffer 1 024 octets dans l'ordre du contrôleur ; pilote `ssd130x` maison ; SH1106 par défaut, `ssd1306` / `ssd1309` en features | D-009 |
-| bus SPI | DAC8565 + OLED partagés, `SharedBus` sur `RefCell`, CS en GPIO, 8 MHz, tronçons ≤ 512 octets ; une page OLED par tick | D-010, D-009 |
+| exécution | boucle coopérative 1 kHz pour le contrôle (entrées, applets, dessin, USB) ; à côté, le chemin audio en interruption (B de D-023, D-033) ; rendu tous les 20 ticks (≈ 50 Hz) ; option C+ : fronts des triggers capturés par les GPIO ; A (ISR 16 kHz) en suite | D-008, D-023, D-033 |
+| écran | framebuffer 1 024 octets dans l'ordre du contrôleur ; pilote `ssd130x` maison ; SH1106 par défaut, `ssd1306` / `ssd1309` en features ; trame remise à l'interruption audio, envoyée par tronçons (`FrameStream`) | D-009, D-033 |
+| bus SPI | DAC8565 + OLED sur LPSPI4, possédé par le chemin audio et cédé à l'OLED par tronçons ; `DAC_CS` en PCS0 matériel, OLED sur PCS3 (sans broche) avec CS en GPIO ; 22 MHz pour les deux, OLED à 8 MHz en feature `oled-spi-8mhz` | D-010, D-033 |
 | diagnostic | aucun UART ; USB CDC sondé, deux ports (journal texte, sonde binaire) ; LED de démarrage avant la prise du SPI | D-011, D-029 |
 | harnais | simulation native ; Renode non fait | D-012 |
 | simulateur | TUI ratatui (crossterm), horloge virtuelle, scénarios `.scn` + écrans `.screen` (`UPDATE_SCREENS=1`) | D-013 |
@@ -178,7 +111,7 @@ Valeurs seules ; le raisonnement est dans `journal/`.
 | profil | release LTO fat, `overflow-checks = true` ; panique → journal USB + SOS | D-018 |
 | entrées | anti-rebond 3 échantillons (boutons), front sur 1 échantillon (triggers) ; activité CV par crête-à-crête (256 éch., 40 mV), aucune présence de câble sur aucun backend | D-019 |
 | démarrage | écran 1,5 s, sorties à 0 V, rendu à chaque tick | D-020 |
-| applets | `AppHost` (tous résidents), menu par accord haut + bas, haut / bas au relâchement ; `DiagnosticApp`, `ScopeApp` | D-021 |
+| applets | `AppHost` (tous résidents), menu par accord haut + bas, haut / bas au relâchement ; `DIAGNOSTIC`, `SCOPE`, `GFX DEMO`, `RATCHET`, `TONE`, `SUPERSAW` | D-021, D-030, D-032, D-033, D-037 |
 | licence | `MIT OR Apache-2.0` (workspace) | D-022 |
 | présence d'entrée | déduite dans `oc-core` (activité récente + maintien) : CV 50 mV / 300 ms, trigger verrou ou horloge 2 s ; jamais fournie par un backend | D-024 |
 | identifiant de build | hash court + `-dirty` sous la version, écran de démarrage des trois backends ; calculé par `oc-buildinfo` (vergen-gix, sans binaire `git`), jamais dans `oc-core` | D-025 |

@@ -29,7 +29,8 @@ tool file (journal/D-001).
   `docs/plan/roadmap.md`, `docs/plan/avancement/etape-N.md`,
   `docs/plan/revue-decisions-2026-11-16.md`. Update `PLAN.md` before
   committing at the end of a lot; when a step ends, write
-  `docs/plan/avancement/etape-N.md`.
+  `docs/plan/avancement/etape-N.md` and remove the step's lot table from
+  `PLAN.md`, which keeps its one-line summary only.
 * **Architectural decisions go in `journal/` as ADRs** (format in
   `journal/README.md`). From `D-024` on, the ADR is committed *before or
   with* the code it describes, as the first file of that commit. Never start
