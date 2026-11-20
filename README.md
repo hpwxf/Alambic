@@ -23,6 +23,7 @@ behaviour runs on hardware, in a native simulator, and inside VCV Rack 2.
 | Path                 | Role                                                              |
 |----------------------|-------------------------------------------------------------------|
 | `crates/oc-core`     | `no_std`, `forbid(unsafe_code)` core: platform traits, engine, UI  |
+| `crates/oc-drivers`  | `no_std` peripheral protocols (DAC8565, OLED controllers, triggers, shared SPI bus) |
 | `crates/oc-firmware` | Teensy 4.0 binary; the only crate that touches registers           |
 | `crates/oc-protocol` | `no_std` messages and server of the live probe (postcard over COBS) |
 | `crates/oc-probe`    | Host tool talking to a running module over its probe port          |
@@ -32,7 +33,8 @@ behaviour runs on hardware, in a native simulator, and inside VCV Rack 2.
 | `crates/oc-sim`      | Native backend and terminal UI, with a deterministic virtual clock |
 | `crates/oc-vcv-ffi`  | `staticlib` exposing a C ABI to the VCV Rack 2 module              |
 | `vcv/OrnamentCrimeAlambic` | The Rack SDK plugin shim: module declaration and widget only, no behaviour |
-| `xtask`              | Build, packaging, flashing and VCV plugin automation                |
+| `crates/oc-buildinfo` | Build-script helper: the build identifier (see below)             |
+| `xtask`              | Build, packaging, flashing, browser and VCV plugin automation       |
 
 `oc-core` holds **all** behaviour. The three backends only differ in how they
 read and write signals, which is what makes the simulator a meaningful proxy
@@ -53,15 +55,68 @@ the chord is unreachable with a mouse, so right-click the module and choose
 |--------------|----------------------------------------------------------|
 | `DIAGNOSTIC` | the I/O diagnostic screen the module boots into          |
 | `SCOPE`      | a scrolling view of `CV1`, buffered to all four outputs  |
-| `RATCHET`     | each rising edge on `TR1` is copied to A and starts a burst of triggers on B: a count (1–32) or as long as the gate stays up; a first interval or a span; a signed `SHAPE`, −3.0 to +3.0 octaves (0 even, below accelerating, above slowing down); `PROB`, the chance each repeat fires; `PASSTHRU` copies the incoming trigger to B too; `MODE` picks between two placements to compare, `FIRST` (a first interval, then intervals changing geometrically to the first times 2^SHAPE) and `SPAN` (the repeats spread over a span, `SYNC` ×1 filling the step); `SYNC ON` makes the first interval or span a fraction of `TR1`'s period (×2, ×1.5, ×4/3, ×1, ×3/4, ×2/3, /2 … /32), whose rate shows in BPM, and a dotted line on the timeline marks where the next trigger is due; each burst setting can take an input, assigned in a submenu opened by a click on the right encoder (journal/D-035): a frame over the main screen setting which `CV`, a `SCALE` (−200 to +200 %) and a `SHIFT` (±10 V) applied to it, `MIN` / `MAX` bounds, and its `EFFECT` on the panel's value, `SET` (follows it, `=CVn` in place of the value), `ADD` (`+CVn`) or `MUL` (multiplies it, 5 V leaving it unchanged, `*CVn`), with a bar of the input's signal (live, the range seen) and one of the setting it moves, and a `CENTER` button that sets the scale and shift to carry the range seen onto the setting's usable range; the right encoder's click or `down` closes it; left encoder picks a setting, `up` fires a burst by hand |
+| `RATCHET`    | bursts of triggers on B after each rising edge on `TR1` (below) |
 | `TONE`       | a test tone at one pitch on the four outputs, a sine on A, a triangle on B, a sawtooth on C and a square on D (the last two alias, as a test tone may); left encoder, the note from C1 to C8 (A4 = 440 Hz at start); right encoder, the peak level, 0 to 3 V around 0 V; `CV1` adds to the note at one volt per octave. The module plays it at 47 619 Hz, the DAC written by DMA (journal/D-033), VCV Rack at its own sample rate |
-| `SUPERSAW`   | seven detuned band-limited sawtooths around one pitch (journal/D-037): A and B carry all seven, or the left and right halves with `STEREO ON`; C a sawtooth an octave below; D rests at 0 V. Left encoder picks `NOTE` (C1–C8, A2 at start), `DETUNE`, `MIX` (0–100 %), `LEVEL` (0–3 V) or `STEREO`, right encoder changes it; every setting but `STEREO` takes an input through the same submenu as `RATCHET` (right encoder's click): `NOTE` takes `CV1` at start, added at one volt per octave (`SET` from C4 at 0 V, `MUL` on the frequency), the others none; `DETUNE` and `MIX` move 20 % a volt, `LEVEL` 0–3 V over 0–5 V, `MUL` on it a VCA. The screen shows the pitch played, each setting's input (`+CV1`) and the seven voices, where each sits in pitch and how loud |
+| `SUPERSAW`   | seven detuned band-limited sawtooths around one pitch (below) |
 | `GFX DEMO`   | the graphics primitives on five pages (fonts, knobs, curves, sequencer, meters); left encoder turns the pages, right encoder the value, `up`/`down` the focused knob; outputs A–D carry the simulated LFO, gate, knob and needle |
 
 Because holding both buttons is a deliberate gesture, `up` and `down` fire
 their own action on **release**, and not at all when the chord formed while they
 were down. That is the only way the first of the two presses cannot act before
 the chord is even detectable.
+
+### `RATCHET`
+
+Each rising edge on `TR1` is copied to A and starts a burst of triggers on B
+(journal/D-032): a count (1–32), or as long as the gate stays up (`GATE`).
+The left encoder picks a setting, the right one changes it, `up` fires a
+burst by hand.
+
+* `MODE` picks between two placements to compare: `FIRST`, a first interval,
+  then intervals changing geometrically to the first times 2^`SHAPE`; and
+  `SPAN`, the repeats spread over a span (`SYNC` ×1 filling the step).
+* `SHAPE`, signed, −3.0 to +3.0 octaves: 0 even, below accelerating, above
+  slowing down.
+* `PROB`, the chance each repeat fires; `PASSTHRU` copies the incoming
+  trigger to B too.
+* `SYNC ON` makes the first interval or the span a fraction of `TR1`'s period
+  (×2, ×1.5, ×4/3, ×1, ×3/4, ×2/3, /2 … /32), whose rate shows in BPM; a
+  dotted line on the timeline marks where the next trigger is due.
+
+Each burst setting can take an input (*Assigning an input*, below).
+
+### `SUPERSAW`
+
+Seven detuned band-limited sawtooths around one pitch (journal/D-037): A and
+B carry all seven, or the left and right halves with `STEREO ON`; C a
+sawtooth an octave below; D rests at 0 V. The left encoder picks a setting
+over two pages, the right one changes it:
+
+* page 1: `NOTE` (C1–C8, A2 at start), `DETUNE` and `MIX` (0–100 %),
+  `SHAPE` (from the sawtooth to a square, 0–100 %, its waveform drawn beside
+  it) and `WIDTH` (the width of that square's pulse, 50 down to 5 %);
+* page 2: `LEVEL` (0–3 V), `STEREO`, and `CALC`, the oscillator bank's
+  arithmetic on trial, `INT` or `F32` (journal/D-039).
+
+Every setting but `STEREO` and `CALC` takes an input (*Assigning an input*,
+below). `NOTE` takes `CV1` at start, added at one volt per octave (`SET` from
+C4 at 0 V, `MUL` on the frequency); the others none. `DETUNE`, `MIX` and
+`SHAPE` move 20 % a volt, `WIDTH` its whole course over 0–5 V, `LEVEL` 0–3 V
+over 0–5 V, `MUL` on it a VCA. The screen shows the pitch played, each
+setting's input (`+CV1`) and the seven voices: where each sits in pitch and
+how loud.
+
+### Assigning an input
+
+In `RATCHET` and `SUPERSAW`, a click on the right encoder opens, over the main
+screen, the input of the highlighted setting (journal/D-035, D-036): which
+`CV`, a `SCALE` (−200 to +200 %) and a `SHIFT` (±10 V) applied to it,
+`MIN` / `MAX` bounds, and its `EFFECT` on the panel's value: `SET` (follows
+it, `=CVn` in place of the value), `ADD` (`+CVn`) or `MUL` (multiplies it,
+5 V leaving it unchanged, `*CVn`). A bar shows the input's signal (live, and
+the range seen), another the setting it moves; `CENTER` sets the scale and
+shift that carry the range seen onto the setting's usable range. The right
+encoder's click or `down` closes it.
 
 ## System settings
 
@@ -173,8 +228,8 @@ instead (same resolution; needs a font that covers the Symbols for Legacy
 Computing Supplement — see below). Like the firmware and the VCV Rack module,
 the simulator boots into the boot splash screen (name, version, build
 identifier and a border tracing itself around the screen) before the diagnostic applet takes over,
-and `r` replays that same boot sequence at any time, exactly like a host's
-"Initialize" action.
+and `o` (or `0`) replays that same boot sequence at any time, exactly like a
+host's "Initialize" action.
 
 **Fonts that render octants well** (for `--features octant`): the block is
 Unicode 16.0 *Symbols for Legacy Computing Supplement* (around U+1CD00).
@@ -272,32 +327,22 @@ ticks 40
 ```
 
 `crates/oc-sim/tests/scenarios/` holds the committed scenarios, each with a
-golden snapshot of the resulting screen. After an intentional change to the
-rendering, regenerate them with:
-
-```sh
-UPDATE_SCREENS=1 cargo test -p oc-sim --test scenarios
-```
+golden snapshot of the resulting screen; how they are checked and
+regenerated: `TESTING.md`, Level 4.
 
 ## Performance
 
-Measured on the host with `cargo bench`, for orientation only — the target is a
-600 MHz Cortex-M7 with the code in ITCM:
-
-| Benchmark        | Time     |
-|------------------|----------|
-| `applet/update`  | ~12 ns   |
-| `applet/render`  | ~18 µs   |
-| `engine/tick`    | ~17 µs   |
-
-Screen rendering dominates by three orders of magnitude, and an OLED panel
-cannot show more than about 60 frames per second anyway, so the redraw rate is
-decoupled from the control loop through `Engine::set_render_interval`. The CV
-outputs are refreshed on every tick regardless.
+`cargo bench` times the tick, the applets, the conversions and the graphics
+on the host (`TESTING.md`, Level 3): a regression guard, not the module's
+figures, since the target is a 600 MHz Cortex-M7 with the code in ITCM.
+Screen rendering costs about three orders of magnitude more than the state
+update, and an OLED panel cannot show more than about 60 frames per second
+anyway, so the redraw rate is decoupled from the control loop through
+`Engine::set_render_interval`.
 
 On the module itself, the engine times every stage of the loop on the core's
-cycle counter (journal/D-029): the USB log prints it once a second, and the
-probe gives it as a table:
+cycle counter (journal/D-029), the audio interrupt's included, and the probe
+gives it as a table:
 
 ```sh
 cargo probe stats              # mean and longest time of each stage, loop jitter
@@ -351,7 +396,7 @@ on first build, including the `thumbv7em-none-eabihf` target and `llvm-tools`.
 
 ```sh
 cargo test              # host crates only (see below)
-cargo clippy --all-targets -- -D warnings
+cargo clippy --all-targets --all-features -- -D warnings
 cargo run -p oc-sim     # simulator
 
 cargo xtask build       # cross-compile the firmware (release)
@@ -400,15 +445,8 @@ reports **all** the problems, exits non-zero, and never invokes the uploader:
 | Teensy detected                            | warning    |
 | SHA-256 shown, confirmation requested      | `--yes` skips |
 
-A sample run against the current firmware:
-
-```text
-loadable size: 36400 bytes
-entry: 0x60001031
-initial SP: 0x20004000
-reset handler: 0x60001031
-elf sha256: 9566627c35083fb8...
-```
+It then prints the loadable size, the entry point, the initial stack pointer
+and the SHA-256; how to read them: `TESTING.md`, Level 8.
 
 ### ELF or HEX
 
@@ -484,11 +522,10 @@ cannot be played on the panel. Right-click the module and choose
 ticks, which is the same gesture the engine sees from two thumbs. Everything
 after that — moving the highlight, launching — works from the panel as usual.
 
-The plugin has been built and linked successfully against a real Rack SDK
-(2.6.x) during development, producing a loadable `.vcvplugin`; it has not yet
-been exercised inside a running VCV Rack instance — treat the panel layout
-and the encoder-emulation-via-knob interaction as a first pass to refine once
-it is.
+The plugin builds and links against a real Rack SDK (2.6.x) and loads in
+Rack, but it has not been checked systematically there, nor its audio
+listened to: treat the panel layout and the encoder-emulation-via-knob
+interaction as a first pass (`TESTING.md`, *What is not tested yet*).
 
 ## Testing
 
@@ -542,12 +579,8 @@ out of its own window (`screen -L` would keep them in `screenlog.0`).
 Setting either port to 134 baud restarts the module into its bootloader
 (Teensyduino's convention): `stty -f /dev/cu.usbmodem…1 134` with macOS's own `stty` (`/bin/stty`), or `stty -F …` with GNU coreutils.
 
-Expect lines such as `oc-firmware 0.4.0 (a1b2c3d) starting (oled=…)`, the
-boot stages down to `entering 1 kHz loop`, `settings: Loaded`, a last line
-pointing to `cargo probe` for live data, then nothing until an event (`TESTING.md` 9.1). Early boot also blinks the onboard
-LED (pin 13) in stage groups **before** SPI claims that pad: 1 = `main`
-reached, 2 = ADC mapped, 3 = triggers mapped / about to take SPI. A Morse SOS
-(9 flashes) is still the panic handler, not a boot stage.
+The lines to expect, and what the onboard LED's flash groups mean before
+SPI claims its pad (a Morse SOS is a panic): `TESTING.md` 9.1.
 
 Before connecting the real module, follow the **Level 9 — Manual hardware
 validation** checklist in [`TESTING.md`](TESTING.md#level-9--manual-hardware-validation):
