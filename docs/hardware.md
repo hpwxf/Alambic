@@ -3,8 +3,8 @@
 Ce document explique le matériel sur lequel tourne Alambic, pour quelqu'un qui connaît la programmation (Rust, ici)
 mais peu l'électronique embarquée, et sert ensuite de référence. Il part des principes, dit ce que les fiches
 techniques garantissent, puis ce que ce module-ci est et ce qu'on y a mesuré. Il ne décrit pas le code : celui-ci
-est dans `AGENTS.md` (le chemin le plus court), les décisions dans `journal/`, le récit de l'étape audio dans
-[plan/rapport-etape-7-chemin-audio.md](plan/rapport-etape-7-chemin-audio.md).
+est dans `AGENTS.md` et ses annexes (`agents/firmware.md` pour la boucle, le chemin audio et l'écran), les décisions
+dans `journal/`, le récit de l'étape audio dans [plan/rapport-etape-7-chemin-audio.md](plan/rapport-etape-7-chemin-audio.md).
 
 ## 0. Comment lire ce document
 
@@ -401,14 +401,10 @@ inverseurs et pull-up (actifs à l'état bas). Détails et mesures : `plan/avanc
 
 ## 7. Comment le firmware assemble tout ça [firmware]
 
-* **Deux contextes** : une boucle coopérative à 1 kHz (entrées, panneau, applets, dessin, USB) et le chemin audio
-  (DMA + deux interruptions). `docs/agents/firmware.md`, « Two contexts ».
-* **Le chemin audio** (D-033) : PIT canal 0 → DMAMUX → DMA → LPSPI4 → DAC ; interruption de fin de copie : compte les
-  rafales par leur écho, calcule l'échantillon deux emplacements plus loin, envoie un tronçon d'écran ; interruption
-  « trame terminée » : relâche le CS de l'OLED. Récit complet : `plan/rapport-etape-7-chemin-audio.md`.
-* **`unsafe`** confiné à `flash_store.rs`, `reboot.rs` et `audio_irq.rs`, un commentaire `SAFETY` par bloc.
-* **Ce qui se mesure** : `cargo probe stats` (étapes du profil, dont `audio`, `audio_period`, `frame`) et le journal
-  de démarrage (auto-test du chemin audio).
+Hors du périmètre de ce document : les deux contextes (boucle à 1 kHz, chemin audio), l'écran par tronçons et la
+mesure des coûts sont dans `agents/firmware.md` ; le déroulé d'une période dans la documentation de
+`crates/oc-firmware/src/audio.rs` ; le couplage du calcul et du DMA dans D-042 ; le récit des essais dans
+`plan/rapport-etape-7-chemin-audio.md`.
 
 ---
 
