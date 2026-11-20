@@ -111,6 +111,8 @@ pub struct AppView {
     app: u8,
     description: AppDescription,
     broken: bool,
+    /// Which parameters the last refresh found changed.
+    moved: Vec<bool>,
 }
 
 #[wasm_bindgen]
@@ -123,6 +125,7 @@ impl AppView {
             app,
             description: AppDescription::default(),
             broken: false,
+            moved: Vec::new(),
         }
     }
 
@@ -150,6 +153,49 @@ impl AppView {
             _ => {}
         }
         message.kind == MessageKind::Done
+    }
+
+    /// The request that reads every value again, after a set that may have
+    /// moved other parameters with it (journal/D-043): answered by the
+    /// messages [`Self::absorb_refresh`] takes.
+    #[must_use]
+    pub fn refresh_request(&self) -> Vec<u8> {
+        self.describe_request()
+    }
+
+    /// Takes one message of a refresh: the values it carries replace the
+    /// ones kept, and [`Self::param_moved`] says which changed; true once it
+    /// is complete.
+    pub fn absorb_refresh(&mut self, message: &Message) -> bool {
+        if self.moved.len() != self.description.params.len() {
+            self.moved = vec![false; self.description.params.len()];
+        }
+        if let Some(Applet::Spec(group, fresh)) = &message.applet {
+            let list = match group {
+                Group::Param => &mut self.description.params,
+                Group::Observable => &mut self.description.observables,
+            };
+            if let Some(at) = list.iter().position(|spec| spec.index == fresh.index) {
+                if *group == Group::Param && list[at].value != fresh.value {
+                    self.moved[at] = true;
+                }
+                list[at].value = fresh.value;
+            }
+        }
+        message.kind == MessageKind::Done
+    }
+
+    /// Whether parameter `at` changed in the last refresh; cleared by
+    /// [`Self::settle`].
+    #[must_use]
+    pub fn param_moved(&self, at: usize) -> bool {
+        self.moved.get(at).copied().unwrap_or(false)
+    }
+
+    /// Forgets which parameters the last refresh found changed, before the
+    /// next set.
+    pub fn settle(&mut self) {
+        self.moved.clear();
     }
 
     /// Whether the description came out of order, and cannot be trusted.
@@ -409,6 +455,21 @@ mod tests {
         assert_eq!(view.param_choices(8), ["FIRST", "SPAN"]);
         assert!(view.param_assignable(0) && !view.param_assignable(1));
         assert_eq!(view.actions(), ["BURST"]);
+
+        // GATE off puts COUNT at its last: a refresh shows it, as the module does.
+        let count = 0;
+        let gate = 1;
+        view.settle();
+        module.send(&view.set_request(gate, "on").unwrap());
+        module.send(&view.set_request(gate, "off").unwrap());
+        for message in module.send(&view.refresh_request()) {
+            if view.absorb_refresh(&message) {
+                break;
+            }
+        }
+        assert_eq!(view.param_text(count), "32");
+        assert!(view.param_moved(count), "COUNT moved with GATE");
+        assert!(!view.param_moved(4), "SHAPE did not");
 
         let request = view.set_request(4, "-1.5").unwrap();
         let answer = module.send(&request);

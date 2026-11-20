@@ -102,7 +102,9 @@ pub enum Request {
         param: u8,
     },
     /// Sets parameter `param` of applet `app` as a detent would, within the
-    /// same bounds: [`Reply::Value`] with what it applied.
+    /// same bounds: [`Reply::Value`] with what it applied. Other parameters
+    /// may move with it (`App::set`); a host reads them back with
+    /// [`Request::DescribeApp`].
     SetParam {
         /// The applet's index.
         app: u8,

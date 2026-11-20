@@ -176,6 +176,29 @@ fn note_number(text: &str) -> Option<i32> {
     Some((octave + 1) * 12 + semitone + sharp)
 }
 
+/// The parameters whose value differs from `before` to `after`, but for
+/// `except` (the one just set), as `NAME value` with their new value: what
+/// a set moved besides itself (journal/D-043).
+#[must_use]
+pub fn moved(before: &AppDescription, after: &AppDescription, except: u8) -> Vec<String> {
+    after
+        .params
+        .iter()
+        .filter(|spec| spec.index != except)
+        .filter(|spec| {
+            before
+                .params
+                .iter()
+                .find(|old| old.index == spec.index)
+                .is_none_or(|old| old.value != spec.value)
+        })
+        .filter_map(|spec| {
+            spec.value
+                .map(|value| format!("{} {}", spec.name, value_text(spec, value)))
+        })
+        .collect()
+}
+
 /// One applet's parameters, observables and actions, a line each.
 #[must_use]
 pub fn description_text(app: &AppEntry, description: &AppDescription) -> String {
@@ -241,7 +264,7 @@ mod tests {
     use oc_protocol::{ParamKind, ParamValue};
 
     use super::{find_spec, fixed, note_number, parse_value, value_text};
-    use crate::client::SpecEntry;
+    use crate::client::{AppDescription, SpecEntry};
 
     fn spec(name: &str, kind: ParamKind, choices: &[&str]) -> SpecEntry {
         SpecEntry {
@@ -317,6 +340,27 @@ mod tests {
         let shape = spec("SHAPE", number(1, Unit::Octaves), &[]);
         assert_eq!(value_text(&shape, ParamValue::Number(-30)), "-3.0 OCT");
         assert_eq!(parse_value(&shape, "-3.0"), Ok(ParamValue::Number(-30)));
+    }
+
+    #[test]
+    fn what_a_set_moved_besides_itself_is_named() {
+        let mut count = spec("COUNT", number(0, Unit::None), &[]);
+        count.value = Some(ParamValue::Number(4));
+        let mut gate = spec("GATE", ParamKind::Toggle, &[]);
+        gate.index = 1;
+        gate.value = Some(ParamValue::Toggle(true));
+        let before = AppDescription {
+            params: vec![count.clone(), gate.clone()],
+            ..AppDescription::default()
+        };
+        count.value = Some(ParamValue::Number(32));
+        gate.value = Some(ParamValue::Toggle(false));
+        let after = AppDescription {
+            params: vec![count, gate],
+            ..AppDescription::default()
+        };
+        assert_eq!(super::moved(&before, &after, 1), ["COUNT 32"]);
+        assert_eq!(super::moved(&after, &after, 1), Vec::<String>::new());
     }
 
     #[test]

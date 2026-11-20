@@ -532,6 +532,11 @@ chooser marks it running. Type `50` in `PROB`: the row says `set: 50%` and
 the module's screen shows it. Type `5000` in `FIRST`: `2000`, *narrowed by
 another setting*. Choose `SPAN` in `MODE`, then `5000` again: kept. Type
 `steep` in `SHAPE`: the row says what a value looks like, nothing is sent.
+Set `GATE` on, then off: `COUNT` follows on the page as on the module (32,
+the count past which a detent reaches the gate), its row saying it moved
+with `GATE`; type `4` in `COUNT` and press Enter: it is sent even though
+the field showed it a moment before. `cargo probe set ratchet gate off`
+prints `COUNT 32  (moved with it)` the same way.
 *BURST* sends a burst on B; *Read what it plays* reads `RATE` (`--` until
 `TR1` has had two edges) and `SENT`.
 

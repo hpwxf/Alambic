@@ -150,6 +150,11 @@ pub trait App: Any {
     /// Sets parameter `index` as a detent would, within the same bounds:
     /// what it applied, which another setting may have narrowed.
     ///
+    /// It may move other parameters too, as the detent would: the other face
+    /// of the same setting (`RATCHET`'s `GATE` off puts `COUNT` at its
+    /// last), or a bound that depends on it (`MODE` narrowing `FIRST`). A
+    /// host that shows them reads them back after a set.
+    ///
     /// # Errors
     ///
     /// Why the value was not taken: no such parameter, a value of another

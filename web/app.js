@@ -252,6 +252,8 @@ function setProbeEnabled(connected) {
 
 /** The applet on show, or null. */
 let appView = null;
+/** Each parameter's row: its editor and its status cell. */
+let paramRows = [];
 
 /** Lists the applets in the chooser, the running one picked, and shows it. */
 async function listApps(probe) {
@@ -296,11 +298,23 @@ const cell = (text, className) => {
 function drawParams() {
   const body = $("apps-params");
   body.replaceChildren();
+  paramRows = [];
   for (let at = 0; at < appView.param_count; at += 1) {
     const row = document.createElement("tr");
     const editor = paramEditor(at);
     const status = cell("", "status");
-    editor.addEventListener("change", () => setParam(at, editorText(editor), editor, status));
+    paramRows.push({ editor, status, sending: null });
+    // A list sends what it picks; a field sends on Enter, even a value it
+    // already shows, and when it loses the focus with a new one.
+    editor.addEventListener("change", () => setParam(at, editor.value));
+    if (editor.tagName === "INPUT") {
+      editor.addEventListener("keydown", (event) => {
+        if (event.key === "Enter") {
+          event.preventDefault();
+          setParam(at, editor.value);
+        }
+      });
+    }
     const editCell = document.createElement("td");
     editCell.append(editor);
     row.append(
@@ -332,11 +346,18 @@ function paramEditor(at) {
   return select;
 }
 
-const editorText = (editor) => editor.value;
-
-/** Sets parameter `at` as `cargo probe set` would, and shows what the applet applied. */
-async function setParam(at, text, editor, status) {
+/**
+ * Sets parameter `at` as `cargo probe set` would, shows what the applet
+ * applied, then reads every value back: a set may move other parameters
+ * with it, as the detent would (`RATCHET`'s `GATE` off puts `COUNT` at 32).
+ */
+async function setParam(at, text) {
   if (!session || !appView) return;
+  const row = paramRows[at];
+  const { status } = row;
+  // An Enter fires a keydown and a change: the second finds the same text
+  // already under way.
+  if (row.sending === text) return;
   let frame;
   try {
     frame = appView.set_request(at, text);
@@ -344,19 +365,36 @@ async function setParam(at, text, editor, status) {
     status.textContent = String(error);
     return;
   }
+  for (const other of paramRows) other.status.textContent = "";
+  row.sending = text;
   try {
+    appView.settle();
     const [item] = await session.ask(frame, 1, true);
     const shown = appView.absorb_param(at, item.message);
     release([item]);
     const applied = appView.param_edit_text(at);
-    editor.value = applied;
     status.textContent = applied.toLowerCase() === text.trim().toLowerCase()
       ? `set: ${shown}`
       : `set: ${shown} (narrowed by another setting)`;
+    await refreshValues(appView.param_name(at));
   } catch (error) {
     status.textContent = `error: ${error.message}`;
-    editor.value = appView.param_edit_text(at);
+    row.editor.value = appView.param_edit_text(at);
+  } finally {
+    row.sending = null;
   }
+}
+
+/** Reads every value back and shows them; `cause` names the set that moved them. */
+async function refreshValues(cause) {
+  const items = await session.ask(appView.refresh_request(), UNTIL_DONE, true);
+  for (const item of items) appView.absorb_refresh(item.message);
+  release(items);
+  paramRows.forEach(({ editor, status }, at) => {
+    editor.value = appView.param_edit_text(at);
+    if (appView.param_moved(at)) status.textContent = `moved with ${cause}: ${appView.param_text(at)}`;
+  });
+  drawObservables();
 }
 
 function drawObservables() {

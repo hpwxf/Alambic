@@ -265,6 +265,11 @@ fn set(session: &mut Session, app: &str, param: &str, text: &str) -> anyhow::Res
     if applied != value {
         eprintln!("narrowed by another setting of {}", app.name);
     }
+    // A set may move other parameters, as the detent would (journal/D-043).
+    let after = session.describe(app.index)?;
+    for line in apps::moved(&description, &after, spec.index) {
+        println!("{line}  (moved with it)");
+    }
     Ok(())
 }
 

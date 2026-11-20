@@ -202,3 +202,15 @@ La page a son panneau *Apps*, l'équivalent de la CLI. La logique reste dans le 
 `AppList` et `AppView` absorbent les messages d'une réponse, puis donnent noms, valeurs, plages et éditeurs, et
 construisent les requêtes ; la lecture et l'écriture d'une valeur sont celles d'`oc_probe::apps`, la description est
 bâtie par les mêmes méthodes d'`AppDescription` que le client. Le JS ne fait que poser les champs et transmettre.
+
+## Révision du 2026-11-21 — un `set` peut déplacer d'autres paramètres
+
+Essai de la page par l'utilisateur : `GATE` off remettait `COUNT` à 32 sur le module, mais la page gardait 4, et
+valider 4 n'envoyait rien (le champ ne voyait pas de changement). Un `set` déplace parfois d'autres paramètres,
+comme le cran le ferait : l'autre face d'un même réglage (`GATE` et `COUNT`), une borne qui en dépend (`MODE` et
+`FIRST`). Le modèle le dit désormais (`App::set`, `Request::SetParam`) : **après un `set`, l'hôte relit les
+valeurs**. La page relit l'app entière (`DescribeApp`, une requête) et marque ce qui a bougé avec le réglage
+écrit (`AppView::refresh_request`, `absorb_refresh`, `param_moved`) ; la CLI imprime les autres paramètres changés
+(`oc_probe::apps::moved`). Dans la page, Entrée envoie toujours, même une valeur déjà affichée. La réponse à un
+`SetParam` ne porte toujours que le paramètre écrit : y joindre les autres alourdirait le protocole pour un cas que
+la relecture couvre.
