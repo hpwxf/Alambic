@@ -11,7 +11,7 @@
 //! ([`Display::page_count`]). Drawing and a whole frame together outlast a
 //! 1 kHz period on the module, so a paged display gets its frame over the
 //! ticks after the drawing, and the next frame waits for the last page
-//! (journal/D-023, option C+; AGENTS.md, "The loop and the screen").
+//! (journal/D-023, option C+; `docs/agents/firmware.md`, "The screen").
 
 use crate::apps::diagnostic::DiagnosticApp;
 use crate::apps::{AppHost, AppId};

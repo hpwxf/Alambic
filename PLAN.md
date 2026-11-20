@@ -29,7 +29,8 @@ ne recharge que ce dont elle a besoin (journal/D-001).
 | `docs/plan/avancement/etape-*.md` | journal d'une étape terminée : fait, mesuré, corrigé |
 | `.junie/plans/oc-rust-firmware-foundation.md` | plan détaillé de l'étape 0 (fondation), rédigé par l'assistant Junie, terminé |
 | `docs/supersaw/` | étude : supersaw, repliement, PolyBLEP, architecture audio et partage du bus SPI (base de D-023) |
-| `AGENTS.md` | architecture et pièges du dépôt (anglais) — référence technique, lue avant tout changement structurel |
+| `AGENTS.md` | règles et pièges du dépôt (anglais), seule source de vérité des agents ; route vers ses annexes |
+| `docs/agents/` | annexes d'`AGENTS.md` (anglais) : `firmware.md` (chaîne croisée, contextes, écran, mesure des coûts), `code-map.md` (crates, où vit quoi), `tools.md` (outils hôte) |
 | `TESTING.md` | protocole de test par niveau, dont le niveau 9 (validation manuelle sur le module) |
 | `crates/oc-firmware/MEMORY.md` | carte mémoire du Teensy 4.0 et absence voulue de `memory.x` / `flip-link` (D-004) |
 | `README.md` | doc d'usage (anglais) |

@@ -402,7 +402,7 @@ inverseurs et pull-up (actifs à l'état bas). Détails et mesures : `plan/avanc
 ## 7. Comment le firmware assemble tout ça [firmware]
 
 * **Deux contextes** : une boucle coopérative à 1 kHz (entrées, panneau, applets, dessin, USB) et le chemin audio
-  (DMA + deux interruptions). AGENTS.md, « The loop and the screen ».
+  (DMA + deux interruptions). `docs/agents/firmware.md`, « Two contexts ».
 * **Le chemin audio** (D-033) : PIT canal 0 → DMAMUX → DMA → LPSPI4 → DAC ; interruption de fin de copie : compte les
   rafales par leur écho, calcule l'échantillon deux emplacements plus loin, envoie un tronçon d'écran ; interruption
   « trame terminée » : relâche le CS de l'OLED. Récit complet : `plan/rapport-etape-7-chemin-audio.md`.

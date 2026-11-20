@@ -83,3 +83,23 @@ spécification (fiches, manuel de référence), de ce module (assemblage et mesu
 vaut pour les rapports d'étape. La partie générique de l'ancien fichier (exemples RTIC, tableau Linux / embarqué,
 « ADC externes ») n'est pas reprise : elle ne décrivait pas ce module.
 
+
+## Révision du 2026-11-20 — `AGENTS.md` réduit, détail dans `docs/agents/`
+
+À la demande de l'utilisateur. `AGENTS.md` faisait 446 lignes, chargées à chaque session d'agent, et répétait le
+code (docs de module de `main.rs`, `audio.rs`, `oc_core::audio`), `PLAN.md` (les réserves des étapes),
+`crates/oc-firmware/MEMORY.md` et lui-même (tableau des crates et index des fichiers) ; il portait aussi des mesures
+déjà périmées (coût de l'interruption audio). La cause est la taille, pas une contradiction avec le journal : la
+piste du § 5 (`docs/plan/architecture.md` en français) n'est pas prise.
+
+* `AGENTS.md` garde ce que toute tâche demande : où lire, règles de travail (plan, journal, langue, « fait »),
+  commandes courantes, règles faciles à casser, style. Il reste la **seule source de vérité** des agents.
+* Le détail par domaine passe dans des annexes en anglais que `AGENTS.md` route, lues quand la tâche touche leur
+  domaine : `docs/agents/firmware.md` (chaîne croisée, les deux contextes, l'écran, la mesure des coûts),
+  `docs/agents/code-map.md` (les crates, où vit quoi), `docs/agents/tools.md` (sonde, navigateur, VCV Rack,
+  publication, bancs). Ce qu'une docs de module dit déjà n'y est pas recopié : elles y renvoient.
+* Aucune mesure dans ces fichiers (elles vont dans `docs/plan/avancement/`) ; les lacunes connues renvoient aux
+  réserves de `PLAN.md`.
+
+Ce qui ferait revenir en arrière : un agent qui casse une règle parce qu'elle n'est plus que dans une annexe (la
+remonter dans `AGENTS.md`) ; une annexe qui dérive du code (la réduire à des renvois vers les docs de module).
