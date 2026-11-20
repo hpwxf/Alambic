@@ -16,7 +16,8 @@ use core::fmt::Write as _;
 
 use crate::gfx::Point;
 
-use crate::apps::{InputSnapshot, TickContext};
+use crate::apps::{App, AppId, InputSnapshot, TickContext};
+use crate::audio::Params;
 use crate::calibration::{CV_OUT_MAX_MV, CV_OUT_MIN_MV};
 use crate::fmt::{TextBuf, write_volts};
 use crate::framebuffer::{FrameBuffer, WIDTH};
@@ -147,6 +148,20 @@ impl ScopeApp {
             };
             frame.set_pixel(x, PLOT_TOP + i32::from(row), true);
         }
+    }
+}
+
+impl App for ScopeApp {
+    fn id(&self) -> AppId {
+        AppId::Scope
+    }
+
+    fn update(&mut self, input: &InputSnapshot) -> Params {
+        ScopeApp::update(self, input).into()
+    }
+
+    fn render(&self, frame: &mut FrameBuffer, context: &TickContext) {
+        ScopeApp::render(self, frame, context);
     }
 }
 

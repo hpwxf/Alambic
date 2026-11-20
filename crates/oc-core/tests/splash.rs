@@ -4,6 +4,7 @@
 //! [`mock_engine_at_boot`] is used here instead of [`mock_engine`], since the
 //! latter starts past the animation on purpose (see its own documentation).
 
+use oc_core::apps::diagnostic::DiagnosticApp;
 use oc_core::apps::diagnostic::OutputMode;
 use oc_core::platform::CvChannel;
 use oc_core::splash::DURATION_MICROS;
@@ -73,7 +74,7 @@ fn inputs_are_ignored_until_the_animation_completes() {
 
     run_ticks(&mut engine, TICKS_PAST_BOOT - 1);
     assert_eq!(
-        engine.diagnostic().outputs(),
+        engine.app::<DiagnosticApp>().outputs(),
         &[0; 4],
         "the applet must not have processed anything yet"
     );
@@ -86,7 +87,7 @@ fn inputs_are_ignored_until_the_animation_completes() {
         report.cv_out[1], 5_000,
         "normal execution begins once the border has fully traced"
     );
-    assert_eq!(engine.diagnostic().mode(), OutputMode::Offset);
+    assert_eq!(engine.app::<DiagnosticApp>().mode(), OutputMode::Offset);
 }
 
 #[test]
@@ -100,7 +101,7 @@ fn control_input_during_the_animation_is_not_replayed_afterwards() {
     run_ticks(&mut engine, TICKS_PAST_BOOT);
 
     assert_eq!(
-        engine.diagnostic().offset(),
+        engine.app::<DiagnosticApp>().offset(),
         0,
         "an encoder turn during the boot animation must not carry over"
     );
@@ -115,11 +116,11 @@ fn resetting_a_booted_engine_plays_the_animation_again() {
         controls.turn(1, 5);
     }
     engine.tick();
-    assert_ne!(engine.diagnostic().offset(), 0);
+    assert_ne!(engine.app::<DiagnosticApp>().offset(), 0);
 
     engine.reset();
     assert_eq!(
-        engine.diagnostic().offset(),
+        engine.app::<DiagnosticApp>().offset(),
         0,
         "reset restores the default applet state"
     );

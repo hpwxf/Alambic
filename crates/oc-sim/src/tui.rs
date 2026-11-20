@@ -17,6 +17,12 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Paragraph};
 
 use oc_core::apps::AppId;
+use oc_core::apps::diagnostic::DiagnosticApp;
+use oc_core::apps::gfx_demo::GfxDemoApp;
+use oc_core::apps::ratchet::RatchetApp;
+use oc_core::apps::scope::ScopeApp;
+use oc_core::apps::supersaw::SupersawApp;
+use oc_core::apps::tone::ToneApp;
 use oc_core::calibration::{CV_IN_MAX_MV, CV_IN_MIN_MV};
 use oc_core::platform::{Button, CV_CHANNELS, CvChannel, MilliVolts, TriggerChannel};
 
@@ -507,7 +513,7 @@ impl Tui {
             .into_iter()
             .map(|channel| {
                 self.simulator
-                    .diagnostic()
+                    .app::<DiagnosticApp>()
                     .trigger_count(channel)
                     .to_string()
             })
@@ -517,13 +523,17 @@ impl Tui {
         lines.push(Line::raw(format!(
             "  presses  L{} R{} up{} dn{}",
             self.simulator
-                .diagnostic()
+                .app::<DiagnosticApp>()
                 .button_press_count(Button::LeftEncoder),
             self.simulator
-                .diagnostic()
+                .app::<DiagnosticApp>()
                 .button_press_count(Button::RightEncoder),
-            self.simulator.diagnostic().button_press_count(Button::Up),
-            self.simulator.diagnostic().button_press_count(Button::Down),
+            self.simulator
+                .app::<DiagnosticApp>()
+                .button_press_count(Button::Up),
+            self.simulator
+                .app::<DiagnosticApp>()
+                .button_press_count(Button::Down),
         )));
 
         frame.render_widget(
@@ -567,34 +577,34 @@ impl Tui {
         let detail = match self.simulator.current_app() {
             AppId::Diagnostic => format!(
                 "mode {}   offset {}mV   channel {}",
-                self.simulator.diagnostic().mode().label(),
-                self.simulator.diagnostic().offset(),
-                self.simulator.diagnostic().selected() + 1
+                self.simulator.app::<DiagnosticApp>().mode().label(),
+                self.simulator.app::<DiagnosticApp>().offset(),
+                self.simulator.app::<DiagnosticApp>().selected() + 1
             ),
-            AppId::Scope => format!("cv1 {}mV", self.simulator.scope().level()),
+            AppId::Scope => format!("cv1 {}mV", self.simulator.app::<ScopeApp>().level()),
             AppId::Ratchet => format!(
                 "{:?}   burst {:?}",
-                self.simulator.ratchet().selected(),
-                self.simulator.ratchet().repeats_sent()
+                self.simulator.app::<RatchetApp>().selected(),
+                self.simulator.app::<RatchetApp>().repeats_sent()
             ),
             AppId::Gfx => format!(
                 "page {:?}   knobs {:?}",
-                self.simulator.gfx().page(),
-                self.simulator.gfx().knobs()
+                self.simulator.app::<GfxDemoApp>().page(),
+                self.simulator.app::<GfxDemoApp>().knobs()
             ),
             AppId::Tone => format!(
                 "{} {}mHz   peak {}mV",
-                oc_core::apps::tone::note_name(self.simulator.tone().note()).as_str(),
-                self.simulator.tone().frequency(),
-                self.simulator.tone().amplitude()
+                oc_core::apps::tone::note_name(self.simulator.app::<ToneApp>().note()).as_str(),
+                self.simulator.app::<ToneApp>().frequency(),
+                self.simulator.app::<ToneApp>().amplitude()
             ),
             AppId::Supersaw => format!(
                 "{} {}mHz   detune {}   mix {}   stereo {}",
-                oc_core::apps::tone::note_name(self.simulator.supersaw().note()).as_str(),
-                self.simulator.supersaw().frequency(),
-                self.simulator.supersaw().played_detune(),
-                self.simulator.supersaw().played_mix(),
-                self.simulator.supersaw().stereo()
+                oc_core::apps::tone::note_name(self.simulator.app::<SupersawApp>().note()).as_str(),
+                self.simulator.app::<SupersawApp>().frequency(),
+                self.simulator.app::<SupersawApp>().played_detune(),
+                self.simulator.app::<SupersawApp>().played_mix(),
+                self.simulator.app::<SupersawApp>().stereo()
             ),
         };
         let menu = if self.simulator.menu_is_open() {
@@ -696,7 +706,7 @@ pub fn replay_headless(path: &std::path::Path) -> Result<String> {
 
     let counts: Vec<u32> = TriggerChannel::ALL
         .into_iter()
-        .map(|channel| simulator.diagnostic().trigger_count(channel))
+        .map(|channel| simulator.app::<DiagnosticApp>().trigger_count(channel))
         .collect();
 
     let mut report = String::new();
@@ -711,21 +721,33 @@ pub fn replay_headless(path: &std::path::Path) -> Result<String> {
             "closed"
         }
     );
-    let _ = writeln!(report, "mode    {}", simulator.diagnostic().mode().label());
-    let _ = writeln!(report, "offset  {}mV", simulator.diagnostic().offset());
+    let _ = writeln!(
+        report,
+        "mode    {}",
+        simulator.app::<DiagnosticApp>().mode().label()
+    );
+    let _ = writeln!(
+        report,
+        "offset  {}mV",
+        simulator.app::<DiagnosticApp>().offset()
+    );
     let _ = writeln!(
         report,
         "presses L{} R{} up{} dn{}",
         simulator
-            .diagnostic()
+            .app::<DiagnosticApp>()
             .button_press_count(Button::LeftEncoder),
         simulator
-            .diagnostic()
+            .app::<DiagnosticApp>()
             .button_press_count(Button::RightEncoder),
-        simulator.diagnostic().button_press_count(Button::Up),
-        simulator.diagnostic().button_press_count(Button::Down),
+        simulator
+            .app::<DiagnosticApp>()
+            .button_press_count(Button::Up),
+        simulator
+            .app::<DiagnosticApp>()
+            .button_press_count(Button::Down),
     );
-    let _ = writeln!(report, "scope   {}mV", simulator.scope().level());
+    let _ = writeln!(report, "scope   {}mV", simulator.app::<ScopeApp>().level());
     let _ = writeln!(report, "cv out  {:?}", simulator.cv_out());
     let _ = writeln!(report, "edges   {counts:?}");
     report.push_str("screen\n");
@@ -742,6 +764,7 @@ mod tests {
     use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
     use oc_core::apps::AppId;
+    use oc_core::apps::diagnostic::DiagnosticApp;
     use oc_core::calibration::{CV_IN_MAX_MV, CV_IN_MIN_MV};
     use oc_core::platform::{Button, TriggerChannel};
 
@@ -773,7 +796,7 @@ mod tests {
         press_and_settle(&mut tui, 'w');
         assert_eq!(
             tui.simulator
-                .diagnostic()
+                .app::<DiagnosticApp>()
                 .trigger_count(TriggerChannel::One),
             1,
             "w is trigger 1's canonical key on AZERTY"
@@ -855,7 +878,7 @@ mod tests {
         press_and_settle(&mut tui, 'w');
         assert_eq!(
             tui.simulator
-                .diagnostic()
+                .app::<DiagnosticApp>()
                 .trigger_count(TriggerChannel::One),
             1
         );
@@ -863,7 +886,7 @@ mod tests {
         press_and_settle(&mut tui, 'a');
         assert_eq!(
             tui.simulator
-                .diagnostic()
+                .app::<DiagnosticApp>()
                 .trigger_count(TriggerChannel::One),
             0,
             "a presses the left encoder on both layouts, which resets the trigger counters"
@@ -896,7 +919,7 @@ mod tests {
         press_and_settle(&mut tui, 'z');
         assert_eq!(
             tui.simulator
-                .diagnostic()
+                .app::<DiagnosticApp>()
                 .trigger_count(TriggerChannel::One),
             1,
             "z is trigger 1's canonical key, reached natively under QWERTY"
@@ -905,7 +928,7 @@ mod tests {
         press_and_settle(&mut tui, 'w');
         assert_eq!(
             tui.simulator
-                .diagnostic()
+                .app::<DiagnosticApp>()
                 .trigger_count(TriggerChannel::One),
             1,
             "w turns the left encoder under QWERTY (native), not trigger 1 nor its reset"

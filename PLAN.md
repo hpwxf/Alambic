@@ -55,6 +55,19 @@ comportemental (`oc-core`, D-002). Les applets musicaux sont la suite.
 | **7** — chemin audio (2026-11-17 → 11-18) | ✅ `oc_core::audio` (paramètres de sortie, voix), applet `TONE` ; DAC en PCS0 à 22 MHz ; PIT → DMA → LPSPI4 à **47 619 Hz** (instant fixé par le matériel), interruption du DMA pour l'échantillon et l'écran par tronçons ; `audio` 3,4 µs sur 21 ; juste à l'accordeur jusqu'à B7 (D-033). Réserves : 48 kHz impossible (quartz de GPT2 muet), quatre voies écrites à chaque période, Rack non écouté. Version **0.5.0** (avec l'étape 6 ; plugin Rack 2.5.0) | [etape-7.md](docs/plan/avancement/etape-7.md), [rapport](docs/plan/rapport-etape-7-chemin-audio.md) |
 | **8** — premier oscillateur : Supersaw (2026-11-18) | ✅ `oc_core::audio::supersaw` : sept scies PolyBLEP en entier (désaccord et mix de Szabo, passe-haut sur la fondamentale), A / B mono ou stéréo, C sub-octave ; applet `SUPERSAW`, entrées par `oc_core::modulation` ; `audio` 3,9 µs sur 21 ; repliement mesuré par FFT (exemple `aliasing`) : sous 10 kHz ≤ −45 dB, ×4 non nécessaire ; scies descendantes, sans écrêtage jusqu'à 2 V (D-037) ; budget mémoire (D-038). Réserves : bruit de CV1 sur `NOTE`, assignations non sauvegardées, Rack non écouté. Version **0.6.0** (plugin Rack 2.6.0) | [etape-8.md](docs/plan/avancement/etape-8.md) |
 
+### Étape 10 — apps modulaires : trait `App` et modèle de paramètres (en cours)
+
+Demandée le 2026-11-20 (D-043, proposée) : le cœur ne doit plus nommer chaque app ; un trait maintenant, la
+composition en crates plus tard ; à terme plusieurs apps simultanées, un routage interne, et le pilotage des apps
+par l'USB à travers la même interface. L'écran et la navigation restent propres à chaque app.
+
+| Lot | Contenu | État |
+|---|---|---|
+| **10a** — trait et registre | trait `App` (`id`, `name`, `update`, `render`, `Any` en supertrait) ; `AppHost::get` / `get_mut` / `find::<T>()`, aiguillage par `&dyn App` ; accesseurs par app retirés d'`AppHost`, d'`Engine` (`app::<T>()` à la place) et d'`oc-sim` ; `AppId` garde son rôle de liste de composition et de clé persistée ; écrans dorés et tests inchangés ; `.text` +724 o, `.rodata` +192 o ; criterion `engine/tick_*` et `voice/*` inchangés au bruit près | ✅ |
+| **10b** — modèle de paramètres | `ParamSpec`, `ParamValue`, `Observed`, actions ; éprouvé sur `RATCHET` et `SUPERSAW`, puis les autres ; ligne d'état du simulateur tirée du modèle | à faire |
+| **10c** — module | `cargo probe stats` : `voice`, `audio` inchangés, `update` et `render` à quelques µs ; D-043 adoptée | à faire |
+| **10d** — sonde | `ListApps`, `DescribeApp`, `GetParam`, `SetParam`, `Act`, `Select` dans `oc-protocol` et `oc-probe` | à faire |
+
 ### Étape 9 — essai du Supersaw en `f32` (en cours)
 
 Demandée le 2026-11-19 (D-039) : le Cortex-M7 a un FPU, le Supersaw est en virgule fixe sans que le choix ait été

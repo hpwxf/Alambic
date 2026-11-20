@@ -38,7 +38,8 @@ use self::burst::{
     MIN_INTERVAL_MICROS, Model, chance_from, count_from, curve_from, follow_time_micros, time_from,
 };
 use self::tempo::Tempo;
-use crate::apps::{InputSnapshot, TickContext};
+use crate::apps::{App, AppId, InputSnapshot, TickContext};
+use crate::audio::Params;
 use crate::fixed::{self, ONE};
 use crate::fmt::TextBuf;
 use crate::framebuffer::{FrameBuffer, ROW_HEIGHT, WIDTH_I32};
@@ -884,6 +885,20 @@ fn position(setting: Setting, burst: &Burst) -> i32 {
         Setting::Passthru | Setting::Sync | Setting::Mode => 0,
     };
     i32::try_from(permille.clamp(0, 1_000)).unwrap_or(0)
+}
+
+impl App for RatchetApp {
+    fn id(&self) -> AppId {
+        AppId::Ratchet
+    }
+
+    fn update(&mut self, input: &InputSnapshot) -> Params {
+        RatchetApp::update(self, input).into()
+    }
+
+    fn render(&self, frame: &mut FrameBuffer, context: &TickContext) {
+        RatchetApp::render(self, frame, context);
+    }
 }
 
 impl Default for RatchetApp {

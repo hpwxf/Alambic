@@ -598,6 +598,7 @@ mod tests {
         oc_engine_framebuffer_len, oc_engine_free, oc_engine_new, oc_engine_reset,
         oc_engine_set_cv_in, oc_engine_set_trigger, oc_engine_tick, oc_engine_trigger_channels,
     };
+    use oc_core::apps::diagnostic::DiagnosticApp;
     use oc_core::framebuffer::LEN;
     use oc_core::platform::{BUTTONS, CV_CHANNELS, ENCODERS, TRIGGER_CHANNELS, TriggerChannel};
     use oc_core::splash::DURATION_MICROS;
@@ -736,7 +737,7 @@ mod tests {
             let count = as_mut(engine)
                 .unwrap()
                 .engine
-                .diagnostic()
+                .app::<DiagnosticApp>()
                 .trigger_count(TriggerChannel::Two);
             assert_eq!(count, 2);
             oc_engine_free(engine);

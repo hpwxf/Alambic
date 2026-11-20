@@ -14,7 +14,12 @@
 use std::path::{Path, PathBuf};
 
 use oc_core::apps::AppId;
+use oc_core::apps::diagnostic::DiagnosticApp;
 use oc_core::apps::diagnostic::OutputMode;
+use oc_core::apps::gfx_demo::GfxDemoApp;
+use oc_core::apps::ratchet::RatchetApp;
+use oc_core::apps::supersaw::SupersawApp;
+use oc_core::apps::tone::ToneApp;
 use oc_core::calibration::CV_OUT_MIN_MV;
 use oc_core::platform::{CvChannel, TriggerChannel};
 use oc_core::testing::adc_reading;
@@ -103,7 +108,7 @@ fn a_steady_input_is_not_mistaken_for_a_signal() {
     let simulator = replay("cv_passthrough");
     for channel in CvChannel::ALL {
         assert!(
-            !simulator.diagnostic().is_signal_active(channel),
+            !simulator.app::<DiagnosticApp>().is_signal_active(channel),
             "a constant level must not read as an active signal on {channel:?}"
         );
     }
@@ -114,20 +119,30 @@ fn gates_and_one_millisecond_triggers_are_all_counted() {
     let mut simulator = replay("trigger_burst");
 
     assert_eq!(
-        simulator.diagnostic().trigger_count(TriggerChannel::One),
+        simulator
+            .app::<DiagnosticApp>()
+            .trigger_count(TriggerChannel::One),
         4,
         "four clean gates, four edges"
     );
     assert_eq!(
-        simulator.diagnostic().trigger_count(TriggerChannel::Two),
+        simulator
+            .app::<DiagnosticApp>()
+            .trigger_count(TriggerChannel::Two),
         3,
         "three single-tick triggers, three edges"
     );
     assert_eq!(
-        simulator.diagnostic().trigger_count(TriggerChannel::Three),
+        simulator
+            .app::<DiagnosticApp>()
+            .trigger_count(TriggerChannel::Three),
         0
     );
-    assert!(simulator.diagnostic().trigger_state(TriggerChannel::Two));
+    assert!(
+        simulator
+            .app::<DiagnosticApp>()
+            .trigger_state(TriggerChannel::Two)
+    );
 
     assert_screen_matches(&mut simulator, "trigger_burst");
 }
@@ -137,12 +152,12 @@ fn the_encoders_select_a_channel_and_dial_an_offset() {
     let mut simulator = replay("encoder_offset");
 
     assert_eq!(
-        simulator.diagnostic().selected(),
+        simulator.app::<DiagnosticApp>().selected(),
         2,
         "left encoder moved two steps"
     );
     assert_eq!(
-        simulator.diagnostic().offset(),
+        simulator.app::<DiagnosticApp>().offset(),
         1_500,
         "fifteen detents of 100 mV each"
     );
@@ -159,7 +174,7 @@ fn the_up_button_walks_through_the_output_modes() {
     let mut simulator = replay("mode_cycle");
 
     assert_eq!(
-        simulator.diagnostic().mode(),
+        simulator.app::<DiagnosticApp>().mode(),
         OutputMode::Zero,
         "two presses from OFFS land on ZERO"
     );
@@ -182,7 +197,7 @@ fn the_app_menu_switches_to_the_scope() {
     );
     assert_eq!(simulator.current_app(), AppId::Scope);
     assert_eq!(
-        simulator.diagnostic().mode(),
+        simulator.app::<DiagnosticApp>().mode(),
         OutputMode::Offset,
         "neither up nor down fired its own action on the way into the menu"
     );
@@ -201,14 +216,14 @@ fn ratchet_bursts_a_trigger_onto_b() {
     assert_eq!(simulator.current_app(), AppId::Ratchet);
     // 200 ms after the trigger: the initial trigger and two repeats sent
     // (100 ms, then about 84 ms), the burst still running.
-    assert_eq!(simulator.ratchet().repeats_sent(), Some(2));
+    assert_eq!(simulator.app::<RatchetApp>().repeats_sent(), Some(2));
     assert_screen_matches(&mut simulator, "ratchet");
 }
 
 #[test]
 fn ratchet_marks_where_the_next_trigger_is_due() {
     let mut simulator = replay("ratchet_tempo");
-    assert_eq!(simulator.ratchet().bpm(), Some(242));
+    assert_eq!(simulator.app::<RatchetApp>().bpm(), Some(242));
     assert_screen_matches(&mut simulator, "ratchet_tempo");
 }
 
@@ -218,7 +233,7 @@ fn ratchet_shows_the_input_submenu() {
     use oc_core::modulation::AssignLine;
     use oc_core::platform::CvChannel;
     let mut simulator = replay("ratchet_inputs");
-    let ratchet = simulator.ratchet();
+    let ratchet = simulator.app::<RatchetApp>();
     assert_eq!(ratchet.assigning(), Some(AssignLine::Scale));
     let assign = ratchet.assign(Setting::Count).unwrap();
     assert_eq!(
@@ -232,7 +247,7 @@ fn ratchet_shows_the_input_submenu() {
 fn supersaw_plays_its_settings_and_cv2_once_assigned() {
     let mut simulator = replay("supersaw");
     assert_eq!(simulator.current_app(), AppId::Supersaw);
-    let supersaw = simulator.supersaw();
+    let supersaw = simulator.app::<SupersawApp>();
     assert_eq!(supersaw.note(), 57, "A3");
     assert_eq!(supersaw.frequency(), 220_000);
     assert_eq!(supersaw.detune(), 600);
@@ -246,7 +261,7 @@ fn supersaw_shows_the_input_submenu() {
     use oc_core::modulation::AssignLine;
     use oc_core::platform::CvChannel;
     let mut simulator = replay("supersaw_inputs");
-    let supersaw = simulator.supersaw();
+    let supersaw = simulator.app::<SupersawApp>();
     assert_eq!(supersaw.assigning(), Some(AssignLine::Input));
     let assign = supersaw.assign(Setting::Detune).unwrap();
     assert_eq!(assign.input, Some(CvChannel::Two));
@@ -259,7 +274,7 @@ fn supersaw_shows_stereo_and_calc_on_its_second_page() {
     use oc_core::apps::supersaw::Setting;
     use oc_core::audio::supersaw::Arithmetic;
     let mut simulator = replay("supersaw_page2");
-    let supersaw = simulator.supersaw();
+    let supersaw = simulator.app::<SupersawApp>();
     assert_eq!((supersaw.selected(), supersaw.page()), (Setting::Calc, 1));
     assert!(supersaw.stereo());
     assert_eq!(supersaw.arithmetic(), Arithmetic::Float);
@@ -270,7 +285,7 @@ fn supersaw_shows_stereo_and_calc_on_its_second_page() {
 fn tone_plays_its_note_raised_by_cv1() {
     let simulator = replay("tone");
     assert_eq!(simulator.current_app(), AppId::Tone);
-    let tone = simulator.tone();
+    let tone = simulator.app::<ToneApp>();
     assert_eq!(tone.note(), 72, "C5");
     assert_eq!(tone.amplitude(), 1_500);
     // Half an octave above C5 (523.25 Hz): 739.99 Hz, CV1 as the module's
@@ -296,7 +311,7 @@ fn the_graphics_demo_shows_each_of_its_pages() {
     ] {
         let mut simulator = replay(name);
         assert_eq!(simulator.current_app(), AppId::Gfx, "{name}");
-        assert_eq!(simulator.gfx().page(), page, "{name}");
+        assert_eq!(simulator.app::<GfxDemoApp>().page(), page, "{name}");
         assert_screen_matches(&mut simulator, name);
     }
 }

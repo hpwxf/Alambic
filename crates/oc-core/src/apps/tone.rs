@@ -9,7 +9,7 @@
 
 use core::fmt::Write as _;
 
-use crate::apps::{InputSnapshot, TickContext};
+use crate::apps::{App, AppId, InputSnapshot, TickContext};
 use crate::audio::wave::{ONE, Waveform};
 use crate::audio::{Channel, MilliHertz, Params, Tone};
 use crate::fixed;
@@ -174,6 +174,20 @@ impl ToneApp {
             );
             draw_wave(frame, wave, left + 2, WAVE_COLUMN - 5);
         }
+    }
+}
+
+impl App for ToneApp {
+    fn id(&self) -> AppId {
+        AppId::Tone
+    }
+
+    fn update(&mut self, input: &InputSnapshot) -> Params {
+        ToneApp::update(self, input)
+    }
+
+    fn render(&self, frame: &mut FrameBuffer, context: &TickContext) {
+        ToneApp::render(self, frame, context);
     }
 }
 

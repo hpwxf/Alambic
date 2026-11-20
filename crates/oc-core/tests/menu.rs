@@ -4,6 +4,7 @@
 //! replaced by the deterministic mocks from [`oc_core::testing`].
 
 use oc_core::apps::AppId;
+use oc_core::apps::diagnostic::DiagnosticApp;
 use oc_core::menu::MenuEntry;
 use oc_core::platform::{Button, CV_CHANNELS, CvChannel};
 use oc_core::testing::{MockEngine, adc_reading, mock_engine};
@@ -49,7 +50,7 @@ fn chord(engine: &mut MockEngine) {
 fn the_up_down_chord_opens_the_menu_without_cycling_the_output_mode() {
     let mut engine = mock_engine(0);
     run_ticks(&mut engine, 1);
-    let mode_before = engine.diagnostic().mode();
+    let mode_before = engine.app::<DiagnosticApp>().mode();
 
     chord(&mut engine);
 
@@ -58,7 +59,7 @@ fn the_up_down_chord_opens_the_menu_without_cycling_the_output_mode() {
         "holding up and down opens the app menu"
     );
     assert_eq!(
-        engine.diagnostic().mode(),
+        engine.app::<DiagnosticApp>().mode(),
         mode_before,
         "neither button may fire its own action on the way into the menu"
     );
@@ -197,8 +198,8 @@ fn the_running_app_keeps_driving_the_outputs_while_the_menu_is_open() {
 fn menu_navigation_does_not_reach_the_running_app() {
     let mut engine = mock_engine(0);
     run_ticks(&mut engine, 1);
-    let selected_before = engine.diagnostic().selected();
-    let offset_before = engine.diagnostic().offset();
+    let selected_before = engine.app::<DiagnosticApp>().selected();
+    let offset_before = engine.app::<DiagnosticApp>().offset();
 
     chord(&mut engine);
     {
@@ -211,12 +212,12 @@ fn menu_navigation_does_not_reach_the_running_app() {
 
     assert!(!engine.menu_is_open());
     assert_eq!(
-        engine.diagnostic().selected(),
+        engine.app::<DiagnosticApp>().selected(),
         selected_before,
         "the detents that moved the highlight must not also move the applet's channel"
     );
     assert_eq!(
-        engine.diagnostic().offset(),
+        engine.app::<DiagnosticApp>().offset(),
         offset_before,
         "nor its offset"
     );
@@ -230,7 +231,7 @@ fn switching_away_and_back_preserves_app_state() {
         controls.turn(1, 10);
     }
     run_ticks(&mut engine, 1);
-    let offset = engine.diagnostic().offset();
+    let offset = engine.app::<DiagnosticApp>().offset();
     assert_ne!(offset, 0);
 
     chord(&mut engine);
@@ -244,7 +245,7 @@ fn switching_away_and_back_preserves_app_state() {
 
     assert_eq!(engine.current_app(), AppId::Diagnostic);
     assert_eq!(
-        engine.diagnostic().offset(),
+        engine.app::<DiagnosticApp>().offset(),
         offset,
         "an applet picked up again is exactly where it was left"
     );

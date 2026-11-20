@@ -13,6 +13,7 @@ use embedded_graphics::pixelcolor::BinaryColor;
 use embedded_graphics::prelude::Point;
 use embedded_graphics::text::{Baseline, Text};
 
+use oc_core::apps::diagnostic::DiagnosticApp;
 use oc_core::apps::diagnostic::{OFFSET_STEP_MV, OutputMode};
 use oc_core::calibration::{CV_OUT_MAX_MV, CV_OUT_MIN_MV};
 use oc_core::framebuffer::ROW_HEIGHT;
@@ -81,8 +82,8 @@ fn a_fresh_engine_starts_in_offset_mode_at_zero_volts() {
         "the first tick has no predecessor"
     );
     assert_eq!(report.cv_out, [0; 4]);
-    assert_eq!(engine.diagnostic().mode(), OutputMode::Offset);
-    assert_eq!(engine.diagnostic().selected(), 0);
+    assert_eq!(engine.app::<DiagnosticApp>().mode(), OutputMode::Offset);
+    assert_eq!(engine.app::<DiagnosticApp>().selected(), 0);
 }
 
 #[test]
@@ -140,9 +141,23 @@ fn a_clean_trigger_edge_is_counted_exactly_once() {
     }
     run_ticks(&mut engine, 10);
 
-    assert_eq!(engine.diagnostic().trigger_count(TriggerChannel::One), 1);
-    assert!(engine.diagnostic().trigger_state(TriggerChannel::One));
-    assert_eq!(engine.diagnostic().trigger_count(TriggerChannel::Two), 0);
+    assert_eq!(
+        engine
+            .app::<DiagnosticApp>()
+            .trigger_count(TriggerChannel::One),
+        1
+    );
+    assert!(
+        engine
+            .app::<DiagnosticApp>()
+            .trigger_state(TriggerChannel::One)
+    );
+    assert_eq!(
+        engine
+            .app::<DiagnosticApp>()
+            .trigger_count(TriggerChannel::Two),
+        0
+    );
 }
 
 #[test]
@@ -161,11 +176,17 @@ fn one_millisecond_triggers_are_each_counted() {
     }
 
     assert_eq!(
-        engine.diagnostic().trigger_count(TriggerChannel::One),
+        engine
+            .app::<DiagnosticApp>()
+            .trigger_count(TriggerChannel::One),
         3,
         "every single-tick trigger is an edge"
     );
-    assert!(!engine.diagnostic().trigger_state(TriggerChannel::One));
+    assert!(
+        !engine
+            .app::<DiagnosticApp>()
+            .trigger_state(TriggerChannel::One)
+    );
 }
 
 #[test]
@@ -179,7 +200,12 @@ fn pressing_the_left_encoder_resets_the_trigger_counters() {
             engine.tick();
         }
     }
-    assert_eq!(engine.diagnostic().trigger_count(TriggerChannel::Two), 3);
+    assert_eq!(
+        engine
+            .app::<DiagnosticApp>()
+            .trigger_count(TriggerChannel::Two),
+        3
+    );
 
     {
         let (_, _, _, controls, _) = engine.parts_mut();
@@ -187,7 +213,12 @@ fn pressing_the_left_encoder_resets_the_trigger_counters() {
     }
     run_ticks(&mut engine, 5);
 
-    assert_eq!(engine.diagnostic().trigger_count(TriggerChannel::Two), 0);
+    assert_eq!(
+        engine
+            .app::<DiagnosticApp>()
+            .trigger_count(TriggerChannel::Two),
+        0
+    );
 }
 
 #[test]
@@ -199,8 +230,11 @@ fn turning_the_right_encoder_moves_the_offset_by_one_step_per_detent() {
     }
     engine.tick();
 
-    assert_eq!(engine.diagnostic().offset(), 3 * OFFSET_STEP_MV);
-    assert_eq!(engine.diagnostic().outputs()[0], 3 * OFFSET_STEP_MV);
+    assert_eq!(engine.app::<DiagnosticApp>().offset(), 3 * OFFSET_STEP_MV);
+    assert_eq!(
+        engine.app::<DiagnosticApp>().outputs()[0],
+        3 * OFFSET_STEP_MV
+    );
 }
 
 #[test]
@@ -213,7 +247,7 @@ fn the_offset_saturates_at_the_output_limits() {
         }
         engine.tick();
     }
-    assert_eq!(engine.diagnostic().offset(), CV_OUT_MAX_MV);
+    assert_eq!(engine.app::<DiagnosticApp>().offset(), CV_OUT_MAX_MV);
 
     for _ in 0..200 {
         {
@@ -222,7 +256,7 @@ fn the_offset_saturates_at_the_output_limits() {
         }
         engine.tick();
     }
-    assert_eq!(engine.diagnostic().offset(), CV_OUT_MIN_MV);
+    assert_eq!(engine.app::<DiagnosticApp>().offset(), CV_OUT_MIN_MV);
 }
 
 #[test]
@@ -233,25 +267,29 @@ fn pressing_the_right_encoder_returns_the_offset_to_zero() {
         controls.turn(1, 10);
     }
     engine.tick();
-    assert_ne!(engine.diagnostic().offset(), 0);
+    assert_ne!(engine.app::<DiagnosticApp>().offset(), 0);
 
     {
         let (_, _, _, controls, _) = engine.parts_mut();
         controls.hold(Button::RightEncoder, true);
     }
     run_ticks(&mut engine, 5);
-    assert_eq!(engine.diagnostic().offset(), 0);
+    assert_eq!(engine.app::<DiagnosticApp>().offset(), 0);
 }
 
 #[test]
 fn each_encoder_press_is_counted_independently_like_a_trigger_edge() {
     let mut engine = mock_engine(0);
     assert_eq!(
-        engine.diagnostic().button_press_count(Button::LeftEncoder),
+        engine
+            .app::<DiagnosticApp>()
+            .button_press_count(Button::LeftEncoder),
         0
     );
     assert_eq!(
-        engine.diagnostic().button_press_count(Button::RightEncoder),
+        engine
+            .app::<DiagnosticApp>()
+            .button_press_count(Button::RightEncoder),
         0
     );
 
@@ -274,11 +312,15 @@ fn each_encoder_press_is_counted_independently_like_a_trigger_edge() {
     run_ticks(&mut engine, 5);
 
     assert_eq!(
-        engine.diagnostic().button_press_count(Button::LeftEncoder),
+        engine
+            .app::<DiagnosticApp>()
+            .button_press_count(Button::LeftEncoder),
         2
     );
     assert_eq!(
-        engine.diagnostic().button_press_count(Button::RightEncoder),
+        engine
+            .app::<DiagnosticApp>()
+            .button_press_count(Button::RightEncoder),
         1
     );
 }
@@ -297,8 +339,13 @@ fn pressing_both_encoders_at_once_fires_both_actions_in_the_same_tick() {
         controls.turn(1, 10);
     }
     engine.tick();
-    assert_eq!(engine.diagnostic().trigger_count(TriggerChannel::One), 1);
-    assert_ne!(engine.diagnostic().offset(), 0);
+    assert_eq!(
+        engine
+            .app::<DiagnosticApp>()
+            .trigger_count(TriggerChannel::One),
+        1
+    );
+    assert_ne!(engine.app::<DiagnosticApp>().offset(), 0);
 
     {
         let (_, _, _, controls, _) = engine.parts_mut();
@@ -308,12 +355,14 @@ fn pressing_both_encoders_at_once_fires_both_actions_in_the_same_tick() {
     run_ticks(&mut engine, 5);
 
     assert_eq!(
-        engine.diagnostic().trigger_count(TriggerChannel::One),
+        engine
+            .app::<DiagnosticApp>()
+            .trigger_count(TriggerChannel::One),
         0,
         "left encoder still resets the trigger counters when held together with the right"
     );
     assert_eq!(
-        engine.diagnostic().offset(),
+        engine.app::<DiagnosticApp>().offset(),
         0,
         "right encoder still zeroes the offset when held together with the left"
     );
@@ -327,7 +376,7 @@ fn turning_the_left_encoder_selects_a_channel_and_wraps_around() {
         controls.turn(0, 2);
     }
     engine.tick();
-    assert_eq!(engine.diagnostic().selected(), 2);
+    assert_eq!(engine.app::<DiagnosticApp>().selected(), 2);
 
     {
         let (_, _, _, controls, _) = engine.parts_mut();
@@ -335,7 +384,7 @@ fn turning_the_left_encoder_selects_a_channel_and_wraps_around() {
     }
     engine.tick();
     assert_eq!(
-        engine.diagnostic().selected(),
+        engine.app::<DiagnosticApp>().selected(),
         1,
         "selection wraps, never panics"
     );
@@ -345,21 +394,25 @@ fn turning_the_left_encoder_selects_a_channel_and_wraps_around() {
         controls.turn(0, -3);
     }
     engine.tick();
-    assert_eq!(engine.diagnostic().selected(), 2, "and wraps downwards too");
+    assert_eq!(
+        engine.app::<DiagnosticApp>().selected(),
+        2,
+        "and wraps downwards too"
+    );
 }
 
 #[test]
 fn the_up_and_down_buttons_cycle_the_output_mode() {
     let mut engine = mock_engine(0);
-    assert_eq!(engine.diagnostic().mode(), OutputMode::Offset);
+    assert_eq!(engine.app::<DiagnosticApp>().mode(), OutputMode::Offset);
 
     for expected in [OutputMode::Ramp, OutputMode::Zero, OutputMode::Offset] {
         tap(&mut engine, Button::Up);
-        assert_eq!(engine.diagnostic().mode(), expected);
+        assert_eq!(engine.app::<DiagnosticApp>().mode(), expected);
     }
 
     tap(&mut engine, Button::Down);
-    assert_eq!(engine.diagnostic().mode(), OutputMode::Zero);
+    assert_eq!(engine.app::<DiagnosticApp>().mode(), OutputMode::Zero);
 }
 
 #[test]
@@ -372,15 +425,15 @@ fn zero_mode_pins_every_output_regardless_of_the_inputs() {
     }
     tap(&mut engine, Button::Down);
 
-    assert_eq!(engine.diagnostic().mode(), OutputMode::Zero);
-    assert_eq!(engine.diagnostic().outputs(), &[0; 4]);
+    assert_eq!(engine.app::<DiagnosticApp>().mode(), OutputMode::Zero);
+    assert_eq!(engine.app::<DiagnosticApp>().outputs(), &[0; 4]);
 }
 
 #[test]
 fn the_ramp_sweeps_the_whole_output_range_and_stays_in_bounds() {
     let mut engine = mock_engine(0);
     tap(&mut engine, Button::Up);
-    assert_eq!(engine.diagnostic().mode(), OutputMode::Ramp);
+    assert_eq!(engine.app::<DiagnosticApp>().mode(), OutputMode::Ramp);
 
     let mut lowest = CV_OUT_MAX_MV;
     let mut highest = CV_OUT_MIN_MV;
@@ -434,7 +487,11 @@ fn a_static_input_reads_as_inactive_and_a_moving_one_as_active() {
     }
     // Two full detection windows of a perfectly steady level.
     run_ticks(&mut engine, 600);
-    assert!(!engine.diagnostic().is_signal_active(CvChannel::One));
+    assert!(
+        !engine
+            .app::<DiagnosticApp>()
+            .is_signal_active(CvChannel::One)
+    );
 
     for step in 0..600 {
         {
@@ -444,7 +501,11 @@ fn a_static_input_reads_as_inactive_and_a_moving_one_as_active() {
         engine.clock().advance(1_000);
         engine.tick();
     }
-    assert!(engine.diagnostic().is_signal_active(CvChannel::One));
+    assert!(
+        engine
+            .app::<DiagnosticApp>()
+            .is_signal_active(CvChannel::One)
+    );
 }
 
 #[test]
@@ -572,11 +633,11 @@ fn input_presence_is_derived_from_the_level_and_released_after_the_hold() {
     }
     run_ticks(&mut engine, 2);
     assert_eq!(
-        engine.diagnostic().presence(CvChannel::Two),
+        engine.app::<DiagnosticApp>().presence(CvChannel::Two),
         Presence::Present
     );
     assert_eq!(
-        engine.diagnostic().presence(CvChannel::One),
+        engine.app::<DiagnosticApp>().presence(CvChannel::One),
         Presence::Absent,
         "an input at 0 V carries nothing the module can see"
     );
@@ -589,7 +650,7 @@ fn input_presence_is_derived_from_the_level_and_released_after_the_hold() {
     }
     run_ticks(&mut engine, 1_000);
     assert_eq!(
-        engine.diagnostic().presence(CvChannel::Two),
+        engine.app::<DiagnosticApp>().presence(CvChannel::Two),
         Presence::Absent
     );
 }

@@ -3,6 +3,7 @@
 //! assigns, and an input nobody assigned moves nothing.
 
 use oc_core::apps::AppId;
+use oc_core::apps::supersaw::SupersawApp;
 use oc_core::apps::supersaw::{DEFAULT_AMOUNT, DEFAULT_LEVEL_MV, Setting};
 use oc_core::audio::supersaw::FULL;
 use oc_core::modulation::{AssignLine, Effect};
@@ -35,8 +36,8 @@ fn turn(engine: &mut MockEngine, index: usize, detents: i8) {
 /// Picks `setting` with the left encoder.
 fn select(engine: &mut MockEngine, setting: Setting) {
     let position = |setting| Setting::ALL.iter().position(|&s| s == setting);
-    while engine.apps().supersaw().selected() != setting {
-        let towards = if position(engine.apps().supersaw().selected()) < position(setting) {
+    while engine.app::<SupersawApp>().selected() != setting {
+        let towards = if position(engine.app::<SupersawApp>().selected()) < position(setting) {
             1
         } else {
             -1
@@ -55,7 +56,7 @@ fn click(engine: &mut MockEngine) {
 
 /// In the open submenu, picks `line` and turns it by `detents`.
 fn turn_line(engine: &mut MockEngine, line: AssignLine, detents: i8) {
-    while engine.apps().supersaw().assigning() != Some(line) {
+    while engine.app::<SupersawApp>().assigning() != Some(line) {
         turn(engine, 0, 1);
     }
     turn(engine, 1, detents);
@@ -67,7 +68,7 @@ fn assign(engine: &mut MockEngine, setting: Setting, cv: i8, effect: Effect) {
     select(engine, setting);
     click(engine);
     assert_eq!(
-        engine.apps().supersaw().assigning(),
+        engine.app::<SupersawApp>().assigning(),
         Some(AssignLine::Input)
     );
     // Down to none, then up to the input wanted.
@@ -81,7 +82,7 @@ fn assign(engine: &mut MockEngine, setting: Setting, cv: i8, effect: Effect) {
     };
     turn_line(engine, AssignLine::Effect, effect_turns);
     click(engine);
-    assert_eq!(engine.apps().supersaw().assigning(), None);
+    assert_eq!(engine.app::<SupersawApp>().assigning(), None);
 }
 
 /// A few millivolts either side of 0 V, as an unplugged input reads on the
@@ -114,8 +115,7 @@ fn the_note_takes_cv1_at_one_volt_per_octave_until_it_is_removed() {
     assign(&mut engine, Setting::Note, 0, Effect::Add);
     assert!(
         engine
-            .apps()
-            .supersaw()
+            .app::<SupersawApp>()
             .assign(Setting::Note)
             .unwrap()
             .input
@@ -138,7 +138,7 @@ fn an_input_assigned_to_the_detune_adds_twenty_percent_a_volt() {
     let expected = i32::from(DEFAULT_AMOUNT) + reading / 5;
     assert_eq!(i32::from(engine.params().supersaw.detune), expected);
     assert_eq!(
-        engine.apps().supersaw().detune(),
+        engine.app::<SupersawApp>().detune(),
         DEFAULT_AMOUNT,
         "the panel keeps its value"
     );
@@ -169,6 +169,11 @@ fn stereo_takes_no_input() {
     let mut engine = supersaw();
     select(&mut engine, Setting::Stereo);
     click(&mut engine);
-    assert_eq!(engine.apps().supersaw().assigning(), None);
-    assert!(engine.apps().supersaw().assign(Setting::Stereo).is_none());
+    assert_eq!(engine.app::<SupersawApp>().assigning(), None);
+    assert!(
+        engine
+            .app::<SupersawApp>()
+            .assign(Setting::Stereo)
+            .is_none()
+    );
 }

@@ -2,6 +2,7 @@
 //! `Engine::tick` (journal/D-026).
 
 use oc_core::apps::AppId;
+use oc_core::apps::diagnostic::DiagnosticApp;
 use oc_core::menu::MenuEntry;
 use oc_core::platform::{Button, CV_CHANNELS, CvChannel};
 use oc_core::settings::{DisplaySettings, Settings};
@@ -145,13 +146,17 @@ fn the_screen_preferences_apply_to_the_picture_and_the_panel() {
 fn a_reversed_encoder_turns_the_other_way_outside_the_settings() {
     let mut engine = mock_engine(0);
     turn(&mut engine, 0, 1);
-    assert_eq!(engine.diagnostic().selected(), 1);
+    assert_eq!(engine.app::<DiagnosticApp>().selected(), 1);
 
     let mut settings = Settings::DEFAULT;
     settings.encoder_reversed = [true, false];
     engine.apply_settings(settings);
     turn(&mut engine, 0, 1);
-    assert_eq!(engine.diagnostic().selected(), 0, "reversed: one step back");
+    assert_eq!(
+        engine.app::<DiagnosticApp>().selected(),
+        0,
+        "reversed: one step back"
+    );
 
     // The settings screen reads the encoders as wired.
     open_setup(&mut engine);

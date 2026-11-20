@@ -15,7 +15,8 @@ use core::fmt::Write as _;
 
 use crate::gfx::Point;
 
-use crate::apps::{InputSnapshot, TickContext};
+use crate::apps::{App, AppId, InputSnapshot, TickContext};
+use crate::audio::Params;
 use crate::fmt::TextBuf;
 use crate::framebuffer::{FrameBuffer, WIDTH_I32};
 use crate::gfx::controls::{
@@ -498,6 +499,20 @@ impl GfxDemoApp {
         histogram(frame, spectrum, &bands, 4, 1);
         vbar(frame, 84, 48, 6, 16, Ratio::new(self.lfo(0) + 1_000, 2_000));
         bipolar_hbar(frame, 94, 52, 34, 7, Ratio::new(needle, 1_000));
+    }
+}
+
+impl App for GfxDemoApp {
+    fn id(&self) -> AppId {
+        AppId::Gfx
+    }
+
+    fn update(&mut self, input: &InputSnapshot) -> Params {
+        GfxDemoApp::update(self, input).into()
+    }
+
+    fn render(&self, frame: &mut FrameBuffer, context: &TickContext) {
+        GfxDemoApp::render(self, frame, context);
     }
 }
 

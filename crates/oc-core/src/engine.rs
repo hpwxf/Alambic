@@ -13,8 +13,7 @@
 //! ticks after the drawing, and the next frame waits for the last page
 //! (journal/D-023, option C+; `docs/agents/firmware.md`, "The screen").
 
-use crate::apps::diagnostic::DiagnosticApp;
-use crate::apps::{AppHost, AppId};
+use crate::apps::{App, AppHost, AppId};
 use crate::apps::{InputSnapshot, TickContext};
 use crate::audio::{Params, Voice};
 use crate::buttons::{ButtonEvents, ButtonReader};
@@ -719,10 +718,19 @@ where
         &self.apps
     }
 
-    /// The diagnostic applet specifically, running or not.
+    /// The applet of type `T`, running or not: its own state, for tests and
+    /// the host UIs (journal/D-043). The engine itself only ever runs an
+    /// applet through [`App`].
+    ///
+    /// # Panics
+    ///
+    /// If this image composes no applet of type `T`, which is a mistake in
+    /// the caller, not a state the module can reach.
     #[must_use]
-    pub const fn diagnostic(&self) -> &DiagnosticApp {
-        self.apps.diagnostic()
+    pub fn app<T: App>(&self) -> &T {
+        self.apps
+            .find::<T>()
+            .expect("every applet type is composed into AppHost")
     }
 
     /// The applet currently driving the outputs.
@@ -835,7 +843,7 @@ fn clamp_duration(raw: u64) -> u32 {
 #[cfg(test)]
 mod tests {
     use super::{MAX_REPORTED_DURATION_MICROS, clamp_duration};
-    use crate::apps::diagnostic::OutputMode;
+    use crate::apps::diagnostic::{DiagnosticApp, OutputMode};
     use crate::platform::{CV_CHANNELS, CvChannel};
     use crate::splash;
     use crate::testing::{adc_reading, mock_engine_at_boot};
@@ -899,7 +907,7 @@ mod tests {
             adc_reading(4_000),
             "once booted, inputs must reach the matching output again"
         );
-        assert_eq!(engine.diagnostic().mode(), OutputMode::Offset);
+        assert_eq!(engine.app::<DiagnosticApp>().mode(), OutputMode::Offset);
     }
 
     #[test]

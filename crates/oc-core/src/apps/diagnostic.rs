@@ -29,7 +29,8 @@ use core::fmt::Write as _;
 
 use crate::gfx::Point;
 
-use crate::apps::{InputSnapshot, TickContext};
+use crate::apps::{App, AppId, InputSnapshot, TickContext};
+use crate::audio::Params;
 use crate::buttons::ButtonEvents;
 use crate::calibration::{CV_OUT_MAX_MV, CV_OUT_MIN_MV};
 use crate::debounce::{EdgeCounter, TRIGGER_STABLE_SAMPLES};
@@ -335,6 +336,20 @@ impl DiagnosticApp {
         line.clear();
         let _ = write!(line, "TICKS {}", context.tick_count);
         draw(&line, 7);
+    }
+}
+
+impl App for DiagnosticApp {
+    fn id(&self) -> AppId {
+        AppId::Diagnostic
+    }
+
+    fn update(&mut self, input: &InputSnapshot) -> Params {
+        DiagnosticApp::update(self, input).into()
+    }
+
+    fn render(&self, frame: &mut FrameBuffer, context: &TickContext) {
+        DiagnosticApp::render(self, frame, context);
     }
 }
 

@@ -21,7 +21,7 @@
 use core::fmt::Write as _;
 
 use crate::apps::tone::{self, HIGHEST_NOTE, LOWEST_NOTE, note_name};
-use crate::apps::{InputSnapshot, TickContext};
+use crate::apps::{App, AppId, InputSnapshot, TickContext};
 use crate::audio::supersaw::{
     Arithmetic, FULL, NARROWEST_WIDTH, OFFSETS, Part, SQUARE_WIDTH, Supersaw, detune_curve,
     voice_gains,
@@ -728,6 +728,20 @@ impl SupersawApp {
             let height = i32::try_from(height).unwrap_or(0).max(1);
             gfx::vline(frame, x, base - height, height, Ink::Lit);
         }
+    }
+}
+
+impl App for SupersawApp {
+    fn id(&self) -> AppId {
+        AppId::Supersaw
+    }
+
+    fn update(&mut self, input: &InputSnapshot) -> Params {
+        SupersawApp::update(self, input)
+    }
+
+    fn render(&self, frame: &mut FrameBuffer, context: &TickContext) {
+        SupersawApp::render(self, frame, context);
     }
 }
 
