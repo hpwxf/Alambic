@@ -55,7 +55,7 @@ comportemental (`oc-core`, D-002). Les applets musicaux sont la suite.
 | **7** — chemin audio (2026-11-17 → 11-18) | ✅ `oc_core::audio` (paramètres de sortie, voix), applet `TONE` ; DAC en PCS0 à 22 MHz ; PIT → DMA → LPSPI4 à **47 619 Hz** (instant fixé par le matériel), interruption du DMA pour l'échantillon et l'écran par tronçons ; `audio` 3,4 µs sur 21 ; juste à l'accordeur jusqu'à B7 (D-033). Réserves : 48 kHz impossible (quartz de GPT2 muet), quatre voies écrites à chaque période, Rack non écouté. Version **0.5.0** (avec l'étape 6 ; plugin Rack 2.5.0) | [etape-7.md](docs/plan/avancement/etape-7.md), [rapport](docs/plan/rapport-etape-7-chemin-audio.md) |
 | **8** — premier oscillateur : Supersaw (2026-11-18) | ✅ `oc_core::audio::supersaw` : sept scies PolyBLEP en entier (désaccord et mix de Szabo, passe-haut sur la fondamentale), A / B mono ou stéréo, C sub-octave ; applet `SUPERSAW`, entrées par `oc_core::modulation` ; `audio` 3,9 µs sur 21 ; repliement mesuré par FFT (exemple `aliasing`) : sous 10 kHz ≤ −45 dB, ×4 non nécessaire ; scies descendantes, sans écrêtage jusqu'à 2 V (D-037) ; budget mémoire (D-038). Réserves : bruit de CV1 sur `NOTE`, assignations non sauvegardées, Rack non écouté. Version **0.6.0** (plugin Rack 2.6.0) | [etape-8.md](docs/plan/avancement/etape-8.md) |
 
-### Étape 10 — apps modulaires : trait `App` et modèle de paramètres (en cours)
+### Étape 10 — apps modulaires : trait `App` et modèle de paramètres (lots faits, reste la page web)
 
 Demandée le 2026-11-20 (D-043, proposée) : le cœur ne doit plus nommer chaque app ; un trait maintenant, la
 composition en crates plus tard ; à terme plusieurs apps simultanées, un routage interne, et le pilotage des apps
@@ -65,7 +65,7 @@ par l'USB à travers la même interface. L'écran et la navigation restent propr
 |---|---|---|
 | **10a** — trait et registre | trait `App` (`id`, `name`, `update`, `render`, `Any` en supertrait) ; `AppHost::get` / `get_mut` / `find::<T>()`, aiguillage par `&dyn App` ; accesseurs par app retirés d'`AppHost`, d'`Engine` (`app::<T>()` à la place) et d'`oc-sim` ; `AppId` garde son rôle de liste de composition et de clé persistée ; écrans dorés et tests inchangés ; `.text` +724 o, `.rodata` +192 o ; criterion `engine/tick_*` et `voice/*` inchangés au bruit près | ✅ |
 | **10b** — modèle de paramètres | `oc_core::apps::param` : `ParamSpec` (`Number` / `Choice` / `Toggle`, décimales, unité, `assignable`), `ParamValue`, `Refused`, `write_summary` ; trait : `param_specs`, `get`, `set`, `observables`, `observe`, `actions`, `act` ; les six apps décrites (`COUNT` / `GATE` et `FIRST` / `DIVISION` en deux faces) ; ligne d'état du simulateur tirée du modèle ; `tests/params.rs` ; `.text` +2 784 o, `.rodata` +1 840 o ; révision de D-043 | ✅ |
-| **10c** — module | `cargo probe stats` : `voice`, `audio` inchangés, `update` et `render` à quelques µs ; D-043 adoptée | à faire |
+| **10c** — module | relevé du 2026-11-21 (`SUPERSAW` `F32`, `NOTE` et `DETUNE` sous bruit, `STEREO`), `8e475a4` contre `b5c444a` : `voice` 1,66 → 1,68 µs (max 1,84 → 1,75), `audio` 4,23 → 4,22 µs, `voice_params` 0,47 µs, `update` 15,10 → 14,87 µs, `render` 53,9 µs, `tick` 26,6 µs ; gigue et trame identiques ; D-043 adoptée | ✅ |
 | **10d** — sonde | protocole v4 : `ListApps`, `DescribeApp`, `GetParam`, `SetParam`, `Observe`, `Act`, `SelectApp` ; serveur par le trait (`Engine::app_mut`, `select_app`) ; `oc-probe` : client, module `apps` (noms, valeurs en texte par `write_number`), CLI `apps`, `app`, `get`, `set`, `act`, `select` ; `oc-web` reçoit les réponses ; TESTING 9.1b étape 6 ; `.text` +5 908 o, `.rodata` +980 o (lot entier : `.text` +9,2 Kio, 163 Kio d'ITCM sur 192) ; révision de D-043. Reste : la page web, les observables dans `Stream` | ✅ |
 
 ### Étape 9 — essai du Supersaw en `f32` (en cours)
@@ -124,7 +124,7 @@ Valeurs seules ; le raisonnement est dans `journal/`.
 | profil | release LTO fat, `overflow-checks = true` ; panique → journal USB + SOS | D-018 |
 | entrées | anti-rebond 3 échantillons (boutons), front sur 1 échantillon (triggers) ; activité CV par crête-à-crête (256 éch., 40 mV), aucune présence de câble sur aucun backend | D-019 |
 | démarrage | écran 1,5 s, sorties à 0 V, rendu à chaque tick | D-020 |
-| applets | `AppHost` (tous résidents), menu par accord haut + bas, haut / bas au relâchement ; `DIAGNOSTIC`, `SCOPE`, `GFX DEMO`, `RATCHET`, `TONE`, `SUPERSAW` | D-021, D-030, D-032, D-033, D-037 |
+| applets | `AppHost` (tous résidents), menu par accord haut + bas, haut / bas au relâchement ; `DIAGNOSTIC`, `SCOPE`, `GFX DEMO`, `RATCHET`, `TONE`, `SUPERSAW` ; trait `App` et registre (`&dyn App`), modèle de paramètres, d'observables et d'actions partagé par le panneau, la sonde (protocole v4) et le simulateur ; écran et navigation propres à chaque app | D-021, D-030, D-032, D-033, D-037, D-043 |
 | licence | `MIT OR Apache-2.0` (workspace) | D-022 |
 | présence d'entrée | déduite dans `oc-core` (activité récente + maintien) : CV 50 mV / 300 ms, trigger verrou ou horloge 2 s ; jamais fournie par un backend | D-024 |
 | identifiant de build | hash court + `-dirty` sous la version, écran de démarrage des trois backends ; calculé par `oc-buildinfo` (vergen-gix, sans binaire `git`), jamais dans `oc-core` | D-025 |

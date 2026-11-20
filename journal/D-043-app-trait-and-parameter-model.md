@@ -5,7 +5,7 @@
 | **Identifiant** | D-043 |
 | **Date** | 2026-11-20 |
 | **Auteur** | Pascal Havé |
-| **Statut** | proposée |
+| **Statut** | adoptée, révisée |
 | **Commits** | ce commit (ADR seule) ; implémentation au premier lot qui l'adoptera |
 | **Relations** | révisera D-021 (`AppHost` fermé, une instance de chaque app) et précisera D-002 (ce que le cœur sait des apps) ; laisse intacts D-033 et D-040 (l'interruption ne voit que `Setup` et `Voice`) ; la modulation de D-035 / D-036 et la persistance de D-028 deviennent des consommateurs du modèle ; la sonde de D-029 en est un consommateur prévu ; D-042 se rouvre quand plusieurs apps tourneront ensemble |
 
@@ -174,3 +174,24 @@ Le statut reste `proposée` jusqu'à la mesure sur le module (lot 10c). Ce que l
   (163 Kio sur les 192 de l'ITCM), `.rodata` +2,9 Kio. Au-delà des « quelques kilo-octets » du § 5, mais ce coût
   est celui du modèle et du protocole, que l'aiguillage C ne réduirait pas ; la marge de l'ITCM (D-038) est la
   limite à surveiller.
+
+## Lot 10c (2026-11-21) — mesure sur le module, adoptée
+
+Relevé par l'utilisateur, `cargo probe stats` sur le module TLM, `SUPERSAW` en `F32`, `NOTE` et `DETUNE` modulés par
+du bruit, `MIX` 50 %, `SHAPE` 25 %, `STEREO ON`, avant (`8e475a4`) et après (`b5c444a`), environ 10 s chacun :
+
+| Étape | Avant | Après |
+|---|---|---|
+| `voice` moyenne / max | 1,66 / 1,84 µs | 1,68 / 1,75 µs |
+| `audio` moyenne / max | 4,23 / 5,62 µs | 4,22 / 5,66 µs |
+| `voice_params` | 0,47 µs | 0,47 µs |
+| `update` moyenne / max | 15,10 / 18,13 µs | 14,87 / 18,02 µs |
+| `render` moyenne | 53,93 µs | 53,84 µs |
+| `outputs` / `usb` moyenne | 1,33 / 2,72 µs | 1,47 / 2,89 µs |
+| `tick` moyenne / max | 26,62 / 83,05 µs | 26,65 / 83,17 µs |
+
+`frame`, `period` et l'histogramme de gigue sont les mêmes. Les critères du § 4 sont tenus : `voice` et `audio`
+inchangés au bruit près (le trait n'a pas fui dans l'interruption), `update` et `render` dans le bruit, criterion
+inchangé (lot 10a), coût en code relevé (lots 10a, 10b, 10d), écrans dorés intacts. La relecture d'une sauvegarde
+d'avant le lot est tenue par construction (les indices d'`AppId` n'ont pas changé ; tests de `settings`), sans avoir
+été observée sur le module. **D-043 est adoptée.**
