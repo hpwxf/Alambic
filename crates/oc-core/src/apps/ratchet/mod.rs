@@ -38,6 +38,7 @@ use self::burst::{
     MIN_INTERVAL_MICROS, Model, chance_from, count_from, curve_from, follow_time_micros, time_from,
 };
 use self::tempo::Tempo;
+use crate::apps::param::{ParamSpec, ParamValue, Refused, Unit};
 use crate::apps::{App, AppId, InputSnapshot, TickContext};
 use crate::audio::Params;
 use crate::fixed::{self, ONE};
@@ -190,6 +191,49 @@ pub const DIVISIONS: [(u32, u32); 15] = [
     (1, 24),
     (1, 32),
 ];
+/// [`DIVISIONS`] as the screen writes them.
+pub const DIVISION_NAMES: [&str; DIVISIONS.len()] = [
+    "X2", "X1.5", "X4/3", "/1", "X3/4", "X2/3", "/2", "/3", "/4", "/6", "/8", "/12", "/16", "/24",
+    "/32",
+];
+
+/// What `RATCHET` is set by (journal/D-043), in the order of the screen.
+/// `GATE` and `DIVISION` are the other faces of `COUNT` and `FIRST`: a count
+/// past the last is a gate, and `FIRST` with `SYNC ON` a division.
+#[allow(clippy::cast_possible_wrap)]
+// Every bound here is in the thousands at most.
+pub const PARAM_SPECS: [ParamSpec; 9] = [
+    ParamSpec::number("COUNT", (1, MAX_REPEATS as i32), 1, 0, Unit::None).assignable(),
+    ParamSpec::toggle("GATE"),
+    ParamSpec::number(
+        "FIRST",
+        (
+            (MIN_INTERVAL_MICROS / 1_000) as i32,
+            (MAX_SPAN_MICROS / 1_000) as i32,
+        ),
+        1,
+        0,
+        Unit::Milliseconds,
+    )
+    .assignable(),
+    ParamSpec::choice("DIVISION", &DIVISION_NAMES),
+    ParamSpec::number("SHAPE", (-CURVE_TENTHS, CURVE_TENTHS), 1, 1, Unit::Octaves).assignable(),
+    ParamSpec::number("PROB", (1, 100), 1, 0, Unit::Percent).assignable(),
+    ParamSpec::toggle("PASSTHRU"),
+    ParamSpec::toggle("SYNC"),
+    ParamSpec::choice("MODE", &["FIRST", "SPAN"]),
+];
+
+/// What `RATCHET` can be read for: the rate of `TR1`, the repeats sent by
+/// the burst under way.
+pub const OBSERVABLES: [ParamSpec; 2] = [
+    ParamSpec::number("RATE", (0, 999), 1, 0, Unit::Bpm),
+    ParamSpec::number("SENT", (0, MAX_REPEATS as i32), 1, 0, Unit::None),
+];
+
+/// What `RATCHET` can be asked to do: a burst by hand, as `up` starts one.
+pub const ACTIONS: [&str; 1] = ["BURST"];
+
 /// What `FIRST` is measured in.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum FirstUnit {
@@ -592,13 +636,23 @@ impl RatchetApp {
                 };
             }
             Setting::Mode => {
-                burst.model = match burst.model {
+                let model = match burst.model {
                     Model::First => Model::Span,
                     Model::Span => Model::First,
                 };
-                // Each model keeps its time within its own range.
-                burst.time_micros = burst.time_micros.min(longest_time(burst.model));
+                self.set_model(model);
             }
+        }
+    }
+
+    /// Places the repeats by `model`, its time kept within the model's own
+    /// range.
+    const fn set_model(&mut self, model: Model) {
+        let burst = &mut self.settings;
+        burst.model = model;
+        let longest = longest_time(model);
+        if burst.time_micros > longest {
+            burst.time_micros = longest;
         }
     }
 
@@ -899,6 +953,103 @@ impl App for RatchetApp {
     fn render(&self, frame: &mut FrameBuffer, context: &TickContext) {
         RatchetApp::render(self, frame, context);
     }
+
+    fn param_specs(&self) -> &'static [ParamSpec] {
+        &PARAM_SPECS
+    }
+
+    fn get(&self, index: usize) -> Option<ParamValue> {
+        let burst = &self.settings;
+        let value = match index {
+            0 => ParamValue::Number(match burst.count {
+                Count::Repeats(count) => i32::from(count),
+                Count::Gate => i32::from(MAX_REPEATS),
+            }),
+            1 => ParamValue::Toggle(burst.count == Count::Gate),
+            2 => ParamValue::Number(i32::try_from(burst.time_micros / 1_000).unwrap_or(0)),
+            3 => ParamValue::Choice(u8::try_from(self.division).unwrap_or(0)),
+            4 => ParamValue::Number(burst.curve_tenths),
+            5 => ParamValue::Number(i32::try_from(burst.chance_percent).unwrap_or(100)),
+            6 => ParamValue::Toggle(self.passthru),
+            7 => ParamValue::Toggle(self.first_unit == FirstUnit::Period),
+            8 => ParamValue::Choice(match burst.model {
+                Model::First => 0,
+                Model::Span => 1,
+            }),
+            _ => return None,
+        };
+        Some(value)
+    }
+
+    fn set(&mut self, index: usize, value: ParamValue) -> Result<ParamValue, Refused> {
+        let spec = PARAM_SPECS.get(index).ok_or(Refused::NoSuch)?;
+        let value = spec.check(value)?;
+        let burst = &mut self.settings;
+        match (index, value) {
+            (0, ParamValue::Number(count)) => {
+                burst.count = Count::Repeats(u8::try_from(count).unwrap_or(1));
+            }
+            (1, ParamValue::Toggle(true)) => burst.count = Count::Gate,
+            // Out of the gate, as a detent down leaves it.
+            (1, ParamValue::Toggle(false)) if burst.count == Count::Gate => {
+                burst.count = Count::Repeats(MAX_REPEATS);
+            }
+            (2, ParamValue::Number(millis)) => {
+                let micros = u32::try_from(millis).unwrap_or(0) * 1_000;
+                burst.time_micros = micros.min(longest_time(burst.model));
+            }
+            (3, ParamValue::Choice(division)) => self.division = usize::from(division),
+            (4, ParamValue::Number(curve)) => burst.curve_tenths = curve,
+            (5, ParamValue::Number(chance)) => {
+                burst.chance_percent = u32::try_from(chance).unwrap_or(100);
+            }
+            (6, ParamValue::Toggle(on)) => self.passthru = on,
+            (7, ParamValue::Toggle(on)) => {
+                self.first_unit = if on {
+                    FirstUnit::Period
+                } else {
+                    FirstUnit::Millis
+                };
+            }
+            (8, ParamValue::Choice(model)) => {
+                self.set_model(if model == 0 {
+                    Model::First
+                } else {
+                    Model::Span
+                });
+            }
+            _ => {}
+        }
+        self.get(index).ok_or(Refused::NoSuch)
+    }
+
+    fn observables(&self) -> &'static [ParamSpec] {
+        &OBSERVABLES
+    }
+
+    fn observe(&self, index: usize) -> Option<ParamValue> {
+        let number = match index {
+            0 => self.tempo.bpm()?,
+            1 => self.repeats_sent()?,
+            _ => return None,
+        };
+        Some(ParamValue::Number(
+            i32::try_from(number).unwrap_or(i32::MAX),
+        ))
+    }
+
+    fn actions(&self) -> &'static [&'static str] {
+        &ACTIONS
+    }
+
+    fn act(&mut self, index: usize) -> Result<(), Refused> {
+        if index == 0 {
+            self.start();
+            Ok(())
+        } else {
+            Err(Refused::NoSuch)
+        }
+    }
 }
 
 impl Default for RatchetApp {
@@ -920,5 +1071,21 @@ const fn pulse_for(interval: u32) -> u32 {
         MIN_PULSE_MICROS
     } else {
         pulse
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{DEFAULT_BURST, DIVISION_NAMES, DIVISIONS, RatchetApp, Setting};
+    use crate::fmt::TextBuf;
+
+    #[test]
+    fn the_division_names_are_the_screens() {
+        let app = RatchetApp::new();
+        for (division, name) in DIVISIONS.into_iter().zip(DIVISION_NAMES) {
+            let mut shown = TextBuf::<16>::new();
+            app.write_value(Setting::Time, &DEFAULT_BURST, Some(division), &mut shown);
+            assert_eq!(shown.as_str(), name, "{division:?}");
+        }
     }
 }

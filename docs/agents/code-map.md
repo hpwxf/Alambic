@@ -29,6 +29,7 @@ rationale behind each crate is in the journal entry cited.
 | Platform traits (`AnalogIn`, `Clock`, `Display`…) | `crates/oc-core/src/platform.rs` |
 | The tick every backend calls | `crates/oc-core/src/engine.rs` |
 | The `App` trait, the registry and dispatch (`AppId`, `AppHost`) | `crates/oc-core/src/apps/mod.rs` (journal/D-043) |
+| What an applet exposes: parameters, observables, actions (`ParamSpec`, `write_summary`) | `crates/oc-core/src/apps/param.rs` (journal/D-043) |
 | The applets | `crates/oc-core/src/apps/`: `diagnostic.rs`, `scope.rs`, `gfx_demo.rs`, `ratchet/`, `tone.rs`, `supersaw.rs` |
 | The supersaw bank | `crates/oc-core/src/audio/supersaw.rs` (what both arithmetics share), `supersaw/fixed.rs` (integers, journal/D-037), `supersaw/float.rs` (`f32` on trial, journal/D-039) |
 | Output parameters, the voice, `Setup`, the waveforms | `crates/oc-core/src/audio/mod.rs`, `audio/wave.rs` (journal/D-033, D-040) |

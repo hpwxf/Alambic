@@ -9,6 +9,7 @@
 
 use core::fmt::Write as _;
 
+use crate::apps::param::{ParamSpec, ParamValue, Refused, Unit};
 use crate::apps::{App, AppId, InputSnapshot, TickContext};
 use crate::audio::wave::{ONE, Waveform};
 use crate::audio::{Channel, MilliHertz, Params, Tone};
@@ -61,6 +62,36 @@ const WAVE_TOP: i32 = 50;
 
 /// Half the height of a waveform drawing.
 const WAVE_HALF: i32 = 6;
+
+/// What `TONE` is set by (journal/D-043): the note and the peak level, in
+/// millivolts, read as volts.
+#[allow(clippy::cast_possible_wrap)]
+// MIDI numbers.
+pub const PARAM_SPECS: [ParamSpec; 2] = [
+    ParamSpec::number(
+        "NOTE",
+        (LOWEST_NOTE as i32, HIGHEST_NOTE as i32),
+        1,
+        0,
+        Unit::Note,
+    ),
+    ParamSpec::number(
+        "LEVEL",
+        (0, MAX_AMPLITUDE_MV),
+        AMPLITUDE_STEP_MV,
+        3,
+        Unit::Volts,
+    ),
+];
+
+/// What it plays once `CV1` moved the note: the frequency, in millihertz.
+pub const OBSERVABLES: [ParamSpec; 1] = [ParamSpec::number(
+    "FREQ",
+    (0, 20_000_000),
+    1,
+    3,
+    Unit::Hertz,
+)];
 
 /// One test tone, four waveforms.
 #[derive(Debug, Clone)]
@@ -180,6 +211,40 @@ impl ToneApp {
 impl App for ToneApp {
     fn id(&self) -> AppId {
         AppId::Tone
+    }
+
+    fn param_specs(&self) -> &'static [ParamSpec] {
+        &PARAM_SPECS
+    }
+
+    fn get(&self, index: usize) -> Option<ParamValue> {
+        match index {
+            0 => Some(ParamValue::Number(i32::from(self.note))),
+            1 => Some(ParamValue::Number(self.amplitude)),
+            _ => None,
+        }
+    }
+
+    fn set(&mut self, index: usize, value: ParamValue) -> Result<ParamValue, Refused> {
+        let spec = PARAM_SPECS.get(index).ok_or(Refused::NoSuch)?;
+        match (index, spec.check(value)?) {
+            (0, ParamValue::Number(note)) => {
+                self.note = u8::try_from(note).unwrap_or(REFERENCE_NOTE);
+                // The tone follows at once, as the panel's next tick would.
+                self.frequency = frequency(self.note, self.pitch_cv);
+            }
+            (1, ParamValue::Number(level)) => self.amplitude = level,
+            _ => {}
+        }
+        self.get(index).ok_or(Refused::NoSuch)
+    }
+
+    fn observables(&self) -> &'static [ParamSpec] {
+        &OBSERVABLES
+    }
+
+    fn observe(&self, index: usize) -> Option<ParamValue> {
+        (index == 0).then(|| ParamValue::Number(i32::try_from(self.frequency).unwrap_or(i32::MAX)))
     }
 
     fn update(&mut self, input: &InputSnapshot) -> Params {

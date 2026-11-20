@@ -27,6 +27,7 @@
 
 pub mod diagnostic;
 pub mod gfx_demo;
+pub mod param;
 pub mod ratchet;
 pub mod scope;
 pub mod supersaw;
@@ -38,6 +39,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::apps::diagnostic::DiagnosticApp;
 use crate::apps::gfx_demo::GfxDemoApp;
+use crate::apps::param::{ParamSpec, ParamValue, Refused};
 use crate::apps::ratchet::RatchetApp;
 use crate::apps::scope::ScopeApp;
 use crate::apps::supersaw::SupersawApp;
@@ -131,6 +133,56 @@ pub trait App: Any {
 
     /// Draws the applet's screen.
     fn render(&self, frame: &mut FrameBuffer, context: &TickContext);
+
+    /// The parameters it is set by, in a fixed order: an index into this
+    /// list names one in [`get`](Self::get) and [`set`](Self::set)
+    /// ([`param`]).
+    fn param_specs(&self) -> &'static [ParamSpec] {
+        &[]
+    }
+
+    /// The value of parameter `index` as the panel set it, before any CV
+    /// input moves it; `None` past the last.
+    fn get(&self, _index: usize) -> Option<ParamValue> {
+        None
+    }
+
+    /// Sets parameter `index` as a detent would, within the same bounds:
+    /// what it applied, which another setting may have narrowed.
+    ///
+    /// # Errors
+    ///
+    /// Why the value was not taken: no such parameter, a value of another
+    /// kind, or one outside its range ([`ParamSpec::check`]).
+    fn set(&mut self, _index: usize, _value: ParamValue) -> Result<ParamValue, Refused> {
+        Err(Refused::NoSuch)
+    }
+
+    /// The values it can be read for but not set: what it plays once its
+    /// inputs moved its parameters, what it measured, what it counted.
+    fn observables(&self) -> &'static [ParamSpec] {
+        &[]
+    }
+
+    /// Observable `index` now; `None` past the last, or while unknown (a
+    /// tempo before its second edge).
+    fn observe(&self, _index: usize) -> Option<ParamValue> {
+        None
+    }
+
+    /// What it can be asked to do, by name.
+    fn actions(&self) -> &'static [&'static str] {
+        &[]
+    }
+
+    /// Does action `index`.
+    ///
+    /// # Errors
+    ///
+    /// [`Refused::NoSuch`] past the last action.
+    fn act(&mut self, _index: usize) -> Result<(), Refused> {
+        Err(Refused::NoSuch)
+    }
 }
 
 /// One of the applets the module can run.

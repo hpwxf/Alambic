@@ -16,13 +16,9 @@ use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Paragraph};
 
-use oc_core::apps::AppId;
 use oc_core::apps::diagnostic::DiagnosticApp;
-use oc_core::apps::gfx_demo::GfxDemoApp;
-use oc_core::apps::ratchet::RatchetApp;
+use oc_core::apps::param::write_summary;
 use oc_core::apps::scope::ScopeApp;
-use oc_core::apps::supersaw::SupersawApp;
-use oc_core::apps::tone::ToneApp;
 use oc_core::calibration::{CV_IN_MAX_MV, CV_IN_MIN_MV};
 use oc_core::platform::{Button, CV_CHANNELS, CvChannel, MilliVolts, TriggerChannel};
 
@@ -573,40 +569,10 @@ impl Tui {
             .map_or((0, 0), |report| (report.duration_micros, report.tick_count));
 
         // The second line describes whichever applet is running, so it stays
-        // meaningful once the app menu has handed the panel to another one.
-        let detail = match self.simulator.current_app() {
-            AppId::Diagnostic => format!(
-                "mode {}   offset {}mV   channel {}",
-                self.simulator.app::<DiagnosticApp>().mode().label(),
-                self.simulator.app::<DiagnosticApp>().offset(),
-                self.simulator.app::<DiagnosticApp>().selected() + 1
-            ),
-            AppId::Scope => format!("cv1 {}mV", self.simulator.app::<ScopeApp>().level()),
-            AppId::Ratchet => format!(
-                "{:?}   burst {:?}",
-                self.simulator.app::<RatchetApp>().selected(),
-                self.simulator.app::<RatchetApp>().repeats_sent()
-            ),
-            AppId::Gfx => format!(
-                "page {:?}   knobs {:?}",
-                self.simulator.app::<GfxDemoApp>().page(),
-                self.simulator.app::<GfxDemoApp>().knobs()
-            ),
-            AppId::Tone => format!(
-                "{} {}mHz   peak {}mV",
-                oc_core::apps::tone::note_name(self.simulator.app::<ToneApp>().note()).as_str(),
-                self.simulator.app::<ToneApp>().frequency(),
-                self.simulator.app::<ToneApp>().amplitude()
-            ),
-            AppId::Supersaw => format!(
-                "{} {}mHz   detune {}   mix {}   stereo {}",
-                oc_core::apps::tone::note_name(self.simulator.app::<SupersawApp>().note()).as_str(),
-                self.simulator.app::<SupersawApp>().frequency(),
-                self.simulator.app::<SupersawApp>().played_detune(),
-                self.simulator.app::<SupersawApp>().played_mix(),
-                self.simulator.app::<SupersawApp>().stereo()
-            ),
-        };
+        // meaningful once the app menu has handed the panel to another one:
+        // its parameters and what it plays, from its own model.
+        let mut detail = String::new();
+        let _ = write_summary(self.simulator.current(), &mut detail);
         let menu = if self.simulator.menu_is_open() {
             "   [MENU]"
         } else {

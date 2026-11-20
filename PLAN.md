@@ -64,7 +64,7 @@ par l'USB à travers la même interface. L'écran et la navigation restent propr
 | Lot | Contenu | État |
 |---|---|---|
 | **10a** — trait et registre | trait `App` (`id`, `name`, `update`, `render`, `Any` en supertrait) ; `AppHost::get` / `get_mut` / `find::<T>()`, aiguillage par `&dyn App` ; accesseurs par app retirés d'`AppHost`, d'`Engine` (`app::<T>()` à la place) et d'`oc-sim` ; `AppId` garde son rôle de liste de composition et de clé persistée ; écrans dorés et tests inchangés ; `.text` +724 o, `.rodata` +192 o ; criterion `engine/tick_*` et `voice/*` inchangés au bruit près | ✅ |
-| **10b** — modèle de paramètres | `ParamSpec`, `ParamValue`, `Observed`, actions ; éprouvé sur `RATCHET` et `SUPERSAW`, puis les autres ; ligne d'état du simulateur tirée du modèle | à faire |
+| **10b** — modèle de paramètres | `oc_core::apps::param` : `ParamSpec` (`Number` / `Choice` / `Toggle`, décimales, unité, `assignable`), `ParamValue`, `Refused`, `write_summary` ; trait : `param_specs`, `get`, `set`, `observables`, `observe`, `actions`, `act` ; les six apps décrites (`COUNT` / `GATE` et `FIRST` / `DIVISION` en deux faces) ; ligne d'état du simulateur tirée du modèle ; `tests/params.rs` ; `.text` +2 784 o, `.rodata` +1 840 o ; révision de D-043 | ✅ |
 | **10c** — module | `cargo probe stats` : `voice`, `audio` inchangés, `update` et `render` à quelques µs ; D-043 adoptée | à faire |
 | **10d** — sonde | `ListApps`, `DescribeApp`, `GetParam`, `SetParam`, `Act`, `Select` dans `oc-protocol` et `oc-probe` | à faire |
 

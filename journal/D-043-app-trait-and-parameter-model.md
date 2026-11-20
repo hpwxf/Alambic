@@ -125,3 +125,30 @@ par app retirés d'`Engine`, d'`AppHost` et d'`oc-sim`. Les messages de la sonde
 * Des tests moins lisibles par le modèle que par le type concret : l'accès typé leur reste.
 * Un contrôle distant qui demande d'écrire hors de la boucle (latence) : une file de commandes vidée par la boucle,
   jamais d'accès direct depuis un autre contexte.
+
+## Lots 10a et 10b (2026-11-20) — ce que le premier lot a tranché
+
+Le statut reste `proposée` jusqu'à la mesure sur le module (lot 10c). Ce que l'implémentation a fixé :
+
+* **Aiguillage B** (`&dyn App`) : `AppHost::get` / `get_mut` sont le seul `match` sur les apps ; `update` et
+  `render` passent par eux. Coût : `.text` +724 o, `.rodata` +192 o (les vtables) ; criterion `engine/tick_*` et
+  `voice/*` inchangés au bruit près.
+* **Pas d'`AppKey(u16)` pour l'instant** : écart à la proposition. `AppId` reste la liste de ce que l'image compose
+  et la clé persistée (son indice, inchangé, la règle « une nouvelle app en dernier » tient). Une clé séparée n'a
+  de sens qu'une fois la composition sortie du cœur (étape 4 de la trajectoire) ; elle viendra avec elle.
+* **Accès par type** : `AppHost::find::<T>()`, `Engine::app::<T>()`, `Simulator::app::<T>()` remplacent les six
+  accesseurs ; `Simulator::current()` rend l'app en cours comme `&dyn App`.
+* **Le modèle s'appelle `param_specs`, pas `params`** : `params` désigne déjà ce que portent les sorties
+  (`Engine::params`, `ToneApp::params`, `audio::Params`). Module `oc_core::apps::param` : `ParamSpec` (nom,
+  `Kind::Number { min, max, step, decimals, unit }` / `Choice` / `Toggle`, `assignable`), `ParamValue`, `Refused`,
+  `write_summary`. Méthodes du trait avec des défauts vides : `param_specs`, `get`, `set`, `observables`,
+  `observe`, `actions`, `act`.
+* **Bornes** : `set` refuse une valeur hors de la plage déclarée ou d'un autre type (`ParamSpec::check`) ; une
+  borne qui dépend d'un autre réglage resserre la valeur et `set` rend ce qu'il a appliqué (`FIRST` de `RATCHET`
+  à 2 s en `MODE FIRST`, 8 s en `SPAN`).
+* **Un réglage du panneau à deux faces devient deux paramètres** plutôt qu'un type composite : `COUNT` (1 à 32)
+  et `GATE` ; `FIRST` (ms) et `DIVISION` (avec `SYNC ON`). Le panneau ne change pas.
+* **Les six apps ont leur modèle** ; la ligne d'état du simulateur en est tirée (`write_summary`), au lieu d'un
+  `match` par app. Coût : `.text` +2 784 o, `.rodata` +1 840 o (descripteurs, noms, `get` / `set`), gardés par les
+  vtables même tant que rien dans le firmware ne les appelle ; c'est le coût du modèle, qu'un aiguillage C ne
+  changerait pas. Total du lot contre `master` : ≈ 5,4 Kio, sous le seuil du § 5.

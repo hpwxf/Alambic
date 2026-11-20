@@ -387,6 +387,13 @@ impl Simulator {
         self.engine.current_app()
     }
 
+    /// The applet currently driving the outputs and the screen, through its
+    /// trait: what the TUI's status line reads (journal/D-043).
+    #[must_use]
+    pub fn current(&self) -> &dyn App {
+        self.engine.apps().get(self.engine.current_app())
+    }
+
     /// Whether the app menu currently owns the screen.
     #[must_use]
     pub const fn menu_is_open(&self) -> bool {

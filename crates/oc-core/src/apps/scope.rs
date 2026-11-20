@@ -16,6 +16,7 @@ use core::fmt::Write as _;
 
 use crate::gfx::Point;
 
+use crate::apps::param::{ParamSpec, ParamValue, Unit};
 use crate::apps::{App, AppId, InputSnapshot, TickContext};
 use crate::audio::Params;
 use crate::calibration::{CV_OUT_MAX_MV, CV_OUT_MIN_MV};
@@ -41,6 +42,16 @@ const PLOT_TOP: i32 = 16;
 
 /// Height of the plot area in pixels.
 const PLOT_HEIGHT: i32 = 48;
+
+/// What the scope can be read for (journal/D-043): the level of `CV1`, in
+/// millivolts, read as volts. It has nothing to set.
+pub const OBSERVABLES: [ParamSpec; 1] = [ParamSpec::number(
+    "CV1",
+    (i32::MIN, i32::MAX),
+    1,
+    3,
+    Unit::Volts,
+)];
 
 /// A scrolling view of `CV1`, buffered to every output.
 #[derive(Debug, Clone)]
@@ -154,6 +165,14 @@ impl ScopeApp {
 impl App for ScopeApp {
     fn id(&self) -> AppId {
         AppId::Scope
+    }
+
+    fn observables(&self) -> &'static [ParamSpec] {
+        &OBSERVABLES
+    }
+
+    fn observe(&self, index: usize) -> Option<ParamValue> {
+        (index == 0).then_some(ParamValue::Number(self.level))
     }
 
     fn update(&mut self, input: &InputSnapshot) -> Params {
