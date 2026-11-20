@@ -9,6 +9,14 @@ Architectural decisions behind each change are in `journal/` (French).
 
 ### Added
 
+- **The applets through the probe** (journal/D-043): `cargo probe apps`
+  lists them, `cargo probe app <app>` prints an applet's parameters with
+  their values and ranges, what it plays and what it can do, and `get`,
+  `set`, `act` and `select` read, set (within the bounds the panel uses),
+  trigger and pick one by name, as in `cargo probe set ratchet prob 50`.
+  Probe protocol 4: a module and a host tool must be updated together.
+- The simulator's status line now lists the running applet's parameters
+  and what it plays, from the same model.
 - **`SHAPE`** in `SUPERSAW`: each voice blends from a sawtooth into a
   square, band-limited all the way, at about the same loudness
   (journal/D-037, revision of 2026-11-19); on the first page, takes an

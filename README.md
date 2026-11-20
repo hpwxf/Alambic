@@ -351,6 +351,13 @@ cargo probe stream --every 10  # inputs, codes, outputs and triggers every 10 ti
 cargo probe out A -2000        # hold output A at -2 V until Enter, printing the inputs
 cargo probe screen --png s.png # capture the screen as the module shows it
 cargo probe reboot             # restart into the bootloader, then `cargo xtask flash`
+
+cargo probe apps               # the applets, the running one marked
+cargo probe app ratchet        # its parameters and values, observables, actions
+cargo probe set ratchet prob 50  # as the panel would, within its bounds
+cargo probe get supersaw freq  # a parameter or what it plays now
+cargo probe act ratchet burst  # an action, here a burst as `up` starts one
+cargo probe select tone        # hand it the outputs and the screen
 ```
 
 `cargo probe` is an alias of `cargo run -q -p oc-probe --`. The tool finds the

@@ -14,10 +14,12 @@
 
 use core::fmt::{self, Write};
 
+use serde::{Deserialize, Serialize};
+
 use crate::apps::tone::note_name;
 
 /// What a number counts, for the text a host shows of it.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum Unit {
     /// A plain count or ratio.
     None,
@@ -175,18 +177,8 @@ impl ParamSpec {
     /// If `out` refuses the text.
     pub fn write(&self, value: ParamValue, out: &mut impl Write) -> fmt::Result {
         match (self.kind, value) {
-            (
-                Kind::Number {
-                    unit: Unit::Note, ..
-                },
-                ParamValue::Number(number),
-            ) => {
-                let note = u8::try_from(number).unwrap_or(0);
-                out.write_str(note_name(note).as_str())
-            }
             (Kind::Number { decimals, unit, .. }, ParamValue::Number(number)) => {
-                write_fixed(number, decimals, out)?;
-                out.write_str(unit.suffix())
+                write_number(number, decimals, unit, out)
             }
             (Kind::Choice(names), ParamValue::Choice(index)) => {
                 out.write_str(names.get(usize::from(index)).copied().unwrap_or("?"))
@@ -195,6 +187,22 @@ impl ParamSpec {
             _ => out.write_str("?"),
         }
     }
+}
+
+/// Writes a number as a host shows it: with `decimals` digits after the
+/// point and `unit`'s suffix, or a note's name. The one place a number's
+/// text is decided, for the module's own summary and the host tools alike.
+///
+/// # Errors
+///
+/// If `out` refuses the text.
+pub fn write_number(number: i32, decimals: u8, unit: Unit, out: &mut impl Write) -> fmt::Result {
+    if unit == Unit::Note {
+        let note = u8::try_from(number).unwrap_or(0);
+        return out.write_str(note_name(note).as_str());
+    }
+    write_fixed(number, decimals, out)?;
+    out.write_str(unit.suffix())
 }
 
 /// `number` with `decimals` digits after the point: 1234 with 3 reads
@@ -216,7 +224,7 @@ fn write_fixed(number: i32, decimals: u8, out: &mut impl Write) -> fmt::Result {
 }
 
 /// A parameter's or an observable's value.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum ParamValue {
     /// For a [`Kind::Number`].
     Number(i32),
@@ -227,7 +235,7 @@ pub enum ParamValue {
 }
 
 /// Why an applet did not take a value or an action.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum Refused {
     /// No parameter or action at that index.
     NoSuch,

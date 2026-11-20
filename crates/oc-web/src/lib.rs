@@ -21,8 +21,8 @@ use wasm_bindgen::prelude::wasm_bindgen;
 use oc_core::framebuffer::LEN;
 use oc_halfkay::Report;
 use oc_image::flash::{FlashImage, Format, firmware_image};
-use oc_probe::client::ProbeError;
-use oc_probe::render;
+use oc_probe::client::{ProbeError, SpecEntry};
+use oc_probe::{apps, render};
 use oc_protocol::{Error, FrameReader, MAX_FRAME, Reply, Request, VERSION, decode, encode};
 
 /// The probe port's USB vendor identifier, for the Web Serial port filter.
@@ -112,6 +112,36 @@ pub fn request_reboot_to_loader() -> Vec<u8> {
     frame(&Request::RebootToLoader)
 }
 
+/// Lists the applets (journal/D-043): one [`MessageKind::Applet`] each, then
+/// a [`MessageKind::Done`].
+#[wasm_bindgen]
+#[must_use]
+pub fn request_list_apps() -> Vec<u8> {
+    frame(&Request::ListApps)
+}
+
+/// Describes applet `app`: a [`MessageKind::Applet`] per parameter,
+/// observable, choice name and action, then a [`MessageKind::Done`].
+#[wasm_bindgen]
+#[must_use]
+pub fn request_describe_app(app: u8) -> Vec<u8> {
+    frame(&Request::DescribeApp { app })
+}
+
+/// Asks applet `app` for action `action`.
+#[wasm_bindgen]
+#[must_use]
+pub fn request_act(app: u8, action: u8) -> Vec<u8> {
+    frame(&Request::Act { app, action })
+}
+
+/// Hands the outputs and the screen to applet `app`.
+#[wasm_bindgen]
+#[must_use]
+pub fn request_select_app(app: u8) -> Vec<u8> {
+    frame(&Request::SelectApp { app })
+}
+
 /// What a [`Message`] is.
 #[wasm_bindgen]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -126,6 +156,10 @@ pub enum MessageKind {
     Sample,
     /// A request carried out, nothing else to say.
     Done,
+    /// What the module says of its applets (journal/D-043): one applet, one
+    /// parameter or observable with its value, one choice name, one action,
+    /// or one value; the text is a line as `oc-probe app` prints it.
+    Applet,
     /// A refusal, or bytes that made no sense; the text says which.
     Error,
 }
@@ -210,6 +244,42 @@ impl Message {
             }
             Reply::Done => Self::with_text(MessageKind::Done, String::new()),
             Reply::Error(error) => Self::refused(error),
+            Reply::App {
+                app, name, running, ..
+            } => Self::with_text(
+                MessageKind::Applet,
+                format!("{app} {name}{}", if running { " (running)" } else { "" }),
+            ),
+            Reply::Spec {
+                index,
+                name,
+                kind,
+                assignable,
+                value,
+                ..
+            } => {
+                let spec = SpecEntry {
+                    index,
+                    name: name.to_owned(),
+                    kind,
+                    choices: Vec::new(),
+                    assignable,
+                    value,
+                };
+                let value =
+                    value.map_or_else(|| "--".to_owned(), |value| apps::value_text(&spec, value));
+                Self::with_text(MessageKind::Applet, format!("{index} {name} {value}"))
+            }
+            Reply::ChoiceName { choice, name, .. } => {
+                Self::with_text(MessageKind::Applet, format!("  {choice} {name}"))
+            }
+            Reply::Action { index, name } => {
+                Self::with_text(MessageKind::Applet, format!("action {index} {name}"))
+            }
+            Reply::Value(value) | Reply::Observed(Some(value)) => {
+                Self::with_text(MessageKind::Applet, format!("{value:?}"))
+            }
+            Reply::Observed(None) => Self::with_text(MessageKind::Applet, "--".to_owned()),
         }
     }
 }

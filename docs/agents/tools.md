@@ -17,6 +17,7 @@ cargo xtask flash                             # validate, show SHA-256 digest, c
 
 # Live probe of a running module (journal/D-029)
 cargo probe stats                             # also stream, out, screen, reboot
+cargo probe app ratchet                       # the applets' model (D-043): also apps, get, set, act, select
 
 # VCV Rack 2 plugin (needs a downloaded Rack SDK)
 cargo xtask vcv build --rack-dir <path>

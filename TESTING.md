@@ -498,7 +498,15 @@ With the module running and the USB cable on the Teensy (journal/D-029):
 4. `cargo probe stream --count 5` prints five samples, one every 100 ms.
 5. `cargo probe out A 1000` holds output A at 1 V (check it on a multimeter)
    until Enter; closing the tool releases it, `oc-probe` killed included.
-6. `cargo probe reboot`, then `cargo xtask flash`: the flash goes through with
+6. The applets (journal/D-043): `cargo probe apps` lists them, the running
+   one marked; `cargo probe app ratchet` prints its parameters with their
+   values and ranges, its observables and its actions. `cargo probe select
+   ratchet` hands it the outputs and the screen; `cargo probe set ratchet
+   prob 50` prints `PROB 50%` and the panel shows it at once; `cargo probe
+   set ratchet first 5000` prints `FIRST 2000 MS`, narrowed by `MODE FIRST`;
+   `cargo probe act ratchet burst` sends a burst on B, as `up` does;
+   `cargo probe get ratchet rate` reads `--` until `TR1` has had two edges.
+7. `cargo probe reboot`, then `cargo xtask flash`: the flash goes through with
    no PROGRAM press.
 
 ### 9.1c — Browser probe and flasher (journal/D-031)

@@ -1,13 +1,15 @@
 //! `oc-probe`: talks to a running Ornament & Crime module over the second
 //! of its two USB serial ports (journal/D-029).
 //!
-//! [`client`] speaks the protocol over any byte stream, [`port`] finds and
+//! [`client`] speaks the protocol over any byte stream, [`apps`] reads and
+//! writes the applets' values as text, [`port`] finds and
 //! opens the module's probe port, [`render`] turns what comes back into
 //! text or an image. The binary (`src/main.rs`) is the command line on top.
 //! [`port`], the PNG output and the binary need the `cli` feature (on by
 //! default); the rest has no operating-system dependency and also serves the
 //! browser tool (`oc-web`, journal/D-031).
 
+pub mod apps;
 pub mod client;
 pub mod measure;
 #[cfg(feature = "cli")]

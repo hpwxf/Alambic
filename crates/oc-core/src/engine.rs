@@ -739,6 +739,22 @@ where
         self.apps.current()
     }
 
+    /// The applet filling slot `id`, to set its parameters or ask it for an
+    /// action as the panel would (journal/D-043): the host probe's way in.
+    pub fn app_mut(&mut self, id: AppId) -> &mut dyn App {
+        self.apps.get_mut(id)
+    }
+
+    /// Hands the outputs and the screen to `id`, as launching it from the app
+    /// menu does: an open menu closes on it. The system screen, the
+    /// calibration wizard and the boot splash stay up, and leave to it.
+    pub const fn select_app(&mut self, id: AppId) {
+        self.apps.select(id);
+        if matches!(self.screen, Screen::Menu) {
+            self.screen = Screen::App;
+        }
+    }
+
     /// Whether the app menu currently owns the screen.
     #[must_use]
     pub const fn menu_is_open(&self) -> bool {

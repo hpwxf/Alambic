@@ -152,3 +152,25 @@ Le statut reste `proposée` jusqu'à la mesure sur le module (lot 10c). Ce que l
   `match` par app. Coût : `.text` +2 784 o, `.rodata` +1 840 o (descripteurs, noms, `get` / `set`), gardés par les
   vtables même tant que rien dans le firmware ne les appelle ; c'est le coût du modèle, qu'un aiguillage C ne
   changerait pas. Total du lot contre `master` : ≈ 5,4 Kio, sous le seuil du § 5.
+
+## Lot 10d (2026-11-20) — les apps par la sonde
+
+* **Protocole v4** (`oc-protocol`) : requêtes `ListApps`, `DescribeApp`, `GetParam`, `SetParam`, `Observe`, `Act`,
+  `SelectApp` ; réponses `App`, `Spec` (paramètre ou observable, avec sa valeur), `ChoiceName` (un nom d'un choix,
+  pour qu'une réponse n'emprunte qu'une chaîne), `Action`, `Value`, `Observed` ; erreurs `NoSuchApp` et
+  `Refused(Refused)`. Une app est nommée par son indice dans `AppId`, un paramètre par le sien. `ParamValue`,
+  `Unit` et `Refused` sont ceux d'`oc-core`, sérialisés tels quels.
+* **Le serveur passe par le trait** : `Engine::app_mut` pour `set` et `act`, `Engine::select_app` pour la sélection
+  (comme le menu : un menu ouvert se ferme, l'écran système, l'assistant et l'écran de démarrage restent). Le
+  chemin d'une écriture distante est celui d'un cran d'encodeur, dans la boucle.
+* **L'hôte** (`oc-probe`) : `Client::apps`, `describe`, `get_param`, `set_param`, `observe`, `act`, `select_app` ;
+  le module `apps` trouve une app ou un paramètre par son nom (casse et ponctuation ignorées) ou son indice, lit
+  une valeur depuis du texte (`-1.5`, `A4`, `span`, `on`) et l'écrit avec `write_number`, la fonction d'`oc-core`
+  qui fait aussi le texte du simulateur ; CLI `apps`, `app`, `get`, `set`, `act`, `select`. `oc-web` reçoit les
+  nouvelles réponses (`MessageKind::Applet`) et construit les requêtes sans valeur ; la page ne s'en sert pas
+  encore, ni d'un `SetParam`, qui demande de lire une valeur selon son descripteur.
+* **Pas d'observables dans `Stream`** : différé, rien ne le demande encore.
+* **Coût** : `.text` +5 908 o, `.rodata` +980 o. Le lot entier (10a, 10b, 10d) contre `master` : `.text` +9,2 Kio
+  (163 Kio sur les 192 de l'ITCM), `.rodata` +2,9 Kio. Au-delà des « quelques kilo-octets » du § 5, mais ce coût
+  est celui du modèle et du protocole, que l'aiguillage C ne réduirait pas ; la marge de l'ITCM (D-038) est la
+  limite à surveiller.
