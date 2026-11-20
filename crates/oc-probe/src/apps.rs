@@ -32,14 +32,17 @@ pub fn find_app<'a>(apps: &'a [AppEntry], query: &str) -> Option<&'a AppEntry> {
     apps.iter().find(|app| folded(&app.name) == query)
 }
 
-/// The entry `query` names in `list`: its index, or its name.
+/// The entry `query` names in `list`: its index, its name, or its label
+/// now (`span` finds `RATCHET`'s `FIRST` in `MODE SPAN`).
 #[must_use]
 pub fn find_spec<'a>(list: &'a [SpecEntry], query: &str) -> Option<&'a SpecEntry> {
     if let Ok(index) = query.parse::<u8>() {
         return list.iter().find(|spec| spec.index == index);
     }
     let query = folded(query);
-    list.iter().find(|spec| folded(&spec.name) == query)
+    list.iter()
+        .find(|spec| folded(&spec.name) == query)
+        .or_else(|| list.iter().find(|spec| folded(&spec.label) == query))
 }
 
 /// The action `query` names: its index, or its name.
@@ -194,7 +197,7 @@ pub fn moved(before: &AppDescription, after: &AppDescription, except: u8) -> Vec
         })
         .filter_map(|spec| {
             spec.value
-                .map(|value| format!("{} {}", spec.name, value_text(spec, value)))
+                .map(|value| format!("{} {}", spec.label, value_text(spec, value)))
         })
         .collect()
 }
@@ -214,7 +217,7 @@ pub fn description_text(app: &AppEntry, description: &AppDescription) -> String 
         .params
         .iter()
         .chain(&description.observables)
-        .map(|spec| spec.name.len())
+        .map(|spec| shown_name(spec).len())
         .max()
         .unwrap_or(0);
     for (title, list) in [
@@ -233,7 +236,7 @@ pub fn description_text(app: &AppEntry, description: &AppDescription) -> String 
                 out,
                 "  {:>2} {:<width$}  {value:<12} {}{}",
                 spec.index,
-                spec.name,
+                shown_name(spec),
                 range_text(spec),
                 if spec.assignable { "  (CV)" } else { "" }
             );
@@ -243,6 +246,16 @@ pub fn description_text(app: &AppEntry, description: &AppDescription) -> String 
         let _ = writeln!(out, "actions: {}", description.actions.join(", "));
     }
     out
+}
+
+/// An entry's label, with its name after it when they differ
+/// (`SPAN (FIRST)`), so that both ways to find it show.
+fn shown_name(spec: &SpecEntry) -> String {
+    if spec.label == spec.name || spec.label.is_empty() {
+        spec.name.clone()
+    } else {
+        format!("{} ({})", spec.label, spec.name)
+    }
 }
 
 /// What values `spec` takes, as text: `1..32`, `FIRST|SPAN`, `on|off`.
@@ -270,6 +283,7 @@ mod tests {
         SpecEntry {
             index: 0,
             name: name.to_owned(),
+            label: name.to_owned(),
             kind,
             choices: choices.iter().map(|&name| name.to_owned()).collect(),
             assignable: false,
@@ -365,7 +379,17 @@ mod tests {
 
     #[test]
     fn a_name_is_found_whatever_its_case_and_punctuation() {
-        let list = [spec("PASSTHRU", ParamKind::Toggle, &[])];
+        let mut first = spec("FIRST", number(0, Unit::Milliseconds), &[]);
+        first.label = "SPAN".to_owned();
+        let list = [spec("PASSTHRU", ParamKind::Toggle, &[]), first];
+        assert_eq!(
+            find_spec(&list, "span").map(|spec| spec.name.as_str()),
+            Some("FIRST")
+        );
+        assert_eq!(
+            find_spec(&list, "first").map(|spec| spec.label.as_str()),
+            Some("SPAN")
+        );
         assert!(find_spec(&list, "passthru").is_some());
         assert!(find_spec(&list, "0").is_some());
         assert!(find_spec(&list, "pass").is_none());

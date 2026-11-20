@@ -330,10 +330,22 @@ impl Server {
     /// [`Reply::Done`].
     fn describe(&mut self, app: &dyn App) {
         for (index, spec) in app.param_specs().iter().enumerate() {
-            self.send_spec(Group::Param, index, spec, app.get(index));
+            self.send_spec(
+                Group::Param,
+                index,
+                spec,
+                app.param_label(index),
+                app.get(index),
+            );
         }
         for (index, spec) in app.observables().iter().enumerate() {
-            self.send_spec(Group::Observable, index, spec, app.observe(index));
+            self.send_spec(
+                Group::Observable,
+                index,
+                spec,
+                spec.name,
+                app.observe(index),
+            );
         }
         for (index, name) in app.actions().iter().enumerate() {
             self.send(&Reply::Action {
@@ -350,12 +362,14 @@ impl Server {
         group: Group,
         index: usize,
         spec: &ParamSpec,
+        label: &str,
         value: Option<oc_core::apps::param::ParamValue>,
     ) {
         self.send(&Reply::Spec {
             group,
             index: count(index),
             name: spec.name,
+            label,
             kind: ParamKind::of(spec),
             assignable: spec.assignable,
             value,

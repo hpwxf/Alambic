@@ -958,6 +958,14 @@ impl App for RatchetApp {
         &PARAM_SPECS
     }
 
+    fn param_label(&self, index: usize) -> &'static str {
+        match index {
+            // The time is a span in `MODE SPAN`, as the screen says.
+            2 => self.label(Setting::Time),
+            _ => PARAM_SPECS.get(index).map_or("", |spec| spec.name),
+        }
+    }
+
     fn get(&self, index: usize) -> Option<ParamValue> {
         let burst = &self.settings;
         let value = match index {

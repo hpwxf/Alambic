@@ -245,8 +245,8 @@ pub enum Refused {
     OutOfRange,
 }
 
-/// Writes every parameter of `app`, then every observable it knows, as
-/// `NAME value` separated by three spaces: one line that says what the
+/// Writes every parameter of `app` under its label now, then every
+/// observable it knows, as `LABEL value` separated by three spaces: one line that says what the
 /// applet is doing, whichever it is.
 ///
 /// # Errors
@@ -254,7 +254,7 @@ pub enum Refused {
 /// If `out` refuses the text.
 pub fn write_summary(app: &dyn super::App, out: &mut impl Write) -> fmt::Result {
     let mut first = true;
-    let mut entry = |spec: &ParamSpec, value: Option<ParamValue>| -> fmt::Result {
+    let mut entry = |label: &str, spec: &ParamSpec, value: Option<ParamValue>| -> fmt::Result {
         let Some(value) = value else {
             return Ok(());
         };
@@ -262,14 +262,14 @@ pub fn write_summary(app: &dyn super::App, out: &mut impl Write) -> fmt::Result 
             out.write_str("   ")?;
         }
         first = false;
-        write!(out, "{} ", spec.name)?;
+        write!(out, "{label} ")?;
         spec.write(value, out)
     };
     for (index, spec) in app.param_specs().iter().enumerate() {
-        entry(spec, app.get(index))?;
+        entry(app.param_label(index), spec, app.get(index))?;
     }
     for (index, spec) in app.observables().iter().enumerate() {
-        entry(spec, app.observe(index))?;
+        entry(spec.name, spec, app.observe(index))?;
     }
     Ok(())
 }

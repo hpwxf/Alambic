@@ -125,7 +125,7 @@ Valeurs seules ; le raisonnement est dans `journal/`.
 | profil | release LTO fat, `overflow-checks = true` ; panique → journal USB + SOS | D-018 |
 | entrées | anti-rebond 3 échantillons (boutons), front sur 1 échantillon (triggers) ; activité CV par crête-à-crête (256 éch., 40 mV), aucune présence de câble sur aucun backend | D-019 |
 | démarrage | écran 1,5 s, sorties à 0 V, rendu à chaque tick | D-020 |
-| applets | `AppHost` (tous résidents), menu par accord haut + bas, haut / bas au relâchement ; `DIAGNOSTIC`, `SCOPE`, `GFX DEMO`, `RATCHET`, `TONE`, `SUPERSAW` ; trait `App` et registre (`&dyn App`), modèle de paramètres, d'observables et d'actions partagé par le panneau, la sonde (protocole v4) et le simulateur ; écran et navigation propres à chaque app | D-021, D-030, D-032, D-033, D-037, D-043 |
+| applets | `AppHost` (tous résidents), menu par accord haut + bas, haut / bas au relâchement ; `DIAGNOSTIC`, `SCOPE`, `GFX DEMO`, `RATCHET`, `TONE`, `SUPERSAW` ; trait `App` et registre (`&dyn App`), modèle de paramètres, d'observables et d'actions partagé par le panneau, la sonde (protocole v5) et le simulateur ; écran et navigation propres à chaque app | D-021, D-030, D-032, D-033, D-037, D-043 |
 | licence | `MIT OR Apache-2.0` (workspace) | D-022 |
 | présence d'entrée | déduite dans `oc-core` (activité récente + maintien) : CV 50 mV / 300 ms, trigger verrou ou horloge 2 s ; jamais fournie par un backend | D-024 |
 | identifiant de build | hash court + `-dirty` sous la version, écran de démarrage des trois backends ; calculé par `oc-buildinfo` (vergen-gix, sans binaire `git`), jamais dans `oc-core` | D-025 |

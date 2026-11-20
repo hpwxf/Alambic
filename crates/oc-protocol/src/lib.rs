@@ -41,7 +41,7 @@ use oc_core::platform::{CV_CHANNELS, MilliVolts};
 pub use oc_core::profile::Profile;
 
 /// Protocol version, raised on any change to a message's encoding.
-pub const VERSION: u16 = 4;
+pub const VERSION: u16 = 5;
 
 /// Longest frame either side sends or accepts, zero byte included. A
 /// screen page (128 bytes) and a profile (a few hundred) both fit with room
@@ -245,8 +245,12 @@ pub enum Reply<'a> {
         group: Group,
         /// Its index in that list.
         index: u8,
-        /// Its name, as the screen labels it.
+        /// Its name, which finds it whatever another setting does to its
+        /// label.
         name: &'a str,
+        /// How the screen labels it now (`SPAN` for `RATCHET`'s `FIRST` in
+        /// `MODE SPAN`); its name for an observable.
+        label: &'a str,
         /// What values it takes.
         kind: ParamKind,
         /// Whether it takes a CV input.

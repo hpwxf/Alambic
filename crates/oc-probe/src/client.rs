@@ -87,8 +87,10 @@ pub struct AppEntry {
 pub struct SpecEntry {
     /// Its index in its list.
     pub index: u8,
-    /// Its name, as the screen labels it.
+    /// Its name, which finds it whatever another setting does to its label.
     pub name: String,
+    /// How the screen labels it now.
+    pub label: String,
     /// What values it takes.
     pub kind: ParamKind,
     /// A choice's names, in order; empty otherwise.
@@ -461,6 +463,7 @@ impl<T: Read + Write> Client<T> {
                 group,
                 index,
                 name,
+                label,
                 kind,
                 assignable,
                 value,
@@ -469,6 +472,7 @@ impl<T: Read + Write> Client<T> {
                 SpecEntry {
                     index,
                     name: name.to_owned(),
+                    label: label.to_owned(),
                     kind,
                     choices: Vec::new(),
                     assignable,

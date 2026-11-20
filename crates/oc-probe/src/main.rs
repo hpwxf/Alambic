@@ -261,7 +261,7 @@ fn set(session: &mut Session, app: &str, param: &str, text: &str) -> anyhow::Res
         .with_context(|| format!("{} has no parameter {param}", app.name))?;
     let value = apps::parse_value(spec, text).map_err(anyhow::Error::msg)?;
     let applied = session.set_param(app.index, spec.index, value)?;
-    println!("{} {}", spec.name, apps::value_text(spec, applied));
+    println!("{} {}", spec.label, apps::value_text(spec, applied));
     if applied != value {
         eprintln!("narrowed by another setting of {}", app.name);
     }

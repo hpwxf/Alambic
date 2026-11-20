@@ -303,7 +303,8 @@ function drawParams() {
     const row = document.createElement("tr");
     const editor = paramEditor(at);
     const status = cell("", "status");
-    paramRows.push({ editor, status, sending: null });
+    const label = cell(appView.param_label(at));
+    paramRows.push({ label, editor, status, sending: null });
     // A list sends what it picks; a field sends on Enter, even a value it
     // already shows, and when it loses the focus with a new one.
     editor.addEventListener("change", () => setParam(at, editor.value));
@@ -318,7 +319,7 @@ function drawParams() {
     const editCell = document.createElement("td");
     editCell.append(editor);
     row.append(
-      cell(appView.param_name(at)),
+      label,
       editCell,
       cell(appView.param_range(at), "status"),
       cell(appView.param_assignable(at) ? "CV" : "", "status"),
@@ -376,7 +377,7 @@ async function setParam(at, text) {
     status.textContent = applied.toLowerCase() === text.trim().toLowerCase()
       ? `set: ${shown}`
       : `set: ${shown} (narrowed by another setting)`;
-    await refreshValues(appView.param_name(at));
+    await refreshValues(appView.param_label(at));
   } catch (error) {
     status.textContent = `error: ${error.message}`;
     row.editor.value = appView.param_edit_text(at);
@@ -390,7 +391,9 @@ async function refreshValues(cause) {
   const items = await session.ask(appView.refresh_request(), UNTIL_DONE, true);
   for (const item of items) appView.absorb_refresh(item.message);
   release(items);
-  paramRows.forEach(({ editor, status }, at) => {
+  // A label follows the setting that changes it (`FIRST` reads `SPAN` in `MODE SPAN`).
+  paramRows.forEach(({ label, editor, status }, at) => {
+    label.textContent = appView.param_label(at);
     editor.value = appView.param_edit_text(at);
     if (appView.param_moved(at)) status.textContent = `moved with ${cause}: ${appView.param_text(at)}`;
   });

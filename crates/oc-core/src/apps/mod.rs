@@ -141,6 +141,13 @@ pub trait App: Any {
         &[]
     }
 
+    /// How the screen labels parameter `index` now, which another setting
+    /// may change (`RATCHET`'s `FIRST` reads `SPAN` in `MODE SPAN`); its
+    /// [`ParamSpec::name`] stays the one to find it by.
+    fn param_label(&self, index: usize) -> &'static str {
+        self.param_specs().get(index).map_or("", |spec| spec.name)
+    }
+
     /// The value of parameter `index` as the panel set it, before any CV
     /// input moves it; `None` past the last.
     fn get(&self, _index: usize) -> Option<ParamValue> {

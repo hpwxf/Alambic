@@ -536,7 +536,10 @@ Set `GATE` on, then off: `COUNT` follows on the page as on the module (32,
 the count past which a detent reaches the gate), its row saying it moved
 with `GATE`; type `4` in `COUNT` and press Enter: it is sent even though
 the field showed it a moment before. `cargo probe set ratchet gate off`
-prints `COUNT 32  (moved with it)` the same way.
+prints `COUNT 32  (moved with it)` the same way. Choose `SPAN` in `MODE`:
+the `FIRST` row now reads `SPAN`, as the module's screen does;
+`cargo probe app ratchet` lists it as `SPAN (FIRST)`, and both
+`cargo probe set ratchet span 3000` and `… first 3000` set it.
 *BURST* sends a burst on B; *Read what it plays* reads `RATE` (`--` until
 `TR1` has had two edges) and `SENT`.
 

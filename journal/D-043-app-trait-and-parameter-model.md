@@ -214,3 +214,14 @@ valeurs**. La page relit l'app entière (`DescribeApp`, une requête) et marque 
 (`oc_probe::apps::moved`). Dans la page, Entrée envoie toujours, même une valeur déjà affichée. La réponse à un
 `SetParam` ne porte toujours que le paramètre écrit : y joindre les autres alourdirait le protocole pour un cas que
 la relecture couvre.
+
+## Révision du 2026-11-21 — un nom stable, un libellé qui suit l'écran
+
+Essai de la page par l'utilisateur : en `MODE SPAN`, l'écran du module appelle `SPAN` la ligne du temps, la page
+l'appelait toujours `FIRST`. Le **nom** d'un paramètre (`ParamSpec::name`) reste fixe : c'est lui qui le trouve
+(`cargo probe set ratchet first …` marche dans les deux modes). Son **libellé** est celui de l'écran à cet instant :
+`App::param_label`, `ParamSpec::name` par défaut, `SPAN` pour le `FIRST` de `RATCHET` en `MODE SPAN`. La réponse
+`Spec` porte les deux (**protocole v5**) ; l'hôte affiche le libellé, trouve par l'un ou l'autre, et la CLI montre
+`SPAN (FIRST)` quand ils diffèrent ; la page met les libellés à jour à chaque relecture, et la ligne d'état du
+simulateur les emploie. Une face inactive (`DIVISION` avec `SYNC OFF`, `FIRST` avec `SYNC ON`) n'est pas encore
+signalée ; une méthode `param_active` le ferait si le besoin s'en fait sentir.

@@ -180,6 +180,7 @@ impl AppView {
                     self.moved[at] = true;
                 }
                 list[at].value = fresh.value;
+                list[at].label.clone_from(&fresh.label);
             }
         }
         message.kind == MessageKind::Done
@@ -212,10 +213,17 @@ impl AppView {
         self.description.params.len()
     }
 
-    /// Parameter `at`'s name.
+    /// Parameter `at`'s name, which finds it whatever its label.
     #[must_use]
     pub fn param_name(&self, at: usize) -> String {
         param(&self.description, at).map_or_else(String::new, |spec| spec.name.clone())
+    }
+
+    /// How the module's screen labels parameter `at` now (`SPAN` for
+    /// `RATCHET`'s `FIRST` in `MODE SPAN`); a refresh keeps it current.
+    #[must_use]
+    pub fn param_label(&self, at: usize) -> String {
+        param(&self.description, at).map_or_else(String::new, |spec| spec.label.clone())
     }
 
     /// Parameter `at`'s value as the module writes it (`-3.0 OCT`).
@@ -455,6 +463,20 @@ mod tests {
         assert_eq!(view.param_choices(8), ["FIRST", "SPAN"]);
         assert!(view.param_assignable(0) && !view.param_assignable(1));
         assert_eq!(view.actions(), ["BURST"]);
+        assert_eq!(view.param_label(2), "FIRST");
+
+        // MODE SPAN: the time reads SPAN on the screen, and so on the page.
+        module.send(&view.set_request(8, "span").unwrap());
+        for message in module.send(&view.refresh_request()) {
+            if view.absorb_refresh(&message) {
+                break;
+            }
+        }
+        assert_eq!(
+            (view.param_name(2).as_str(), view.param_label(2).as_str()),
+            ("FIRST", "SPAN")
+        );
+        module.send(&view.set_request(8, "first").unwrap());
 
         // GATE off puts COUNT at its last: a refresh shows it, as the module does.
         let count = 0;

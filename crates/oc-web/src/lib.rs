@@ -275,6 +275,7 @@ impl Message {
                 group,
                 index,
                 name,
+                label,
                 kind,
                 assignable,
                 value,
@@ -282,6 +283,7 @@ impl Message {
                 let spec = SpecEntry {
                     index,
                     name: name.to_owned(),
+                    label: label.to_owned(),
                     kind,
                     choices: Vec::new(),
                     assignable,
@@ -289,7 +291,10 @@ impl Message {
                 };
                 let shown =
                     value.map_or_else(|| "--".to_owned(), |value| apps::value_text(&spec, value));
-                Self::applet(format!("{index} {name} {shown}"), Applet::Spec(group, spec))
+                Self::applet(
+                    format!("{index} {label} {shown}"),
+                    Applet::Spec(group, spec),
+                )
             }
             Reply::ChoiceName {
                 group,

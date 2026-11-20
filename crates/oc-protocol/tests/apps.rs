@@ -101,6 +101,7 @@ fn an_applet_is_described_with_its_values_and_choice_names() {
             group: Group::Param,
             index: 0,
             name: "COUNT",
+            label: "COUNT",
             kind: ParamKind::Number {
                 min: 1,
                 max: 32,
@@ -129,6 +130,7 @@ fn an_applet_is_described_with_its_values_and_choice_names() {
         group: Group::Observable,
         index: 0,
         name: "RATE",
+        label: "RATE",
         kind: ParamKind::Number {
             min: 0,
             max: 999,
@@ -266,5 +268,44 @@ fn an_action_and_a_selection_act_as_the_panel_does() {
         ),
         Reply::Observed(Some(ParamValue::Number(0))),
         "a burst runs, none of its repeats sent yet"
+    );
+}
+
+#[test]
+fn a_label_follows_the_setting_that_changes_it() {
+    let (mut server, mut engine) = opened();
+    let label_of_first = |server: &mut Server, engine: &mut MockEngine| {
+        let mut frames = replies(server, engine, &Request::DescribeApp { app: RATCHET });
+        frames
+            .iter_mut()
+            .find_map(|frame| match decode::<Reply<'_>>(frame).unwrap() {
+                Reply::Spec {
+                    group: Group::Param,
+                    index: 2,
+                    name,
+                    label,
+                    ..
+                } => Some((name.to_owned(), label.to_owned())),
+                _ => None,
+            })
+            .unwrap()
+    };
+    assert_eq!(
+        label_of_first(&mut server, &mut engine),
+        ("FIRST".to_owned(), "FIRST".to_owned())
+    );
+    ask(
+        &mut server,
+        &mut engine,
+        &Request::SetParam {
+            app: RATCHET,
+            param: 8,
+            value: ParamValue::Choice(1),
+        },
+    );
+    assert_eq!(
+        label_of_first(&mut server, &mut engine),
+        ("FIRST".to_owned(), "SPAN".to_owned()),
+        "MODE SPAN: the screen says SPAN, the name stays"
     );
 }
