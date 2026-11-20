@@ -9,13 +9,14 @@ behaviour runs on hardware, in a native simulator, and inside VCV Rack 2.
 
 > Status: the cross-compilation chain, the shared core, the simulator, the
 > Teensy firmware, the safe flashing tool and the VCV Rack 2 module are in
-> place, with host tests throughout. The firmware has been brought up on a
-> real module (TLM build): the SH1106 OLED, the USB CDC boot log, the encoders
-> and the buttons work, but the CV inputs, the CV outputs and their
-> calibration, and the trigger inputs have **not** been verified yet — see
-> *Before the first flash* below. The VCV Rack plugin builds against the real
-> Rack SDK and loads in Rack, but its panel and controls have not been checked
-> systematically there. The Renode boot smoke test is not written.
+> place, with host tests throughout. On a real module (TLM build), the SH1106
+> OLED, the USB log and probe ports, the encoders and buttons, the CV inputs
+> and outputs, the trigger inputs, the calibration wizard, the settings flash
+> and the audio path have been checked (Level 9 of `TESTING.md`). Not checked:
+> the DAC8565's simultaneous update; the inputs read within about 20 mV only.
+> The VCV Rack plugin builds against the real Rack SDK and loads in Rack, but
+> its panel and controls have not been checked systematically there, nor its
+> audio listened to. The Renode boot smoke test is not written.
 
 ## Layout
 
@@ -499,21 +500,19 @@ its exact command and what it does (and does not) prove in
 
 ## Before the first flash
 
-The firmware has run on a real module (TLM build): the SH1106 OLED, the USB
-CDC boot log, the boot LED, the encoders and the buttons were checked while
-bringing it up. The analog and trigger paths have not been, and Level 9 of
-`TESTING.md` has not been run as a whole. What is derived from the reference
-firmware's source rather than measured, and should be checked with the
-diagnostic applet before being trusted:
+The firmware has run on a real module (TLM build), and Level 9 of
+`TESTING.md` has been run on it: screen, panel, USB ports, CV inputs and
+outputs, trigger inputs, calibration, settings and the audio path. On
+another module, check with the diagnostic applet before trusting it:
 
-* **the calibration.** The module starts from the reference firmware's
+* **the calibration.** A module starts from the reference firmware's
   factory calibration (`Calibration::FACTORY` in
   `crates/oc-core/src/calibration.rs`: both stages invert, 0 V input at ADC
   code 2730, 10 V over each converter's range); the exact gain and offset are
-  per-unit properties, to be measured by the calibration wizard (in
-  progress).
-* **the CV inputs and the trigger inputs** themselves (pin mapping, polarity,
-  levels).
+  per-unit properties, measured by the calibration wizard (*System settings*
+  above) and saved in the module's flash.
+* **the CV inputs and the trigger inputs** on another build (pin mapping,
+  polarity, levels).
 * **the OLED controller** on other builds. SH1106 is the default and is what
   the TLM build carries; build or flash with `cargo xtask … --features ssd1306`
   or `--features ssd1309` if the screen stays blank or only a band of rows
