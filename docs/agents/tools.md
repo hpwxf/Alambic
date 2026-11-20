@@ -54,13 +54,8 @@ plugin's version is `2.<minor>.<patch>` of the workspace's
   validations save time and catch wrong-architecture images; they do not
   prevent bricking, which is not a real risk here.
 * **Benchmarks are a regression guard, not a hardware measurement**
-  (`crates/oc-core/benches/engine.rs` for the tick, applets and conversions;
-  `benches/graphics.rs` for text and shapes). On the host, rendering costs
-  about three orders of magnitude more than the state update, which is why
-  `Engine::set_render_interval` decouples redraw from the 1 kHz signal path.
-  The hardware measurement is the engine's own profile
-  (`docs/agents/firmware.md`, "Measuring costs").
-* **The VCV Rack module builds, links and loads in Rack**, but its panel
-  layout, the knob-as-encoder interaction and the "Open/close app menu"
-  context entry (`Alambic.cpp`) have not been checked systematically there.
-  CI does not build it (it needs the Rack SDK, `RACK_DIR` / `--rack-dir`).
+  (`TESTING.md`, Level 3); the hardware measurement is the engine's own
+  profile (`docs/agents/firmware.md`, "Measuring costs").
+* **The VCV Rack module is not checked systematically inside Rack**
+  (`TESTING.md`, "What is not tested yet"), and CI does not build it: it
+  needs the Rack SDK (`RACK_DIR` / `--rack-dir`).

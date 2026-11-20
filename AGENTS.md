@@ -195,10 +195,10 @@ Details per crate: `docs/agents/code-map.md`.
 ## Not done yet
 
 Do not assume these work; the reserves of each step in `PLAN.md` are the full
-list.
+list, and `TESTING.md` ("What is not tested yet") the verification side.
 
 * The VCV Rack module loads in Rack but has not been checked systematically
-  there, nor listened to (`docs/agents/tools.md`).
+  there, nor listened to.
 * No Renode smoke test (journal/D-012).
 * On the module, the DAC8565 simultaneous update is not checked; the inputs
   read within about 20 mV only (one gain shared by the four inputs).

@@ -1,12 +1,10 @@
 # Testing protocols
 
-This document is the single place that maps every verification level to a
-command, what to look at, and what it does (or does not) prove. It replaces
-scattered mentions across `README.md` and the plan file, and adds the one
-level that was never written down: manual hardware validation.
-
-Nothing here changes what already exists in the repository; it only documents
-how to run it and how to read the result.
+This document maps every verification level to a command, what to look at,
+and what it does (or does not) prove. It describes procedures, not results:
+what a run on the module measured goes in the step's progress file
+(`docs/plan/avancement/etape-N.md`, French), and what is still unverified in
+the reserves of `PLAN.md`.
 
 ## Quick reference
 
@@ -148,8 +146,8 @@ cargo bench -p oc-core
 `engine/tick_busy`, `applet/update`, `applet/render`, `menu/render`,
 `conversions/adc_code_to_millivolts`,
 `conversions/millivolts_to_dac_code` and `voice/tone_sample_to_codes` (one
-sample of `TONE`'s four waveforms turned into DAC codes: what the 48 kHz
-interrupt will compute each period, journal/D-033). `crates/oc-core/benches/graphics.rs`
+sample of `TONE`'s four waveforms turned into DAC codes: what the audio
+interrupt computes each period, journal/D-033). `crates/oc-core/benches/graphics.rs`
 compares `oc_core::text` and `oc_core::gfx` with `embedded-graphics`, each
 comparison a group of two (`<name>/embedded_graphics`, `<name>/oc_core`),
 and times each page of the graphics demonstration (`gfx_demo/<page>`).
@@ -232,24 +230,8 @@ Rack module, the simulator boots into the boot splash screen before the
 diagnostic applet takes over — confirm the name/version banner and the border
 tracing itself around the screen, the same thing 9.1 checks on real hardware.
 Then press `m` to open the app menu, launch `SCOPE`, and confirm the outputs
-panel follows. The key map is permanently on screen; it is also in
-`README.md` ("The simulator"). The essentials:
-
-| Key             | Action                                       |
-|-----------------|-----------------------------------------------|
-| `Tab`           | select which CV input the arrows drive       |
-| `←`/`→`, `Home` | move / zero the selected CV input            |
-| `z x c v`       | pulse triggers 1–4 (`w x c v` on AZERTY)     |
-| `↑`/`↓`         | the module's up / down buttons               |
-| `m`             | up + down together: the app menu             |
-| `w`/`e`, `a`    | turn / press the left encoder (`z`/`e` AZERTY) |
-| `r`/`t`, `y`    | turn / press the right encoder               |
-| `1` `2` `3`     | paused / real time / 50× virtual clock       |
-| `o` / `0`       | reset the module (replays the boot splash)   |
-| `l`             | switch between AZERTY and QWERTY             |
-
-In VCV Rack the same chord is unreachable with a mouse (two momentary buttons,
-one pointer): right-click the module and choose *Open/close app menu*.
+panel follows. The key map is permanently on screen, and in `README.md`
+("The simulator"), with the VCV Rack stand-in for the `up`+`down` chord.
 
 **Proves:** the module is usable and legible end to end from a human's
 perspective.
@@ -309,7 +291,7 @@ wrong-architecture images it is designed to catch, and reports every problem
 in one pass; the size-report parser understands SysV `llvm-size` output and
 rejects broken layouts in fixtures.
 **Does not prove:** that a validated image actually boots — only Level 9 (or,
-eventually, a Renode smoke test — see *Open items*) does that.
+eventually, a Renode smoke test — see *What is not tested yet*) does that.
 
 ## Level 7 — Firmware build and footprint
 
@@ -331,8 +313,8 @@ Cargo invocation (comma-separated or repeated). There is deliberately no
 unit test *in* `oc-firmware` — its coverage comes entirely from `oc-core`
 and `oc-drivers`, which is why Levels 1 and 2 exist.
 
-`cargo xtask size` no longer dumps a raw `llvm-size` total (that figure mixes
-in DWARF and RAM reservations and is not flash size). It runs
+`cargo xtask size` does not print a raw `llvm-size` total (that figure mixes
+in DWARF and RAM reservations and is not flash size): it runs
 `llvm-size --format=sysv --radix=16`, prints only the runtime sections, and
 applies an automated layout checklist that **fails the command** if any hard
 invariant is broken. The checks include, among others:
@@ -391,10 +373,11 @@ image cannot brick the module — see *Hardware safety* in `README.md`.
 
 ## Level 9 — Manual hardware validation
 
-This is the level that did not exist as a written procedure before this
-document. It is the only way to confirm the two facts flagged as provisional
-in `README.md`'s *Before the first flash* section: the factory calibration,
-and whether the panel is SH1106 (stock), SSD1306, or SSD1309. Follow it in order; each step assumes the previous one succeeded.
+The only way to confirm, on a given module, what no host test can see: the
+wiring and channel order, the converters and their calibration, the OLED
+controller (SH1106 on stock builds, SSD1306 or SSD1309 elsewhere), the audio
+path. Follow it in order; each step assumes the previous one succeeded.
+Record the results in the step's progress file, not here.
 
 ### 9.0 — Before touching anything
 
@@ -505,9 +488,11 @@ With the module running and the USB cable on the Teensy (journal/D-029):
 1. `cargo probe info` prints the port it found and `oc-firmware X.Y.Z (build)`,
    the same as the splash screen.
 2. `cargo probe stats --fresh 5` prints, after five seconds, one row per stage
-   (`tick`, `acquire`, `update`, `outputs`, `render`, `present`, `page`,
-   `sample`, `usb`) and the period, then the jitter histogram. The `page`
-   count is eight per frame sent.
+   (the loop's `tick`, `acquire`, `update`, `outputs`, `render`, `present`,
+   `page`, `sample`, `usb`; the audio interrupt's `audio`, `voice`,
+   `voice_params`, `audio_period`, `frame`) and the period, then the jitter
+   histogram. The module's display takes a frame at once: one `page` per
+   frame drawn.
 3. `cargo probe screen` prints the screen as text; it reads as the panel does,
    rotation setting included. `--png file.png` writes an image instead.
 4. `cargo probe stream --count 5` prints five samples, one every 100 ms.
@@ -692,17 +677,14 @@ The DAC's chip select is the SPI controller's own (PCS0) and the DAC runs at
    four outputs, and `cargo probe out` at −3, 0 and +5 V with a multimeter.
    A shift or a jump means the DAC took bytes meant for the OLED.
 3. Open `SCOPE` (it copies `CV1` to all four outputs) with an LFO on `CV1`,
-   then `cargo probe stats`: the `outputs` stage now writes four words at
-   22 MHz. For indication, about 16 µs at 8 MHz before this lot; record this
-   module's value.
+   then `cargo probe stats`: the `outputs` stage writes four words at
+   22 MHz; record this module's value.
 
 Keep the default if all three pass; otherwise note which failed and keep
 `oled-spi-8mhz`.
 
-On the TLM module this was written against (`b293d6a`, 2026-11-17): the
-screen stayed clean at 22 MHz, the four outputs read −3.000/−2.999 V and
-+4.997 V, `outputs` took 3.0 µs on average and 8.0 µs at most, one OLED page
-49 µs (about 145 µs at 8 MHz). An observation on one module, not a target.
+Results on the TLM module: journal/D-033 (revision of lot 7a) and
+`docs/plan/avancement/etape-7.md`.
 
 ### 9.3e — Audio path (journal/D-033, lots 7c and 7e)
 
@@ -737,18 +719,13 @@ longer touches the bus. `cargo xtask flash`, then:
    `cargo probe out` with a multimeter).
 4. Settings: `SETUP` → `SAVE` still saves (toast), the outputs drop to 0 V
    during it and come back.
-5. `TONE`, by ear only for now (lot 7d does the oscilloscope and the
-   tuner): every note from C1 to C8 sounds at its own pitch, C5 and above
-   included.
+5. `TONE`, by ear then with a tuner on the sine (A): every note from C1 to
+   C8 sounds at its own pitch, C5 and above included.
 
 Record the values; with `oled-spi-8mhz`, repeat 1 and 2 (`frame` longer).
 
-On the TLM module this was written against (2026-11-18, DAC by DMA, lot
-7e): in `TONE`, `audio`
-3.4 µs mean and 6.1 µs max, `audio_period` 18.4 to 23.5 µs, `frame`
-1.34 ms, the loop at 1 000 µs; every screen stable, the four tones
-audible; a Korg NTS-2 tuner on the sine reads in tune up to B7, and C8 at
-the edge of its range (C7 or C8).
+Results on the TLM module: journal/D-033 (revisions of lot 7e and of the
+step's end) and `docs/plan/avancement/etape-7.md`.
 
 ### 9.3f — Supersaw (journal/D-037, lot 8c)
 
@@ -758,7 +735,7 @@ the edge of its range (C7 or C8).
    counts from the splash): `audio` mean and max, at A2 and at C8 with
    `DETUNE` at 100 %; the interrupt must stay well under its 21 µs period.
 2. By ear from C1 to C8 at `DETUNE` 0, 50 and 100 %: no click, no tone that
-   does not follow the note (aliasing would decide the ×4 of lot 8d).
+   does not follow the note (aliasing).
 3. `STEREO ON`: A and B differ, the field widens; `OFF`: the same on both.
    `SHAPE` from 0 to 100 %: from a sawtooth to a hollow square, about as
    loud all the way, no click as it turns. At `SHAPE` 100 %, `WIDTH` from
@@ -770,21 +747,11 @@ the edge of its range (C7 or C8).
    encoder's click, `INPUT` to `CV2`): a volt adds 20 %: the line shows the
    panel's `60%` and `+CV2`, the submenu's top edge the `80%` played. Assign an envelope on `CV4` to `LEVEL` with `MUL`: A follows it.
 
-On the TLM module this was written against (2026-11-18, before the inputs
-became assignable): `audio` 3.9 µs mean and 10.2 µs max at A2 and at C8
-with `DETUNE` 100 %, `audio_period` 18.4 to 23.5 µs, `frame` 1.37 to 1.39 ms,
-the loop at 1 000 µs; the sound right, `STEREO` included. With `CV2` and
-`CV3` added unconditionally then, the unplugged inputs' noise (about
-±5 codes, −22 to +12 mV) made the bars move at full detune, which Rack,
-reading exactly 0 V, did not show. With the inputs assignable (lot 8b′),
-the bars stay still, inputs unplugged, at full detune.
+Before the module, `cargo run -p oc-core --example aliasing --release -- <dir>`
+gives the folding, the clipping and the difference from an ideal supersaw,
+and WAVs to listen to (journal/D-037).
 
-Before the module, `cargo run -p oc-core --example aliasing --release --<dir>` 
-gives the folding, the clipping and the difference from an ideal
-supersaw, and WAVs to listen to (lots 8c′ and 8c″): with the falling
-sawtooths, the highest level that clips nowhere is about 2.0 V; at 3 V,
-0.05 % of the samples touch the +6 V bound. Flashed and listened to on the
-module with the falling sawtooths (2026-11-18): the sound is right.
+Results on the TLM module: `docs/plan/avancement/etape-8.md`.
 
 ### 9.3g — Supersaw in integers and in `f32` (journal/D-039, lot 9b)
 
@@ -800,31 +767,16 @@ into a mixer or headphones amp:
    tick. Read `voice` (one sample: what D-039 decides on, case B) and
    `voice_params` (taking new parameters, case C), not `audio`: the
    interrupt spins until the DAC's burst echoes, so `audio` measures the
-   burst and hides the computation. Since journal/D-040, `voice_params` is
-   only the copy of a voice prepared by the loop: well under a
-   microsecond, and the 11 µs peak of `audio` in case C gone.
+   burst and hides the computation. `voice_params` is only the copy of a
+   voice prepared by the loop (journal/D-040): well under a microsecond,
+   with no peak of `audio` in case C.
 2. By ear, switching `CALC` while a note plays, from C1 to C8: no audible
    difference, a click at most on the switch.
 3. Before the module, `cargo run -p oc-core --example aliasing --release`
    with and without `SUPERSAW_CALC=f32`: the same folding to a few tenths
    of a decibel.
 
-On the TLM module (2026-11-19, `voice` and `voice_params` timed, the voice
-prepared by the loop), `voice` mean / max in µs:
-
-| Case | `INT` | `F32` |
-|---|---|---|
-| A — A2, 0 % | 1.16 / 1.22 | 1.07 / 1.11 |
-| B — C8, 100 % | 1.19 / 1.34 | 1.06 / 1.14 |
-| C — C8, 100 %, CV on `NOTE` | 1.17 / 1.35 | 1.07 / 1.14 |
-
-`F32` is about 0.1 µs (8 %) cheaper on the mean and 0.2 µs on the worst
-case, and the note barely moves it. `voice_params` 0.30 µs in both, at
-every change of parameters (about 9 900 in 10 s in case C): a copy.
-`audio` 3.2 to 3.4 / 4.0 / 4.9 to 5.0 µs in every case: the DAC's burst,
-the voice hidden inside it. Before journal/D-040 the bank was prepared in
-the interrupt, and case C took `audio` up to 11 µs and the frame from
-1 344 to 1 381 µs; both are back to cases A and B's.
+Results on the TLM module: lot 9b of `PLAN.md` (step 9, in progress).
 
 ### 9.3h — Output noise floor against the millivolt (journal/D-041)
 
@@ -934,7 +886,9 @@ write or an erase: neither is practical by hand. A test firmware does both.
 ### 9.6 — Sign-off
 
 Record the outcome (pass/fail per section, measured calibration values, OLED
-controller identified) wherever the project tracks hardware notes. Only after
+controller identified) in the step's progress file
+(`docs/plan/avancement/etape-N.md`), and what belongs to this module in
+`docs/hardware.md`. Only after
 this checklist passes should the module be considered fit for anything beyond
 bench testing, and only after 9.4 should the factory calibration be treated
 as anything but a starting guess for this module.
@@ -957,15 +911,14 @@ under Eurorack power-supply noise; none of that is in scope for this plan.
   (journal/D-033) has not been heard in Rack either.
 * **Renode boot smoke test** — dropped as originally specified because the
   firmware drives no UART (every LPUART on pins 0–23 collides with the
-  panel, as documented in `crates/oc-firmware/src/main.rs`). The plan file
-  records the alternatives under consideration (USB CDC banner, semihosting,
-  or observing SPI writes); none is implemented.
-* **Level 9 as a whole.** The firmware has been brought up on a real module
-  (TLM build): 9.1 (screen) and 9.5 (encoders and buttons) were exercised
-  while fixing the OLED controller and the pad pull-ups (`3f50a42`,
-  `a8f3560`), but 9.2 (CV inputs), 9.3 (triggers) and 9.4 (calibration) have
-  not been run. Treat those as a procedure to execute and refine, not as a
-  report of results already obtained.
+  panel, as documented in `crates/oc-firmware/src/main.rs`). journal/D-012
+  records the alternatives (USB CDC banner, semihosting, or observing SPI
+  writes); none is implemented.
+* **Parts of Level 9.** The DAC8565's simultaneous update has no step yet;
+  the input assignment submenu of 9.3c (lot 6e) and 9.3h (journal/D-041)
+  have not been run on the module. The other sections have been, on the TLM
+  module; their results are in the progress files of steps 3 to 8 and in
+  `PLAN.md` for the step in progress.
 
 ## Continuous integration
 
