@@ -80,6 +80,35 @@
       </div>
 
       <div class="panel">
+        <h3>Apps</h3>
+        <div class="row">
+          <button class="needs-probe" id="apps-list" disabled>List</button>
+          <select id="apps-choice" class="needs-probe" disabled></select>
+          <button class="needs-probe" id="apps-select" disabled>Run on the module</button>
+          <span id="apps-status" class="status"></span>
+        </div>
+        <p class="hint">The apps the module runs, and the settings of the one chosen, as its
+          screen shows them. Change a value and it takes effect at once, exactly as if you had
+          turned the knob: the module keeps it within the same limits, and says so if another
+          setting narrowed it. <em>CV</em> marks a setting a CV input can move.
+          <em>Run on the module</em> switches the module to the chosen app.</p>
+        <table class="apps"><tbody id="apps-params"></tbody></table>
+        <div class="row" id="apps-actions"></div>
+        <table class="apps"><tbody id="apps-observed"></tbody></table>
+        <div class="row">
+          <button class="needs-probe" id="apps-refresh" hidden>Read what it plays</button>
+        </div>
+        <details class="dev">
+          <summary>For developers</summary>
+          <p><code>cargo probe apps</code>, <code>cargo probe app ratchet</code>,
+            <code>cargo probe set ratchet prob 50</code>, <code>get</code>, <code>act</code>,
+            <code>select</code> (journal/D-043). The page parses and writes values with the
+            command line's own code (<code>oc_probe::apps</code>), so a value reads and is typed
+            the same in both.</p>
+        </details>
+      </div>
+
+      <div class="panel">
         <h3>Timing</h3>
         <div class="row">
           <button class="needs-probe" id="profile" disabled>Read</button>
@@ -97,7 +126,7 @@
             reads; <code>--watch 2</code> repeats). The rows are the
             stages of <code>oc_core::profile::Stage</code>, timed on the core's cycle counter;
             <em>period</em> is the time between two ticks and the jitter table its spread around
-            1 ms. See “The loop and the screen” in <code>AGENTS.md</code>.</p>
+            1 ms. See “Measuring costs” in <code>docs/agents/firmware.md</code>.</p>
         </details>
         <pre id="profile-out"></pre>
       </div>

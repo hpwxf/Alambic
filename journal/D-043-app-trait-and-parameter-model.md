@@ -195,3 +195,10 @@ inchangés au bruit près (le trait n'a pas fui dans l'interruption), `update` e
 inchangé (lot 10a), coût en code relevé (lots 10a, 10b, 10d), écrans dorés intacts. La relecture d'une sauvegarde
 d'avant le lot est tenue par construction (les indices d'`AppId` n'ont pas changé ; tests de `settings`), sans avoir
 été observée sur le module. **D-043 est adoptée.**
+
+## Lot 10e (2026-11-21) — les apps dans la page web
+
+La page a son panneau *Apps*, l'équivalent de la CLI. La logique reste dans le cœur wasm, testé sur l'hôte (D-031) :
+`AppList` et `AppView` absorbent les messages d'une réponse, puis donnent noms, valeurs, plages et éditeurs, et
+construisent les requêtes ; la lecture et l'écriture d'une valeur sont celles d'`oc_probe::apps`, la description est
+bâtie par les mêmes méthodes d'`AppDescription` que le client. Le JS ne fait que poser les champs et transmettre.

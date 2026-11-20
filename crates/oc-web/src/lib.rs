@@ -16,12 +16,17 @@
 //! Nothing here touches a `JsValue`, so the host tests link it as an
 //! ordinary library.
 
+mod applets;
+
 use wasm_bindgen::prelude::wasm_bindgen;
+
+use applets::Applet;
+pub use applets::{AppList, AppView, Editor};
 
 use oc_core::framebuffer::LEN;
 use oc_halfkay::Report;
 use oc_image::flash::{FlashImage, Format, firmware_image};
-use oc_probe::client::{ProbeError, SpecEntry};
+use oc_probe::client::{AppEntry, ProbeError, SpecEntry};
 use oc_probe::{apps, render};
 use oc_protocol::{Error, FrameReader, MAX_FRAME, Reply, Request, VERSION, decode, encode};
 
@@ -172,6 +177,8 @@ pub struct Message {
     text: String,
     page: u8,
     bytes: Vec<u8>,
+    /// What an applet message carried, for [`AppList`] and [`AppView`].
+    applet: Option<Applet>,
 }
 
 #[wasm_bindgen]
@@ -212,6 +219,15 @@ impl Message {
             text,
             page: 0,
             bytes: Vec::new(),
+            applet: None,
+        }
+    }
+
+    /// An applet message: its text, and what it carried.
+    fn applet(text: String, applet: Applet) -> Self {
+        Self {
+            applet: Some(applet),
+            ..Self::with_text(MessageKind::Applet, text)
         }
     }
 
@@ -238,6 +254,7 @@ impl Message {
                 text: String::new(),
                 page,
                 bytes: bytes.to_vec(),
+                applet: None,
             },
             Reply::Sample(sample) => {
                 Self::with_text(MessageKind::Sample, render::sample_line(&sample))
@@ -246,17 +263,21 @@ impl Message {
             Reply::Error(error) => Self::refused(error),
             Reply::App {
                 app, name, running, ..
-            } => Self::with_text(
-                MessageKind::Applet,
+            } => Self::applet(
                 format!("{app} {name}{}", if running { " (running)" } else { "" }),
+                Applet::App(AppEntry {
+                    index: app,
+                    name: name.to_owned(),
+                    running,
+                }),
             ),
             Reply::Spec {
+                group,
                 index,
                 name,
                 kind,
                 assignable,
                 value,
-                ..
             } => {
                 let spec = SpecEntry {
                     index,
@@ -266,20 +287,32 @@ impl Message {
                     assignable,
                     value,
                 };
-                let value =
+                let shown =
                     value.map_or_else(|| "--".to_owned(), |value| apps::value_text(&spec, value));
-                Self::with_text(MessageKind::Applet, format!("{index} {name} {value}"))
+                Self::applet(format!("{index} {name} {shown}"), Applet::Spec(group, spec))
             }
-            Reply::ChoiceName { choice, name, .. } => {
-                Self::with_text(MessageKind::Applet, format!("  {choice} {name}"))
-            }
-            Reply::Action { index, name } => {
-                Self::with_text(MessageKind::Applet, format!("action {index} {name}"))
-            }
-            Reply::Value(value) | Reply::Observed(Some(value)) => {
-                Self::with_text(MessageKind::Applet, format!("{value:?}"))
-            }
-            Reply::Observed(None) => Self::with_text(MessageKind::Applet, "--".to_owned()),
+            Reply::ChoiceName {
+                group,
+                index,
+                choice,
+                name,
+            } => Self::applet(
+                format!("  {choice} {name}"),
+                Applet::ChoiceName {
+                    group,
+                    index,
+                    name: name.to_owned(),
+                },
+            ),
+            Reply::Action { index, name } => Self::applet(
+                format!("action {index} {name}"),
+                Applet::Action(name.to_owned()),
+            ),
+            Reply::Value(value) => Self::applet(format!("{value:?}"), Applet::Value(value)),
+            Reply::Observed(value) => Self::applet(
+                value.map_or_else(|| "--".to_owned(), |value| format!("{value:?}")),
+                Applet::Observed(value),
+            ),
         }
     }
 }

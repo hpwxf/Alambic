@@ -525,6 +525,16 @@ build identifier on its splash. Install once more from `dist/oc-firmware.hex`
 sha256` of `cargo xtask flash --dry-run`, and the module boots. Record the
 result in the step's progress file; a pass moves D-031 to `adoptée`.
 
+The *Apps* panel (journal/D-043): *List* fills the chooser, the running
+app picked, and shows its settings with their values as its screen does.
+Pick `RATCHET`, *Run on the module*: the module switches to it and the
+chooser marks it running. Type `50` in `PROB`: the row says `set: 50%` and
+the module's screen shows it. Type `5000` in `FIRST`: `2000`, *narrowed by
+another setting*. Choose `SPAN` in `MODE`, then `5000` again: kept. Type
+`steep` in `SHAPE`: the row says what a value looks like, nothing is sent.
+*BURST* sends a burst on B; *Read what it plays* reads `RATE` (`--` until
+`TR1` has had two edges) and `SENT`.
+
 ### 9.2 — CV inputs
 
 For each of the four front-panel CV jacks in turn:

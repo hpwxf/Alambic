@@ -110,6 +110,40 @@ pub struct AppDescription {
     pub actions: Vec<String>,
 }
 
+impl AppDescription {
+    /// Adds a parameter or an observable, in the order the module sends them.
+    pub fn add_spec(&mut self, group: Group, spec: SpecEntry) {
+        match group {
+            Group::Param => self.params.push(spec),
+            Group::Observable => self.observables.push(spec),
+        }
+    }
+
+    /// Adds a choice's next name to the entry it follows.
+    ///
+    /// # Errors
+    ///
+    /// When it does not follow that entry, the order the module keeps.
+    pub fn add_choice_name(
+        &mut self,
+        group: Group,
+        index: u8,
+        name: String,
+    ) -> std::result::Result<(), &'static str> {
+        let list = match group {
+            Group::Param => &mut self.params,
+            Group::Observable => &mut self.observables,
+        };
+        match list.last_mut() {
+            Some(spec) if spec.index == index => {
+                spec.choices.push(name);
+                Ok(())
+            }
+            _ => Err("a name after its choice"),
+        }
+    }
+}
+
 /// An answer, copied out of the frame it was decoded from.
 enum Answer {
     Hello(ModuleInfo),
@@ -294,18 +328,10 @@ impl<T: Read + Write> Client<T> {
         let mut description = AppDescription::default();
         loop {
             match self.next_answer()? {
-                Answer::Spec(Group::Param, spec) => description.params.push(spec),
-                Answer::Spec(Group::Observable, spec) => description.observables.push(spec),
-                Answer::ChoiceName { group, index, name } => {
-                    let list = match group {
-                        Group::Param => &mut description.params,
-                        Group::Observable => &mut description.observables,
-                    };
-                    match list.last_mut() {
-                        Some(spec) if spec.index == index => spec.choices.push(name),
-                        _ => return Err(ProbeError::Unexpected("a name after its choice")),
-                    }
-                }
+                Answer::Spec(group, spec) => description.add_spec(group, spec),
+                Answer::ChoiceName { group, index, name } => description
+                    .add_choice_name(group, index, name)
+                    .map_err(ProbeError::Unexpected)?,
                 Answer::Action(name) => description.actions.push(name),
                 Answer::Done => return Ok(description),
                 _ => return Err(ProbeError::Unexpected("a description")),

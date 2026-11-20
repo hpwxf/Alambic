@@ -17,6 +17,11 @@ Architectural decisions behind each change are in `journal/` (French).
   Probe protocol 4: a module and a host tool must be updated together.
 - The simulator's status line now lists the running applet's parameters
   and what it plays, from the same model.
+- **An Apps panel in the browser tool**: the applets, the settings of the
+  one chosen with their values, ranges and CV marks, set by typing or
+  choosing as the panel would, its actions as buttons, what it plays on
+  demand, and switching the module to it; values read and typed as in
+  `cargo probe`.
 - **`SHAPE`** in `SUPERSAW`: each voice blends from a sawtooth into a
   square, band-limited all the way, at about the same loudness
   (journal/D-037, revision of 2026-11-19); on the first page, takes an

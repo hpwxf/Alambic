@@ -76,6 +76,22 @@ pub fn value_text(spec: &SpecEntry, value: ParamValue) -> String {
     text
 }
 
+/// `value` as one types it back: as [`value_text`] without a unit, so that
+/// [`parse_value`] reads it unchanged (`-3.0`, `A4`, `SPAN`, `ON`).
+#[must_use]
+pub fn edit_text(spec: &SpecEntry, value: ParamValue) -> String {
+    match (spec.kind, value) {
+        (ParamKind::Number { decimals, unit, .. }, ParamValue::Number(number))
+            if unit != Unit::Note =>
+        {
+            let mut text = String::new();
+            let _ = write_number(number, decimals, Unit::None, &mut text);
+            text
+        }
+        _ => value_text(spec, value),
+    }
+}
+
 /// `text` as a value of `spec`'s kind: a number with up to its decimals
 /// (`-1.5`), a note's name or number (`A4`, `69`), a choice's name or index,
 /// `on` or `off`. The range is the module's to check.
@@ -278,6 +294,22 @@ mod tests {
         let sync = spec("SYNC", ParamKind::Toggle, &[]);
         assert_eq!(parse_value(&sync, "On"), Ok(ParamValue::Toggle(true)));
         assert_eq!(value_text(&sync, ParamValue::Toggle(false)), "OFF");
+    }
+
+    #[test]
+    fn a_value_edited_reads_back_unchanged() {
+        let shape = spec("SHAPE", number(1, Unit::Octaves), &[]);
+        let note = spec("NOTE", number(0, Unit::Note), &[]);
+        let mode = spec("MODE", ParamKind::Choice { count: 2 }, &["FIRST", "SPAN"]);
+        for (entry, value) in [
+            (&shape, ParamValue::Number(-25)),
+            (&note, ParamValue::Number(69)),
+            (&mode, ParamValue::Choice(1)),
+        ] {
+            let text = super::edit_text(entry, value);
+            assert_eq!(parse_value(entry, &text), Ok(value), "{text}");
+        }
+        assert_eq!(super::edit_text(&shape, ParamValue::Number(-25)), "-2.5");
     }
 
     #[test]

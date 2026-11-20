@@ -20,6 +20,14 @@ const SCREEN_SCALE = 4;
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
+/** A request answered by a list that a done closes. */
+const UNTIL_DONE = Infinity;
+
+/** Frees the WebAssembly messages a request kept. */
+function release(items) {
+  for (const item of items) item.message?.free();
+}
+
 // --- Probe session ----------------------------------------------------------
 
 /** The open session, or null. */
@@ -53,25 +61,38 @@ class Session {
     }
   }
 
-  /** Hands a message to the stream view or to the oldest waiting request. */
+  /**
+   * Hands a message to the stream view or to the oldest waiting request. A
+   * request that keeps its messages gets the WebAssembly objects too, as
+   * `item.message`, and frees them itself (`release`).
+   */
   dispatch(message) {
     const kind = message.kind;
     const item = { kind, text: message.text, page: message.page, bytes: message.bytes };
-    message.free();
     if (kind === oc.MessageKind.Sample) {
+      message.free();
       appendStream(item.text);
       return;
     }
     const head = this.pending[0];
-    if (!head) return; // an answer nobody waits for
+    if (!head) { // an answer nobody waits for
+      message.free();
+      return;
+    }
     if (kind === oc.MessageKind.Error) {
+      message.free();
       this.pending.shift();
       clearTimeout(head.timer);
+      release(head.messages);
       head.reject(new Error(item.text));
       return;
     }
+    if (head.keep) item.message = message; else message.free();
     head.messages.push(item);
-    if (head.messages.length === head.count) {
+    const complete = head.count === UNTIL_DONE
+      ? kind === oc.MessageKind.Done
+      : head.messages.length === head.count;
+    if (complete) {
       this.pending.shift();
       clearTimeout(head.timer);
       head.resolve(head.messages);
@@ -81,14 +102,19 @@ class Session {
   failPending(error) {
     for (const waiting of this.pending.splice(0)) {
       clearTimeout(waiting.timer);
+      release(waiting.messages);
       waiting.reject(error);
     }
   }
 
-  /** Sends one frame and waits for `count` answers. */
-  ask(frame, count = 1) {
+  /**
+   * Sends one frame and waits for `count` answers, or for every answer up
+   * to the closing done with `UNTIL_DONE`; `keep` hands back the
+   * WebAssembly messages as well.
+   */
+  ask(frame, count = 1, keep = false) {
     return new Promise((resolve, reject) => {
-      const waiting = { count, messages: [], resolve, reject };
+      const waiting = { count, keep, messages: [], resolve, reject };
       waiting.timer = setTimeout(() => {
         const at = this.pending.indexOf(waiting);
         if (at >= 0) this.pending.splice(at, 1);
@@ -143,6 +169,8 @@ async function closeSession() {
   const closing = session;
   session = null;
   setProbeEnabled(false);
+  appView?.free();
+  appView = null;
   stopScreenLive();
   if (closing) await closing.close();
 }
@@ -218,6 +246,157 @@ function setProbeEnabled(connected) {
   for (const element of document.querySelectorAll(".needs-probe")) element.disabled = !connected;
   $("connect").disabled = connected;
   $("disconnect").disabled = !connected;
+}
+
+// --- Applets (journal/D-043) ------------------------------------------------
+
+/** The applet on show, or null. */
+let appView = null;
+
+/** Lists the applets in the chooser, the running one picked, and shows it. */
+async function listApps(probe) {
+  const items = await probe.ask(oc.request_list_apps(), UNTIL_DONE, true);
+  const list = new oc.AppList();
+  for (const item of items) list.absorb(item.message);
+  release(items);
+  const chooser = $("apps-choice");
+  chooser.replaceChildren();
+  for (let at = 0; at < list.len; at += 1) {
+    const running = list.running(at);
+    const option = new Option(`${list.name(at)}${running ? " (running)" : ""}`, list.index(at));
+    chooser.add(option);
+    if (running) chooser.value = String(list.index(at));
+  }
+  const count = list.len;
+  list.free();
+  await showApp(probe, Number(chooser.value));
+  return `${count} apps`;
+}
+
+/** Describes applet `app` and draws its parameters, values and actions. */
+async function showApp(probe, app) {
+  const view = new oc.AppView(app);
+  const items = await probe.ask(view.describe_request(), UNTIL_DONE, true);
+  for (const item of items) view.absorb(item.message);
+  release(items);
+  appView?.free();
+  appView = view;
+  drawParams();
+  drawObservables();
+  drawActions();
+}
+
+const cell = (text, className) => {
+  const td = document.createElement("td");
+  td.textContent = text;
+  if (className) td.className = className;
+  return td;
+};
+
+function drawParams() {
+  const body = $("apps-params");
+  body.replaceChildren();
+  for (let at = 0; at < appView.param_count; at += 1) {
+    const row = document.createElement("tr");
+    const editor = paramEditor(at);
+    const status = cell("", "status");
+    editor.addEventListener("change", () => setParam(at, editorText(editor), editor, status));
+    const editCell = document.createElement("td");
+    editCell.append(editor);
+    row.append(
+      cell(appView.param_name(at)),
+      editCell,
+      cell(appView.param_range(at), "status"),
+      cell(appView.param_assignable(at) ? "CV" : "", "status"),
+      status,
+    );
+    body.append(row);
+  }
+}
+
+/** The field that edits parameter `at`, holding its value now. */
+function paramEditor(at) {
+  const editor = appView.param_editor(at);
+  if (editor === oc.Editor.Number) {
+    const input = document.createElement("input");
+    input.type = "text";
+    input.className = "needs-probe";
+    input.value = appView.param_edit_text(at);
+    return input;
+  }
+  const select = document.createElement("select");
+  select.className = "needs-probe";
+  const names = editor === oc.Editor.Choice ? appView.param_choices(at) : ["ON", "OFF"];
+  for (const name of names) select.add(new Option(name, name));
+  select.value = appView.param_edit_text(at);
+  return select;
+}
+
+const editorText = (editor) => editor.value;
+
+/** Sets parameter `at` as `cargo probe set` would, and shows what the applet applied. */
+async function setParam(at, text, editor, status) {
+  if (!session || !appView) return;
+  let frame;
+  try {
+    frame = appView.set_request(at, text);
+  } catch (error) {
+    status.textContent = String(error);
+    return;
+  }
+  try {
+    const [item] = await session.ask(frame, 1, true);
+    const shown = appView.absorb_param(at, item.message);
+    release([item]);
+    const applied = appView.param_edit_text(at);
+    editor.value = applied;
+    status.textContent = applied.toLowerCase() === text.trim().toLowerCase()
+      ? `set: ${shown}`
+      : `set: ${shown} (narrowed by another setting)`;
+  } catch (error) {
+    status.textContent = `error: ${error.message}`;
+    editor.value = appView.param_edit_text(at);
+  }
+}
+
+function drawObservables() {
+  const body = $("apps-observed");
+  body.replaceChildren();
+  for (let at = 0; at < appView.observable_count; at += 1) {
+    const row = document.createElement("tr");
+    row.append(cell(appView.observable_name(at)), cell(appView.observable_text(at)));
+    body.append(row);
+  }
+  $("apps-refresh").hidden = appView.observable_count === 0;
+}
+
+/** Reads every observable again. */
+async function refreshObservables(probe) {
+  if (!appView) return "nothing shown";
+  for (let at = 0; at < appView.observable_count; at += 1) {
+    const [item] = await probe.ask(appView.observe_request(at), 1, true);
+    appView.absorb_observed(at, item.message);
+    release([item]);
+  }
+  drawObservables();
+  return "read";
+}
+
+function drawActions() {
+  const row = $("apps-actions");
+  row.replaceChildren();
+  appView.actions.forEach((name, at) => {
+    const button = document.createElement("button");
+    button.className = "needs-probe";
+    button.textContent = name;
+    button.addEventListener("click", (event) => request(
+      event.currentTarget, "apps-status", `${name}…`, async (probe) => {
+        await probe.ask(appView.act_request(at));
+        return `${name} done`;
+      },
+    ));
+    row.append(button);
+  });
 }
 
 // --- Flash ------------------------------------------------------------------
@@ -426,6 +605,23 @@ async function main() {
   $("out-release").addEventListener("click", () => run((probe) => probe.ask(
     oc.request_force_output(Number($("out-channel").value), undefined),
   )));
+
+  $("apps-list").addEventListener("click", (event) => request(
+    event.currentTarget, "apps-status", "listing…", listApps,
+  ));
+  $("apps-choice").addEventListener("change", (event) => run(
+    (probe) => showApp(probe, Number(event.target.value)),
+  ));
+  $("apps-select").addEventListener("click", (event) => request(
+    event.currentTarget, "apps-status", "switching…", async (probe) => {
+      if (!appView) return "list the apps first";
+      await probe.ask(appView.select_request());
+      return listApps(probe);
+    },
+  ));
+  $("apps-refresh").addEventListener("click", (event) => request(
+    event.currentTarget, "apps-status", "reading…", refreshObservables,
+  ));
 
   $("elf").addEventListener("change", (event) => loadImage(event.target.files[0]));
   $("confirm").addEventListener("change", updateFlashButton);
