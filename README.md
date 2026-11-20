@@ -391,8 +391,10 @@ connected it restarts the module into the bootloader itself. `cargo xtask
 web` needs the `wasm-bindgen` command line at the version `Cargo.lock` pins
 (it says which, and how to install it). Both sides have been tried on a
 module from Chrome on macOS; `cargo xtask flash` stays the reference for
-development. After rebuilding the page, reload it without the cache
-(Cmd+Shift+R): Chrome otherwise keeps the previous `app.js`.
+development. Each build stamps the page's scripts with a fingerprint of
+what it built (`app.js?v=…`), so a plain reload picks up a rebuilt page:
+Chrome would otherwise keep the previous `app.js` under a new page, whose
+new buttons then do nothing.
 
 ## Requirements
 
