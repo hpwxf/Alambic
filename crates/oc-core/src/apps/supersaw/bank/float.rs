@@ -278,17 +278,14 @@ fn fraction(value: i64, bits: u32) -> f32 {
 }
 
 /// `level` rounded to the millivolt and held within what the outputs can
-/// produce.
+/// produce: rounded half away from zero by adding a signed half, converted
+/// (the conversion saturates), then held in integers, so that no
+/// floating-point comparison is left (journal/D-039).
 fn millivolts(level: f32) -> MilliVolts {
-    #[allow(clippy::cast_precision_loss)]
-    // The output range, a few thousand millivolts.
-    let (low, high) = (CV_OUT_MIN_MV as f32, CV_OUT_MAX_MV as f32);
-    let held = level.clamp(low, high);
-    let rounded = if held < 0.0 { held - 0.5 } else { held + 0.5 };
     #[allow(clippy::cast_possible_truncation)]
-    // Held within the output range, a few thousand millivolts.
-    let rounded = rounded as MilliVolts;
-    rounded
+    // Saturates at the `i32` range, far beyond the outputs'.
+    let rounded = (level + 0.5f32.copysign(level)) as MilliVolts;
+    rounded.clamp(CV_OUT_MIN_MV, CV_OUT_MAX_MV)
 }
 
 #[cfg(test)]
@@ -338,5 +335,9 @@ mod tests {
         assert_eq!(millivolts(-1.6), -2);
         assert_eq!(millivolts(1e9), crate::calibration::CV_OUT_MAX_MV);
         assert_eq!(millivolts(-1e9), crate::calibration::CV_OUT_MIN_MV);
+        assert_eq!(millivolts(-0.0), 0);
+        assert_eq!(millivolts(f32::NAN), 0);
+        assert_eq!(millivolts(2.5), 3);
+        assert_eq!(millivolts(-2.5), -3);
     }
 }
