@@ -39,7 +39,7 @@ feature.
 
 ## 4. Ce que nous avons décidé, et pourquoi
 
-**B** et **D**. Un seul format d'image partagé est ce qui rend les écrans dorés du simulateur (D-013) représentatifs
+**B** et **D**. Un seul format d'image partagé est ce qui rend les écrans de référence du simulateur (D-013) représentatifs
 du module, et le pilote maison laisse `oc-drivers` testable sans dépendre des choix d'API d'un crate tiers.
 
 ## 5. Ce qui nous ferait changer d'avis
@@ -71,7 +71,7 @@ découpe l'envoi** :
   qui défile vite pourrait montrer un décalage entre haut et bas. Parades si c'était le cas : deux pages par tick
   sur les ticks sans dessin, ou le SPI en DMA (D-023, option A) ;
 * un écran d'une page (simulateur, Rack, tests) reçoit la trame dans le tick qui la dessine, comme avant : les
-  écrans dorés ne bougent pas ;
+  écrans de référence ne bougent pas ;
 * l'écran de démarrage envoie toujours la trame entière à chaque tick (sorties au repos, rien à protéger) ;
 * le firmware n'enveloppe plus le pilote pour chronométrer (`TimedPanel` devient `PagedPanel`) : l'`Engine` mesure
   chaque page (`Stage::Page`), `Stage::Present` ne couvre plus que les envois entiers.
@@ -122,7 +122,7 @@ par caractère, police rangée par lignes, framebuffer par colonnes).
   grille des pages, deux moitiés décalées sinon). Couleur (allumé, éteint), alignement, ligne de base, lignes
   multiples et glyphe de remplacement comme `embedded-graphics`.
 * **Mêmes pixels** : les tests comparent les deux tracés pour chaque glyphe, dans les deux couleurs, sur et hors
-  de la grille des pages et aux bords, et pour chaque alignement et ligne de base ; écrans dorés inchangés.
+  de la grille des pages et aux bords, et pour chaque alignement et ligne de base ; écrans de référence inchangés.
   `embedded-graphics` reste la référence des tests et sert toujours aux lignes et rectangles.
 * **Tous les textes** passent par `text::draw` (Diagnostic, Scope, menu, SETUP, assistant, écran de démarrage,
   message de sauvegarde) ; les applets ne changent que l'appel.
@@ -144,7 +144,7 @@ octet par colonne). Corrigé :
   fait partie du `TextStyle` (`TextStyle::lit(&fonts::FONT_6X10)`), chaque applet choisit la sienne ;
 * **`text::fonts`**, généré : `FONT_4X6`, `FONT_5X8`, `FONT_6X10`, `FONT_7X13`, `FONT_9X15`, `FONT_10X20` (un à trois
   octets par colonne), extraits des polices ASCII d'`embedded-graphics` par `tests/fonts.rs`
-  (`UPDATE_FONTS=1 cargo test -p oc-core --test fonts`, sur le modèle des écrans dorés) ; le même test compare les
+  (`UPDATE_FONTS=1 cargo test -p oc-core --test fonts`, sur le modèle des écrans de référence) ; le même test compare les
   pixels pour chaque police, glyphe, couleur, alignement, ligne de base et position, et échoue si le fichier n'est
   plus à jour. Une police qu'aucun code n'utilise n'entre pas dans l'image ;
 * `embedded-graphics` reste la référence des tests ; à l'exécution, il a été retiré ensuite (D-030, révision du

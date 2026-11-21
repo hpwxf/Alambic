@@ -270,14 +270,12 @@ fn supersaw_shows_the_input_submenu() {
 }
 
 #[test]
-fn supersaw_shows_stereo_and_calc_on_its_second_page() {
+fn supersaw_shows_level_and_stereo_on_its_second_page() {
     use oc_core::apps::supersaw::Setting;
-    use oc_core::audio::supersaw::Arithmetic;
     let mut simulator = replay("supersaw_page2");
     let supersaw = simulator.app::<SupersawApp>();
-    assert_eq!((supersaw.selected(), supersaw.page()), (Setting::Calc, 1));
+    assert_eq!((supersaw.selected(), supersaw.page()), (Setting::Stereo, 1));
     assert!(supersaw.stereo());
-    assert_eq!(supersaw.arithmetic(), Arithmetic::Float);
     assert_screen_matches(&mut simulator, "supersaw_page2");
 }
 

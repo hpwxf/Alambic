@@ -9,8 +9,8 @@ mix ; PolyBLEP d'abord, ×4 seulement si le repliement s'entend.
 | Lot | Contenu | Critère d'acceptation |
 |---|---|---|
 | **8a** — calcul | `oc_core::audio::supersaw` : scie PolyBLEP entière (aucune division par échantillon), table de désaccord de Szabo, lois de mixage, passe-haut à un pôle sur la fondamentale, parts `Mono` / `Left` / `Right` / `Sub` ; `Params::supersaw`, `Channel::Supersaw(Part)`, banc dans `Voice` ; banc criterion | tests : table et lois contre `f64`, PolyBLEP continue au saut, alias réduits d'au moins 20 dB contre la scie naïve (DFT), passe-haut sans continu, parts cohérentes, bornes ; banc de `next_sample` |
-| **8b** — applet | `SupersawApp`, `AppId::Supersaw` (« SUPERSAW ») en fin d'énumération ; réglages `NOTE`, `DETUNE`, `MIX`, `LEVEL`, `STEREO` ; CV1 V/oct, CV2 désaccord, CV3 mix ; menu à six applets sans ligne vide ; écran (réglages, entrées, aperçu des sept voix) | tests sur `mock_engine` ; scénarios dorés relus ; menu doré régénéré |
-| **8b′** — entrées assignables (ajouté le 2026-11-18) | les réglages sauf `STEREO` prennent leur entrée par `oc_core::modulation` (D-036) ; `NOTE` sur CV1 au démarrage, les autres sans entrée ; révision de D-037 | tests sur `mock_engine` (bruit d'une entrée non assignée, sous-menu, VCA) ; scénarios dorés `supersaw` et `supersaw_inputs` |
+| **8b** — applet | `SupersawApp`, `AppId::Supersaw` (« SUPERSAW ») en fin d'énumération ; réglages `NOTE`, `DETUNE`, `MIX`, `LEVEL`, `STEREO` ; CV1 V/oct, CV2 désaccord, CV3 mix ; menu à six applets sans ligne vide ; écran (réglages, entrées, aperçu des sept voix) | tests sur `mock_engine` ; scénarios de référence relus ; écran de référence du menu régénéré |
+| **8b′** — entrées assignables (ajouté le 2026-11-18) | les réglages sauf `STEREO` prennent leur entrée par `oc_core::modulation` (D-036) ; `NOTE` sur CV1 au démarrage, les autres sans entrée ; révision de D-037 | tests sur `mock_engine` (bruit d'une entrée non assignée, sous-menu, VCA) ; scénarios de référence `supersaw` et `supersaw_inputs` |
 | **8c** — module | niveau 9 : `audio` au profil, écoute du grave à l'aigu, `STEREO`, CV ; écran en marche | interruption sous sa période avec marge ; pas de tic ; décision sur le ×4 |
 | **8c′** — repliement mesuré (ajouté le 2026-11-18) | exemple `aliasing` d'`oc-core` : spectre du banc réel, harmoniques séparées par le pas exact de chaque voix, rampes naïves en référence ; écrêtage par niveau | décision sur le ×4 sur des chiffres, pas à l'oreille |
 | **8c″** — polarité inversée (ajouté le 2026-11-18) | scies descendantes, pour que les pointes du passe-haut aillent vers la marge de 6 V ; niveau le plus haut sans écrêtage mesuré sur tous les cas ; paires de WAV écoutées | révision de D-037 ; `LEVEL` à 3 V gardé |
@@ -23,7 +23,7 @@ Ordre : 8a → 8b → 8c → 8d éventuel. Version 0.6.0 à la clôture.
 1. Coût dans l'interruption : estimé à quelques centaines de cycles par échantillon (≈ 0,5 µs) ; mesuré en 8c.
 2. Débordements en entier : écarts de pas, gains et passe-haut bornés par des tests aux extrêmes (note C8,
    désaccord 100 %, mix 0 et 100 %).
-3. `Params` grossit (banc en plus) : copie dans la boîte aux lettres un peu plus longue, sous section critique ;
+3. `Params` grossit (banc en plus) : copie dans `MAILBOX` un peu plus longue, sous section critique ;
    à vérifier au profil.
 4. `AppId` sérialisé : la variante s'ajoute en fin ; menu DIAGNOSTIC, SCOPE, GFX DEMO, RATCHET, TONE, SUPERSAW.
 5. Images de reconstruction non filtrées par la sortie (étude § 10) : hors de portée du calcul, noté à l'écoute.

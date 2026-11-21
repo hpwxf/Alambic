@@ -29,7 +29,7 @@ il ne dépend que des paramètres, qui changent au plus une fois par tick.
 * **A — préparer dans la boucle.** Une fonction pure, `Setup::new(&Params, rate)`, calcule tout ce qui dépend des
   paramètres (pas, inverses, gains, normaliseurs, coefficients des deux bancs) ; `Voice::apply(&Setup)` ne fait que
   copier en gardant les phases et l'état des filtres. La boucle calcule le `Setup` hors section critique quand les
-  paramètres changent et le dépose dans la boîte aux lettres ; l'interruption l'applique. Coût : une boîte aux lettres
+  paramètres changent et le dépose dans `MAILBOX` ; l'interruption l'applique. Coût : une `MAILBOX`
   plus grande (≈ 300 octets copiés sous section critique à chaque changement, côté boucle), la même latence (la
   période suivante).
 * **B — garder la préparation dans l'interruption et la rendre moins chère** : inverses en `f32` ou en 32 bits,
@@ -42,7 +42,7 @@ il ne dépend que des paramètres, qui changent au plus une fois par tick.
 
 **A**, à la suite de la lecture des relevés (D-039, lot 9b). `Voice::set_params` reste, défini comme
 `apply(&Setup::new(params, rate))`, pour la voix du moteur à 1 kHz, le simulateur et Rack : le comportement y est le
-même par construction, et les écrans dorés ne bougent pas. Le `Setup` est `Copy`, sans allocation, et sa construction
+même par construction, et les écrans de référence ne bougent pas. Le `Setup` est `Copy`, sans allocation, et sa construction
 ne touche pas à l'état de la voix ; le calculer hors section critique évite d'y bloquer l'interruption.
 
 ## 4. Ce que nous avons décidé, et pourquoi
@@ -59,3 +59,13 @@ que copier un `Setup` et rendre des échantillons ; `voice_params` mesure cette 
   applets à plusieurs bancs) : même remède.
 * Un paramètre qui doit changer plus vite qu'une fois par tick (modulation audio) : il entrerait alors dans le calcul
   par échantillon, pas dans le `Setup`.
+
+## Révision du 2026-11-21 — une révision plutôt qu'une comparaison
+
+`audio::publish` comparait à chaque tick, sous section critique, les `Params` (80 octets) et la calibration des
+sorties à ceux de `MAILBOX` : 1,55 µs par tick sur le module, que les paramètres changent ou non (D-044, étape
+`publish`). Le moteur numérote désormais ses paramètres (`Engine::params_revision`, qui avance quand `params` change) ;
+le firmware garde dans `audio::Publisher`, côté boucle, la révision et la calibration publiées, et ne prend la
+section critique que quand l'une des deux a changé. `rest_outputs` oublie la révision, pour que la publication
+suivante rende les paramètres. Mesuré : un tick inchangé coûte 1,02 µs à `publish` au lieu de 1,46 à 1,56. Le reste
+de cette entrée est inchangé.

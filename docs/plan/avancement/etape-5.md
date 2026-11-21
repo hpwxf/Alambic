@@ -13,7 +13,7 @@ indicatives.
 | plan | `288db18` | D-030, plan, feuille de route renumérotée |
 | 5a | `ee4e07c` | bases `gfx` : formes droites en octets, ligne, cercle, disque, `Ink::Invert`, sinus entier |
 | 5b | `0bf24b3` | contrôles, courbes, motifs ; `Ratio`, `Area` |
-| 5c | `da8d31b` | applet `GFX DEMO`, cinq pages, écrans dorés, banc par page |
+| 5c | `da8d31b` | applet `GFX DEMO`, cinq pages, écrans de référence, banc par page |
 | 5d | `e8575f3` | mesure sur module |
 | suite | `bb3ab08`, ce commit | `embedded-graphics` en dépendance de test ; banc `graphics.rs`, rapports HTML de criterion |
 

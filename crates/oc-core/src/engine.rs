@@ -13,9 +13,9 @@
 //! ticks after the drawing, and the next frame waits for the last page
 //! (journal/D-023, option C+; `docs/agents/firmware.md`, "The screen").
 
+use crate::apps::sound::{Params, Setup, Voice};
 use crate::apps::{App, AppHost, AppId};
 use crate::apps::{InputSnapshot, TickContext};
-use crate::audio::{Params, Voice};
 use crate::buttons::{ButtonEvents, ButtonReader};
 use crate::calibration::Calibration;
 use crate::framebuffer::FrameBuffer;
@@ -124,6 +124,8 @@ pub struct Engine<A, O, D, C, K, S> {
     forced_outputs: [Option<MilliVolts>; CV_CHANNELS],
     /// What the outputs carry since the last tick (journal/D-033).
     params: Params,
+    /// Moves on whenever [`Self::params`] changes.
+    params_revision: u32,
     /// Renders [`Self::params`] once a tick, for the outputs it writes.
     voice: Voice,
     screen: Screen,
@@ -178,6 +180,7 @@ where
             previous_fine: None,
             forced_outputs: [None; CV_CHANNELS],
             params: Params::REST,
+            params_revision: 0,
             voice: Voice::new(TICK_RATE_HZ),
             screen: Screen::Splash,
             tick_count: 0,
@@ -338,8 +341,9 @@ where
                 }
             }
         }
-        self.params = params;
-        self.voice.set_params(&params);
+        if self.replace_params(params) {
+            self.voice.apply(&Setup::new(&params, TICK_RATE_HZ));
+        }
         self.voice.next_sample()
     }
 
@@ -355,7 +359,7 @@ where
         self.splash.advance(elapsed);
 
         let outputs = [0; CV_CHANNELS];
-        self.params = Params::REST;
+        self.replace_params(Params::REST);
         self.write_outputs(&outputs);
 
         let mark = self.clock.fine_count();
@@ -401,7 +405,7 @@ where
         self.previous_micros = None;
         self.previous_fine = None;
         self.forced_outputs = [None; CV_CHANNELS];
-        self.params = Params::REST;
+        self.replace_params(Params::REST);
         self.voice = Voice::new(TICK_RATE_HZ);
         self.last_duration_micros = 0;
         self.ticks_since_render = 0;
@@ -438,6 +442,24 @@ where
     #[must_use]
     pub const fn params(&self) -> &Params {
         &self.params
+    }
+
+    /// Moves on whenever [`Self::params`] changes, wrapping: a backend that
+    /// hands the parameters on compares this instead of the parameters, a
+    /// few bytes instead of a whole [`Params`] every tick.
+    #[must_use]
+    pub const fn params_revision(&self) -> u32 {
+        self.params_revision
+    }
+
+    /// Makes `params` what the outputs carry; whether they changed.
+    fn replace_params(&mut self, params: Params) -> bool {
+        let changed = params != self.params;
+        if changed {
+            self.params = params;
+            self.params_revision = self.params_revision.wrapping_add(1);
+        }
+        changed
     }
 
     /// The levels held by [`Self::force_output`].
@@ -1054,5 +1076,20 @@ mod tests {
 
         let report = engine.tick();
         assert_eq!(report.cv_out[1], adc_reading(1_500));
+    }
+
+    #[test]
+    fn the_params_revision_moves_only_when_the_params_change() {
+        let mut engine = mock_engine_at_boot(0);
+        engine.skip_splash();
+        engine.parts_mut().0.patch(CvChannel::Two, 1_500);
+        engine.tick();
+        let first = engine.params_revision();
+        engine.tick();
+        assert_eq!(engine.params_revision(), first, "same input, same params");
+
+        engine.parts_mut().0.patch(CvChannel::Two, -800);
+        engine.tick();
+        assert_ne!(engine.params_revision(), first, "a new level is new params");
     }
 }

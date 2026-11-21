@@ -11,7 +11,7 @@ D-008, D-009, D-010 révisées. Récit détaillé de chaque essai, de ses échec
 | plan | `336817a` | D-033 (48 kHz, quatre sorties, `TONE`), plan en cinq lots |
 | 7a | `b293d6a` | `DAC_CS` en PCS0, OLED sur PCS3, bus à 22 MHz, voies écrites au changement |
 | 7b | `7993063` | `oc_core::audio` (paramètres de sortie, `Voice`, formes, sinus calculé à la compilation), `TONE`, `oc_engine_audio` pour Rack |
-| 7c | `21cdbb6`, `69e9099` | interruption audio propriétaire du bus, écran par tronçons (`FrameStream`), boîtes aux lettres ; puis six essais sur le module : repli PERCLK ÷ 21 = 47 619 Hz, double déclenchement, fin d'envoi lue dans l'écho |
+| 7c | `21cdbb6`, `69e9099` | interruption audio propriétaire du bus, écran par tronçons (`FrameStream`), `MAILBOX` ; puis six essais sur le module : repli PERCLK ÷ 21 = 47 619 Hz, double déclenchement, fin d'envoi lue dans l'écho |
 | 7d | — | à l'accordeur : juste jusqu'à C6, perturbé autour de C7 (gigue ±3 µs) : décide le DMA |
 | 7e | `27211a5` | PIT → DMAMUX (`ENBL \| TRIG \| A_ON`) → DMA → LPSPI4 : DAC écrit à l'instant du timer ; interruption de fin de copie pour l'échantillon et l'écran |
 | clôture | ce commit | auto-test de 50 ms et rapport à 3 s dans le journal ; rapport détaillé, `docs/hardware.md` |

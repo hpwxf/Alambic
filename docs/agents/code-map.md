@@ -31,8 +31,9 @@ rationale behind each crate is in the journal entry cited.
 | The `App` trait, the registry and dispatch (`AppId`, `AppHost`) | `crates/oc-core/src/apps/mod.rs` (journal/D-043) |
 | What an applet exposes: parameters, observables, actions (`ParamSpec`, `write_summary`) | `crates/oc-core/src/apps/param.rs` (journal/D-043) |
 | The applets | `crates/oc-core/src/apps/`: `diagnostic.rs`, `scope.rs`, `gfx_demo.rs`, `ratchet/`, `tone.rs`, `supersaw.rs` |
-| The supersaw bank | `crates/oc-core/src/audio/supersaw.rs` (what both arithmetics share), `supersaw/fixed.rs` (integers, journal/D-037), `supersaw/float.rs` (`f32` on trial, journal/D-039) |
-| Output parameters, the voice, `Setup`, the waveforms | `crates/oc-core/src/audio/mod.rs`, `audio/wave.rs` (journal/D-033, D-040) |
+| The supersaw bank, the applet's own | `crates/oc-core/src/apps/supersaw/bank.rs` (parameters, Szabo's curves, the preparation in integers, the `SupersawBank` generator), `bank/float.rs` (the bank in `f32`, integer phases, journal/D-039) |
+| The generators this image composes (`Sound`, `Params`, `Setup`, `Voice`) | `crates/oc-core/src/apps/sound.rs` (journal/D-044) |
+| The `Generator` trait, the voice, `Setup`, the waveforms, levels and tones (`Basic`) | `crates/oc-core/src/audio/mod.rs`, `audio/wave.rs`, `audio/basic.rs` (journal/D-033, D-040, D-044) |
 | A parameter modulated by a CV input, and its submenu | `crates/oc-core/src/modulation/mod.rs`, `modulation/editor.rs` (journal/D-035, D-036) |
 | The app menu (`up`+`down`) | `crates/oc-core/src/menu.rs` |
 | Button debouncing and the `up`+`down` chord | `crates/oc-core/src/buttons.rs` |

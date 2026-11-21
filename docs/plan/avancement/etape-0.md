@@ -8,7 +8,7 @@ Reconstruit le 2026-11-16 depuis `git log` et le plan `.junie/plans/oc-rust-firm
 |---|---|---|
 | 1 — workspace, chaîne croisée, CI | `1524760` | workspace, `rust-toolchain.toml`, `t4link.x`, `xtask build|size|hex`, firmware témoin (bannière + LED), CI |
 | 2 — `oc-core` | `555f492` | six traits, calibration, anti-rebond, quadrature, activité, framebuffer, `DiagnosticApp`, `Engine::tick`, 84 tests |
-| 3 — simulateur | `84f9d86` | TUI ratatui, horloge virtuelle, scénarios + écrans dorés, 34 tests + 4 scénarios |
+| 3 — simulateur | `84f9d86` | TUI ratatui, horloge virtuelle, scénarios + écrans de référence, 34 tests + 4 scénarios |
 | 4 — firmware et flash | `ec140ed`, `d173510` | `oc-drivers` (DAC8565, SSD130x, triggers, panneau, bus partagé), `board.rs`, `xtask flash` + `validate.rs` |
 | 5 — VCV Rack | `40e8c3f` | `oc-vcv-ffi`, plugin C++, `xtask vcv`, `TESTING.md`, `AGENTS.md` |
 

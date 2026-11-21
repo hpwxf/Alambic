@@ -112,7 +112,7 @@ par app retirés d'`Engine`, d'`AppHost` et d'`oc-sim`. Les messages de la sonde
   microsecondes de leur valeur d'avant ;
 * criterion : `engine/tick_idle`, `engine/tick_busy` et `voice/*` inchangés au bruit près ;
 * coût en `.text` relevé par différence de `cargo xtask size` (méthode de D-038) ;
-* écrans dorés inchangés, sans `UPDATE_SCREENS` ; une sauvegarde faite avant le lot relue avec la même app de
+* écrans de référence inchangés, sans `UPDATE_SCREENS` ; une sauvegarde faite avant le lot relue avec la même app de
   démarrage.
 
 ## 5. Ce qui nous ferait changer d'avis
@@ -192,7 +192,7 @@ du bruit, `MIX` 50 %, `SHAPE` 25 %, `STEREO ON`, avant (`8e475a4`) et après (`b
 
 `frame`, `period` et l'histogramme de gigue sont les mêmes. Les critères du § 4 sont tenus : `voice` et `audio`
 inchangés au bruit près (le trait n'a pas fui dans l'interruption), `update` et `render` dans le bruit, criterion
-inchangé (lot 10a), coût en code relevé (lots 10a, 10b, 10d), écrans dorés intacts. La relecture d'une sauvegarde
+inchangé (lot 10a), coût en code relevé (lots 10a, 10b, 10d), écrans de référence intacts. La relecture d'une sauvegarde
 d'avant le lot est tenue par construction (les indices d'`AppId` n'ont pas changé ; tests de `settings`), sans avoir
 été observée sur le module. **D-043 est adoptée.**
 

@@ -4,9 +4,10 @@
 use std::f64::consts::TAU;
 
 use oc_core::apps::AppId;
+use oc_core::apps::sound::{Params, Voice};
 use oc_core::apps::tone::{REFERENCE_NOTE, frequency};
+use oc_core::audio::basic::{BasicParams, Channel, Tone};
 use oc_core::audio::wave::{ONE, Waveform, sine};
-use oc_core::audio::{Channel, Params, Tone, Voice};
 use oc_core::platform::CvChannel;
 use oc_core::settings::Settings;
 use oc_core::testing::{MockEngine, mock_engine_at_boot};
@@ -45,13 +46,13 @@ fn the_pitch_is_within_a_tenth_of_a_cent_or_a_millihertz() {
 fn a_voice_plays_its_frequency_over_a_second() {
     // Counts the rising zero crossings of a 440 Hz sine at 48 kHz.
     let mut voice = Voice::new(48_000);
-    let mut params = Params::REST;
-    params.channels[0] = Channel::Tone(Tone {
+    let mut sound = BasicParams::REST;
+    sound.channels[0] = Channel::Tone(Tone {
         wave: Waveform::Sine,
         frequency: 440_000,
         amplitude: 1_000,
     });
-    voice.set_params(&params);
+    voice.set_params(&Params::basic(sound));
     let mut crossings = 0;
     let mut previous = -1;
     for _ in 0..48_000 {
@@ -85,7 +86,7 @@ fn the_engine_publishes_the_tones_and_samples_them_once_a_tick() {
         "sine, triangle and saw start at zero"
     );
     assert_eq!(first[3], 1_000, "the square starts high");
-    let Channel::Tone(played) = engine.params().channels[0] else {
+    let Channel::Tone(played) = engine.params().as_basic().unwrap().channels[0] else {
         panic!("A carries a tone");
     };
     assert_eq!(played.frequency, frequency(REFERENCE_NOTE, 0));
@@ -100,8 +101,10 @@ fn a_probe_holds_an_output_over_the_tone() {
     engine.clock().advance(1_000);
     let report = engine.tick();
     assert_eq!(report.cv_out[1], 1_234);
-    assert_eq!(engine.params().channels[1], Channel::Level(1_234));
-    assert!(matches!(engine.params().channels[0], Channel::Tone(_)));
+    // Held over the sound, which plays on beneath (journal/D-044).
+    assert_eq!(engine.params().held[1], Some(1_234));
+    let channels = engine.params().as_basic().unwrap().channels;
+    assert!(matches!(channels[0], Channel::Tone(_)) && matches!(channels[1], Channel::Tone(_)));
 }
 
 #[test]

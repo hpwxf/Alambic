@@ -47,7 +47,7 @@ La proposition.
   chacun (sa correspondance volts → valeur) ; l'application de l'effet à sa valeur (`count_from`, `time_from`, … dans
   `RATCHET`) ; le texte de la valeur et sa position sur la barre ; l'ouverture (clic droit sur l'écran principal) et
   le dessin de l'écran sous le cadre.
-* **Comportement inchangé** : écrans dorés et tests de `RATCHET` identiques ; les tests de la mécanique passent dans
+* **Comportement inchangé** : écrans de référence et tests de `RATCHET` identiques ; les tests de la mécanique passent dans
   `tests/modulation.rs`.
 
 ## 5. Ce qui nous ferait changer d'avis

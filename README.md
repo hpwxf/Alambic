@@ -101,10 +101,9 @@ over two pages, the right one changes it:
 * page 1: `NOTE` (C1–C8, A2 at start), `DETUNE` and `MIX` (0–100 %),
   `SHAPE` (from the sawtooth to a square, 0–100 %, its waveform drawn beside
   it) and `WIDTH` (the width of that square's pulse, 50 down to 5 %);
-* page 2: `LEVEL` (0–3 V), `STEREO`, and `CALC`, the oscillator bank's
-  arithmetic on trial, `INT` or `F32` (journal/D-039).
+* page 2: `LEVEL` (0–3 V) and `STEREO`.
 
-Every setting but `STEREO` and `CALC` takes an input (*Assigning an input*,
+Every setting but `STEREO` takes an input (*Assigning an input*,
 below). `NOTE` takes `CV1` at start, added at one volt per octave (`SET` from
 C4 at 0 V, `MUL` on the frequency); the others none. `DETUNE`, `MIX` and
 `SHAPE` move 20 % a volt, `WIDTH` its whole course over 0–5 V, `LEVEL` 0–3 V

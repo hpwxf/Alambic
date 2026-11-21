@@ -1,10 +1,13 @@
-//! The supersaw bank in `f32`, the trial of journal/D-039: the same voices,
-//! curves and parts as the integer bank, written as floating point would
-//! write them, so the two can be compared on the module.
+//! The supersaw bank in `f32` (journal/D-039): the voices, curves and parts
+//! of journal/D-037, adopted over the integer bank they were first written
+//! in, cheaper on the module and as precise.
 //!
-//! The phases run in `[0, 1)` and wrap by subtraction; the `PolyBLEP`
-//! correction multiplies by each voice's `1 / dt`, computed when the
-//! parameters change, so there is still no division per sample. What the
+//! The phases run as integers, a turn being `2^32`, and wrap for
+//! free: in `f32` a phase near the end of its turn keeps 24 bits, and its
+//! sum drifts off pitch at low notes (journal/D-039, F2). Each sample
+//! reads it as a fraction of a turn; the `PolyBLEP` correction multiplies
+//! by each voice's `1 / dt`, computed when the parameters change, so there
+//! is still no division per sample. What the
 //! two banks share as a table or a root (the detune curve, the mix laws,
 //! the normalisers, prepared in integers by the parent module) is converted: `core` has no
 //! `sqrt` without `std`, and Szabo's polynomial loses all its precision in
@@ -18,57 +21,63 @@ use crate::platform::MilliVolts;
 /// One free-running sawtooth with what its correction needs.
 #[derive(Debug, Clone, Copy)]
 struct Saw {
-    /// Where it is in its turn, in `[0, 1)`.
-    phase: f32,
-    /// The turn advanced per sample, below one half.
-    step: f32,
-    /// `1 / step`, zero at rest.
+    /// Where it is in its turn, a turn being `2^32`.
+    phase: u32,
+    /// The phase advanced per sample, below half a turn.
+    step: u32,
+    /// One over the step as a fraction of a turn, zero at rest.
     inverse: f32,
 }
 
 impl Saw {
-    const REST: Self = Self {
-        phase: 0.0,
-        step: 0.0,
-        inverse: 0.0,
-    };
+    const fn at(phase: u32) -> Self {
+        Self {
+            phase,
+            step: 0,
+            inverse: 0.0,
+        }
+    }
 
     /// The band-limited value at the current phase, then advances: a
-    /// sawtooth less `shape` (zero to one) of the same `lead` on (a fraction
-    /// of a turn), which blends it into a pulse of that width, a square at
-    /// half a turn.
-    fn next(&mut self, shape: f32, lead: f32) -> f32 {
+    /// sawtooth less `shape` (zero to one) of the same `lead` on (a turn
+    /// being `2^32`), which blends it into a pulse of that width, a square
+    /// at half a turn.
+    fn next(&mut self, shape: f32, lead: u32) -> f32 {
         let mut value = polyblep_saw(self.phase, self.step, self.inverse);
-        if shape != 0.0 {
-            let mut ahead = self.phase + lead;
-            if ahead >= 1.0 {
-                ahead -= 1.0;
-            }
+        if below(0.0, shape) {
+            let ahead = self.phase.wrapping_add(lead);
             value -= shape * polyblep_saw(ahead, self.step, self.inverse);
         }
-        self.phase += self.step;
-        if self.phase >= 1.0 {
-            self.phase -= 1.0;
-        }
+        self.phase = self.phase.wrapping_add(self.step);
         value
     }
 }
 
-/// A sawtooth at `phase`, rising from -1 to 1 over the turn, with its jump
-/// at the wrap smoothed over the samples on either side; the integer bank's
-/// `polyblep_saw`, its unit being one.
-fn polyblep_saw(phase: f32, step: f32, inverse: f32) -> f32 {
-    let naive = 2.0 * phase - 1.0;
+/// A sawtooth at `phase` (a turn being `2^32`), rising from -1 to 1 over the
+/// turn, with its jump at the wrap smoothed over the samples on either
+/// side, its unit being one. Where it is against the jump is decided in
+/// integers, and the distance to it is taken there too, exactly, before it
+/// becomes a fraction.
+fn polyblep_saw(phase: u32, step: u32, inverse: f32) -> f32 {
+    let naive = 2.0 * turns(phase) - 1.0;
     let residual = if phase < step {
-        let rest = 1.0 - phase * inverse;
+        let rest = 1.0 - turns(phase) * inverse;
         -rest * rest
-    } else if phase > 1.0 - step {
-        let rest = 1.0 - (1.0 - phase) * inverse;
+    } else if phase > u32::MAX - step {
+        let rest = 1.0 - turns(phase.wrapping_neg()) * inverse;
         rest * rest
     } else {
         0.0
     };
     naive - residual
+}
+
+/// Whether `low < high`, both at least zero: the order of their bits is
+/// theirs, so an integer comparison gives it. A floating-point one costs
+/// the core a transfer of the FPU's flags and a stall before the branch,
+/// once per voice and per sample here (journal/D-039).
+fn below(low: f32, high: f32) -> bool {
+    low.to_bits() < high.to_bits()
 }
 
 /// A one-pole high-pass, `y = a (y + x - x_prev)`.
@@ -92,45 +101,44 @@ impl HighPass {
     }
 }
 
-/// A step of the integer bank as a fraction of a turn, and its inverse,
-/// zero at rest.
-fn step_and_inverse(step: u32) -> (f32, f32) {
-    let turn = turns(step);
-    (turn, if step == 0 { 0.0 } else { 1.0 / turn })
+/// One over a step (a turn being `2^32`) as a fraction of a turn, zero at
+/// rest.
+fn inverse(step: u32) -> f32 {
+    if step == 0 { 0.0 } else { 1.0 / turns(step) }
 }
 
-/// What the parameters decide for the `f32` bank, part of the supersaw's
+/// What the parameters decide for the bank, part of the supersaw's
 /// [`super::Setup`] (journal/D-040).
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub(super) struct Setup {
-    steps: [f32; VOICES],
+    steps: [u32; VOICES],
     inverses: [f32; VOICES],
-    sub_step: f32,
+    sub_step: u32,
     sub_inverse: f32,
     gains: [f32; VOICES],
     normalisers: (f32, f32),
     coefficient: f32,
     shape: f32,
-    lead: f32,
+    lead: u32,
     amplitude: f32,
 }
 
 impl Setup {
     /// Nothing played.
     pub(super) const OFF: Self = Self {
-        steps: [0.0; VOICES],
+        steps: [0; VOICES],
         inverses: [0.0; VOICES],
-        sub_step: 0.0,
+        sub_step: 0,
         sub_inverse: 0.0,
         gains: [0.0; VOICES],
         normalisers: (0.0, 0.0),
         coefficient: 0.0,
         shape: 0.0,
-        lead: 0.5,
+        lead: 1 << 31,
         amplitude: 0.0,
     };
 
-    /// From the preparation both banks share: the voices' steps, their gains
+    /// From the preparation in integers: the voices' steps, their gains
     /// in 1.15, the normalisers `2^32 / root` of gains in 1.15, and the
     /// blend: the shape in 1.15 and the lead a turn being `2^32`.
     pub(super) fn new(
@@ -140,21 +148,19 @@ impl Setup {
         (shape, lead): (i64, u32),
         amplitude: MilliVolts,
     ) -> Self {
-        let pairs = steps.map(step_and_inverse);
         let base = steps[CENTRE];
-        let (sub_step, sub_inverse) = step_and_inverse(base / 2);
         Self {
-            steps: pairs.map(|(step, _)| step),
-            inverses: pairs.map(|(_, inverse)| inverse),
-            sub_step,
-            sub_inverse,
+            steps: *steps,
+            inverses: steps.map(inverse),
+            sub_step: base / 2,
+            sub_inverse: inverse(base / 2),
             gains: gains.map(|gain| fraction(gain, 15)),
             // `2^32 / (root 2^15)`: one over the root is it over `2^17`.
             normalisers: (fraction(normalisers.0, 17), fraction(normalisers.1, 17)),
-            // `1 / (1 + 2 pi f / fs)`, the integer bank's coefficient.
+            // `1 / (1 + 2 pi f / fs)`.
             coefficient: 1.0 / (1.0 + core::f32::consts::TAU * turns(base)),
             shape: fraction(shape, 15),
-            lead: turns(lead),
+            lead,
             amplitude: fraction(i64::from(amplitude), 0),
         }
     }
@@ -174,8 +180,8 @@ pub(super) struct Bank {
     coefficient: f32,
     /// The voices' waveform: 0 a sawtooth, one a pulse.
     shape: f32,
-    /// The pulse's width, a fraction of a turn.
-    lead: f32,
+    /// The second sawtooth's lead, a turn being `2^32`.
+    lead: u32,
     /// Peak level of one sawtooth, in millivolts.
     amplitude: f32,
     /// High-passes of the mono, left and right parts.
@@ -185,34 +191,33 @@ pub(super) struct Bank {
 impl Bank {
     /// A silent bank starting at `phases`, a turn being `2^32`.
     pub(super) const fn new(phases: &[u32; VOICES]) -> Self {
-        let mut saws = [Saw::REST; VOICES];
+        let mut saws = [Saw::at(0); VOICES];
         let mut index = 0;
         while index < VOICES {
-            saws[index].phase = turns(phases[index]);
+            saws[index] = Saw::at(phases[index]);
             index += 1;
         }
         Self {
             saws,
-            sub: Saw::REST,
+            sub: Saw::at(0),
             gains: [0.0; VOICES],
             normalisers: (0.0, 0.0),
             coefficient: 0.0,
             shape: 0.0,
-            lead: 0.5,
+            lead: 1 << 31,
             amplitude: 0.0,
             filters: [HighPass::NEW; 3],
         }
     }
 
-    /// Each voice's phase step, a turn being `2^32` as in the integer bank:
-    /// the step it plays, the integer one rounded to an `f32`.
+    /// Each voice's phase step, a turn being `2^32`.
     pub(super) fn steps(&self) -> [u32; VOICES] {
-        self.saws.map(|saw| from_turns(saw.step))
+        self.saws.map(|saw| saw.step)
     }
 
-    /// Each voice's phase now, a turn being `2^32` as in the integer bank.
+    /// Each voice's phase now, a turn being `2^32`.
     pub(super) fn phases(&self) -> [u32; VOICES] {
-        self.saws.map(|saw| from_turns(saw.phase))
+        self.saws.map(|saw| saw.phase)
     }
 
     /// Plays what `setup` prepared from the next sample on, keeping the
@@ -234,6 +239,7 @@ impl Bank {
     }
 
     /// One sample of every part, then advances.
+    #[inline]
     pub(super) fn next_frame(&mut self) -> Frame {
         // Each voice weighed by its gain.
         let mut values = [0.0f32; VOICES];
@@ -251,11 +257,11 @@ impl Bank {
         ];
         let mut parts = [0; 3];
         for ((part, filter), sum) in parts.iter_mut().zip(&mut self.filters).zip(sums) {
-            // Falling sawtooths, as in the integer bank.
+            // Falling sawtooths (journal/D-037, revision of 2026-11-18).
             *part = millivolts(-filter.next(sum, self.coefficient) * self.amplitude);
         }
         // A sawtooth whatever the shape.
-        let sub = millivolts(-self.sub.next(0.0, 0.0) * self.amplitude);
+        let sub = millivolts(-self.sub.next(0.0, 0) * self.amplitude);
         Frame {
             mono: parts[0],
             left: parts[1],
@@ -265,25 +271,12 @@ impl Bank {
     }
 }
 
-/// A phase or a step of the integer bank, a turn being `2^32`, as a fraction
-/// of a turn.
+/// A phase or a step, a turn being `2^32`, as a fraction of a turn.
 const fn turns(phase: u32) -> f32 {
     #[allow(clippy::cast_precision_loss)]
     // A fraction of a turn needs 24 bits, not 32.
     let phase = phase as f32;
     phase / 4_294_967_296.0
-}
-
-/// A fraction of a turn in `[0, 1)` as a phase or a step of the integer
-/// bank, a turn being `2^32`: the inverse of [`turns`].
-fn from_turns(turn: f32) -> u32 {
-    // A power of two: the product is exact.
-    let turn = turn * 4_294_967_296.0;
-    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
-    // A fraction in `[0, 1)`: the product in `[0, 2^32)`, held at the top
-    // should it round up to `2^32`.
-    let turn = turn as u32;
-    turn
 }
 
 /// `value` with `bits` fractional bits.
@@ -298,43 +291,55 @@ fn fraction(value: i64, bits: u32) -> f32 {
 }
 
 /// `level` rounded to the millivolt and held within what the outputs can
-/// produce.
+/// produce: rounded half away from zero by adding a signed half, converted
+/// (the conversion saturates), then held in integers, so that no
+/// floating-point comparison is left (journal/D-039).
 fn millivolts(level: f32) -> MilliVolts {
-    #[allow(clippy::cast_precision_loss)]
-    // The output range, a few thousand millivolts.
-    let (low, high) = (CV_OUT_MIN_MV as f32, CV_OUT_MAX_MV as f32);
-    let held = level.clamp(low, high);
-    let rounded = if held < 0.0 { held - 0.5 } else { held + 0.5 };
     #[allow(clippy::cast_possible_truncation)]
-    // Held within the output range, a few thousand millivolts.
-    let rounded = rounded as MilliVolts;
-    rounded
+    // Saturates at the `i32` range, far beyond the outputs'.
+    let rounded = (level + 0.5f32.copysign(level)) as MilliVolts;
+    rounded.clamp(CV_OUT_MIN_MV, CV_OUT_MAX_MV)
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{from_turns, millivolts, polyblep_saw, turns};
+    use super::{below, millivolts, polyblep_saw};
+
+    #[test]
+    fn below_orders_non_negative_values_as_the_comparison_does() {
+        let values = [
+            0.0,
+            f32::from_bits(1),
+            f32::MIN_POSITIVE,
+            1e-7,
+            0.25,
+            0.5 - f32::EPSILON,
+            0.5,
+            1.0 - f32::EPSILON / 2.0,
+            1.0,
+            1.0 + f32::EPSILON,
+            2.0,
+        ];
+        for low in values {
+            for high in values {
+                assert_eq!(below(low, high), low < high, "{low} < {high}");
+            }
+        }
+    }
+
+    /// `1 / step` of a step of `2^24`, a 256th of a turn.
+    const INVERSE: f32 = 256.0;
 
     #[test]
     fn the_saw_is_naive_away_from_its_jump() {
-        let step = turns(1 << 24);
-        assert!(polyblep_saw(0.5, step, 1.0 / step).abs() < 1e-6);
-        assert!((polyblep_saw(0.75, step, 1.0 / step) - 0.5).abs() < 1e-6);
+        assert!(polyblep_saw(1 << 31, 1 << 24, INVERSE).abs() < 1e-6);
+        assert!((polyblep_saw(3 << 30, 1 << 24, INVERSE) - 0.5).abs() < 1e-6);
     }
 
     #[test]
     fn the_saw_is_continuous_across_its_jump() {
-        let step = turns(1 << 24);
-        assert!(polyblep_saw(0.0, step, 1.0 / step).abs() < 1e-6);
-        assert!(polyblep_saw(1.0 - 1e-7, step, 1.0 / step).abs() < 1e-3);
-    }
-
-    #[test]
-    fn turns_go_there_and_back() {
-        // A step of 24 bits or fewer survives the round trip exactly.
-        for step in [0, 1 << 8, 0x00AB_CDEF << 8, 1 << 31] {
-            assert_eq!(from_turns(turns(step)), step);
-        }
+        assert!(polyblep_saw(0, 1 << 24, INVERSE).abs() < 1e-6);
+        assert!(polyblep_saw(u32::MAX, 1 << 24, INVERSE).abs() < 1e-3);
     }
 
     #[test]
@@ -343,5 +348,9 @@ mod tests {
         assert_eq!(millivolts(-1.6), -2);
         assert_eq!(millivolts(1e9), crate::calibration::CV_OUT_MAX_MV);
         assert_eq!(millivolts(-1e9), crate::calibration::CV_OUT_MIN_MV);
+        assert_eq!(millivolts(-0.0), 0);
+        assert_eq!(millivolts(f32::NAN), 0);
+        assert_eq!(millivolts(2.5), 3);
+        assert_eq!(millivolts(-2.5), -3);
     }
 }
