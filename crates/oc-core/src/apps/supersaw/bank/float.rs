@@ -116,20 +116,6 @@ pub(super) struct Setup {
 }
 
 impl Setup {
-    /// Nothing played.
-    pub(super) const OFF: Self = Self {
-        steps: [0.0; VOICES],
-        inverses: [0.0; VOICES],
-        sub_step: 0.0,
-        sub_inverse: 0.0,
-        gains: [0.0; VOICES],
-        normalisers: (0.0, 0.0),
-        coefficient: 0.0,
-        shape: 0.0,
-        lead: 0.5,
-        amplitude: 0.0,
-    };
-
     /// From the preparation both banks share: the voices' steps, their gains
     /// in 1.15, the normalisers `2^32 / root` of gains in 1.15, and the
     /// blend: the shape in 1.15 and the lead a turn being `2^32`.

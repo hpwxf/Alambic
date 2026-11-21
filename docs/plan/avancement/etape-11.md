@@ -10,7 +10,8 @@ le banc). Étape 2 de la trajectoire de D-043. Valeurs mesurées sur un module :
 | plan | `7ac8496` | D-044 proposée : trait `Generator`, enum composé à l'aiguillage statique, banc dans l'app `SUPERSAW` |
 | relevé avant | `26fa243` | `tests/voice_samples.rs` : ce que la voix joue pour chaque applet, figé avant le lot |
 | 11a | `bbc05ae` | trait `Generator`, `Params` / `Setup` / `Voice` génériques, générateur `Basic` (niveaux et tonalités) ; banc déplacé dans `apps/supersaw/bank/` (`SupersawBank`) ; composition `apps/sound.rs` écrite à la main ; maintien par la sonde en surcouche (`held`, `any_held`) ; `#[inline]` sur le chemin par échantillon du banc |
-| 11b | ce commit | `cargo probe stats` sur le module ; D-044 adoptée, D-033 et D-037 révisées ; cet avancement |
+| 11b | `13d85a6`, `c1ae6d5` | `cargo probe stats` sur le module, avec et sans modulation ; D-044 adoptée, D-033 et D-037 révisées ; cet avancement |
+| 11c | `9eda318`, ce commit | étape `publish` au profil (protocole 7) : `audio::publish` échappait à la mesure ; le `Setup` du Supersaw ne prépare plus que le banc choisi (révision de D-039) ; bancs criterion `voice/supersaw_setup`, `supersaw_f32_setup` |
 
 ## Mesures
 
@@ -41,7 +42,12 @@ le banc). Étape 2 de la trajectoire de D-043. Valeurs mesurées sur un module :
   15,25 µs. La modulation coûte ≈ 10,5 µs par tick à la boucle, +0,03 µs à `audio` ; un second `Setup::new`, dans
   `audio::publish`, échappe au profil.
 
+* **Un seul banc préparé** (11c) : `Setup` 424 → 320 o ; hôte, `Setup::new` 66,8 → 57,3 ns (`INT`), 66,3 → 63,7 ns
+  (`F32`) ; firmware `.text` +228 o, `.rodata` −96 o, `.data` −104 o ; échantillons identiques au bit près.
+
 ## Réserves
+
+* Le relevé de `publish` et d'`update` sous modulation, après 11c, reste à faire sur le module.
 
 * La composition (`apps/sound.rs`) est écrite à la main ; une macro si la liste des générateurs s'allonge.
 * Un générateur à la fois : plusieurs emplacements et un routage vers les sorties attendent plusieurs apps sonores

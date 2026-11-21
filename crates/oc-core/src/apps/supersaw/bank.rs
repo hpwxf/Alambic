@@ -180,26 +180,33 @@ const PHASES: [u32; VOICES] = {
     phases
 };
 
-/// Everything a supersaw's parameters decide for both banks, computed once
-/// when they change (journal/D-040). Building it touches no bank, so it can
-/// run outside the audio context; [`Bank::apply`] only copies it.
+/// Everything a supersaw's parameters decide for the bank they pick,
+/// computed once when they change (journal/D-040). Building it touches no
+/// bank, so it can run outside the audio context; [`Bank::apply`] only copies
+/// it. The other bank's coefficients are not prepared: nothing renders them,
+/// and switching [`Supersaw::arithmetic`] is itself a change of parameters.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Setup {
     params: Supersaw,
-    fixed: fixed::Setup,
-    float: float::Setup,
+    coefficients: Coefficients,
+}
+
+/// The coefficients of the bank [`Supersaw::arithmetic`] picks.
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum Coefficients {
+    Fixed(fixed::Setup),
+    Float(float::Setup),
 }
 
 impl Setup {
     /// Nothing played: what a new bank holds.
     pub const OFF: Self = Self {
         params: Supersaw::OFF,
-        fixed: fixed::Setup::OFF,
-        float: float::Setup::OFF,
+        coefficients: Coefficients::Fixed(fixed::Setup::OFF),
     };
 
     /// What `params` decide at `rate_hz`: the preparation both banks share,
-    /// then each bank's coefficients from it.
+    /// then the picked bank's coefficients from it.
     #[must_use]
     pub fn new(params: &Supersaw, rate_hz: u32) -> Self {
         let base = phase_step(params.frequency, rate_hz);
@@ -229,10 +236,25 @@ impl Setup {
         // upwards, where the outputs have 6 V of room instead of 3.
         let lead = u32::try_from((u64::from(FULL - width) << 32) / u64::from(FULL)).unwrap_or(0);
         let blend = (shape, lead);
+        let coefficients = match params.arithmetic {
+            Arithmetic::Fixed => Coefficients::Fixed(fixed::Setup::new(
+                &steps,
+                &gains,
+                normalisers,
+                blend,
+                params.amplitude,
+            )),
+            Arithmetic::Float => Coefficients::Float(float::Setup::new(
+                &steps,
+                &gains,
+                normalisers,
+                blend,
+                params.amplitude,
+            )),
+        };
         Self {
             params: *params,
-            fixed: fixed::Setup::new(&steps, &gains, normalisers, blend, params.amplitude),
-            float: float::Setup::new(&steps, &gains, normalisers, blend, params.amplitude),
+            coefficients,
         }
     }
 
@@ -243,9 +265,10 @@ impl Setup {
     }
 }
 
-/// The running state of a supersaw in both arithmetics. Both follow every
-/// change of parameters, only the one [`Supersaw::arithmetic`] picks runs:
-/// switching resumes the other where it stopped.
+/// The running state of a supersaw in both arithmetics. Only the one
+/// [`Supersaw::arithmetic`] picks runs and follows the parameters; the other
+/// keeps its phases, and switching hands it new coefficients and resumes it
+/// where it stopped.
 #[derive(Debug, Clone)]
 pub struct Bank {
     params: Supersaw,
@@ -304,8 +327,10 @@ impl Bank {
     /// phases and the filters' state: copies only, no division.
     pub fn apply(&mut self, setup: &Setup) {
         self.params = setup.params;
-        self.fixed.apply(&setup.fixed);
-        self.float.apply(&setup.float);
+        match &setup.coefficients {
+            Coefficients::Fixed(coefficients) => self.fixed.apply(coefficients),
+            Coefficients::Float(coefficients) => self.float.apply(coefficients),
+        }
     }
 
     /// One sample of every part from the bank [`Supersaw::arithmetic`]

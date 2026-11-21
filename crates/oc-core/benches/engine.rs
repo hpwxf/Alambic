@@ -13,7 +13,7 @@ use std::hint::black_box;
 use oc_core::apps::AppId;
 use oc_core::apps::diagnostic::DiagnosticApp;
 use oc_core::apps::ratchet::RatchetApp;
-use oc_core::apps::sound::{Params, Voice};
+use oc_core::apps::sound::{Params, Setup, Voice};
 use oc_core::apps::supersaw::bank::{
     Arithmetic, FULL, Part, SQUARE_WIDTH, Supersaw, SupersawParams,
 };
@@ -288,6 +288,20 @@ fn voice(criterion: &mut Criterion) {
             black_box(samples.map(|level| output.to_code(level)))
         });
     });
+
+    // What the loop prepares whenever the parameters change, a CV moving
+    // them every tick (journal/D-040): the shared preparation, then the
+    // picked bank's coefficients, in each arithmetic.
+    for (name, arithmetic) in [
+        ("supersaw_setup", Arithmetic::Fixed),
+        ("supersaw_f32_setup", Arithmetic::Float),
+    ] {
+        sound.bank.arithmetic = arithmetic;
+        let params = Params::supersaw(sound);
+        group.bench_function(name, |bencher| {
+            bencher.iter(|| black_box(Setup::new(black_box(&params), 47_619)));
+        });
+    }
 
     group.finish();
 }

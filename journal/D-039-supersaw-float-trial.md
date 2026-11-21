@@ -75,3 +75,15 @@ millivolts. Les tests du banc `f32` le comparent au banc entier avec une toléra
 * `F32` au même coût ou moins : les futurs oscillateurs et filtres s'écrivent en `f32`, le banc entier est retiré au
   lot suivant, et D-005 est révisée pour de bon (frontière : millivolts aux bords du banc).
 * Un écart audible ou mesuré entre les deux (justesse, repliement) : regarder d'abord la phase en `f32` (F2).
+
+## Révision du 2026-11-21 — un seul banc préparé
+
+Le § 3 réglait les deux bancs à chaque changement de paramètres, pour qu'une bascule de `CALC` se fasse sans recalcul.
+Une CV qui bouge change les paramètres à chaque tick, et la boucle prépare le `Setup` deux fois (la voix du moteur et
+`audio::publish`, mesuré sur le module : ≈ 10 µs par tick sous modulation, D-044) : la moitié de ce travail préparait
+un banc qui ne tourne pas. Le `Setup` ne porte plus que les coefficients du banc choisi (un enum `Fixed` / `Float`) ;
+l'autre banc garde ses phases et ses derniers coefficients, et basculer, qui est un changement de paramètres, lui en
+prépare de nouveaux. Échantillons identiques au bit près, bascule comprise ; `Setup` 424 → 320 octets ; sur l'hôte,
+`Setup::new` 66,8 → 57,3 ns en `INT`, 66,3 → 63,7 ns en `F32` (la préparation commune domine) ; firmware : `.text` +228 o, `.rodata` −96 o, `.data` −104 o (`MAILBOX`). Le gain sur
+le module, où les divisions 64 bits du banc entier sont émulées, se lit sur l'étape `publish`. Le reste de cette
+entrée est inchangé.
