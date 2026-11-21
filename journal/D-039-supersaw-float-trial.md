@@ -124,3 +124,8 @@ Le « mélange des deux arithmétiques » reproché à F2 se borne à la phase.
 
 Avec le lot 9i, les deux conditions posées le 2026-11-21 pour trancher sont levées : `F32` est moins cher que `INT` à
 tous les réglages mesurés (−16 % à `SHAPE` 25 %, −31 % à 0) et aussi précis. Reste l'écoute.
+
+Dernières comparaisons flottantes, celles de `millivolts` (le `clamp` et le signe de l'arrondi, sur quatre sorties) :
+arrondi par l'ajout d'une demie signée (`copysign`), conversion saturante, borne en entier. Mêmes valeurs, échantillons
+identiques au bit près ; plus aucun `vcmp` dans `next_sample` ; `.text` −96 o. Module (`f67d414`), `voice` en `F32` :
+1,15 → **1,07** µs à `SHAPE` 25 %, 0,86 → **0,78** µs à 0, soit −22 % et −38 % contre `INT` (1,37 et 1,25 µs).

@@ -120,7 +120,9 @@ for any block that runs per sample in the audio interrupt.
   data is (phases); compare `to_bits()` when both values are at least zero
   (same order); or write the arithmetic so that it needs no test. Removing
   the bank's phase comparisons took `voice` from 1.56 to 1.18 µs at
-  `SHAPE` 25 % (lot 9i). `-C target-cpu=cortex-m7` was tried and dropped
+  `SHAPE` 25 % (lot 9i). To hold a level, round by adding a signed half
+  (`copysign`), convert (saturating), then clamp the integer: 1.15 to
+  1.07 µs more (`millivolts` in the bank). `-C target-cpu=cortex-m7` was tried and dropped
   (no floating-point instruction left in the image; a toolchain change,
   D-004).
 * **The FPU is single precision only.** `f64` is emulated in software:
