@@ -227,7 +227,7 @@ impl AppView {
         param(&self.description, at).map_or_else(String::new, |spec| spec.label.clone())
     }
 
-    /// Parameter `at`'s value as the module writes it (`-3.0 OCT`).
+    /// Parameter `at`'s value as the module writes it (`2.0 MS`, `SPAN`).
     #[must_use]
     pub fn param_text(&self, at: usize) -> String {
         param(&self.description, at).map_or_else(String::new, shown)
@@ -464,9 +464,9 @@ mod tests {
         }
         assert!(!view.broken());
         assert_eq!(view.param_name(4), "SHAPE");
-        assert_eq!(view.param_text(4), "0.0 OCT");
+        assert_eq!(view.param_text(4), "0.0");
         assert_eq!(view.param_edit_text(4), "0.0");
-        assert_eq!(view.param_range(4), "-3.0 OCT .. 3.0 OCT");
+        assert_eq!(view.param_range(4), "-3.0 .. 3.0");
         assert_eq!(view.param_editor(8), Editor::Choice);
         assert_eq!(view.param_choices(8), ["FIRST", "SPAN"]);
         assert!(view.param_assignable(0) && !view.param_assignable(1));
@@ -517,7 +517,7 @@ mod tests {
 
         let request = view.set_request(4, "-1.5").unwrap();
         let answer = module.send(&request);
-        assert_eq!(view.absorb_param(4, &answer[0]), "-1.5 OCT");
+        assert_eq!(view.absorb_param(4, &answer[0]), "-1.5");
         assert_eq!(
             module.engine.app::<RatchetApp>().settings().curve_tenths,
             -15

@@ -337,7 +337,7 @@ mod tests {
 
     #[test]
     fn a_value_edited_reads_back_unchanged() {
-        let shape = spec("SHAPE", number(1, Unit::Octaves), &[]);
+        let shape = spec("TRANSPOSE", number(1, Unit::Octaves), &[]);
         let note = spec("NOTE", number(0, Unit::Note), &[]);
         let mode = spec("MODE", ParamKind::Choice { count: 2 }, &["FIRST", "SPAN"]);
         for (entry, value) in [
@@ -353,7 +353,7 @@ mod tests {
 
     #[test]
     fn a_value_reads_as_the_module_writes_it() {
-        let shape = spec("SHAPE", number(1, Unit::Octaves), &[]);
+        let shape = spec("TRANSPOSE", number(1, Unit::Octaves), &[]);
         assert_eq!(value_text(&shape, ParamValue::Number(-30)), "-3.0 OCT");
         assert_eq!(parse_value(&shape, "-3.0"), Ok(ParamValue::Number(-30)));
     }

@@ -217,7 +217,8 @@ pub const PARAM_SPECS: [ParamSpec; 9] = [
     )
     .assignable(),
     ParamSpec::choice("DIVISION", &DIVISION_NAMES),
-    ParamSpec::number("SHAPE", (-CURVE_TENTHS, CURVE_TENTHS), 1, 1, Unit::Octaves).assignable(),
+    // A curve without a unit, as the screen writes it (`-1.5`).
+    ParamSpec::number("SHAPE", (-CURVE_TENTHS, CURVE_TENTHS), 1, 1, Unit::None).assignable(),
     ParamSpec::number("PROB", (1, 100), 1, 0, Unit::Percent).assignable(),
     ParamSpec::toggle("PASSTHRU"),
     ParamSpec::toggle("SYNC"),

@@ -196,7 +196,7 @@ fn the_summary_names_every_parameter_and_what_is_known() {
     write_summary(&RatchetApp::new(), &mut line).unwrap();
     assert_eq!(
         line,
-        "COUNT 4   GATE OFF   FIRST 100 MS   SHAPE 0.0 OCT   PROB 100%   PASSTHRU ON   SYNC OFF   \
+        "COUNT 4   GATE OFF   FIRST 100 MS   SHAPE 0.0   PROB 100%   PASSTHRU ON   SYNC OFF   \
          MODE FIRST",
         "no rate before two edges, no burst under way: nothing more to say"
     );
