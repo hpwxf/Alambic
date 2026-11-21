@@ -84,6 +84,11 @@ Une CV qui bouge change les paramètres à chaque tick, et la boucle prépare le
 un banc qui ne tourne pas. Le `Setup` ne porte plus que les coefficients du banc choisi (un enum `Fixed` / `Float`) ;
 l'autre banc garde ses phases et ses derniers coefficients, et basculer, qui est un changement de paramètres, lui en
 prépare de nouveaux. Échantillons identiques au bit près, bascule comprise ; `Setup` 424 → 320 octets ; sur l'hôte,
-`Setup::new` 66,8 → 57,3 ns en `INT`, 66,3 → 63,7 ns en `F32` (la préparation commune domine) ; firmware : `.text` +228 o, `.rodata` −96 o, `.data` −104 o (`MAILBOX`). Le gain sur
-le module, où les divisions 64 bits du banc entier sont émulées, se lit sur l'étape `publish`. Le reste de cette
-entrée est inchangé.
+`Setup::new` 66,8 → 57,3 ns en `INT`, 66,3 → 63,7 ns en `F32` (la préparation commune domine) ; firmware : `.text` +228 o, `.rodata` −96 o, `.data` −104 o (`MAILBOX`). Sur le module
+(`2895915`, `NOTE` et `DETUNE` sous bruit, `STEREO ON`), le `Setup` coûte ≈ 4,7 µs en `F32` et ≈ 7 à 9 µs en `INT` (les
+divisions 64 bits des inverses, émulées) ; en `F32`, `tick` 25,71 → 21,71 µs et `voice_params` 0,50 → 0,35 µs contre
+`bbc05ae`.
+
+Même relevé, pour trancher l'essai : `voice` en `INT` / `F32`, 1,25 / **1,04** µs avec `SHAPE` à 0 (`F32` 17 % moins
+cher, comme au lot 9b), mais 1,37 / **1,57** µs avec `SHAPE` à 25 % (`F32` 15 % plus cher) : la seconde scie corrigée
+par voix coûte ≈ 0,1 µs en entier et ≈ 0,5 µs en `f32`. Le reste de cette entrée est inchangé.

@@ -44,10 +44,28 @@ le banc). Étape 2 de la trajectoire de D-043. Valeurs mesurées sur un module :
 
 * **Un seul banc préparé** (11c) : `Setup` 424 → 320 o ; hôte, `Setup::new` 66,8 → 57,3 ns (`INT`), 66,3 → 63,7 ns
   (`F32`) ; firmware `.text` +228 o, `.rodata` −96 o, `.data` −104 o ; échantillons identiques au bit près.
+* **Module après 11c** (`2895915`, `MIX` 50 %, `STEREO ON`, 10 s par cas, script par `cargo probe set` / `stats`),
+  moyennes en µs :
+
+  | Cas | `voice` | `voice_params` | `update` | `publish` | `tick` |
+  |---|---|---|---|---|---|
+  | `INT`, `SHAPE` 25 %, sans CV | 1,34 | — | 5,26 | 1,58 | 15,92 |
+  | `F32`, `SHAPE` 25 %, sans CV | 1,57 | — | 4,70 | 1,55 | 15,27 |
+  | `INT`, `SHAPE` 25 %, `NOTE` et `DETUNE` sous bruit | 1,37 | 0,39 | 12,33 | 10,78 | 25,00 |
+  | `F32`, `SHAPE` 25 %, sous bruit | 1,57 | 0,35 | 9,45 | 6,27 | 21,71 |
+  | `INT`, `SHAPE` 0, sous bruit | 1,25 | 0,39 | 12,01 | 10,85 | 24,52 |
+  | `F32`, `SHAPE` 0, sous bruit | 1,04 | 0,35 | 9,23 | 7,56 | 20,01 |
+
+  * En `F32` sous bruit, contre `bbc05ae` : `update` 13,65 → 9,45 µs, `tick` 25,71 → 21,71 µs, `voice_params`
+    0,50 → 0,35 µs (`MAILBOX` plus petite) ; `voice` inchangé.
+  * `Setup::new` sur le module, par différence avec le cas sans CV (`update` et `publish` en font chacun un) :
+    ≈ 4,7 µs en `F32`, ≈ 7 à 9 µs en `INT` (les divisions 64 bits des inverses, émulées).
+  * `publish` coûte 1,55 µs à chaque tick même sans changement : deux sections critiques et la comparaison de
+    `Params` (80 o) et de la calibration (88 o).
 
 ## Réserves
 
-* Le relevé de `publish` et d'`update` sous modulation, après 11c, reste à faire sur le module.
+* La voix du moteur (1 kHz) et `audio::publish` préparent toujours chacune un `Setup` quand les paramètres changent.
 
 * La composition (`apps/sound.rs`) est écrite à la main ; une macro si la liste des générateurs s'allonge.
 * Un générateur à la fois : plusieurs emplacements et un routage vers les sorties attendent plusieurs apps sonores
