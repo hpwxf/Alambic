@@ -50,6 +50,10 @@ Architectural decisions behind each change are in `journal/` (French).
 
 ### Changed
 
+- The README describes `RATCHET`'s settings one by one: `SHAPE` is an
+  abstract curve from exponential through linear (0) to logarithmic, not
+  octaves; `FIRST` and `SPAN` are a duration in milliseconds or, with
+  `SYNC ON`, a fraction of `TR1`'s period.
 - The audio interrupt no longer prepares its voice: the loop computes an
   `oc_core::audio::Setup` (every phase step and the supersaw's
   coefficients) when the parameters change, outside any critical section,
