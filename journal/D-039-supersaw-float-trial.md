@@ -107,3 +107,20 @@ Sur le module (`14aad64`, `STEREO ON`, `MIX` 50 %), `voice` : `F32` 1,56 → **1
 restent un garde-fou, pas la mesure. Essayé et écarté : `-C target-cpu=cortex-m7`, qui aurait donné au compilateur les
 sélections sans branchement de FPv5 ; le binaire produit ne contenait plus d'instruction flottante (`.text` +11 Kio),
 et c'est un changement de chaîne (D-004).
+
+## Révision du 2026-11-21 — F2 : les phases en entier (lot 9j)
+
+Le seul écart mesuré en défaveur de `F32` venait de F1 (§ 2) : une phase en `f32` près de la fin de son tour ne garde
+que 24 bits, et leur somme dérive, d'où un banc plus loin de la supersaw idéale aux notes basses. Le banc `f32` passe à
+**F2** : phases en `u32` comme le banc entier, repli gratuit, lues en fraction de tour à chaque échantillon ; la
+distance au saut est prise en entier avant de devenir une fraction, et la position contre le saut se décide en entier.
+Le « mélange des deux arithmétiques » reproché à F2 se borne à la phase.
+
+* Écart à la supersaw idéale (exemple `aliasing`) : celui du banc entier à 0,1 dB près, à toutes les notes (C2 sous
+  10 kHz : −28,5 → −39,2 dB, C4 −32,1 → −34,5 dB).
+* Module (`6b1b25d`), `voice` : `F32` 1,15 µs à `SHAPE` 25 %, 0,86 µs à 0 ; `INT` 1,37 et 1,25 µs.
+* Empreinte des échantillons `F32` de `tests/voice_samples.rs` reprise ; écart au banc entier toujours sous la
+  tolérance ; `.text` +252 o.
+
+Avec le lot 9i, les deux conditions posées le 2026-11-21 pour trancher sont levées : `F32` est moins cher que `INT` à
+tous les réglages mesurés (−16 % à `SHAPE` 25 %, −31 % à 0) et aussi précis. Reste l'écoute.
