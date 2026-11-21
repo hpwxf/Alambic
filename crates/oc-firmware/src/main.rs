@@ -348,6 +348,7 @@ fn main() -> ! {
     // The audio path's counts as the loop starts, for the report a few
     // seconds in.
     let boot_audio = audio::totals();
+    let mut publisher = audio::Publisher::new();
     probe.set_can_reboot(reboot::is_supported());
 
     // The start of the current period, sampling included: pacing from the
@@ -369,7 +370,11 @@ fn main() -> ! {
         record_since(&mut engine, Stage::Sample, mark);
         let report = engine.tick();
         let mark = engine.clock().fine_count();
-        audio::publish(engine.params(), &engine.calibration().outputs);
+        publisher.publish(
+            engine.params_revision(),
+            engine.params(),
+            &engine.calibration().outputs,
+        );
         record_since(&mut engine, Stage::Publish, mark);
         if report.tick_count == AUDIO_REPORT_TICK {
             let since = audio::totals().since(boot_audio);
@@ -391,7 +396,7 @@ fn main() -> ! {
             // ever after an explicit SAVE on the settings screen. The boot
             // ROM masks the audio interrupt meanwhile: the outputs rest
             // rather than freeze on a sample (journal/D-033).
-            audio::rest_outputs(&engine.calibration().outputs);
+            publisher.rest_outputs(&engine.calibration().outputs);
             let saved = settings_store
                 .as_mut()
                 .map(|store| store.save(engine.settings()));

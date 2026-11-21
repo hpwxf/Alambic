@@ -34,10 +34,12 @@ it already, this file only points to it.
 * **The control context** is a cooperative 1 kHz loop
   (`crates/oc-firmware/src/main.rs`): each tick samples the inputs (four
   blocking ADC conversions, the trigger edge latches, the panel), runs
-  `Engine::tick`, then `audio::publish`es `Engine::params` and the output
-  calibration, and waits for its deadline (previous deadline + 1 ms) while
-  serving USB. `publish` builds the voice's `oc_core::apps::sound::Setup` there,
-  outside any critical section (journal/D-040).
+  `Engine::tick`, then publishes `Engine::params` and the output
+  calibration (`audio::Publisher`), and waits for its deadline (previous
+  deadline + 1 ms) while serving USB. The publisher compares
+  `Engine::params_revision` rather than the parameters, and builds the
+  voice's `oc_core::apps::sound::Setup` there, outside any critical section,
+  only when they changed (journal/D-040).
 * **The audio path** owns the SPI bus at 47 619 Hz (PIT channel 0 on PERCLK,
   21 counts). Each timeout makes the DMA copy one slot of a ring into
   LPSPI4, so the DAC is written at instants the hardware fixes; the DMA's
@@ -79,8 +81,9 @@ it already, this file only points to it.
 * The loop's stages are wall-clock time, the audio interrupt included: a
   stage that lasts long enough takes one (4.2 µs), so a stage's mean moves
   with where the interrupt falls, and only sums of stages compare. `publish`
-  (`audio::publish`, after the tick) is the loop's share of new parameters:
-  the comparison, and `Setup::new` when they changed (journal/D-040).
+  (`audio::Publisher::publish`, after the tick) is the loop's share of new
+  parameters: the comparison, and `Setup::new` when they changed
+  (journal/D-040).
 * The end of a transfer is read from its echo in the receive FIFO: the busy
   flag and the transfer-complete flag answer early, and the OLED then takes
   DAC bits.

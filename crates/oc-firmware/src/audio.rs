@@ -23,8 +23,8 @@
 //!
 //! The engine keeps its output and display traits: [`MutedOutputs`] drops
 //! its codes, [`MailboxDisplay`] hands its frames over; after each tick the
-//! loop calls [`publish`] with [`oc_core::Engine::params`], which prepares
-//! the voice's [`Setup`] there, outside any critical section: the
+//! loop's [`Publisher`] hands on [`oc_core::Engine::params`] when its
+//! revision moved, and prepares the voice's [`Setup`] there, outside any critical section: the
 //! interrupt only copies it (journal/D-040). Everything the
 //! contexts share sits in [`critical_section::Mutex`]es: the loop's sections
 //! are copies of a few hundred bytes (a frame: 1 KiB). They delay the
@@ -179,7 +179,7 @@ fn slot_words(codes: &[u16; CV_CHANNELS]) -> [u32; SLOT_WORDS] {
 /// Takes the bus, the OLED's control lines, the PIT and a DMA channel over,
 /// and starts the audio path at [`board::AUDIO_RATE_HZ`]. The OLED must be
 /// initialised; the outputs rest at 0 V (factory calibration) until the
-/// first [`publish`].
+/// first [`Publisher::publish`].
 #[allow(clippy::too_many_arguments)]
 // The hardware the path takes over, each once, at start-up.
 pub(crate) fn start(
@@ -339,54 +339,85 @@ pub(crate) fn stop() {
     });
 }
 
-/// Hands the interrupt what the outputs carry and how to convert it, from
-/// the next period on; copies only when something changed. New parameters
-/// are prepared here, between the two critical sections, so the interrupt
-/// never waits for their divisions (journal/D-040); the loop being the only
-/// writer, nothing changes the mailbox between them.
-pub(crate) fn publish(params: &Params, calibration: &[CvOutputCalibration; CV_CHANNELS]) {
-    let (new_params, new_calibration) = critical_section::with(|cs| {
-        let mail = MAILBOX.borrow_ref(cs);
-        (
-            mail.setup.params() != params,
-            mail.calibration != *calibration,
-        )
-    });
-    if !new_params && !new_calibration {
-        return;
+/// What the loop last handed the interrupt, so that a tick where nothing
+/// changed costs a comparison of a revision and of the calibration, outside
+/// any critical section: comparing the whole [`Params`] under one cost
+/// 1.5 µs a tick. Owned by the loop, the only writer of the mailbox.
+#[derive(Debug)]
+pub(crate) struct Publisher {
+    /// [`oc_core::Engine::params_revision`] of the parameters last prepared;
+    /// `None` when the mailbox holds something else (the outputs at rest).
+    revision: Option<u32>,
+    calibration: Option<[CvOutputCalibration; CV_CHANNELS]>,
+}
+
+impl Publisher {
+    /// Nothing handed yet: the first [`Self::publish`] copies everything.
+    pub(crate) const fn new() -> Self {
+        Self {
+            revision: None,
+            calibration: None,
+        }
     }
-    let setup = new_params.then(|| Setup::new(params, board::AUDIO_RATE_HZ));
+
+    /// Hands the interrupt what the outputs carry and how to convert it,
+    /// from the next period on; copies only when something changed. New
+    /// parameters are prepared here, outside the critical section, so the
+    /// interrupt never waits for their divisions (journal/D-040).
+    pub(crate) fn publish(
+        &mut self,
+        revision: u32,
+        params: &Params,
+        calibration: &[CvOutputCalibration; CV_CHANNELS],
+    ) {
+        let new_params = self.revision != Some(revision);
+        let new_calibration = self.calibration.as_ref() != Some(calibration);
+        if !new_params && !new_calibration {
+            return;
+        }
+        let setup = new_params.then(|| Setup::new(params, board::AUDIO_RATE_HZ));
+        hand_over(setup.as_ref(), calibration);
+        self.revision = Some(revision);
+        self.calibration = Some(*calibration);
+    }
+
+    /// Puts every output at 0 V, waits until the DAC has it, then pauses the
+    /// DMA: before a flash operation, during which the boot ROM masks the
+    /// interrupts (journal/D-033), and the bursts would pile up in the FIFO.
+    /// [`resume_outputs`] restarts it; the next [`Self::publish`] brings the
+    /// parameters back.
+    pub(crate) fn rest_outputs(&mut self, calibration: &[CvOutputCalibration; CV_CHANNELS]) {
+        hand_over(Some(&Setup::rest(board::AUDIO_RATE_HZ)), calibration);
+        self.revision = None;
+        self.calibration = Some(*calibration);
+        let running = critical_section::with(|cs| STATE.borrow_ref(cs).is_some());
+        if !running {
+            return;
+        }
+        // Taken in one period, written two slots ahead, sent two later: five
+        // periods leave one to spare.
+        let start = periods();
+        while periods().wrapping_sub(start) < 5 {
+            cortex_m::asm::nop();
+        }
+        critical_section::with(|cs| {
+            if let Some(state) = STATE.borrow_ref_mut(cs).as_mut() {
+                state.dma.disable();
+            }
+        });
+    }
+}
+
+/// Puts `setup`, when there is one, and `calibration` in the mailbox for the
+/// interrupt to take at its next period.
+fn hand_over(setup: Option<&Setup>, calibration: &[CvOutputCalibration; CV_CHANNELS]) {
     critical_section::with(|cs| {
         let mut mail = MAILBOX.borrow_ref_mut(cs);
         if let Some(setup) = setup {
-            mail.setup = setup;
+            mail.setup = *setup;
         }
         mail.calibration = *calibration;
         mail.fresh = true;
-    });
-}
-
-/// Puts every output at 0 V, waits until the DAC has it, then pauses the
-/// DMA: before a flash operation, during which the boot ROM masks the
-/// interrupts (journal/D-033), and the bursts would pile up in the FIFO.
-/// [`resume_outputs`] restarts it; the next [`publish`] brings the
-/// parameters back.
-pub(crate) fn rest_outputs(calibration: &[CvOutputCalibration; CV_CHANNELS]) {
-    publish(&Params::REST, calibration);
-    let running = critical_section::with(|cs| STATE.borrow_ref(cs).is_some());
-    if !running {
-        return;
-    }
-    // Taken in one period, written two slots ahead, sent two later: five
-    // periods leave one to spare.
-    let start = periods();
-    while periods().wrapping_sub(start) < 5 {
-        cortex_m::asm::nop();
-    }
-    critical_section::with(|cs| {
-        if let Some(state) = STATE.borrow_ref_mut(cs).as_mut() {
-            state.dma.disable();
-        }
     });
 }
 
@@ -629,7 +660,7 @@ fn settle(pin: &Output, high: bool) {
 }
 
 /// The engine's outputs on the module: the audio interrupt writes the DAC
-/// from [`publish`], so the codes the engine computes once a tick are
+/// from [`Publisher::publish`], so the codes the engine computes once a tick are
 /// dropped.
 #[derive(Debug)]
 pub(crate) struct MutedOutputs;

@@ -59,3 +59,12 @@ que copier un `Setup` et rendre des échantillons ; `voice_params` mesure cette 
   applets à plusieurs bancs) : même remède.
 * Un paramètre qui doit changer plus vite qu'une fois par tick (modulation audio) : il entrerait alors dans le calcul
   par échantillon, pas dans le `Setup`.
+
+## Révision du 2026-11-21 — une révision plutôt qu'une comparaison
+
+`audio::publish` comparait à chaque tick, sous section critique, les `Params` (80 octets) et la calibration des
+sorties à ceux de `MAILBOX` : 1,55 µs par tick sur le module, que les paramètres changent ou non (D-044, étape
+`publish`). Le moteur numérote désormais ses paramètres (`Engine::params_revision`, qui avance quand `params` change) ;
+le firmware garde dans `audio::Publisher`, côté boucle, la révision et la calibration publiées, et ne prend la
+section critique que quand l'une des deux a changé. `rest_outputs` oublie la révision, pour que la publication
+suivante rende les paramètres. Le reste de cette entrée est inchangé.
