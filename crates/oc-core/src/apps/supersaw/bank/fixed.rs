@@ -250,6 +250,7 @@ impl Bank {
     }
 
     /// One sample of every part, then advances.
+    #[inline]
     pub(super) fn next_frame(&mut self) -> Frame {
         // Each voice weighed by its gain: a value in 1.15 times a gain in
         // 1.15, in 2.30.

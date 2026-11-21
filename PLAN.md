@@ -55,6 +55,16 @@ comportemental (`oc-core`, D-002). Les applets musicaux sont la suite.
 | **7** — chemin audio (2026-11-17 → 11-18) | ✅ `oc_core::audio` (paramètres de sortie, voix), applet `TONE` ; DAC en PCS0 à 22 MHz ; PIT → DMA → LPSPI4 à **47 619 Hz** (instant fixé par le matériel), interruption du DMA pour l'échantillon et l'écran par tronçons ; `audio` 3,4 µs sur 21 ; juste à l'accordeur jusqu'à B7 (D-033). Réserves : 48 kHz impossible (quartz de GPT2 muet), quatre voies écrites à chaque période, Rack non écouté. Version **0.5.0** (avec l'étape 6 ; plugin Rack 2.5.0) | [etape-7.md](docs/plan/avancement/etape-7.md), [rapport](docs/plan/rapport-etape-7-chemin-audio.md) |
 | **8** — premier oscillateur : Supersaw (2026-11-18) | ✅ `oc_core::audio::supersaw` : sept scies PolyBLEP en entier (désaccord et mix de Szabo, passe-haut sur la fondamentale), A / B mono ou stéréo, C sub-octave ; applet `SUPERSAW`, entrées par `oc_core::modulation` ; `audio` 3,9 µs sur 21 ; repliement mesuré par FFT (exemple `aliasing`) : sous 10 kHz ≤ −45 dB, ×4 non nécessaire ; scies descendantes, sans écrêtage jusqu'à 2 V (D-037) ; budget mémoire (D-038). Réserves : bruit de CV1 sur `NOTE`, assignations non sauvegardées, Rack non écouté. Version **0.6.0** (plugin Rack 2.6.0) | [etape-8.md](docs/plan/avancement/etape-8.md) |
 
+### Étape 11 — générateurs audio : la voix ne nomme plus le Supersaw (en cours)
+
+Demandée le 2026-11-21 (D-044, proposée) : étape 2 de la trajectoire de D-043. Choix de l'utilisateur : le banc vit
+dans l'app `SUPERSAW` ; une bibliothèque DSP partagée seulement au premier bloc partagé.
+
+| Lot | Contenu | État |
+|---|---|---|
+| **11a** — générateurs | trait `Generator`, `Params` / `Setup` / `Voice` génériques, générateur `Basic` (niveaux et tonalités) ; banc déplacé dans `apps/supersaw/bank/` (`SupersawBank`) ; composition `apps/sound.rs` écrite à la main ; maintien par la sonde en surcouche de la voix (`held`, `any_held`) ; échantillons identiques au bit près (`tests/voice_samples.rs`, relevé avant) ; criterion `voice/*` au niveau ou en dessous de `master` après `#[inline]` ; `.text` +1 380 o (164 Kio d'ITCM), `.data` −16 o ; révision de D-044 | ✅ |
+| **11b** — module | `cargo probe stats` : `voice`, `audio`, `voice_params` contre `master` ; D-044 adoptée | à faire |
+
 ### Étape 10 — apps modulaires : trait `App` et modèle de paramètres (lots faits, reste l'essai de la page sur le module)
 
 Demandée le 2026-11-20 (D-043, proposée) : le cœur ne doit plus nommer chaque app ; un trait maintenant, la

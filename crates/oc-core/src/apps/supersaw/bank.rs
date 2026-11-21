@@ -22,12 +22,17 @@
 //! voice's phase step, each voice's gain, the normalisers), in integers. Each
 //! submodule turns that preparation into its own coefficients and renders
 //! the samples; [`Supersaw::arithmetic`] picks which one runs.
+//!
+//! The bank is `SUPERSAW`'s own (journal/D-044): it lives with the applet,
+//! and reaches the outputs as the [`SupersawBank`] generator. Should another
+//! applet need it, it moves to a shared DSP library rather than back into
+//! `audio`.
 
 mod fixed;
 mod float;
 
-use super::{MilliHertz, phase_step};
-use crate::platform::MilliVolts;
+use crate::audio::{Generator, MilliHertz, phase_step};
+use crate::platform::{CV_CHANNELS, MilliVolts};
 
 /// Sawtooths in the bank.
 pub const VOICES: usize = 7;
@@ -305,6 +310,7 @@ impl Bank {
 
     /// One sample of every part from the bank [`Supersaw::arithmetic`]
     /// picks, then advances.
+    #[inline]
     pub fn next_frame(&mut self) -> Frame {
         match self.params.arithmetic {
             Arithmetic::Fixed => self.fixed.next_frame(),
@@ -316,6 +322,91 @@ impl Bank {
 impl Default for Bank {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+/// What the supersaw generator plays (journal/D-044): the bank's
+/// parameters, and which part each output carries, `None` for 0 V.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct SupersawParams {
+    /// The bank.
+    pub bank: Supersaw,
+    /// The part each output carries, A to D.
+    pub parts: [Option<Part>; CV_CHANNELS],
+}
+
+impl SupersawParams {
+    /// Nothing played, no output fed.
+    pub const OFF: Self = Self {
+        bank: Supersaw::OFF,
+        parts: [None; CV_CHANNELS],
+    };
+}
+
+/// What [`SupersawParams`] decide at a rate: the bank's [`Setup`], and the
+/// parts.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct SupersawSetup {
+    bank: Setup,
+    parts: [Option<Part>; CV_CHANNELS],
+}
+
+/// What runs: the bank, and the part each output takes from it.
+#[derive(Debug, Clone)]
+pub struct SupersawState {
+    bank: Bank,
+    parts: [Option<Part>; CV_CHANNELS],
+}
+
+impl SupersawState {
+    /// The bank it runs, for an analysis that needs its steps and phases.
+    #[must_use]
+    pub const fn bank(&self) -> &Bank {
+        &self.bank
+    }
+}
+
+/// The bank as a generator: one frame of every part a sample, each output
+/// taking its own.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SupersawBank;
+
+impl Generator for SupersawBank {
+    type Params = SupersawParams;
+    type Setup = SupersawSetup;
+    type State = SupersawState;
+
+    const REST: SupersawParams = SupersawParams::OFF;
+    const REST_SETUP: SupersawSetup = SupersawSetup {
+        bank: Setup::OFF,
+        parts: [None; CV_CHANNELS],
+    };
+
+    fn setup(params: &SupersawParams, rate_hz: u32) -> SupersawSetup {
+        SupersawSetup {
+            bank: Setup::new(&params.bank, rate_hz),
+            parts: params.parts,
+        }
+    }
+
+    fn start() -> SupersawState {
+        SupersawState {
+            bank: Bank::new(),
+            parts: [None; CV_CHANNELS],
+        }
+    }
+
+    fn apply(state: &mut SupersawState, setup: &SupersawSetup) {
+        state.bank.apply(&setup.bank);
+        state.parts = setup.parts;
+    }
+
+    #[inline]
+    fn next(state: &mut SupersawState) -> [MilliVolts; CV_CHANNELS] {
+        let frame = state.bank.next_frame();
+        state
+            .parts
+            .map(|part| part.map_or(0, |part| frame.part(part)))
     }
 }
 

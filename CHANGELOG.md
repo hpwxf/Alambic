@@ -50,6 +50,11 @@ Architectural decisions behind each change are in `journal/` (French).
 
 ### Changed
 
+- The outputs are rendered by generators (journal/D-044): `oc_core::audio`
+  holds the mechanism and names no applet; `SUPERSAW`'s bank moves into the
+  applet (`oc_core::apps::supersaw::bank`), and the types backends use come
+  from `oc_core::apps::sound`. Samples are bit for bit the same. An output
+  a probe holds now leaves the sound playing beneath it.
 - The README describes `RATCHET`'s settings one by one: `SHAPE` is an
   abstract curve from exponential through linear (0) to logarithmic, not
   octaves; `FIRST` and `SPAN` are a duration in milliseconds or, with

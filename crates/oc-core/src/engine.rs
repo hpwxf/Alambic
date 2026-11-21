@@ -13,9 +13,9 @@
 //! ticks after the drawing, and the next frame waits for the last page
 //! (journal/D-023, option C+; `docs/agents/firmware.md`, "The screen").
 
+use crate::apps::sound::{Params, Voice};
 use crate::apps::{App, AppHost, AppId};
 use crate::apps::{InputSnapshot, TickContext};
-use crate::audio::{Params, Voice};
 use crate::buttons::{ButtonEvents, ButtonReader};
 use crate::calibration::Calibration;
 use crate::framebuffer::FrameBuffer;

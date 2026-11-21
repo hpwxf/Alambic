@@ -39,7 +39,7 @@ use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::ptr;
 
 use oc_core::Engine;
-use oc_core::audio::Voice;
+use oc_core::apps::sound::Voice;
 use oc_core::framebuffer::LEN as FRAMEBUFFER_LEN;
 use oc_core::platform::{
     BUTTONS, Button, CV_CHANNELS, CvChannel, ENCODERS, MilliVolts, TRIGGER_CHANNELS, TriggerChannel,

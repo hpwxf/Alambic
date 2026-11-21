@@ -16,8 +16,8 @@ use core::fmt::Write as _;
 use crate::gfx::Point;
 
 use crate::apps::param::{ParamSpec, ParamValue, Refused, Unit};
+use crate::apps::sound::Params;
 use crate::apps::{App, AppId, InputSnapshot, TickContext};
-use crate::audio::Params;
 use crate::fmt::TextBuf;
 use crate::framebuffer::{FrameBuffer, WIDTH_I32};
 use crate::gfx::controls::{

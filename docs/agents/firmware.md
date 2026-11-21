@@ -36,7 +36,7 @@ it already, this file only points to it.
   blocking ADC conversions, the trigger edge latches, the panel), runs
   `Engine::tick`, then `audio::publish`es `Engine::params` and the output
   calibration, and waits for its deadline (previous deadline + 1 ms) while
-  serving USB. `publish` builds the voice's `oc_core::audio::Setup` there,
+  serving USB. `publish` builds the voice's `oc_core::apps::sound::Setup` there,
   outside any critical section (journal/D-040).
 * **The audio path** owns the SPI bus at 47 619 Hz (PIT channel 0 on PERCLK,
   21 counts). Each timeout makes the DMA copy one slot of a ring into

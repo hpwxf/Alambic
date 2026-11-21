@@ -44,7 +44,7 @@ use teensy4_bsp::hal::lpspi::{ClockConfigs, Interrupts, Lpspi, Status, Transacti
 use teensy4_bsp::hal::pit::{self, Pit};
 use teensy4_bsp::ral::lpspi::TCR;
 
-use oc_core::audio::{Params, Setup, Voice};
+use oc_core::apps::sound::{Params, Setup, Voice};
 use oc_core::calibration::CvOutputCalibration;
 use oc_core::framebuffer::{FrameBuffer, LEN};
 use oc_core::platform::{AnalogOut, CV_CHANNELS, CvChannel, Display};

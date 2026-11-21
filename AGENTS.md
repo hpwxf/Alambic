@@ -118,15 +118,19 @@ Details per crate: `docs/agents/code-map.md`.
 
 ### Signals
 
-* **An applet publishes what each output carries, not samples**
-  (`oc_core::audio::Params`: a level held, or a tone). A `Voice` renders them
-  one sample at a time at its backend's rate, keeping each output's 32-bit
-  phase across changes (journal/D-033, D-042). **Anything that depends on the
-  parameters alone belongs in `Setup::new`**, never per sample
-  (journal/D-040).
+* **An applet publishes what each output carries, not samples**: the
+  parameters of a generator (`oc_core::apps::sound::Params`: levels and
+  tones, or `SUPERSAW`'s bank). A `Voice` renders them one sample at a time
+  at its backend's rate, keeping the generator's state across changes
+  (journal/D-033, D-042, D-044). **`oc_core::audio` names no applet**: it
+  holds the `Generator` trait, the voice and the generic blocks; an
+  applet's own DSP lives with the applet, and the list of generators an
+  image has is `apps/sound.rs`. **Anything that depends on the parameters
+  alone belongs in `Generator::setup`** (through `Setup::new`), never per
+  sample (journal/D-040).
 * **Internal unit: millivolts, `i32`** (`oc_core::platform::MilliVolts`). No
   floating point in the signal path, with one exception on trial: the `f32`
-  supersaw bank (`audio/supersaw/float.rs`, journal/D-039), millivolts at its
+  supersaw bank (`apps/supersaw/bank/float.rs`, journal/D-039), millivolts at its
   edges, `core` only (no `sqrt` or `round` without `std`). Otherwise `f32`
   appears only in Rack's C++ (`Alambic::process()`); `oc-vcv-ffi`'s ABI stays
   `int32_t` millivolts.

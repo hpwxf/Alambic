@@ -2,7 +2,7 @@
 //! on the bank the module plays (lot 8c′, journal/D-037): the decision on
 //! oversampling four times (lot 8d) rests on these figures.
 //!
-//! The bank is the one in `oc_core::audio::supersaw`, integer arithmetic
+//! The bank is the one in `oc_core::apps::supersaw::bank`, integer arithmetic
 //! included, rendered at the module's 47 619 Hz and read in millivolts as the
 //! DAC receives them; the sawtooths it replaces, naive ramps at the same
 //! pitches and gains, are the reference. Each voice's pitch is known exactly
@@ -52,10 +52,10 @@ use std::fs;
 use std::io::Write as _;
 use std::path::Path;
 
-use oc_core::apps::tone;
-use oc_core::audio::supersaw::{
+use oc_core::apps::supersaw::bank::{
     Arithmetic, Bank, CENTRE, FULL, NARROWEST_WIDTH, SQUARE_WIDTH, Supersaw, VOICES, voice_gains,
 };
+use oc_core::apps::tone;
 use oc_core::calibration::{CV_OUT_MAX_MV, CV_OUT_MIN_MV};
 
 /// The module's sample rate: PERCLK over 21 (journal/D-033).

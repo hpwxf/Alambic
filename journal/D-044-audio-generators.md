@@ -107,3 +107,33 @@ d'une sortie par la sonde.
 * Un générateur dont l'état ne tient pas en mémoire statique raisonnable (une réverbération, plusieurs kilo-octets) :
   l'emplacement de l'état devient une question à part (arena de D-038).
 * Deux apps qui veulent le même bloc DSP : la bibliothèque `dsp` partagée arrive à ce moment-là.
+
+## Lot 11a (2026-11-21) — les générateurs, sur l'hôte
+
+Le statut reste `proposée` jusqu'à la mesure sur le module (lot 11b). Ce que l'implémentation a fixé :
+
+* **`audio`** : le trait `Generator` (`Params`, `Setup`, `State`, `REST`, `REST_SETUP`, `setup`, `start`,
+  `apply`, `next` ; supertraits `Copy + PartialEq + Debug`, le générateur étant nommé par un type marqueur),
+  `Params<G>`, `Setup<G>`, `Voice<G>`, et `basic` (le générateur `Basic`, niveaux et tonalités, et ses
+  `Channel` / `Tone`). `Setup::rest` reste une `const fn` : la boîte aux lettres du firmware est une `static`.
+* **Le banc** : `audio/supersaw/` est devenu `apps/supersaw/bank/` (déplacé par `git mv`), avec le générateur
+  `SupersawBank` (`SupersawParams` : le banc et la part de chaque sortie, `None` pour 0 V).
+* **La composition** : `apps/sound.rs`, **écrite à la main** (le point laissé ouvert) : `Sound`, ses trois
+  enums, et les alias `Params`, `Setup`, `Voice` que les backends emploient. Une macro viendra si la liste
+  s'allonge.
+* **Le maintien d'une sortie par la sonde** (le second point ouvert) : une surcouche de la voix,
+  `Params::held`, appliquée après le générateur, et seulement quand une sortie est maintenue (`any_held`,
+  décidé à chaque changement de paramètres). Le son continue dessous : une tonalité relâchée reprend à la phase
+  où elle en est, et non plus là où le maintien l'avait figée.
+* **Mesuré sur l'hôte** :
+  * échantillons identiques au bit près : `tests/voice_samples.rs`, relevé avant le lot (`26fa243`), passe
+    inchangé (`TONE`, `SUPERSAW` en `INT` et en `F32`, la rampe du diagnostic, les triggers de `RATCHET`) ;
+    écrans dorés intacts ;
+  * criterion, contre `master` : `voice/tone` 19,65 → 20,18 ns (dans la dispersion de `master`, 19,65 à
+    20,04), `voice/supersaw` 36,5 → 30,8 ns, `square` 47,4 → 37,3 ns, `f32` 33,8 → 28,9 ns. Une première
+    version perdait jusqu'à 26 % (`f32`) : la voix générique s'instancie dans la crate de l'appelant, et
+    sans `#[inline]` le chemin par échantillon du banc ne s'y inlinait pas en LTO *thin* (le profil des
+    bancs) ; `#[inline]` sur ce chemin, et la surcouche sautée quand rien n'est maintenu, ont tout rendu.
+    Le gain est propre aux bancs : le firmware est en LTO *fat*, une seule unité ;
+  * firmware contre `master` : `.text` +1 380 o (164 Kio sur 192 d'ITCM), `.rodata` +400 o, `.data` −16 o
+    (la boîte aux lettres du `Setup`).

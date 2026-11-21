@@ -11,10 +11,10 @@
 use oc_core::apps::diagnostic::DiagnosticApp;
 use oc_core::apps::param::ParamValue;
 use oc_core::apps::ratchet::RatchetApp;
+use oc_core::apps::sound::{Params, Voice};
 use oc_core::apps::supersaw::SupersawApp;
 use oc_core::apps::tone::ToneApp;
 use oc_core::apps::{App, InputSnapshot};
-use oc_core::audio::{Params, Voice};
 
 /// The module's audio rate.
 const RATE_HZ: u32 = 47_619;

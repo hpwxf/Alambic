@@ -3,11 +3,13 @@
 
 use std::f64::consts::TAU;
 
-use oc_core::audio::supersaw::{
-    Arithmetic, FULL, NARROWEST_WIDTH, Part, SQUARE_WIDTH, Supersaw, detune_curve, mix_gains,
+use oc_core::apps::sound::{Params, Voice};
+use oc_core::apps::supersaw::bank::{
+    Arithmetic, FULL, NARROWEST_WIDTH, Part, SQUARE_WIDTH, Supersaw, SupersawParams, detune_curve,
+    mix_gains,
 };
+use oc_core::audio::basic::{BasicParams, Channel, Tone};
 use oc_core::audio::wave::Waveform;
-use oc_core::audio::{Channel, Params, Tone, Voice};
 
 /// Szabo's detune curve, highest power first.
 const DETUNE_POLYNOMIAL: [f64; 12] = [
@@ -64,16 +66,21 @@ fn the_mix_laws_follow_szabos() {
 /// right) and D (the sub-octave).
 fn bank_voice(supersaw: Supersaw) -> Voice {
     let mut voice = Voice::new(48_000);
-    let mut params = Params::REST;
-    params.channels = [
-        Channel::Supersaw(Part::Mono),
-        Channel::Supersaw(Part::Left),
-        Channel::Supersaw(Part::Right),
-        Channel::Supersaw(Part::Sub),
-    ];
-    params.supersaw = supersaw;
-    voice.set_params(&params);
+    voice.set_params(&all_parts(supersaw));
     voice
+}
+
+/// `supersaw` on A (mono), B and C (left and right) and D (the sub-octave).
+fn all_parts(supersaw: Supersaw) -> Params {
+    Params::supersaw(SupersawParams {
+        bank: supersaw,
+        parts: [
+            Some(Part::Mono),
+            Some(Part::Left),
+            Some(Part::Right),
+            Some(Part::Sub),
+        ],
+    })
 }
 
 fn supersaw(frequency: u32, detune: u16, mix: u16) -> Supersaw {
@@ -145,13 +152,13 @@ fn polyblep_removes_most_of_the_aliasing_of_a_naive_saw() {
     let fundamental = 1_970;
     let mut corrected = bank_voice(supersaw(2 * fundamental * 1_000, 0, 0));
     let mut naive = Voice::new(48_000);
-    let mut params = Params::REST;
-    params.channels[0] = Channel::Tone(Tone {
+    let mut sound = BasicParams::REST;
+    sound.channels[0] = Channel::Tone(Tone {
         wave: Waveform::Saw,
         frequency: fundamental * 1_000,
         amplitude: 1_000,
     });
-    naive.set_params(&params);
+    naive.set_params(&Params::basic(sound));
     let corrected: Vec<i32> = (0..4_800).map(|_| corrected.next_sample()[3]).collect();
     let naive: Vec<i32> = (0..4_800).map(|_| naive.next_sample()[0]).collect();
     let (naive, corrected) = (
@@ -340,20 +347,11 @@ fn switching_banks_resumes_each_where_it_stopped() {
     for _ in 0..100 {
         assert_eq!(switched.next_sample(), straight.next_sample());
     }
-    let mut both = Params::REST;
-    both.channels = [
-        Channel::Supersaw(Part::Mono),
-        Channel::Supersaw(Part::Left),
-        Channel::Supersaw(Part::Right),
-        Channel::Supersaw(Part::Sub),
-    ];
-    both.supersaw = float(params);
-    switched.set_params(&both);
+    switched.set_params(&all_parts(float(params)));
     for _ in 0..100 {
         switched.next_sample();
     }
-    both.supersaw = params;
-    switched.set_params(&both);
+    switched.set_params(&all_parts(params));
     for _ in 0..100 {
         assert_eq!(switched.next_sample(), straight.next_sample());
     }
