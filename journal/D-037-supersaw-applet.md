@@ -272,3 +272,9 @@ course. En dessous de 5 %, une impulsion a si peu de puissance que garder son vo
   B7 et C8 : une impulsion étroite porte beaucoup d'aigu. L'exemple mesure désormais la marge à 250 mV : à 1 V, un cas
   qui écrête déjà lisait la borne comme crête et rendait 1,00 V.
 
+## Révision du 2026-11-21 — le banc dans l'app (D-044)
+
+Le banc n'est plus dans `oc_core::audio::supersaw` : il vit dans l'app, `apps/supersaw/bank/` (`fixed.rs`,
+`float.rs`), derrière le générateur `SupersawBank`. Les parts `Mono` / `Left` / `Right` / `Sub` et leur affectation
+aux sorties A à D sont des paramètres de ce générateur (`SupersawParams`). Échantillons identiques au bit près ; le
+reste de cette entrée est inchangé.

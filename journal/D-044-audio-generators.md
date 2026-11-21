@@ -5,7 +5,7 @@
 | **Identifiant** | D-044 |
 | **Date** | 2026-11-21 |
 | **Auteur** | Pascal Havé |
-| **Statut** | proposée |
+| **Statut** | adoptée |
 | **Commits** | ce commit (ADR seule) ; implémentation au premier lot qui l'adoptera |
 | **Relations** | étape 2 de la trajectoire de D-043 ; révisera D-033 (forme de `Params` et de `Voice`) et D-037 (où vit le banc du Supersaw) ; garde D-040 (le `Setup` préparé dans la boucle, copié par l'interruption) et D-042 (un échantillon par période) ; mesurée par D-029 (`voice`, `voice_params`, `audio`) |
 
@@ -137,3 +137,34 @@ Le statut reste `proposée` jusqu'à la mesure sur le module (lot 11b). Ce que l
     Le gain est propre aux bancs : le firmware est en LTO *fat*, une seule unité ;
   * firmware contre `master` : `.text` +1 380 o (164 Kio sur 192 d'ITCM), `.rodata` +400 o, `.data` −16 o
     (la boîte aux lettres du `Setup`).
+
+## Lot 11b (2026-11-21) — mesure sur le module, adoptée
+
+Relevé par l'utilisateur, `cargo probe stats` sur le module TLM, dans les réglages de D-043 (lot 10c) : `SUPERSAW` en
+`F32`, `NOTE` et `DETUNE` modulés par du bruit, `MIX` 50 %, `SHAPE` 25 %, `STEREO ON`, environ 10 s. Avant :
+`b5c444a` (le relevé du lot 10c ; chemin audio identique à `master`) ; après : `bbc05ae`.
+
+| Étape | Avant | Après |
+|---|---|---|
+| `voice` moyenne / max | 1,68 / 1,75 µs | **1,56 / 1,65 µs** |
+| `audio` moyenne / max | 4,22 / 5,66 µs | 4,21 / 5,70 µs |
+| `voice_params` moyenne / max | 0,47 / 0,47 µs | 0,50 / 0,52 µs |
+| `update` moyenne / max | 14,87 / 18,02 µs | 13,65 / 17,21 µs |
+| `outputs` moyenne / max | 1,47 / 5,63 µs | 2,27 / 6,04 µs |
+| `render` moyenne | 53,84 µs | 54,13 µs |
+| `tick` moyenne / max | 26,65 / 83,17 µs | 25,71 / 82,13 µs |
+
+Trame (1 344,7 µs), période de la boucle et gigue inchangées.
+
+* **`voice` baisse de 7 %** : l'aiguillage par générateur, une correspondance par échantillon et non plus par sortie,
+  coûte moins que l'enum `Channel` ; le premier critère de § 5 ne joue pas.
+* **`voice_params` monte de 0,03 µs** (une vingtaine de cycles) au lieu de baisser : le `Setup` du Supersaw
+  dominait déjà la somme, la boîte aux lettres n'a perdu que 16 octets, et la copie d'un enum n'est pas plus courte.
+  Écart dans le bruit, loin du seuil d'une microseconde de D-040 ; ce relevé est le pire cas (le bruit change le
+  `Setup` à chaque tick, une copie par milliseconde).
+* **`update` et `outputs`** : −1,2 et +0,8 µs, −0,4 µs à eux deux ; tous deux préparent un `Setup` (la voix du moteur
+  dans `update`, `audio::publish` dans `outputs`), le partage entre eux suit l'inlining du LTO, sans conséquence.
+  `usb` (2,89 → 1,90 µs) dépend de l'hôte, pas du lot.
+
+Critères de § 4 tenus (le léger écart de `voice_params` mis à part) : **D-044 adoptée**. D-033 (forme de `Params` et de
+`Voice`) et D-037 (où vit le banc) sont révisées en conséquence.

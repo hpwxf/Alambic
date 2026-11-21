@@ -288,3 +288,10 @@ quand une CV bouge, mesuré avec le Supersaw (D-039). La boucle prépare désorm
 section critique et le dépose dans la boîte aux lettres à la place des `Params` ; l'interruption l'applique par
 `Voice::apply`, une copie. Le reste de cette entrée est inchangé.
 
+## Révision du 2026-11-21 — des générateurs (D-044)
+
+`oc_core::audio` ne nomme plus d'applet : `Params`, `Setup` et `Voice` sont génériques sur un `Generator`, et la liste
+des générateurs d'une image est `apps/sound.rs` (`Basic` pour les niveaux et les tonalités, `SupersawBank`). La voix
+rend un générateur à la fois, le maintien d'une sortie par la sonde passe par une surcouche. L'interruption, le
+`Setup` préparé dans la boucle (D-040) et un échantillon par période (D-042) sont inchangés ; `voice` 1,68 → 1,56 µs
+sur le module. Le reste de cette entrée est inchangé.
