@@ -30,6 +30,8 @@ ouverte en chemin). Valeurs mesurées sur un module : indicatives.
   | `SHAPE` 25 % | 1,37 | 1,56 | 1,18 | 1,15 | **1,07** |
   | `SHAPE` 0 | 1,25 | 1,03 | 0,88 | 0,86 | **0,78** |
 
+* **Après le retrait** (`db252e8`, mêmes réglages) : `voice` 1,04 / 0,74 µs (`SHAPE` 25 % / 0), l'aiguillage entre
+  les deux bancs en moins ; `update` 8,39 µs, `publish` 7,41 µs, `voice_params` 0,34 µs.
 * **`Setup` sous CV** (étapes `update` et `publish`, chacune en prépare un) : ≈ 4,7 µs en `F32`, 7 à 9 µs en `INT`.
 * **Précision** (exemple `aliasing`, écart à la supersaw idéale sous 10 kHz) : F1 −28,5 dB à C2, F2 −39,2 dB, comme
   le banc entier, à 0,1 dB près à toutes les notes.
