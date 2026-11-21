@@ -9,6 +9,24 @@ Architectural decisions behind each change are in `journal/` (French).
 
 ### Added
 
+- **The applets through the probe** (journal/D-043): `cargo probe apps`
+  lists them, `cargo probe app <app>` prints an applet's parameters with
+  their values and ranges, what it plays and what it can do, and `get`,
+  `set`, `act` and `select` read, set (within the bounds the panel uses),
+  trigger and pick one by name, as in `cargo probe set ratchet prob 50`.
+  Probe protocol 6: a module and a host tool must be updated together.
+- The simulator's status line now lists the running applet's parameters
+  and what it plays, from the same model.
+- **An Apps panel in the browser tool**: the applets, the settings of the
+  one chosen with their values, ranges and CV marks, set by typing or
+  choosing as the panel would, its actions as buttons, what it plays on
+  demand, and switching the module to it; values read and typed as in
+  `cargo probe`. A setting reads as the module's screen labels it
+  (`RATCHET`'s `FIRST` becomes `SPAN` in `MODE SPAN`), the face of a
+  setting the screen does not show is greyed (`DIVISION` with `SYNC OFF`)
+  but can still be set, and what a set moves besides itself is read back
+  and marked. A bipolar value reads with its sign, as on the screen
+  (`SHAPE +1.5`).
 - **`SHAPE`** in `SUPERSAW`: each voice blends from a sawtooth into a
   square, band-limited all the way, at about the same loudness
   (journal/D-037, revision of 2026-11-19); on the first page, takes an
@@ -32,6 +50,10 @@ Architectural decisions behind each change are in `journal/` (French).
 
 ### Changed
 
+- The README describes `RATCHET`'s settings one by one: `SHAPE` is an
+  abstract curve from exponential through linear (0) to logarithmic, not
+  octaves; `FIRST` and `SPAN` are a duration in milliseconds or, with
+  `SYNC ON`, a fraction of `TR1`'s period.
 - The audio interrupt no longer prepares its voice: the loop computes an
   `oc_core::audio::Setup` (every phase step and the supersaw's
   coefficients) when the parameters change, outside any critical section,

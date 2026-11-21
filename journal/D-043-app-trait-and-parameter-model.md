@@ -5,7 +5,7 @@
 | **Identifiant** | D-043 |
 | **Date** | 2026-11-20 |
 | **Auteur** | Pascal Havé |
-| **Statut** | proposée |
+| **Statut** | adoptée, révisée |
 | **Commits** | ce commit (ADR seule) ; implémentation au premier lot qui l'adoptera |
 | **Relations** | révisera D-021 (`AppHost` fermé, une instance de chaque app) et précisera D-002 (ce que le cœur sait des apps) ; laisse intacts D-033 et D-040 (l'interruption ne voit que `Setup` et `Voice`) ; la modulation de D-035 / D-036 et la persistance de D-028 deviennent des consommateurs du modèle ; la sonde de D-029 en est un consommateur prévu ; D-042 se rouvre quand plusieurs apps tourneront ensemble |
 
@@ -125,3 +125,108 @@ par app retirés d'`Engine`, d'`AppHost` et d'`oc-sim`. Les messages de la sonde
 * Des tests moins lisibles par le modèle que par le type concret : l'accès typé leur reste.
 * Un contrôle distant qui demande d'écrire hors de la boucle (latence) : une file de commandes vidée par la boucle,
   jamais d'accès direct depuis un autre contexte.
+
+## Lots 10a et 10b (2026-11-20) — ce que le premier lot a tranché
+
+Le statut reste `proposée` jusqu'à la mesure sur le module (lot 10c). Ce que l'implémentation a fixé :
+
+* **Aiguillage B** (`&dyn App`) : `AppHost::get` / `get_mut` sont le seul `match` sur les apps ; `update` et
+  `render` passent par eux. Coût : `.text` +724 o, `.rodata` +192 o (les vtables) ; criterion `engine/tick_*` et
+  `voice/*` inchangés au bruit près.
+* **Pas d'`AppKey(u16)` pour l'instant** : écart à la proposition. `AppId` reste la liste de ce que l'image compose
+  et la clé persistée (son indice, inchangé, la règle « une nouvelle app en dernier » tient). Une clé séparée n'a
+  de sens qu'une fois la composition sortie du cœur (étape 4 de la trajectoire) ; elle viendra avec elle.
+* **Accès par type** : `AppHost::find::<T>()`, `Engine::app::<T>()`, `Simulator::app::<T>()` remplacent les six
+  accesseurs ; `Simulator::current()` rend l'app en cours comme `&dyn App`.
+* **Le modèle s'appelle `param_specs`, pas `params`** : `params` désigne déjà ce que portent les sorties
+  (`Engine::params`, `ToneApp::params`, `audio::Params`). Module `oc_core::apps::param` : `ParamSpec` (nom,
+  `Kind::Number { min, max, step, decimals, unit }` / `Choice` / `Toggle`, `assignable`), `ParamValue`, `Refused`,
+  `write_summary`. Méthodes du trait avec des défauts vides : `param_specs`, `get`, `set`, `observables`,
+  `observe`, `actions`, `act`.
+* **Bornes** : `set` refuse une valeur hors de la plage déclarée ou d'un autre type (`ParamSpec::check`) ; une
+  borne qui dépend d'un autre réglage resserre la valeur et `set` rend ce qu'il a appliqué (`FIRST` de `RATCHET`
+  à 2 s en `MODE FIRST`, 8 s en `SPAN`).
+* **Un réglage du panneau à deux faces devient deux paramètres** plutôt qu'un type composite : `COUNT` (1 à 32)
+  et `GATE` ; `FIRST` (ms) et `DIVISION` (avec `SYNC ON`). Le panneau ne change pas.
+* **Les six apps ont leur modèle** ; la ligne d'état du simulateur en est tirée (`write_summary`), au lieu d'un
+  `match` par app. Coût : `.text` +2 784 o, `.rodata` +1 840 o (descripteurs, noms, `get` / `set`), gardés par les
+  vtables même tant que rien dans le firmware ne les appelle ; c'est le coût du modèle, qu'un aiguillage C ne
+  changerait pas. Total du lot contre `master` : ≈ 5,4 Kio, sous le seuil du § 5.
+
+## Lot 10d (2026-11-20) — les apps par la sonde
+
+* **Protocole v4** (`oc-protocol`) : requêtes `ListApps`, `DescribeApp`, `GetParam`, `SetParam`, `Observe`, `Act`,
+  `SelectApp` ; réponses `App`, `Spec` (paramètre ou observable, avec sa valeur), `ChoiceName` (un nom d'un choix,
+  pour qu'une réponse n'emprunte qu'une chaîne), `Action`, `Value`, `Observed` ; erreurs `NoSuchApp` et
+  `Refused(Refused)`. Une app est nommée par son indice dans `AppId`, un paramètre par le sien. `ParamValue`,
+  `Unit` et `Refused` sont ceux d'`oc-core`, sérialisés tels quels.
+* **Le serveur passe par le trait** : `Engine::app_mut` pour `set` et `act`, `Engine::select_app` pour la sélection
+  (comme le menu : un menu ouvert se ferme, l'écran système, l'assistant et l'écran de démarrage restent). Le
+  chemin d'une écriture distante est celui d'un cran d'encodeur, dans la boucle.
+* **L'hôte** (`oc-probe`) : `Client::apps`, `describe`, `get_param`, `set_param`, `observe`, `act`, `select_app` ;
+  le module `apps` trouve une app ou un paramètre par son nom (casse et ponctuation ignorées) ou son indice, lit
+  une valeur depuis du texte (`-1.5`, `A4`, `span`, `on`) et l'écrit avec `write_number`, la fonction d'`oc-core`
+  qui fait aussi le texte du simulateur ; CLI `apps`, `app`, `get`, `set`, `act`, `select`. `oc-web` reçoit les
+  nouvelles réponses (`MessageKind::Applet`) et construit les requêtes sans valeur ; la page ne s'en sert pas
+  encore, ni d'un `SetParam`, qui demande de lire une valeur selon son descripteur.
+* **Pas d'observables dans `Stream`** : différé, rien ne le demande encore.
+* **Coût** : `.text` +5 908 o, `.rodata` +980 o. Le lot entier (10a, 10b, 10d) contre `master` : `.text` +9,2 Kio
+  (163 Kio sur les 192 de l'ITCM), `.rodata` +2,9 Kio. Au-delà des « quelques kilo-octets » du § 5, mais ce coût
+  est celui du modèle et du protocole, que l'aiguillage C ne réduirait pas ; la marge de l'ITCM (D-038) est la
+  limite à surveiller.
+
+## Lot 10c (2026-11-21) — mesure sur le module, adoptée
+
+Relevé par l'utilisateur, `cargo probe stats` sur le module TLM, `SUPERSAW` en `F32`, `NOTE` et `DETUNE` modulés par
+du bruit, `MIX` 50 %, `SHAPE` 25 %, `STEREO ON`, avant (`8e475a4`) et après (`b5c444a`), environ 10 s chacun :
+
+| Étape | Avant | Après |
+|---|---|---|
+| `voice` moyenne / max | 1,66 / 1,84 µs | 1,68 / 1,75 µs |
+| `audio` moyenne / max | 4,23 / 5,62 µs | 4,22 / 5,66 µs |
+| `voice_params` | 0,47 µs | 0,47 µs |
+| `update` moyenne / max | 15,10 / 18,13 µs | 14,87 / 18,02 µs |
+| `render` moyenne | 53,93 µs | 53,84 µs |
+| `outputs` / `usb` moyenne | 1,33 / 2,72 µs | 1,47 / 2,89 µs |
+| `tick` moyenne / max | 26,62 / 83,05 µs | 26,65 / 83,17 µs |
+
+`frame`, `period` et l'histogramme de gigue sont les mêmes. Les critères du § 4 sont tenus : `voice` et `audio`
+inchangés au bruit près (le trait n'a pas fui dans l'interruption), `update` et `render` dans le bruit, criterion
+inchangé (lot 10a), coût en code relevé (lots 10a, 10b, 10d), écrans dorés intacts. La relecture d'une sauvegarde
+d'avant le lot est tenue par construction (les indices d'`AppId` n'ont pas changé ; tests de `settings`), sans avoir
+été observée sur le module. **D-043 est adoptée.**
+
+## Lot 10e (2026-11-21) — les apps dans la page web
+
+La page a son panneau *Apps*, l'équivalent de la CLI. La logique reste dans le cœur wasm, testé sur l'hôte (D-031) :
+`AppList` et `AppView` absorbent les messages d'une réponse, puis donnent noms, valeurs, plages et éditeurs, et
+construisent les requêtes ; la lecture et l'écriture d'une valeur sont celles d'`oc_probe::apps`, la description est
+bâtie par les mêmes méthodes d'`AppDescription` que le client. Le JS ne fait que poser les champs et transmettre.
+
+## Révision du 2026-11-21 — un `set` peut déplacer d'autres paramètres
+
+Essai de la page par l'utilisateur : `GATE` off remettait `COUNT` à 32 sur le module, mais la page gardait 4, et
+valider 4 n'envoyait rien (le champ ne voyait pas de changement). Un `set` déplace parfois d'autres paramètres,
+comme le cran le ferait : l'autre face d'un même réglage (`GATE` et `COUNT`), une borne qui en dépend (`MODE` et
+`FIRST`). Le modèle le dit désormais (`App::set`, `Request::SetParam`) : **après un `set`, l'hôte relit les
+valeurs**. La page relit l'app entière (`DescribeApp`, une requête) et marque ce qui a bougé avec le réglage
+écrit (`AppView::refresh_request`, `absorb_refresh`, `param_moved`) ; la CLI imprime les autres paramètres changés
+(`oc_probe::apps::moved`). Dans la page, Entrée envoie toujours, même une valeur déjà affichée. La réponse à un
+`SetParam` ne porte toujours que le paramètre écrit : y joindre les autres alourdirait le protocole pour un cas que
+la relecture couvre.
+
+## Révision du 2026-11-21 — un nom stable, un libellé qui suit l'écran
+
+Essai de la page par l'utilisateur : en `MODE SPAN`, l'écran du module appelle `SPAN` la ligne du temps, la page
+l'appelait toujours `FIRST`. Le **nom** d'un paramètre (`ParamSpec::name`) reste fixe : c'est lui qui le trouve
+(`cargo probe set ratchet first …` marche dans les deux modes). Son **libellé** est celui de l'écran à cet instant :
+`App::param_label`, `ParamSpec::name` par défaut, `SPAN` pour le `FIRST` de `RATCHET` en `MODE SPAN`. La réponse
+`Spec` porte les deux (**protocole v5**) ; l'hôte affiche le libellé, trouve par l'un ou l'autre, et la CLI montre
+`SPAN (FIRST)` quand ils diffèrent ; la page met les libellés à jour à chaque relecture, et la ligne d'état du
+simulateur les emploie.
+
+**Faces inactives** (même jour, à la demande de l'utilisateur) : `App::param_active`, vrai par défaut, dit si un
+paramètre agit maintenant. `RATCHET` : `FIRST` avec `SYNC OFF`, `DIVISION` avec `SYNC ON`, `COUNT` hors `GATE`. La
+réponse `Spec` porte l'indicateur (**protocole v6**) ; la page grise la ligne sans la bloquer (une face inactive garde
+sa valeur et la prend toujours, prête pour quand l'autre réglage la ramène), la CLI la marque `(inactive)`, la ligne
+d'état du simulateur l'omet comme l'écran.

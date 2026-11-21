@@ -68,20 +68,26 @@ the chord is even detectable.
 ### `RATCHET`
 
 Each rising edge on `TR1` is copied to A and starts a burst of triggers on B
-(journal/D-032): a count (1–32), or as long as the gate stays up (`GATE`).
-The left encoder picks a setting, the right one changes it, `up` fires a
-burst by hand.
+(journal/D-032). The left encoder picks a setting, the right one changes it,
+`up` fires a burst by hand.
 
-* `MODE` picks between two placements to compare: `FIRST`, a first interval,
-  then intervals changing geometrically to the first times 2^`SHAPE`; and
-  `SPAN`, the repeats spread over a span (`SYNC` ×1 filling the step).
-* `SHAPE`, signed, −3.0 to +3.0 octaves: 0 even, below accelerating, above
-  slowing down.
+* `COUNT`, the repeats in a burst, 1 to 32; one more detent gives `GATE`:
+  repeats for as long as `TR1` stays high.
+* `MODE` picks how the repeats are placed, between two to compare:
+  * `FIRST`: the time setting is the first interval; the following ones
+    change geometrically, the last being the first times 2^`SHAPE`;
+  * `SPAN`: the time setting, then labelled `SPAN`, is the time over which
+    the repeats spread; `SHAPE` crowds them towards its end or its start.
+* `FIRST` or `SPAN`, the time setting: a duration in milliseconds, or with
+  `SYNC ON` a fraction of `TR1`'s period (×2, ×1.5, ×4/3, ×1, ×3/4, ×2/3,
+  /2 … /32; for a span, ×1 fills the step). The rate of `TR1` shows in BPM,
+  and a dotted line on the timeline marks where the next trigger is due.
+* `SHAPE`, −3.0 to +3.0, an abstract curve rather than a unit: from an
+  exponential one at −3.0, through a straight line at 0 (even repeats), to a
+  logarithmic one at +3.0. Below 0 the burst accelerates, above 0 it slows
+  down.
 * `PROB`, the chance each repeat fires; `PASSTHRU` copies the incoming
   trigger to B too.
-* `SYNC ON` makes the first interval or the span a fraction of `TR1`'s period
-  (×2, ×1.5, ×4/3, ×1, ×3/4, ×2/3, /2 … /32), whose rate shows in BPM; a
-  dotted line on the timeline marks where the next trigger is due.
 
 Each burst setting can take an input (*Assigning an input*, below).
 
@@ -351,6 +357,13 @@ cargo probe stream --every 10  # inputs, codes, outputs and triggers every 10 ti
 cargo probe out A -2000        # hold output A at -2 V until Enter, printing the inputs
 cargo probe screen --png s.png # capture the screen as the module shows it
 cargo probe reboot             # restart into the bootloader, then `cargo xtask flash`
+
+cargo probe apps               # the applets, the running one marked
+cargo probe app ratchet        # its parameters and values, observables, actions
+cargo probe set ratchet prob 50  # as the panel would, within its bounds
+cargo probe get supersaw freq  # a parameter or what it plays now
+cargo probe act ratchet burst  # an action, here a burst as `up` starts one
+cargo probe select tone        # hand it the outputs and the screen
 ```
 
 `cargo probe` is an alias of `cargo run -q -p oc-probe --`. The tool finds the
@@ -384,8 +397,10 @@ connected it restarts the module into the bootloader itself. `cargo xtask
 web` needs the `wasm-bindgen` command line at the version `Cargo.lock` pins
 (it says which, and how to install it). Both sides have been tried on a
 module from Chrome on macOS; `cargo xtask flash` stays the reference for
-development. After rebuilding the page, reload it without the cache
-(Cmd+Shift+R): Chrome otherwise keeps the previous `app.js`.
+development. Each build stamps the page's scripts with a fingerprint of
+what it built (`app.js?v=…`), so a plain reload picks up a rebuilt page:
+Chrome would otherwise keep the previous `app.js` under a new page, whose
+new buttons then do nothing.
 
 ## Requirements
 

@@ -12,13 +12,7 @@ use std::io;
 use std::path::{Path, PathBuf};
 
 use oc_core::TickReport;
-use oc_core::apps::AppId;
-use oc_core::apps::diagnostic::DiagnosticApp;
-use oc_core::apps::gfx_demo::GfxDemoApp;
-use oc_core::apps::ratchet::RatchetApp;
-use oc_core::apps::scope::ScopeApp;
-use oc_core::apps::supersaw::SupersawApp;
-use oc_core::apps::tone::ToneApp;
+use oc_core::apps::{App, AppId};
 use oc_core::debounce::DEFAULT_STABLE_SAMPLES;
 use oc_core::framebuffer::FrameBuffer;
 use oc_core::platform::{
@@ -376,46 +370,28 @@ impl Simulator {
         self.last_report.as_ref()
     }
 
-    /// The diagnostic applet's observable state, running or not.
+    /// The applet of type `T`, running or not: its own state, for the TUI
+    /// and the tests (journal/D-043).
+    ///
+    /// # Panics
+    ///
+    /// If the engine composes no applet of type `T`.
     #[must_use]
-    pub const fn diagnostic(&self) -> &DiagnosticApp {
-        self.engine.diagnostic()
-    }
-
-    /// The scope applet's observable state, running or not.
-    #[must_use]
-    pub const fn scope(&self) -> &ScopeApp {
-        self.engine.apps().scope()
-    }
-
-    /// The graphics demonstration's observable state, running or not.
-    #[must_use]
-    pub const fn gfx(&self) -> &GfxDemoApp {
-        self.engine.apps().gfx()
-    }
-
-    /// The Ratchet applet's observable state, running or not.
-    #[must_use]
-    pub const fn ratchet(&self) -> &RatchetApp {
-        self.engine.apps().ratchet()
-    }
-
-    /// The `TONE` applet's observable state, running or not.
-    #[must_use]
-    pub const fn tone(&self) -> &ToneApp {
-        self.engine.apps().tone()
-    }
-
-    /// The `SUPERSAW` applet's observable state, running or not.
-    #[must_use]
-    pub const fn supersaw(&self) -> &SupersawApp {
-        self.engine.apps().supersaw()
+    pub fn app<T: App>(&self) -> &T {
+        self.engine.app::<T>()
     }
 
     /// The applet currently driving the outputs and the screen.
     #[must_use]
     pub const fn current_app(&self) -> AppId {
         self.engine.current_app()
+    }
+
+    /// The applet currently driving the outputs and the screen, through its
+    /// trait: what the TUI's status line reads (journal/D-043).
+    #[must_use]
+    pub fn current(&self) -> &dyn App {
+        self.engine.apps().get(self.engine.current_app())
     }
 
     /// Whether the app menu currently owns the screen.
@@ -466,6 +442,7 @@ impl Default for Simulator {
 
 #[cfg(test)]
 mod tests {
+    use oc_core::apps::diagnostic::DiagnosticApp;
     use oc_core::platform::{Button, CvChannel, TriggerChannel};
     use oc_core::testing::adc_reading;
 
@@ -479,7 +456,12 @@ mod tests {
         simulator.pulse(TriggerChannel::One);
         simulator.step_many(u64::from(PRESS_TICKS) + 4);
 
-        assert_eq!(simulator.diagnostic().trigger_count(TriggerChannel::One), 1);
+        assert_eq!(
+            simulator
+                .app::<DiagnosticApp>()
+                .trigger_count(TriggerChannel::One),
+            1
+        );
         assert!(
             !simulator.trigger_in(TriggerChannel::One),
             "the pulse must be released again"
@@ -495,7 +477,9 @@ mod tests {
             simulator.step_many(u64::from(PRESS_TICKS) + 4);
         }
         assert_eq!(
-            simulator.diagnostic().trigger_count(TriggerChannel::Three),
+            simulator
+                .app::<DiagnosticApp>()
+                .trigger_count(TriggerChannel::Three),
             2
         );
     }
@@ -509,12 +493,12 @@ mod tests {
             detents: 5,
         });
         simulator.step();
-        assert_ne!(simulator.diagnostic().offset(), 0);
+        assert_ne!(simulator.app::<DiagnosticApp>().offset(), 0);
 
         simulator.press(Button::RightEncoder);
         simulator.step_many(u64::from(PRESS_TICKS) + 2);
         assert_eq!(
-            simulator.diagnostic().offset(),
+            simulator.app::<DiagnosticApp>().offset(),
             0,
             "the press must have registered"
         );
@@ -582,7 +566,7 @@ mod tests {
         simulator.step();
 
         assert_eq!(simulator.cv_out(), [0; 4]);
-        assert_eq!(simulator.diagnostic().offset(), 0);
+        assert_eq!(simulator.app::<DiagnosticApp>().offset(), 0);
     }
 
     #[test]
@@ -667,7 +651,10 @@ ticks 40
         replayed.replay(&scenario);
 
         assert_eq!(replayed.cv_out(), original.cv_out());
-        assert_eq!(replayed.diagnostic().mode(), original.diagnostic().mode());
+        assert_eq!(
+            replayed.app::<DiagnosticApp>().mode(),
+            original.app::<DiagnosticApp>().mode()
+        );
     }
 
     #[test]
@@ -711,11 +698,11 @@ ticks 40
             detents: 5,
         });
         simulator.step();
-        assert_ne!(simulator.diagnostic().offset(), 0);
+        assert_ne!(simulator.app::<DiagnosticApp>().offset(), 0);
 
         simulator.reset();
         assert_eq!(
-            simulator.diagnostic().offset(),
+            simulator.app::<DiagnosticApp>().offset(),
             0,
             "reset restores the default applet state"
         );

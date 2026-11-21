@@ -12,6 +12,13 @@
 //! while a stream is on. Both sides check [`VERSION`] in the hello exchange
 //! and refuse to talk across versions rather than misread each other.
 //!
+//! The applets are reached through the same model the panel uses
+//! (journal/D-043): [`Request::ListApps`] and [`Request::DescribeApp`] say
+//! what each applet is set by, can be read for and can be asked to do, and
+//! [`Request::SetParam`] goes through the bounds a detent goes through.
+//! An applet is named by its index in the module's list, a parameter by its
+//! index in the applet's.
+//!
 //! The crate is `no_std` and allocation-free, so the firmware and the host
 //! tool share the exact same types; replies borrow their text and bytes from
 //! the frame they were decoded from.
@@ -28,11 +35,13 @@ pub mod server;
 
 use serde::{Deserialize, Serialize};
 
+use oc_core::apps::param::{Kind, ParamSpec, Unit};
+pub use oc_core::apps::param::{ParamValue, Refused};
 use oc_core::platform::{CV_CHANNELS, MilliVolts};
 pub use oc_core::profile::Profile;
 
 /// Protocol version, raised on any change to a message's encoding.
-pub const VERSION: u16 = 3;
+pub const VERSION: u16 = 6;
 
 /// Longest frame either side sends or accepts, zero byte included. A
 /// screen page (128 bytes) and a profile (a few hundred) both fit with room
@@ -73,6 +82,120 @@ pub enum Request {
     GetScreen,
     /// Restarts into the Teensy's bootloader, ready to be flashed.
     RebootToLoader,
+    /// Every applet the module runs: one [`Reply::App`] each, then
+    /// [`Reply::Done`].
+    ListApps,
+    /// What applet `app` is set by, can be read for and can be asked to do:
+    /// one [`Reply::Spec`] per parameter then per observable, a
+    /// [`Reply::ChoiceName`] after each choice for each of its names, one
+    /// [`Reply::Action`] per action, then [`Reply::Done`].
+    DescribeApp {
+        /// The applet's index.
+        app: u8,
+    },
+    /// The value parameter `param` of applet `app` holds:
+    /// [`Reply::Value`].
+    GetParam {
+        /// The applet's index.
+        app: u8,
+        /// The parameter's index.
+        param: u8,
+    },
+    /// Sets parameter `param` of applet `app` as a detent would, within the
+    /// same bounds: [`Reply::Value`] with what it applied. Other parameters
+    /// may move with it (`App::set`); a host reads them back with
+    /// [`Request::DescribeApp`].
+    SetParam {
+        /// The applet's index.
+        app: u8,
+        /// The parameter's index.
+        param: u8,
+        /// The value asked for.
+        value: ParamValue,
+    },
+    /// Observable `index` of applet `app` now: [`Reply::Observed`].
+    Observe {
+        /// The applet's index.
+        app: u8,
+        /// The observable's index.
+        index: u8,
+    },
+    /// Asks applet `app` for action `action`: [`Reply::Done`].
+    Act {
+        /// The applet's index.
+        app: u8,
+        /// The action's index.
+        action: u8,
+    },
+    /// Hands the outputs and the screen to applet `app`, as the app menu
+    /// does: [`Reply::Done`].
+    SelectApp {
+        /// The applet's index.
+        app: u8,
+    },
+}
+
+/// Which of an applet's lists a [`Reply::Spec`] or a [`Reply::ChoiceName`]
+/// belongs to.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum Group {
+    /// Its parameters.
+    Param,
+    /// Its observables.
+    Observable,
+}
+
+/// What values a parameter takes, as it travels: a choice's names follow
+/// in [`Reply::ChoiceName`]s, so a reply borrows only one string.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum ParamKind {
+    /// An integer from `min` to `max`, read with `decimals` digits after the
+    /// point.
+    Number {
+        /// The least value.
+        min: i32,
+        /// The greatest value.
+        max: i32,
+        /// One detent's change on the panel.
+        step: i32,
+        /// Digits after the point when the value is read.
+        decimals: u8,
+        /// What it counts.
+        unit: Unit,
+    },
+    /// One of `count` names.
+    Choice {
+        /// How many names.
+        count: u8,
+    },
+    /// On or off.
+    Toggle,
+}
+
+impl ParamKind {
+    /// How `spec`'s values travel.
+    #[must_use]
+    pub fn of(spec: &ParamSpec) -> Self {
+        match spec.kind {
+            Kind::Number {
+                min,
+                max,
+                step,
+                decimals,
+                unit,
+            } => Self::Number {
+                min,
+                max,
+                step,
+                decimals,
+                unit,
+            },
+            Kind::Choice(names) => Self::Choice {
+                count: u8::try_from(names.len()).unwrap_or(u8::MAX),
+            },
+            Kind::Toggle => Self::Toggle,
+        }
+    }
 }
 
 /// What the module answers, or sends on its own.
@@ -101,6 +224,68 @@ pub enum Reply<'a> {
     },
     /// The state of the module on one tick, while a stream is on.
     Sample(Sample),
+    /// One applet, answering [`Request::ListApps`].
+    App {
+        /// Its index.
+        app: u8,
+        /// Its name, as the app menu lists it.
+        name: &'a str,
+        /// Whether it drives the outputs and the screen now.
+        running: bool,
+        /// How many parameters it has.
+        params: u8,
+        /// How many observables.
+        observables: u8,
+        /// How many actions.
+        actions: u8,
+    },
+    /// One parameter or observable, answering [`Request::DescribeApp`].
+    Spec {
+        /// Its list.
+        group: Group,
+        /// Its index in that list.
+        index: u8,
+        /// Its name, which finds it whatever another setting does to its
+        /// label.
+        name: &'a str,
+        /// How the screen labels it now (`SPAN` for `RATCHET`'s `FIRST` in
+        /// `MODE SPAN`); its name for an observable.
+        label: &'a str,
+        /// What values it takes.
+        kind: ParamKind,
+        /// Whether it takes a CV input.
+        assignable: bool,
+        /// Whether it acts now; false for the face of a setting the screen
+        /// does not show (`App::param_active`); always true for an
+        /// observable.
+        active: bool,
+        /// Its value now; `None` for an observable not known yet.
+        value: Option<ParamValue>,
+    },
+    /// One name of a choice, after its [`Reply::Spec`].
+    ChoiceName {
+        /// The choice's list.
+        group: Group,
+        /// The choice's index in that list.
+        index: u8,
+        /// The name's index among the choice's.
+        choice: u8,
+        /// The name.
+        name: &'a str,
+    },
+    /// One action, answering [`Request::DescribeApp`].
+    Action {
+        /// Its index.
+        index: u8,
+        /// Its name.
+        name: &'a str,
+    },
+    /// A parameter's value, answering [`Request::GetParam`] or
+    /// [`Request::SetParam`].
+    Value(ParamValue),
+    /// An observable's value, `None` while unknown, answering
+    /// [`Request::Observe`].
+    Observed(Option<ParamValue>),
     /// The request was carried out and has nothing else to say.
     Done,
     /// The request was refused.
@@ -141,6 +326,10 @@ pub enum Error {
     BadChannel,
     /// This module cannot do it.
     Unsupported,
+    /// No applet at that index.
+    NoSuchApp,
+    /// The applet did not take the value or the action.
+    Refused(Refused),
 }
 
 /// Encodes `message` as one frame, zero byte included, into `buffer`.

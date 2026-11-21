@@ -146,3 +146,55 @@ fn refusals_are_errors() {
     // The session goes on after a refusal.
     client.force_output(CvChannel::One, Some(1)).unwrap();
 }
+
+#[test]
+fn an_applet_is_found_described_and_set_by_name() {
+    use oc_core::apps::ratchet::RatchetApp;
+    use oc_probe::apps;
+    use oc_protocol::ParamValue;
+
+    let mut client = session();
+    let list = client.apps().unwrap();
+    assert_eq!(list.len(), oc_core::apps::AppId::ALL.len());
+    assert!(list[0].running, "the diagnostic applet runs at start");
+    let ratchet = apps::find_app(&list, "ratchet").unwrap().clone();
+
+    let description = client.describe(ratchet.index).unwrap();
+    let mode = apps::find_spec(&description.params, "mode").unwrap();
+    assert_eq!(mode.choices, ["FIRST", "SPAN"]);
+    let text = apps::description_text(&ratchet, &description);
+    assert!(text.contains("COUNT"), "{text}");
+    assert!(text.contains("actions: BURST"), "{text}");
+
+    let shape = apps::find_spec(&description.params, "shape")
+        .unwrap()
+        .clone();
+    let value = apps::parse_value(&shape, "-1.5").unwrap();
+    assert_eq!(
+        client.set_param(ratchet.index, shape.index, value).unwrap(),
+        ParamValue::Number(-15)
+    );
+    assert_eq!(
+        client
+            .into_inner()
+            .engine
+            .app::<RatchetApp>()
+            .settings()
+            .curve_tenths,
+        -15
+    );
+}
+
+#[test]
+fn an_applet_selected_from_afar_runs() {
+    let mut client = session();
+    let list = client.apps().unwrap();
+    let tone = oc_probe::apps::find_app(&list, "tone").unwrap().index;
+    client.select_app(tone).unwrap();
+    let list = client.apps().unwrap();
+    assert!(list[usize::from(tone)].running);
+    assert!(matches!(
+        client.describe(99),
+        Err(ProbeError::Refused(Error::NoSuchApp))
+    ));
+}

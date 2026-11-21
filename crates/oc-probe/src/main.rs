@@ -11,8 +11,9 @@ use clap::{Args, Parser, Subcommand};
 
 use oc_core::platform::{CV_CHANNELS, CvChannel};
 use oc_probe::client::ProbeError;
+use oc_probe::client::{AppDescription, AppEntry};
 use oc_probe::port::{self, Session};
-use oc_probe::{measure, render};
+use oc_probe::{apps, measure, render};
 use oc_protocol::Sample;
 
 /// Talks to a running Ornament & Crime module (Alambic firmware) over the
@@ -87,6 +88,44 @@ enum Command {
     },
     /// Restarts the module into its bootloader, ready to be flashed.
     Reboot,
+    /// Lists the applets; the running one is marked (journal/D-043).
+    Apps,
+    /// Describes an applet: its parameters with their values and ranges,
+    /// what it can be read for, what it can be asked to do.
+    App {
+        /// The applet: its name (`ratchet`, `gfx-demo`) or its index.
+        app: String,
+    },
+    /// Reads one parameter or observable of an applet.
+    Get {
+        /// The applet: its name or its index.
+        app: String,
+        /// The parameter or observable: its name or its index.
+        name: String,
+    },
+    /// Sets one parameter of an applet, within the bounds the panel uses,
+    /// and prints what it applied.
+    Set {
+        /// The applet: its name or its index.
+        app: String,
+        /// The parameter: its name or its index.
+        param: String,
+        /// The value: `-1.5`, `A4`, `span`, `on`…
+        #[arg(allow_hyphen_values = true)]
+        value: String,
+    },
+    /// Asks an applet for one of its actions (`ratchet burst`).
+    Act {
+        /// The applet: its name or its index.
+        app: String,
+        /// The action: its name or its index.
+        action: String,
+    },
+    /// Hands the outputs and the screen to an applet, as the app menu does.
+    Select {
+        /// The applet: its name or its index.
+        app: String,
+    },
 }
 
 /// What `sweep` steps through.
@@ -143,7 +182,95 @@ fn main() -> anyhow::Result<()> {
             eprintln!("restarting into the bootloader");
             Ok(())
         }
+        Command::Apps => {
+            for app in session.apps()? {
+                println!(
+                    "{} {} {}",
+                    if app.running { '*' } else { ' ' },
+                    app.index,
+                    app.name
+                );
+            }
+            Ok(())
+        }
+        Command::App { app } => {
+            let (app, description) = described(&mut session, &app)?;
+            print!("{}", apps::description_text(&app, &description));
+            Ok(())
+        }
+        Command::Get { app, name } => get(&mut session, &app, &name),
+        Command::Set { app, param, value } => set(&mut session, &app, &param, &value),
+        Command::Act { app, action } => {
+            let (app, description) = described(&mut session, &app)?;
+            let index = apps::find_action(&description.actions, &action).with_context(|| {
+                format!(
+                    "{} has no action {action}; it has: {}",
+                    app.name,
+                    description.actions.join(", ")
+                )
+            })?;
+            session.act(app.index, index)?;
+            Ok(())
+        }
+        Command::Select { app } => {
+            let app = found(&mut session, &app)?;
+            session.select_app(app.index)?;
+            eprintln!("{} drives the outputs and the screen", app.name);
+            Ok(())
+        }
     }
+}
+
+/// The applet `query` names on the module.
+fn found(session: &mut Session, query: &str) -> anyhow::Result<AppEntry> {
+    let list = session.apps()?;
+    apps::find_app(&list, query).cloned().with_context(|| {
+        let names: Vec<_> = list.iter().map(|app| app.name.as_str()).collect();
+        format!("no applet {query}; there are: {}", names.join(", "))
+    })
+}
+
+/// The applet `query` names, and what it declares.
+fn described(session: &mut Session, query: &str) -> anyhow::Result<(AppEntry, AppDescription)> {
+    let app = found(session, query)?;
+    let description = session.describe(app.index)?;
+    Ok((app, description))
+}
+
+/// Prints a parameter's value, or an observable's, read now.
+fn get(session: &mut Session, app: &str, name: &str) -> anyhow::Result<()> {
+    let (app, description) = described(session, app)?;
+    if let Some(spec) = apps::find_spec(&description.params, name) {
+        let value = session.get_param(app.index, spec.index)?;
+        println!("{}", apps::value_text(spec, value));
+        return Ok(());
+    }
+    let spec = apps::find_spec(&description.observables, name)
+        .with_context(|| format!("{} has no parameter or observable {name}", app.name))?;
+    match session.observe(app.index, spec.index)? {
+        Some(value) => println!("{}", apps::value_text(spec, value)),
+        None => println!("--"),
+    }
+    Ok(())
+}
+
+/// Sets a parameter and prints what the applet applied.
+fn set(session: &mut Session, app: &str, param: &str, text: &str) -> anyhow::Result<()> {
+    let (app, description) = described(session, app)?;
+    let spec = apps::find_spec(&description.params, param)
+        .with_context(|| format!("{} has no parameter {param}", app.name))?;
+    let value = apps::parse_value(spec, text).map_err(anyhow::Error::msg)?;
+    let applied = session.set_param(app.index, spec.index, value)?;
+    println!("{} {}", spec.label, apps::value_text(spec, applied));
+    if applied != value {
+        eprintln!("narrowed by another setting of {}", app.name);
+    }
+    // A set may move other parameters, as the detent would (journal/D-043).
+    let after = session.describe(app.index)?;
+    for line in apps::moved(&description, &after, spec.index) {
+        println!("{line}  (moved with it)");
+    }
+    Ok(())
 }
 
 fn stats(session: &mut Session, fresh: Option<u64>, watch: Option<u64>) -> anyhow::Result<()> {

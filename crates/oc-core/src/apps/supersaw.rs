@@ -20,8 +20,9 @@
 
 use core::fmt::Write as _;
 
+use crate::apps::param::{ParamSpec, ParamValue, Refused, Unit};
 use crate::apps::tone::{self, HIGHEST_NOTE, LOWEST_NOTE, note_name};
-use crate::apps::{InputSnapshot, TickContext};
+use crate::apps::{App, AppId, InputSnapshot, TickContext};
 use crate::audio::supersaw::{
     Arithmetic, FULL, NARROWEST_WIDTH, OFFSETS, Part, SQUARE_WIDTH, Supersaw, detune_curve,
     voice_gains,
@@ -64,6 +65,61 @@ const COURSE_MV: MilliVolts = 5_000;
 /// The note an input that sets `NOTE` gives at 0 V, C4: −3 V reach C1 and
 /// +4 V C8.
 pub const SET_NOTE: u8 = 60;
+
+/// What `SUPERSAW` is set by (journal/D-043), in the order of the screen:
+/// one per [`Setting`]. Amounts are in thousandths, read as percent with
+/// one decimal; the level in millivolts, read as volts.
+#[allow(clippy::cast_possible_wrap)]
+// Every bound here is in the thousands at most.
+pub const PARAM_SPECS: [ParamSpec; 8] = [
+    ParamSpec::number(
+        "NOTE",
+        (LOWEST_NOTE as i32, HIGHEST_NOTE as i32),
+        1,
+        0,
+        Unit::Note,
+    )
+    .assignable(),
+    amount_spec("DETUNE"),
+    amount_spec("MIX"),
+    amount_spec("SHAPE"),
+    ParamSpec::number(
+        "WIDTH",
+        (NARROWEST_WIDTH as i32, SQUARE_WIDTH as i32),
+        AMOUNT_STEP as i32,
+        1,
+        Unit::Percent,
+    )
+    .assignable(),
+    ParamSpec::number("LEVEL", (0, MAX_LEVEL_MV), LEVEL_STEP_MV, 3, Unit::Volts).assignable(),
+    ParamSpec::toggle("STEREO"),
+    ParamSpec::choice("CALC", &["INT", "F32"]),
+];
+
+/// An amount from 0 to 100 %, in thousandths, that takes an input.
+#[allow(clippy::cast_possible_wrap)]
+// A thousand at most.
+const fn amount_spec(name: &'static str) -> ParamSpec {
+    ParamSpec::number(name, (0, FULL as i32), AMOUNT_STEP as i32, 1, Unit::Percent).assignable()
+}
+
+/// What `SUPERSAW` plays once its inputs moved its settings: the pitch, and
+/// each setting that takes an input.
+pub const OBSERVABLES: [ParamSpec; 6] = [
+    ParamSpec::number("FREQ", (0, 20_000_000), 1, 3, Unit::Hertz),
+    played_spec("DETUNE NOW"),
+    played_spec("MIX NOW"),
+    played_spec("SHAPE NOW"),
+    played_spec("WIDTH NOW"),
+    ParamSpec::number("LEVEL NOW", (0, MAX_LEVEL_MV), 1, 3, Unit::Volts),
+];
+
+/// An amount played, in thousandths.
+#[allow(clippy::cast_possible_wrap)]
+// A thousand at most.
+const fn played_spec(name: &'static str) -> ParamSpec {
+    ParamSpec::number(name, (0, FULL as i32), 1, 1, Unit::Percent)
+}
 
 /// One setting of the applet, in the order of the screen.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -728,6 +784,84 @@ impl SupersawApp {
             let height = i32::try_from(height).unwrap_or(0).max(1);
             gfx::vline(frame, x, base - height, height, Ink::Lit);
         }
+    }
+}
+
+impl App for SupersawApp {
+    fn id(&self) -> AppId {
+        AppId::Supersaw
+    }
+
+    fn param_specs(&self) -> &'static [ParamSpec] {
+        &PARAM_SPECS
+    }
+
+    fn get(&self, index: usize) -> Option<ParamValue> {
+        let value = match Setting::ALL.get(index)? {
+            Setting::Note => ParamValue::Number(i32::from(self.note)),
+            Setting::Detune => ParamValue::Number(i32::from(self.detune)),
+            Setting::Mix => ParamValue::Number(i32::from(self.mix)),
+            Setting::Shape => ParamValue::Number(i32::from(self.shape)),
+            Setting::Width => ParamValue::Number(i32::from(self.width)),
+            Setting::Level => ParamValue::Number(self.level),
+            Setting::Stereo => ParamValue::Toggle(self.stereo),
+            Setting::Calc => ParamValue::Choice(match self.arithmetic {
+                Arithmetic::Fixed => 0,
+                Arithmetic::Float => 1,
+            }),
+        };
+        Some(value)
+    }
+
+    fn set(&mut self, index: usize, value: ParamValue) -> Result<ParamValue, Refused> {
+        let spec = PARAM_SPECS.get(index).ok_or(Refused::NoSuch)?;
+        let value = spec.check(value)?;
+        let amount = |number: i32| u16::try_from(number).unwrap_or(0);
+        match (Setting::ALL[index], value) {
+            (Setting::Note, ParamValue::Number(note)) => {
+                self.note = u8::try_from(note).unwrap_or(DEFAULT_NOTE);
+            }
+            (Setting::Detune, ParamValue::Number(number)) => self.detune = amount(number),
+            (Setting::Mix, ParamValue::Number(number)) => self.mix = amount(number),
+            (Setting::Shape, ParamValue::Number(number)) => self.shape = amount(number),
+            (Setting::Width, ParamValue::Number(number)) => self.width = amount(number),
+            (Setting::Level, ParamValue::Number(level)) => self.level = level,
+            (Setting::Stereo, ParamValue::Toggle(on)) => self.stereo = on,
+            (Setting::Calc, ParamValue::Choice(calc)) => {
+                self.arithmetic = if calc == 0 {
+                    Arithmetic::Fixed
+                } else {
+                    Arithmetic::Float
+                };
+            }
+            _ => {}
+        }
+        self.get(index).ok_or(Refused::NoSuch)
+    }
+
+    fn observables(&self) -> &'static [ParamSpec] {
+        &OBSERVABLES
+    }
+
+    fn observe(&self, index: usize) -> Option<ParamValue> {
+        let number = match index {
+            0 => i32::try_from(self.frequency()).unwrap_or(i32::MAX),
+            1 => i32::from(self.played_detune()),
+            2 => i32::from(self.played_mix()),
+            3 => i32::from(self.played_shape()),
+            4 => i32::from(self.played_width()),
+            5 => self.played_level(),
+            _ => return None,
+        };
+        Some(ParamValue::Number(number))
+    }
+
+    fn update(&mut self, input: &InputSnapshot) -> Params {
+        SupersawApp::update(self, input)
+    }
+
+    fn render(&self, frame: &mut FrameBuffer, context: &TickContext) {
+        SupersawApp::render(self, frame, context);
     }
 }
 

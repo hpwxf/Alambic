@@ -498,7 +498,15 @@ With the module running and the USB cable on the Teensy (journal/D-029):
 4. `cargo probe stream --count 5` prints five samples, one every 100 ms.
 5. `cargo probe out A 1000` holds output A at 1 V (check it on a multimeter)
    until Enter; closing the tool releases it, `oc-probe` killed included.
-6. `cargo probe reboot`, then `cargo xtask flash`: the flash goes through with
+6. The applets (journal/D-043): `cargo probe apps` lists them, the running
+   one marked; `cargo probe app ratchet` prints its parameters with their
+   values and ranges, its observables and its actions. `cargo probe select
+   ratchet` hands it the outputs and the screen; `cargo probe set ratchet
+   prob 50` prints `PROB 50%` and the panel shows it at once; `cargo probe
+   set ratchet first 5000` prints `FIRST 2000 MS`, narrowed by `MODE FIRST`;
+   `cargo probe act ratchet burst` sends a burst on B, as `up` does;
+   `cargo probe get ratchet rate` reads `--` until `TR1` has had two edges.
+7. `cargo probe reboot`, then `cargo xtask flash`: the flash goes through with
    no PROGRAM press.
 
 ### 9.1c — Browser probe and flasher (journal/D-031)
@@ -516,6 +524,28 @@ build identifier on its splash. Install once more from `dist/oc-firmware.hex`
 (`cargo xtask hex`): the page says *Intel HEX*, the fingerprint is the `hex
 sha256` of `cargo xtask flash --dry-run`, and the module boots. Record the
 result in the step's progress file; a pass moves D-031 to `adoptée`.
+
+The *Apps* panel (journal/D-043): *List* fills the chooser, the running
+app picked, and shows its settings with their values as its screen does.
+Pick `RATCHET`, *Run on the module*: the module switches to it and the
+chooser marks it running. Type `50` in `PROB`: the row says `set: 50%` and
+the module's screen shows it. Type `5000` in `FIRST`: `2000`, *narrowed by
+another setting*. Choose `SPAN` in `MODE`, then `5000` again: kept. Type
+`steep` in `SHAPE`: the row says what a value looks like, nothing is sent.
+Set `GATE` on, then off: `COUNT` follows on the page as on the module (32,
+the count past which a detent reaches the gate), its row saying it moved
+with `GATE`; type `4` in `COUNT` and press Enter: it is sent even though
+the field showed it a moment before. `cargo probe set ratchet gate off`
+prints `COUNT 32  (moved with it)` the same way. Choose `SPAN` in `MODE`:
+the `FIRST` row now reads `SPAN`, as the module's screen does;
+`cargo probe app ratchet` lists it as `SPAN (FIRST)`, and both
+`cargo probe set ratchet span 3000` and `… first 3000` set it. With
+`SYNC OFF` the `DIVISION` row is greyed; set `SYNC` on: the time row is
+greyed instead and `DIVISION` comes back, as the screen swaps them;
+`cargo probe app ratchet` marks the greyed one `(inactive)`. A greyed row
+still takes a value.
+*BURST* sends a burst on B; *Read what it plays* reads `RATE` (`--` until
+`TR1` has had two edges) and `SENT`.
 
 ### 9.2 — CV inputs
 

@@ -15,7 +15,9 @@ use core::fmt::Write as _;
 
 use crate::gfx::Point;
 
-use crate::apps::{InputSnapshot, TickContext};
+use crate::apps::param::{ParamSpec, ParamValue, Refused, Unit};
+use crate::apps::{App, AppId, InputSnapshot, TickContext};
+use crate::audio::Params;
 use crate::fmt::TextBuf;
 use crate::framebuffer::{FrameBuffer, WIDTH_I32};
 use crate::gfx::controls::{
@@ -148,6 +150,21 @@ const GATE_MV: MilliVolts = 5_000;
 
 /// Scale of output A (the LFO) and D (the needle).
 const LFO_MV: MilliVolts = 3_000;
+
+/// What the demonstration is set by (journal/D-043): the page on screen and
+/// its four knobs, in thousandths.
+pub const PARAM_SPECS: [ParamSpec; 5] = [
+    ParamSpec::choice("PAGE", &["FONTS", "KNOBS", "CURVES", "SEQUENCER", "METERS"]),
+    knob_spec("KNOB1"),
+    knob_spec("KNOB2"),
+    knob_spec("KNOB3"),
+    knob_spec("KNOB4"),
+];
+
+/// One knob, `0..=1000`.
+const fn knob_spec(name: &'static str) -> ParamSpec {
+    ParamSpec::number(name, (0, KNOB_MAX), KNOB_STEP, 0, Unit::None)
+}
 
 /// The demonstration applet.
 #[derive(Debug, Clone)]
@@ -498,6 +515,41 @@ impl GfxDemoApp {
         histogram(frame, spectrum, &bands, 4, 1);
         vbar(frame, 84, 48, 6, 16, Ratio::new(self.lfo(0) + 1_000, 2_000));
         bipolar_hbar(frame, 94, 52, 34, 7, Ratio::new(needle, 1_000));
+    }
+}
+
+impl App for GfxDemoApp {
+    fn id(&self) -> AppId {
+        AppId::Gfx
+    }
+
+    fn param_specs(&self) -> &'static [ParamSpec] {
+        &PARAM_SPECS
+    }
+
+    fn get(&self, index: usize) -> Option<ParamValue> {
+        match index {
+            0 => Some(ParamValue::Choice(u8::try_from(self.page).unwrap_or(0))),
+            _ => self.knobs.get(index - 1).copied().map(ParamValue::Number),
+        }
+    }
+
+    fn set(&mut self, index: usize, value: ParamValue) -> Result<ParamValue, Refused> {
+        let spec = PARAM_SPECS.get(index).ok_or(Refused::NoSuch)?;
+        match (index, spec.check(value)?) {
+            (0, ParamValue::Choice(page)) => self.page = usize::from(page),
+            (_, ParamValue::Number(level)) => self.knobs[index - 1] = level,
+            _ => {}
+        }
+        self.get(index).ok_or(Refused::NoSuch)
+    }
+
+    fn update(&mut self, input: &InputSnapshot) -> Params {
+        GfxDemoApp::update(self, input).into()
+    }
+
+    fn render(&self, frame: &mut FrameBuffer, context: &TickContext) {
+        GfxDemoApp::render(self, frame, context);
     }
 }
 

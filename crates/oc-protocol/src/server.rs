@@ -9,6 +9,8 @@
 
 use oc_core::Engine;
 use oc_core::TickReport;
+use oc_core::apps::param::{Kind, ParamSpec, Refused};
+use oc_core::apps::{App, AppId};
 use oc_core::platform::{
     AnalogIn, AnalogOut, CV_CHANNELS, Clock, Controls, CvChannel, DigitalIn, Display,
     TriggerChannel,
@@ -16,7 +18,8 @@ use oc_core::platform::{
 
 use crate::queue::ByteQueue;
 use crate::{
-    Error, FrameReader, MAX_FRAME, Reply, Request, SCREEN_PAGES, Sample, VERSION, decode, encode,
+    Error, FrameReader, Group, MAX_FRAME, ParamKind, Reply, Request, SCREEN_PAGES, Sample, VERSION,
+    decode, encode,
 };
 
 /// Room for the frames waiting to go out: a full screen capture (eight
@@ -213,8 +216,166 @@ impl Server {
                     Reply::Error(Error::Unsupported)
                 }
             }
+            request @ (Request::ListApps
+            | Request::DescribeApp { .. }
+            | Request::GetParam { .. }
+            | Request::SetParam { .. }
+            | Request::Observe { .. }
+            | Request::Act { .. }
+            | Request::SelectApp { .. }) => match self.serve_app(request, engine) {
+                Some(reply) => reply,
+                None => return,
+            },
         };
         self.send(&reply);
+    }
+
+    /// Serves a request about the applets (journal/D-043): its reply, or
+    /// `None` when it sent several itself.
+    fn serve_app<A, O, D, C, K, S>(
+        &mut self,
+        request: Request,
+        engine: &mut Engine<A, O, D, C, K, S>,
+    ) -> Option<Reply<'static>>
+    where
+        A: AnalogIn,
+        O: AnalogOut,
+        D: DigitalIn,
+        C: Controls,
+        K: Clock,
+        S: Display,
+    {
+        let reply = match request {
+            Request::ListApps => {
+                self.send_apps(engine);
+                return None;
+            }
+            Request::DescribeApp { app } => {
+                if let Some(id) = app_id(app) {
+                    self.describe(engine.apps().get(id));
+                    return None;
+                }
+                Reply::Error(Error::NoSuchApp)
+            }
+            Request::GetParam { app, param } => match app_id(app) {
+                Some(id) => engine
+                    .apps()
+                    .get(id)
+                    .get(usize::from(param))
+                    .map_or(Reply::Error(Error::Refused(Refused::NoSuch)), Reply::Value),
+                None => Reply::Error(Error::NoSuchApp),
+            },
+            Request::SetParam { app, param, value } => match app_id(app) {
+                Some(id) => match engine.app_mut(id).set(usize::from(param), value) {
+                    Ok(applied) => Reply::Value(applied),
+                    Err(refused) => Reply::Error(Error::Refused(refused)),
+                },
+                None => Reply::Error(Error::NoSuchApp),
+            },
+            Request::Observe { app, index } => match app_id(app) {
+                Some(id) => {
+                    let app = engine.apps().get(id);
+                    if usize::from(index) < app.observables().len() {
+                        Reply::Observed(app.observe(usize::from(index)))
+                    } else {
+                        Reply::Error(Error::Refused(Refused::NoSuch))
+                    }
+                }
+                None => Reply::Error(Error::NoSuchApp),
+            },
+            Request::Act { app, action } => match app_id(app) {
+                Some(id) => match engine.app_mut(id).act(usize::from(action)) {
+                    Ok(()) => Reply::Done,
+                    Err(refused) => Reply::Error(Error::Refused(refused)),
+                },
+                None => Reply::Error(Error::NoSuchApp),
+            },
+            Request::SelectApp { app } => match app_id(app) {
+                Some(id) => {
+                    engine.select_app(id);
+                    Reply::Done
+                }
+                None => Reply::Error(Error::NoSuchApp),
+            },
+            _ => Reply::Error(Error::Unsupported),
+        };
+        Some(reply)
+    }
+
+    /// One [`Reply::App`] per applet, then [`Reply::Done`].
+    fn send_apps<A, O, D, C, K, S>(&mut self, engine: &Engine<A, O, D, C, K, S>)
+    where
+        A: AnalogIn,
+        O: AnalogOut,
+        D: DigitalIn,
+        C: Controls,
+        K: Clock,
+        S: Display,
+    {
+        for id in AppId::ALL {
+            let app = engine.apps().get(id);
+            self.send(&Reply::App {
+                app: count(id.index()),
+                name: app.name(),
+                running: engine.current_app() == id,
+                params: count(app.param_specs().len()),
+                observables: count(app.observables().len()),
+                actions: count(app.actions().len()),
+            });
+        }
+        self.send(&Reply::Done);
+    }
+
+    /// Everything `app` declares, with the values it holds now, then
+    /// [`Reply::Done`].
+    fn describe(&mut self, app: &dyn App) {
+        for (index, spec) in app.param_specs().iter().enumerate() {
+            let shown = Shown {
+                label: app.param_label(index),
+                active: app.param_active(index),
+                value: app.get(index),
+            };
+            self.send_spec(Group::Param, index, spec, shown);
+        }
+        for (index, spec) in app.observables().iter().enumerate() {
+            let shown = Shown {
+                label: spec.name,
+                active: true,
+                value: app.observe(index),
+            };
+            self.send_spec(Group::Observable, index, spec, shown);
+        }
+        for (index, name) in app.actions().iter().enumerate() {
+            self.send(&Reply::Action {
+                index: count(index),
+                name,
+            });
+        }
+        self.send(&Reply::Done);
+    }
+
+    /// One [`Reply::Spec`], and the names of a choice after it.
+    fn send_spec(&mut self, group: Group, index: usize, spec: &ParamSpec, shown: Shown<'_>) {
+        self.send(&Reply::Spec {
+            group,
+            index: count(index),
+            name: spec.name,
+            label: shown.label,
+            kind: ParamKind::of(spec),
+            assignable: spec.assignable,
+            active: shown.active,
+            value: shown.value,
+        });
+        if let Kind::Choice(names) = spec.kind {
+            for (choice, name) in names.iter().enumerate() {
+                self.send(&Reply::ChoiceName {
+                    group,
+                    index: count(index),
+                    choice: count(choice),
+                    name,
+                });
+            }
+        }
     }
 
     fn send_screen<A, O, D, C, K, S>(&mut self, engine: &mut Engine<A, O, D, C, K, S>)
@@ -250,6 +411,25 @@ impl Server {
             self.outgoing.push(frame);
         }
     }
+}
+
+/// What an entry looks like now, beside its descriptor.
+#[derive(Debug, Clone, Copy)]
+struct Shown<'a> {
+    label: &'a str,
+    active: bool,
+    value: Option<oc_core::apps::param::ParamValue>,
+}
+
+/// The applet at index `app` in the module's list.
+fn app_id(app: u8) -> Option<AppId> {
+    AppId::from_index(usize::from(app))
+}
+
+/// A list's length or index as it travels; no applet lists anywhere near
+/// 255 of anything.
+fn count(value: usize) -> u8 {
+    u8::try_from(value).unwrap_or(u8::MAX)
 }
 
 /// The module's state on the tick `report` describes.

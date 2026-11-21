@@ -29,7 +29,9 @@ use core::fmt::Write as _;
 
 use crate::gfx::Point;
 
-use crate::apps::{InputSnapshot, TickContext};
+use crate::apps::param::{ParamSpec, ParamValue, Refused, Unit};
+use crate::apps::{App, AppId, InputSnapshot, TickContext};
+use crate::audio::Params;
 use crate::buttons::ButtonEvents;
 use crate::calibration::{CV_OUT_MAX_MV, CV_OUT_MIN_MV};
 use crate::debounce::{EdgeCounter, TRIGGER_STABLE_SAMPLES};
@@ -100,6 +102,34 @@ impl OutputMode {
     }
 }
 
+/// What the diagnostic applet is set by (journal/D-043): the output mode,
+/// the offset in millivolts, read as volts, and the channel it drives.
+#[allow(clippy::cast_possible_wrap, clippy::cast_possible_truncation)]
+// Four channels.
+pub const PARAM_SPECS: [ParamSpec; 3] = [
+    ParamSpec::choice("MODE", &["OFFS", "RAMP", "ZERO"]),
+    ParamSpec::number(
+        "OFFSET",
+        (CV_OUT_MIN_MV, CV_OUT_MAX_MV),
+        OFFSET_STEP_MV,
+        3,
+        Unit::Volts,
+    ),
+    ParamSpec::number("CHANNEL", (1, CV_CHANNELS as i32), 1, 0, Unit::None),
+];
+
+/// What it can be read for: the rising edges counted on each trigger input.
+pub const OBSERVABLES: [ParamSpec; TRIGGER_CHANNELS] = [
+    ParamSpec::number("TR1", (0, i32::MAX), 1, 0, Unit::None),
+    ParamSpec::number("TR2", (0, i32::MAX), 1, 0, Unit::None),
+    ParamSpec::number("TR3", (0, i32::MAX), 1, 0, Unit::None),
+    ParamSpec::number("TR4", (0, i32::MAX), 1, 0, Unit::None),
+];
+
+/// What it can be asked to do: zero the trigger counters, as the left
+/// encoder's switch does.
+pub const ACTIONS: [&str; 1] = ["RESET"];
+
 /// The I/O diagnostic applet.
 #[derive(Debug, Clone)]
 pub struct DiagnosticApp {
@@ -168,13 +198,16 @@ impl DiagnosticApp {
             match button {
                 Button::Up => self.mode = self.mode.next(),
                 Button::Down => self.mode = self.mode.previous(),
-                Button::LeftEncoder => {
-                    for counter in &mut self.triggers {
-                        counter.reset_count();
-                    }
-                }
+                Button::LeftEncoder => self.reset_counts(),
                 Button::RightEncoder => self.offset_mv = 0,
             }
+        }
+    }
+
+    /// Zeroes every trigger counter.
+    fn reset_counts(&mut self) {
+        for counter in &mut self.triggers {
+            counter.reset_count();
         }
     }
 
@@ -335,6 +368,76 @@ impl DiagnosticApp {
         line.clear();
         let _ = write!(line, "TICKS {}", context.tick_count);
         draw(&line, 7);
+    }
+}
+
+impl App for DiagnosticApp {
+    fn id(&self) -> AppId {
+        AppId::Diagnostic
+    }
+
+    fn param_specs(&self) -> &'static [ParamSpec] {
+        &PARAM_SPECS
+    }
+
+    fn get(&self, index: usize) -> Option<ParamValue> {
+        let value = match index {
+            0 => ParamValue::Choice(match self.mode {
+                OutputMode::Offset => 0,
+                OutputMode::Ramp => 1,
+                OutputMode::Zero => 2,
+            }),
+            1 => ParamValue::Number(self.offset_mv),
+            2 => ParamValue::Number(i32::try_from(self.selected).unwrap_or(0) + 1),
+            _ => return None,
+        };
+        Some(value)
+    }
+
+    fn set(&mut self, index: usize, value: ParamValue) -> Result<ParamValue, Refused> {
+        let spec = PARAM_SPECS.get(index).ok_or(Refused::NoSuch)?;
+        match (index, spec.check(value)?) {
+            (0, ParamValue::Choice(mode)) => {
+                self.mode = OutputMode::ALL[usize::from(mode)];
+            }
+            (1, ParamValue::Number(offset)) => self.offset_mv = offset,
+            (2, ParamValue::Number(channel)) => {
+                self.selected = usize::try_from(channel - 1).unwrap_or(0);
+            }
+            _ => {}
+        }
+        self.get(index).ok_or(Refused::NoSuch)
+    }
+
+    fn observables(&self) -> &'static [ParamSpec] {
+        &OBSERVABLES
+    }
+
+    fn observe(&self, index: usize) -> Option<ParamValue> {
+        let channel = TriggerChannel::from_index(index)?;
+        let count = self.trigger_count(channel);
+        Some(ParamValue::Number(i32::try_from(count).unwrap_or(i32::MAX)))
+    }
+
+    fn actions(&self) -> &'static [&'static str] {
+        &ACTIONS
+    }
+
+    fn act(&mut self, index: usize) -> Result<(), Refused> {
+        if index == 0 {
+            self.reset_counts();
+            Ok(())
+        } else {
+            Err(Refused::NoSuch)
+        }
+    }
+
+    fn update(&mut self, input: &InputSnapshot) -> Params {
+        DiagnosticApp::update(self, input).into()
+    }
+
+    fn render(&self, frame: &mut FrameBuffer, context: &TickContext) {
+        DiagnosticApp::render(self, frame, context);
     }
 }
 

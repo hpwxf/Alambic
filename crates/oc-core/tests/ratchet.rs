@@ -2,6 +2,7 @@
 //! outputs, tick by tick, for the edges `TR1` receives.
 
 use oc_core::apps::AppId;
+use oc_core::apps::ratchet::RatchetApp;
 use oc_core::apps::ratchet::burst::{Count, Model};
 use oc_core::apps::ratchet::{Setting, TRIGGER_MV, sweep};
 use oc_core::modulation::{AssignLine, Effect};
@@ -42,7 +43,7 @@ fn run(engine: &mut MockEngine, ticks: u32, gate: impl Fn(u32) -> bool) -> (Vec<
 
 /// Turns the panel to `setting` and turns it by `turns` detents.
 fn set(engine: &mut MockEngine, setting: Setting, turns: i8) {
-    while engine.apps().ratchet().selected() != setting {
+    while engine.app::<RatchetApp>().selected() != setting {
         engine.parts_mut().3.turn(0, 1);
         engine.clock().advance(1_000);
         engine.tick();
@@ -75,7 +76,7 @@ fn turn(engine: &mut MockEngine, index: usize, detents: i8) {
 
 /// In the open submenu, picks `line` and turns it by `detents`.
 fn turn_line(engine: &mut MockEngine, line: AssignLine, detents: i8) {
-    while engine.apps().ratchet().assigning() != Some(line) {
+    while engine.app::<RatchetApp>().assigning() != Some(line) {
         turn(engine, 0, 1);
     }
     turn(engine, 1, detents);
@@ -86,7 +87,10 @@ fn turn_line(engine: &mut MockEngine, line: AssignLine, detents: i8) {
 fn assign(engine: &mut MockEngine, setting: Setting, cv: i8, effect: Effect) {
     set(engine, setting, 0);
     click(engine);
-    assert_eq!(engine.apps().ratchet().assigning(), Some(AssignLine::Input));
+    assert_eq!(
+        engine.app::<RatchetApp>().assigning(),
+        Some(AssignLine::Input)
+    );
     turn_line(engine, AssignLine::Input, cv);
     // From ADD, the default: SET one detent down, MUL one up.
     let effect_turns = match effect {
@@ -96,12 +100,12 @@ fn assign(engine: &mut MockEngine, setting: Setting, cv: i8, effect: Effect) {
     };
     turn_line(engine, AssignLine::Effect, effect_turns);
     click(engine);
-    assert_eq!(engine.apps().ratchet().assigning(), None);
+    assert_eq!(engine.app::<RatchetApp>().assigning(), None);
 }
 
 /// Makes the intervals constant: a curve of 0, the default.
 fn constant(engine: &mut MockEngine) {
-    assert_eq!(engine.apps().ratchet().settings().curve_tenths, 0);
+    assert_eq!(engine.app::<RatchetApp>().settings().curve_tenths, 0);
 }
 
 /// A short trigger at `at`.
@@ -118,7 +122,7 @@ fn a_trigger_is_copied_to_a_and_bursts_on_b() {
     assert_eq!(b, [10, 110, 210, 310, 410], "the trigger and four repeats");
     // Shape -1.0, accelerating: from 100 ms down to 50 ms, geometrically.
     set(&mut engine, Setting::Shape, -10);
-    assert_eq!(engine.apps().ratchet().settings().curve_tenths, -10);
+    assert_eq!(engine.app::<RatchetApp>().settings().curve_tenths, -10);
     let (_, b) = run(&mut engine, 1_000, pulse(10));
     let gaps: Vec<u32> = b.windows(2).map(|pair| pair[1] - pair[0]).collect();
     assert_eq!(gaps, [100, 80, 63, 50]);
@@ -147,7 +151,7 @@ fn a_trigger_lasts_five_milliseconds() {
 fn b_can_leave_out_the_incoming_trigger() {
     let mut engine = ratchet();
     set(&mut engine, Setting::Passthru, 1);
-    assert!(!engine.apps().ratchet().passthru());
+    assert!(!engine.app::<RatchetApp>().passthru());
     let (_, b) = run(&mut engine, 1_000, pulse(10));
     assert_eq!(b.first(), Some(&110));
     assert_eq!(b.len(), 4);
@@ -157,7 +161,7 @@ fn b_can_leave_out_the_incoming_trigger() {
 fn a_gate_burst_runs_while_the_gate_is_up() {
     let mut engine = ratchet();
     set(&mut engine, Setting::Count, 40);
-    assert_eq!(engine.apps().ratchet().settings().count, Count::Gate);
+    assert_eq!(engine.app::<RatchetApp>().settings().count, Count::Gate);
     constant(&mut engine);
     let (_, b) = run(&mut engine, 1_000, |tick| (10..460).contains(&tick));
     assert_eq!(b, [10, 110, 210, 310, 410], "nothing after the gate falls");
@@ -179,12 +183,12 @@ fn an_input_adds_to_a_setting_or_sets_it() {
     // COUNT takes CV1 added, FIRST follows CV2.
     assign(&mut engine, Setting::Count, 1, Effect::Add);
     assign(&mut engine, Setting::Time, 2, Effect::Set);
-    let count = *engine.apps().ratchet().assign(Setting::Count).unwrap();
+    let count = *engine.app::<RatchetApp>().assign(Setting::Count).unwrap();
     assert_eq!(
         (count.input, count.effect),
         (Some(CvChannel::One), Effect::Add)
     );
-    let time = *engine.apps().ratchet().assign(Setting::Time).unwrap();
+    let time = *engine.app::<RatchetApp>().assign(Setting::Time).unwrap();
     assert_eq!(
         (time.input, time.effect),
         (Some(CvChannel::Two), Effect::Set)
@@ -215,8 +219,8 @@ fn an_input_only_counts_once_chosen_and_b_init_takes_none() {
     assert_eq!(b.len(), 5, "no input chosen: the panel's count");
     set(&mut engine, Setting::Passthru, 0);
     click(&mut engine);
-    assert_eq!(engine.apps().ratchet().assigning(), None);
-    assert_eq!(engine.apps().ratchet().assign(Setting::Passthru), None);
+    assert_eq!(engine.app::<RatchetApp>().assigning(), None);
+    assert_eq!(engine.app::<RatchetApp>().assign(Setting::Passthru), None);
 }
 
 #[test]
@@ -240,7 +244,7 @@ fn the_signal_is_scaled_shifted_and_bounded_before_its_effect() {
     // SCALE 50 %, SHIFT +0.50 V: 1 V reads 1.0 V, four repeats added.
     turn_line(&mut engine, AssignLine::Scale, -10);
     turn_line(&mut engine, AssignLine::Shift, 10);
-    let shaped = *engine.apps().ratchet().assign(Setting::Count).unwrap();
+    let shaped = *engine.app::<RatchetApp>().assign(Setting::Count).unwrap();
     assert_eq!((shaped.scale_percent, shaped.shift_mv), (50, 500));
     assert_eq!(shaped.shape(1_000), 1_000);
     assert_eq!(shaped.shape(-1_000), 0, "the gain inverts nothing");
@@ -248,8 +252,7 @@ fn the_signal_is_scaled_shifted_and_bounded_before_its_effect() {
     turn_line(&mut engine, AssignLine::Max, -95);
     assert_eq!(
         engine
-            .apps()
-            .ratchet()
+            .app::<RatchetApp>()
             .assign(Setting::Count)
             .unwrap()
             .max_mv,
@@ -259,8 +262,7 @@ fn the_signal_is_scaled_shifted_and_bounded_before_its_effect() {
     turn_line(&mut engine, AssignLine::Min, 127);
     assert_eq!(
         engine
-            .apps()
-            .ratchet()
+            .app::<RatchetApp>()
             .assign(Setting::Count)
             .unwrap()
             .min_mv,
@@ -268,7 +270,11 @@ fn the_signal_is_scaled_shifted_and_bounded_before_its_effect() {
     );
     turn_line(&mut engine, AssignLine::Min, -100);
     press(&mut engine, Button::Down);
-    assert_eq!(engine.apps().ratchet().assigning(), None, "down closes it");
+    assert_eq!(
+        engine.app::<RatchetApp>().assigning(),
+        None,
+        "down closes it"
+    );
     engine.parts_mut().0.patch(CvChannel::One, 4_000);
     let (_, b) = run(&mut engine, 1_000, pulse(10));
     assert_eq!(b.len(), 1 + 4 + 2, "{b:?}");
@@ -279,18 +285,18 @@ fn the_submenu_reads_its_input_and_the_range_seen() {
     let mut engine = ratchet();
     set(&mut engine, Setting::Shape, 0);
     click(&mut engine);
-    assert_eq!(engine.apps().ratchet().observed(), None, "no input yet");
+    assert_eq!(engine.app::<RatchetApp>().observed(), None, "no input yet");
     turn_line(&mut engine, AssignLine::Input, 3);
     for millivolts in [1_000, -2_000, 3_000, 500] {
         engine.parts_mut().0.patch(CvChannel::Three, millivolts);
         engine.clock().advance(1_000);
         engine.tick();
     }
-    let (low, high) = engine.apps().ratchet().observed().unwrap();
+    let (low, high) = engine.app::<RatchetApp>().observed().unwrap();
     assert!((-2_010..=-1_990).contains(&low) && (2_990..=3_010).contains(&high));
     // A new input starts the range again.
     turn_line(&mut engine, AssignLine::Input, 1);
-    let (low, high) = engine.apps().ratchet().observed().unwrap();
+    let (low, high) = engine.app::<RatchetApp>().observed().unwrap();
     assert!(low > -100 && high < 100, "{low} {high}");
 }
 
@@ -312,31 +318,34 @@ fn up_starts_a_burst_by_hand() {
 fn the_panel_walks_and_bounds_the_settings() {
     let mut engine = ratchet();
     set(&mut engine, Setting::Time, -100);
-    assert_eq!(engine.apps().ratchet().settings().time_micros, 2_000);
-    // The shape, -3.0 to +3.0 in tenths of an octave.
+    assert_eq!(engine.app::<RatchetApp>().settings().time_micros, 2_000);
+    // The shape, -3.0 to +3.0 in tenths.
     set(&mut engine, Setting::Shape, -100);
-    assert_eq!(engine.apps().ratchet().settings().curve_tenths, -30);
+    assert_eq!(engine.app::<RatchetApp>().settings().curve_tenths, -30);
     set(&mut engine, Setting::Shape, 100);
-    assert_eq!(engine.apps().ratchet().settings().curve_tenths, 30);
+    assert_eq!(engine.app::<RatchetApp>().settings().curve_tenths, 30);
     // The chance, 1 to 100 %.
     set(&mut engine, Setting::Chance, -120);
-    assert_eq!(engine.apps().ratchet().settings().chance_percent, 1);
+    assert_eq!(engine.app::<RatchetApp>().settings().chance_percent, 1);
     set(&mut engine, Setting::Chance, 120);
-    assert_eq!(engine.apps().ratchet().settings().chance_percent, 100);
+    assert_eq!(engine.app::<RatchetApp>().settings().chance_percent, 100);
     set(&mut engine, Setting::Count, -10);
-    assert_eq!(engine.apps().ratchet().settings().count, Count::Repeats(1));
+    assert_eq!(
+        engine.app::<RatchetApp>().settings().count,
+        Count::Repeats(1)
+    );
 }
 
 #[test]
 fn the_rate_of_tr1_is_measured() {
     let mut engine = ratchet();
-    assert_eq!(engine.apps().ratchet().bpm(), None);
+    assert_eq!(engine.app::<RatchetApp>().bpm(), None);
     // A trigger every 500 ms: 120 BPM.
     run(&mut engine, 2_600, |tick| tick % 500 == 10);
-    assert_eq!(engine.apps().ratchet().bpm(), Some(120));
+    assert_eq!(engine.app::<RatchetApp>().bpm(), Some(120));
     // Silent for more than two seconds: unknown again.
     run(&mut engine, 2_100, |_| false);
-    assert_eq!(engine.apps().ratchet().bpm(), None);
+    assert_eq!(engine.app::<RatchetApp>().bpm(), None);
 }
 
 #[test]
@@ -344,7 +353,7 @@ fn with_sync_on_first_is_a_fraction_of_the_period() {
     let mut engine = ratchet();
     constant(&mut engine);
     set(&mut engine, Setting::Sync, 1);
-    assert_eq!(engine.apps().ratchet().sync(), Some((1, 4)));
+    assert_eq!(engine.app::<RatchetApp>().sync(), Some((1, 4)));
     // Triggers 800 ms apart: from the second one on, a quarter is 200 ms.
     let (_, b) = run(&mut engine, 1_700, |tick| tick == 10 || tick == 810);
     let second: Vec<u32> = b.iter().copied().filter(|&tick| tick >= 810).collect();
@@ -352,17 +361,17 @@ fn with_sync_on_first_is_a_fraction_of_the_period() {
     // The first burst, with no rate yet, used FIRST's milliseconds.
     assert_eq!(b[1] - b[0], 100);
     set(&mut engine, Setting::Time, -1);
-    assert_eq!(engine.apps().ratchet().sync(), Some((1, 3)));
+    assert_eq!(engine.app::<RatchetApp>().sync(), Some((1, 3)));
     // The fractions above a third, longest first: x2, x1.5, x4/3, x1,
     // x3/4, x2/3, then /2 and shorter.
     set(&mut engine, Setting::Time, -2);
-    assert_eq!(engine.apps().ratchet().sync(), Some((2, 3)));
+    assert_eq!(engine.app::<RatchetApp>().sync(), Some((2, 3)));
     set(&mut engine, Setting::Time, -1);
-    assert_eq!(engine.apps().ratchet().sync(), Some((3, 4)));
+    assert_eq!(engine.app::<RatchetApp>().sync(), Some((3, 4)));
     set(&mut engine, Setting::Time, -2);
-    assert_eq!(engine.apps().ratchet().sync(), Some((4, 3)));
+    assert_eq!(engine.app::<RatchetApp>().sync(), Some((4, 3)));
     set(&mut engine, Setting::Time, -1);
-    assert_eq!(engine.apps().ratchet().sync(), Some((3, 2)));
+    assert_eq!(engine.app::<RatchetApp>().sync(), Some((3, 2)));
 }
 
 #[test]
@@ -377,7 +386,7 @@ fn the_burst_settings_are_on_page_one_and_the_options_on_page_two() {
         (Setting::Mode, 1),
     ] {
         set(&mut engine, setting, 0);
-        assert_eq!(engine.apps().ratchet().page(), page, "{setting:?}");
+        assert_eq!(engine.app::<RatchetApp>().page(), page, "{setting:?}");
     }
 }
 
@@ -385,12 +394,12 @@ fn the_burst_settings_are_on_page_one_and_the_options_on_page_two() {
 fn mode_span_spreads_the_repeats_over_the_step() {
     let mut engine = ratchet();
     set(&mut engine, Setting::Mode, 1);
-    assert_eq!(engine.apps().ratchet().settings().model, Model::Span);
-    assert_eq!(engine.apps().ratchet().page(), 1, "MODE is on page 2");
+    assert_eq!(engine.app::<RatchetApp>().settings().model, Model::Span);
+    assert_eq!(engine.app::<RatchetApp>().page(), 1, "MODE is on page 2");
     set(&mut engine, Setting::Sync, 1);
     // SPAN x1 of an 800 ms period: four even repeats at fifths of it.
     set(&mut engine, Setting::Time, -5);
-    assert_eq!(engine.apps().ratchet().sync(), Some((1, 1)));
+    assert_eq!(engine.app::<RatchetApp>().sync(), Some((1, 1)));
     let (_, b) = run(&mut engine, 1_700, |tick| tick == 10 || tick == 810);
     let second: Vec<u32> = b.iter().copied().filter(|&tick| tick >= 810).collect();
     assert_eq!(second, [810, 970, 1_130, 1_290, 1_450]);
@@ -415,7 +424,7 @@ fn each_repeat_fires_with_its_chance() {
     // 50 %: about half the repeats over many bursts, the incoming trigger
     // always passed through; the same each run, the rolls being seeded.
     set(&mut engine, Setting::Chance, -50);
-    assert_eq!(engine.apps().ratchet().settings().chance_percent, 50);
+    assert_eq!(engine.app::<RatchetApp>().settings().chance_percent, 50);
     let (a, b) = run(&mut engine, 20_000, |tick| tick % 500 == 10);
     assert_eq!(a.len(), 40);
     let repeats = b.len() - 40;
@@ -562,8 +571,8 @@ fn each_setting_is_swept_end_to_end_by_its_own_range() {
     assert_eq!(sweep(Setting::Count, Model::First), Some((0, 7_750)));
     assert_eq!(sweep(Setting::Shape, Model::First), Some((-3_000, 3_000)));
     assert_eq!(sweep(Setting::Chance, Model::First), Some((0, 5_000)));
-    // The time is 100 ms at 0 V: about 4.3 octaves down to 2 s, 5.6 up to
-    // 2 ms; SPAN from 400 ms, up to 8 s.
+    // The time is 100 ms at 0 V and halves per volt: about 4.3 V of
+    // halvings to 2 s, 5.6 V to 2 ms; SPAN from 400 ms, up to 8 s.
     let (slow, fast) = sweep(Setting::Time, Model::First).unwrap();
     assert!((-4_330..=-4_310).contains(&slow) && (5_630..=5_650).contains(&fast));
     let (slow, fast) = sweep(Setting::Time, Model::Span).unwrap();
@@ -586,7 +595,7 @@ fn center_is_a_click_in_the_submenu() {
     }
     turn_line(&mut engine, AssignLine::Center, 0);
     click(&mut engine);
-    let ratchet = engine.apps().ratchet();
+    let ratchet = engine.app::<RatchetApp>();
     assert_eq!(ratchet.assigning(), Some(AssignLine::Center), "still open");
     // The readings seen, once shaped, sit centred on 0 V and span about the
     // usable +-3.875 V, to the steps' rounding.
@@ -596,7 +605,7 @@ fn center_is_a_click_in_the_submenu() {
     assert!((low + high).abs() <= 100, "{low} {high}");
     assert!((7_400..=8_100).contains(&(high - low)), "{low} {high}");
     press(&mut engine, Button::Down);
-    assert_eq!(engine.apps().ratchet().assigning(), None);
+    assert_eq!(engine.app::<RatchetApp>().assigning(), None);
 }
 
 #[test]
@@ -624,18 +633,16 @@ fn center_follows_a_signal_that_changes_on_the_same_input() {
     swing(&mut engine, 3_000, 1_000);
     click(&mut engine);
     let wide = engine
-        .apps()
-        .ratchet()
+        .app::<RatchetApp>()
         .assign(Setting::Count)
         .unwrap()
         .scale_percent;
     swing(&mut engine, 1_000, 4_100);
-    let (low, high) = engine.apps().ratchet().observed().unwrap();
+    let (low, high) = engine.app::<RatchetApp>().observed().unwrap();
     assert!(low > -1_100 && high < 1_100, "{low} {high}");
     click(&mut engine);
     let narrow = engine
-        .apps()
-        .ratchet()
+        .app::<RatchetApp>()
         .assign(Setting::Count)
         .unwrap()
         .scale_percent;

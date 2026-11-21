@@ -13,10 +13,12 @@
 //! comes back — deliberate, and cheaper than the alternative.
 //!
 //! This module also carries the contract every applet is written against —
-//! [`InputSnapshot`] and [`TickContext`] — so that one applet never has to
-//! import another just to describe what it is fed. Each applet itself lives in
-//! its own submodule ([`diagnostic`], [`scope`], [`gfx_demo`], [`ratchet`],
-//! [`tone`], [`supersaw`]).
+//! the [`App`] trait, [`InputSnapshot`] and [`TickContext`] — so that one
+//! applet never has to import another just to describe what it is fed, and
+//! nothing outside [`AppHost`] has to name an applet to run it
+//! (journal/D-043). Each applet itself lives in its own submodule
+//! ([`diagnostic`], [`scope`], [`gfx_demo`], [`ratchet`], [`tone`],
+//! [`supersaw`]).
 //!
 //! An applet's `update` returns what the outputs carry as
 //! [`Params`]: the CV applets hold levels, `TONE`
@@ -25,15 +27,19 @@
 
 pub mod diagnostic;
 pub mod gfx_demo;
+pub mod param;
 pub mod ratchet;
 pub mod scope;
 pub mod supersaw;
 pub mod tone;
 
+use core::any::Any;
+
 use serde::{Deserialize, Serialize};
 
 use crate::apps::diagnostic::DiagnosticApp;
 use crate::apps::gfx_demo::GfxDemoApp;
+use crate::apps::param::{ParamSpec, ParamValue, Refused};
 use crate::apps::ratchet::RatchetApp;
 use crate::apps::scope::ScopeApp;
 use crate::apps::supersaw::SupersawApp;
@@ -102,7 +108,110 @@ pub struct TickContext {
     pub outputs_forced: bool,
 }
 
+/// What every applet is to the engine (journal/D-043).
+///
+/// The engine runs one applet at a time and reaches it only through this
+/// trait, so a new applet changes [`AppHost`] and [`AppId`], the list of what
+/// this image composes, and nothing else in the core. The screen is the
+/// applet's own: on 128 x 64 pixels each one lays itself out by hand.
+///
+/// `Any` is a supertrait so that a test or the simulator can look at the
+/// concrete applet behind a `&dyn App` ([`AppHost::find`]); the engine itself
+/// never does.
+pub trait App: Any {
+    /// The applet's place in the image's list, which is also its persisted
+    /// key: [`AppId`]'s index never changes for a given applet.
+    fn id(&self) -> AppId;
+
+    /// Name shown in the app menu.
+    fn name(&self) -> &'static str {
+        self.id().name()
+    }
+
+    /// Runs one tick: what the outputs carry.
+    fn update(&mut self, input: &InputSnapshot) -> Params;
+
+    /// Draws the applet's screen.
+    fn render(&self, frame: &mut FrameBuffer, context: &TickContext);
+
+    /// The parameters it is set by, in a fixed order: an index into this
+    /// list names one in [`get`](Self::get) and [`set`](Self::set)
+    /// ([`param`]).
+    fn param_specs(&self) -> &'static [ParamSpec] {
+        &[]
+    }
+
+    /// How the screen labels parameter `index` now, which another setting
+    /// may change (`RATCHET`'s `FIRST` reads `SPAN` in `MODE SPAN`); its
+    /// [`ParamSpec::name`] stays the one to find it by.
+    fn param_label(&self, index: usize) -> &'static str {
+        self.param_specs().get(index).map_or("", |spec| spec.name)
+    }
+
+    /// Whether parameter `index` acts now. One face of a setting with two
+    /// is inactive while the other shows on the screen (`RATCHET`'s
+    /// `DIVISION` with `SYNC OFF`, its `FIRST` with `SYNC ON`, its `COUNT`
+    /// in `GATE`): it keeps its value and can still be set, ready for when
+    /// the other setting brings it back.
+    fn param_active(&self, _index: usize) -> bool {
+        true
+    }
+
+    /// The value of parameter `index` as the panel set it, before any CV
+    /// input moves it; `None` past the last.
+    fn get(&self, _index: usize) -> Option<ParamValue> {
+        None
+    }
+
+    /// Sets parameter `index` as a detent would, within the same bounds:
+    /// what it applied, which another setting may have narrowed.
+    ///
+    /// It may move other parameters too, as the detent would: the other face
+    /// of the same setting (`RATCHET`'s `GATE` off puts `COUNT` at its
+    /// last), or a bound that depends on it (`MODE` narrowing `FIRST`). A
+    /// host that shows them reads them back after a set.
+    ///
+    /// # Errors
+    ///
+    /// Why the value was not taken: no such parameter, a value of another
+    /// kind, or one outside its range ([`ParamSpec::check`]).
+    fn set(&mut self, _index: usize, _value: ParamValue) -> Result<ParamValue, Refused> {
+        Err(Refused::NoSuch)
+    }
+
+    /// The values it can be read for but not set: what it plays once its
+    /// inputs moved its parameters, what it measured, what it counted.
+    fn observables(&self) -> &'static [ParamSpec] {
+        &[]
+    }
+
+    /// Observable `index` now; `None` past the last, or while unknown (a
+    /// tempo before its second edge).
+    fn observe(&self, _index: usize) -> Option<ParamValue> {
+        None
+    }
+
+    /// What it can be asked to do, by name.
+    fn actions(&self) -> &'static [&'static str] {
+        &[]
+    }
+
+    /// Does action `index`.
+    ///
+    /// # Errors
+    ///
+    /// [`Refused::NoSuch`] past the last action.
+    fn act(&mut self, _index: usize) -> Result<(), Refused> {
+        Err(Refused::NoSuch)
+    }
+}
+
 /// One of the applets the module can run.
+///
+/// The list of what this image composes, in the order the menu lists them.
+/// The index of each variant is its persisted key (the startup applet is
+/// saved by it, journal/D-028), so a new applet always comes last and none
+/// is ever reordered.
 #[derive(
     Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default, Serialize, Deserialize,
 )]
@@ -207,64 +316,51 @@ impl AppHost {
         self.current = id;
     }
 
+    /// The applet filling slot `id`.
+    #[must_use]
+    pub fn get(&self, id: AppId) -> &dyn App {
+        match id {
+            AppId::Diagnostic => &self.diagnostic,
+            AppId::Scope => &self.scope,
+            AppId::Gfx => &self.gfx,
+            AppId::Ratchet => &self.ratchet,
+            AppId::Tone => &self.tone,
+            AppId::Supersaw => &self.supersaw,
+        }
+    }
+
+    /// The applet filling slot `id`, to change it.
+    pub fn get_mut(&mut self, id: AppId) -> &mut dyn App {
+        match id {
+            AppId::Diagnostic => &mut self.diagnostic,
+            AppId::Scope => &mut self.scope,
+            AppId::Gfx => &mut self.gfx,
+            AppId::Ratchet => &mut self.ratchet,
+            AppId::Tone => &mut self.tone,
+            AppId::Supersaw => &mut self.supersaw,
+        }
+    }
+
+    /// The applet of type `T`, running or not, if this image composes one.
+    ///
+    /// For tests and the simulator, which look at an applet's own state; the
+    /// engine never needs the concrete type.
+    #[must_use]
+    pub fn find<T: App>(&self) -> Option<&T> {
+        AppId::ALL.into_iter().find_map(|id| {
+            let app: &dyn Any = self.get(id);
+            app.downcast_ref::<T>()
+        })
+    }
+
     /// Runs one tick of the current applet: what the outputs carry.
     pub fn update(&mut self, input: &InputSnapshot) -> Params {
-        match self.current {
-            AppId::Diagnostic => self.diagnostic.update(input).into(),
-            AppId::Scope => self.scope.update(input).into(),
-            AppId::Gfx => self.gfx.update(input).into(),
-            AppId::Ratchet => self.ratchet.update(input).into(),
-            AppId::Tone => self.tone.update(input),
-            AppId::Supersaw => self.supersaw.update(input),
-        }
+        self.get_mut(self.current).update(input)
     }
 
     /// Draws the current applet's screen.
     pub fn render(&self, frame: &mut FrameBuffer, context: &TickContext) {
-        match self.current {
-            AppId::Diagnostic => self.diagnostic.render(frame, context),
-            AppId::Scope => self.scope.render(frame, context),
-            AppId::Gfx => self.gfx.render(frame, context),
-            AppId::Ratchet => self.ratchet.render(frame, context),
-            AppId::Tone => self.tone.render(frame, context),
-            AppId::Supersaw => self.supersaw.render(frame, context),
-        }
-    }
-
-    /// The diagnostic applet, running or not.
-    #[must_use]
-    pub const fn diagnostic(&self) -> &DiagnosticApp {
-        &self.diagnostic
-    }
-
-    /// The scope applet, running or not.
-    #[must_use]
-    pub const fn scope(&self) -> &ScopeApp {
-        &self.scope
-    }
-
-    /// The graphics demonstration, running or not.
-    #[must_use]
-    pub const fn gfx(&self) -> &GfxDemoApp {
-        &self.gfx
-    }
-
-    /// The Ratchet applet, running or not.
-    #[must_use]
-    pub const fn ratchet(&self) -> &RatchetApp {
-        &self.ratchet
-    }
-
-    /// The `TONE` applet, running or not.
-    #[must_use]
-    pub const fn tone(&self) -> &ToneApp {
-        &self.tone
-    }
-
-    /// The `SUPERSAW` applet, running or not.
-    #[must_use]
-    pub const fn supersaw(&self) -> &SupersawApp {
-        &self.supersaw
+        self.get(self.current).render(frame, context);
     }
 }
 
@@ -277,6 +373,8 @@ impl Default for AppHost {
 #[cfg(test)]
 mod tests {
     use super::InputSnapshot;
+    use super::diagnostic::DiagnosticApp;
+    use super::scope::ScopeApp;
     use super::{AppHost, AppId};
     use crate::audio::{Channel, Params};
     use crate::platform::{CV_CHANNELS, MilliVolts};
@@ -313,6 +411,16 @@ mod tests {
     }
 
     #[test]
+    fn every_slot_holds_the_applet_that_names_it() {
+        let host = AppHost::new();
+        for id in AppId::ALL {
+            assert_eq!(host.get(id).id(), id);
+            assert_eq!(host.get(id).name(), id.name());
+        }
+        assert!(host.find::<ScopeApp>().is_some());
+    }
+
+    #[test]
     fn a_fresh_host_runs_the_diagnostic_applet() {
         let host = AppHost::new();
         assert_eq!(host.current(), AppId::Diagnostic);
@@ -341,14 +449,14 @@ mod tests {
     fn selecting_is_idempotent_and_resets_nothing() {
         let mut host = AppHost::new();
         host.update(&snapshot(0, 4_000));
-        let before = *host.diagnostic().outputs();
+        let before = *host.find::<DiagnosticApp>().unwrap().outputs();
 
         host.select(AppId::Scope);
         host.select(AppId::Scope);
         host.update(&snapshot(1_000, 0));
 
         assert_eq!(
-            *host.diagnostic().outputs(),
+            *host.find::<DiagnosticApp>().unwrap().outputs(),
             before,
             "a frozen applet keeps the state it was left with"
         );
@@ -359,17 +467,17 @@ mod tests {
     fn switching_away_and_back_preserves_the_other_app() {
         let mut host = AppHost::new();
         host.update(&snapshot(0, 3_000));
-        let mode = host.diagnostic().mode();
-        let selected = host.diagnostic().selected();
+        let mode = host.find::<DiagnosticApp>().unwrap().mode();
+        let selected = host.find::<DiagnosticApp>().unwrap().selected();
 
         host.select(AppId::Scope);
         host.update(&snapshot(500, 0));
         host.select(AppId::Diagnostic);
 
-        assert_eq!(host.diagnostic().mode(), mode);
-        assert_eq!(host.diagnostic().selected(), selected);
+        assert_eq!(host.find::<DiagnosticApp>().unwrap().mode(), mode);
+        assert_eq!(host.find::<DiagnosticApp>().unwrap().selected(), selected);
         assert_eq!(
-            host.scope().level(),
+            host.find::<ScopeApp>().unwrap().level(),
             500,
             "the scope kept its own state too"
         );

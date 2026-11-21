@@ -12,8 +12,8 @@ use std::io::{self, Read, Write};
 use oc_core::framebuffer::LEN;
 use oc_core::platform::{CvChannel, MilliVolts};
 use oc_protocol::{
-    Error, FrameReader, MAX_FRAME, Profile, Reply, Request, SCREEN_PAGES, Sample, VERSION, decode,
-    encode,
+    Error, FrameReader, Group, MAX_FRAME, ParamKind, ParamValue, Profile, Reply, Request,
+    SCREEN_PAGES, Sample, VERSION, decode, encode,
 };
 
 /// What went wrong talking to the module.
@@ -71,12 +71,103 @@ pub struct ModuleInfo {
     pub build: String,
 }
 
+/// One applet, as the module lists it (journal/D-043).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AppEntry {
+    /// Its index, which names it in every other request.
+    pub index: u8,
+    /// Its name, as the app menu lists it.
+    pub name: String,
+    /// Whether it drives the outputs and the screen now.
+    pub running: bool,
+}
+
+/// One parameter or observable of an applet.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SpecEntry {
+    /// Its index in its list.
+    pub index: u8,
+    /// Its name, which finds it whatever another setting does to its label.
+    pub name: String,
+    /// How the screen labels it now.
+    pub label: String,
+    /// What values it takes.
+    pub kind: ParamKind,
+    /// A choice's names, in order; empty otherwise.
+    pub choices: Vec<String>,
+    /// Whether it takes a CV input.
+    pub assignable: bool,
+    /// Whether it acts now: false for a face of a setting the screen does
+    /// not show.
+    pub active: bool,
+    /// Its value when described; `None` for an observable not known yet.
+    pub value: Option<ParamValue>,
+}
+
+/// Everything an applet declares, with its values when described.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct AppDescription {
+    /// What it is set by.
+    pub params: Vec<SpecEntry>,
+    /// What it can be read for.
+    pub observables: Vec<SpecEntry>,
+    /// What it can be asked to do, by index.
+    pub actions: Vec<String>,
+}
+
+impl AppDescription {
+    /// Adds a parameter or an observable, in the order the module sends them.
+    pub fn add_spec(&mut self, group: Group, spec: SpecEntry) {
+        match group {
+            Group::Param => self.params.push(spec),
+            Group::Observable => self.observables.push(spec),
+        }
+    }
+
+    /// Adds a choice's next name to the entry it follows.
+    ///
+    /// # Errors
+    ///
+    /// When it does not follow that entry, the order the module keeps.
+    pub fn add_choice_name(
+        &mut self,
+        group: Group,
+        index: u8,
+        name: String,
+    ) -> std::result::Result<(), &'static str> {
+        let list = match group {
+            Group::Param => &mut self.params,
+            Group::Observable => &mut self.observables,
+        };
+        match list.last_mut() {
+            Some(spec) if spec.index == index => {
+                spec.choices.push(name);
+                Ok(())
+            }
+            _ => Err("a name after its choice"),
+        }
+    }
+}
+
 /// An answer, copied out of the frame it was decoded from.
 enum Answer {
     Hello(ModuleInfo),
     Profile(Box<Profile>),
-    ScreenPage { page: u8, bytes: Vec<u8> },
+    ScreenPage {
+        page: u8,
+        bytes: Vec<u8>,
+    },
     Done,
+    App(AppEntry),
+    Spec(Group, SpecEntry),
+    ChoiceName {
+        group: Group,
+        index: u8,
+        name: String,
+    },
+    Action(String),
+    Value(ParamValue),
+    Observed(Option<ParamValue>),
 }
 
 /// A session with one module.
@@ -215,6 +306,99 @@ impl<T: Read + Write> Client<T> {
         self.done(&Request::RebootToLoader)
     }
 
+    /// Every applet the module runs, in its order.
+    ///
+    /// # Errors
+    ///
+    /// As [`Self::hello`].
+    pub fn apps(&mut self) -> Result<Vec<AppEntry>> {
+        self.send(&Request::ListApps)?;
+        let mut apps = Vec::new();
+        loop {
+            match self.next_answer()? {
+                Answer::App(app) => apps.push(app),
+                Answer::Done => return Ok(apps),
+                _ => return Err(ProbeError::Unexpected("an applet")),
+            }
+        }
+    }
+
+    /// What applet `app` declares, with its values now.
+    ///
+    /// # Errors
+    ///
+    /// As [`Self::hello`]; no applet at that index.
+    pub fn describe(&mut self, app: u8) -> Result<AppDescription> {
+        self.send(&Request::DescribeApp { app })?;
+        let mut description = AppDescription::default();
+        loop {
+            match self.next_answer()? {
+                Answer::Spec(group, spec) => description.add_spec(group, spec),
+                Answer::ChoiceName { group, index, name } => description
+                    .add_choice_name(group, index, name)
+                    .map_err(ProbeError::Unexpected)?,
+                Answer::Action(name) => description.actions.push(name),
+                Answer::Done => return Ok(description),
+                _ => return Err(ProbeError::Unexpected("a description")),
+            }
+        }
+    }
+
+    /// The value parameter `param` of applet `app` holds.
+    ///
+    /// # Errors
+    ///
+    /// As [`Self::describe`]; no such parameter.
+    pub fn get_param(&mut self, app: u8, param: u8) -> Result<ParamValue> {
+        match self.ask(&Request::GetParam { app, param })? {
+            Answer::Value(value) => Ok(value),
+            _ => Err(ProbeError::Unexpected("a value")),
+        }
+    }
+
+    /// Sets parameter `param` of applet `app`, as a detent would: what the
+    /// applet applied, which another setting may have narrowed.
+    ///
+    /// # Errors
+    ///
+    /// As [`Self::get_param`]; a value of another kind or out of range.
+    pub fn set_param(&mut self, app: u8, param: u8, value: ParamValue) -> Result<ParamValue> {
+        match self.ask(&Request::SetParam { app, param, value })? {
+            Answer::Value(value) => Ok(value),
+            _ => Err(ProbeError::Unexpected("a value")),
+        }
+    }
+
+    /// Observable `index` of applet `app` now, `None` while unknown.
+    ///
+    /// # Errors
+    ///
+    /// As [`Self::get_param`].
+    pub fn observe(&mut self, app: u8, index: u8) -> Result<Option<ParamValue>> {
+        match self.ask(&Request::Observe { app, index })? {
+            Answer::Observed(value) => Ok(value),
+            _ => Err(ProbeError::Unexpected("an observed value")),
+        }
+    }
+
+    /// Asks applet `app` for action `action`.
+    ///
+    /// # Errors
+    ///
+    /// As [`Self::get_param`].
+    pub fn act(&mut self, app: u8, action: u8) -> Result<()> {
+        self.done(&Request::Act { app, action })
+    }
+
+    /// Hands the outputs and the screen to applet `app`.
+    ///
+    /// # Errors
+    ///
+    /// As [`Self::describe`].
+    pub fn select_app(&mut self, app: u8) -> Result<()> {
+        self.done(&Request::SelectApp { app })
+    }
+
     fn done(&mut self, request: &Request) -> Result<()> {
         match self.ask(request)? {
             Answer::Done => Ok(()),
@@ -271,6 +455,45 @@ impl<T: Read + Write> Client<T> {
             },
             Reply::Done => Answer::Done,
             Reply::Error(error) => return Err(ProbeError::Refused(error)),
+            Reply::App {
+                app, name, running, ..
+            } => Answer::App(AppEntry {
+                index: app,
+                name: name.to_owned(),
+                running,
+            }),
+            Reply::Spec {
+                group,
+                index,
+                name,
+                label,
+                kind,
+                assignable,
+                active,
+                value,
+            } => Answer::Spec(
+                group,
+                SpecEntry {
+                    index,
+                    name: name.to_owned(),
+                    label: label.to_owned(),
+                    kind,
+                    choices: Vec::new(),
+                    assignable,
+                    active,
+                    value,
+                },
+            ),
+            Reply::ChoiceName {
+                group, index, name, ..
+            } => Answer::ChoiceName {
+                group,
+                index,
+                name: name.to_owned(),
+            },
+            Reply::Action { name, .. } => Answer::Action(name.to_owned()),
+            Reply::Value(value) => Answer::Value(value),
+            Reply::Observed(value) => Answer::Observed(value),
         };
         Ok(Some(answer))
     }
