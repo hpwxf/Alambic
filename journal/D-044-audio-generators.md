@@ -162,9 +162,17 @@ Trame (1 344,7 µs), période de la boucle et gigue inchangées.
   dominait déjà la somme, `MAILBOX` n'a perdu que 16 octets, et la copie d'un enum n'est pas plus courte.
   Écart dans le bruit, loin du seuil d'une microseconde de D-040 ; ce relevé est le pire cas (le bruit change le
   `Setup` à chaque tick, une copie par milliseconde).
-* **`update` et `outputs`** : −1,2 et +0,8 µs, −0,4 µs à eux deux ; tous deux préparent un `Setup` (la voix du moteur
-  dans `update`, `audio::publish` dans `outputs`), le partage entre eux suit l'inlining du LTO, sans conséquence.
-  `usb` (2,89 → 1,90 µs) dépend de l'hôte, pas du lot.
+* **`update` et `outputs`** : −1,2 et +0,8 µs, −0,4 µs à eux deux. Les étapes de la boucle se mesurent en temps
+  écoulé, interruptions comprises : `outputs` (≈ 0,9 µs de code) prend l'interruption audio (4,2 µs) quand `update`
+  s'allonge assez pour l'y pousser. Le partage entre les deux suit l'endroit où l'interruption tombe ; seule leur
+  somme compte. `usb` (2,89 → 1,90 µs) dépend de l'hôte, pas du lot.
+
+Même réglage **sans modulation** (`NOTE` et `DETUNE` fixes, `bbc05ae`) : `voice` 1,56 / 1,65 µs, `audio` 4,18 /
+5,02 µs, aucun `voice_params` (le `Setup` ne change pas), `update` 4,71 µs, `outputs` 0,91 µs (0,91 au plus sur
+10 000 ticks : jamais interrompu), `tick` 15,25 µs. La modulation coûte donc ≈ 10,5 µs par tick à la boucle (la voix
+du moteur refait `Setup::new` dans `update`, et ce qu'elle pousse sur l'interruption suivante), presque rien à
+l'interruption (+0,03 µs sur `audio`). S'y ajoute un second `Setup::new`, identique, dans `audio::publish`, appelé
+après `Engine::tick` hors de toute étape du profil.
 
 Critères de § 4 tenus (le léger écart de `voice_params` mis à part) : **D-044 adoptée**. D-033 (forme de `Params` et de
 `Voice`) et D-037 (où vit le banc) sont révisées en conséquence.

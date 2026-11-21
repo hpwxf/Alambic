@@ -33,7 +33,13 @@ le banc). Étape 2 de la trajectoire de D-043. Valeurs mesurées sur un module :
   | `tick` moyenne / max | 26,65 / 83,17 µs | 25,71 / 82,13 µs |
 
   `voice` −7 % ; `voice_params` +0,03 µs, dans le bruit (le `Setup` du Supersaw dominait déjà la somme) et dans le
-  pire cas, le bruit changeant le `Setup` à chaque tick ; trame, période et gigue inchangées.
+  pire cas, le bruit changeant le `Setup` à chaque tick ; trame, période et gigue inchangées. Le partage entre
+  `update` et `outputs` suit l'endroit où tombe l'interruption audio (les étapes de la boucle la comptent) ; seule
+  leur somme compte.
+* **Module, sans modulation** (mêmes réglages, `NOTE` et `DETUNE` fixes, `bbc05ae`) : `voice` 1,56 / 1,65 µs,
+  `audio` 4,18 / 5,02 µs, aucun `voice_params`, `update` 4,71 µs, `outputs` 0,91 µs (jamais interrompu), `tick`
+  15,25 µs. La modulation coûte ≈ 10,5 µs par tick à la boucle, +0,03 µs à `audio` ; un second `Setup::new`, dans
+  `audio::publish`, échappe au profil.
 
 ## Réserves
 
