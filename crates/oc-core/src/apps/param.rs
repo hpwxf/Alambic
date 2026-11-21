@@ -177,9 +177,15 @@ impl ParamSpec {
     /// If `out` refuses the text.
     pub fn write(&self, value: ParamValue, out: &mut impl Write) -> fmt::Result {
         match (self.kind, value) {
-            (Kind::Number { decimals, unit, .. }, ParamValue::Number(number)) => {
-                write_number(number, decimals, unit, out)
-            }
+            (
+                Kind::Number {
+                    min,
+                    decimals,
+                    unit,
+                    ..
+                },
+                ParamValue::Number(number),
+            ) => write_number(number, decimals, unit, min < 0, out),
             (Kind::Choice(names), ParamValue::Choice(index)) => {
                 out.write_str(names.get(usize::from(index)).copied().unwrap_or("?"))
             }
@@ -190,16 +196,27 @@ impl ParamSpec {
 }
 
 /// Writes a number as a host shows it: with `decimals` digits after the
-/// point and `unit`'s suffix, or a note's name. The one place a number's
-/// text is decided, for the module's own summary and the host tools alike.
+/// point and `unit`'s suffix, or a note's name; with a `+` before a
+/// positive value of a `signed` parameter (one whose range goes below 0),
+/// as the screens write `SHAPE +1.5`. The one place a number's text is
+/// decided, for the module's own summary and the host tools alike.
 ///
 /// # Errors
 ///
 /// If `out` refuses the text.
-pub fn write_number(number: i32, decimals: u8, unit: Unit, out: &mut impl Write) -> fmt::Result {
+pub fn write_number(
+    number: i32,
+    decimals: u8,
+    unit: Unit,
+    signed: bool,
+    out: &mut impl Write,
+) -> fmt::Result {
     if unit == Unit::Note {
         let note = u8::try_from(number).unwrap_or(0);
         return out.write_str(note_name(note).as_str());
+    }
+    if signed && number > 0 {
+        out.write_char('+')?;
     }
     write_fixed(number, decimals, out)?;
     out.write_str(unit.suffix())
@@ -312,7 +329,12 @@ mod tests {
     #[test]
     fn a_value_reads_with_its_decimals_unit_or_name() {
         assert_eq!(text(&SHAPE, ParamValue::Number(-5)).as_str(), "-0.5 OCT");
-        assert_eq!(text(&SHAPE, ParamValue::Number(25)).as_str(), "2.5 OCT");
+        assert_eq!(text(&SHAPE, ParamValue::Number(25)).as_str(), "+2.5 OCT");
+        assert_eq!(
+            text(&SHAPE, ParamValue::Number(0)).as_str(),
+            "0.0 OCT",
+            "no sign at 0"
+        );
         assert_eq!(text(&MODE, ParamValue::Choice(1)).as_str(), "SPAN");
         let level = ParamSpec::number("LEVEL", (0, 3_000), 100, 3, Unit::Volts);
         assert_eq!(text(&level, ParamValue::Number(1_000)).as_str(), "1.000 V");

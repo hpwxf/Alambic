@@ -385,10 +385,9 @@ async function setParam(at, text) {
     const [item] = await session.ask(frame, 1, true);
     const shown = appView.absorb_param(at, item.message);
     release([item]);
-    const applied = appView.param_edit_text(at);
-    status.textContent = applied.toLowerCase() === text.trim().toLowerCase()
-      ? `set: ${shown}`
-      : `set: ${shown} (narrowed by another setting)`;
+    status.textContent = appView.narrowed
+      ? `set: ${shown} (narrowed by another setting)`
+      : `set: ${shown}`;
     await refreshValues(appView.param_label(at));
   } catch (error) {
     status.textContent = `error: ${error.message}`;

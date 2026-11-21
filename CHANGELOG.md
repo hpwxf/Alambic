@@ -25,7 +25,8 @@ Architectural decisions behind each change are in `journal/` (French).
   (`RATCHET`'s `FIRST` becomes `SPAN` in `MODE SPAN`), the face of a
   setting the screen does not show is greyed (`DIVISION` with `SYNC OFF`)
   but can still be set, and what a set moves besides itself is read back
-  and marked.
+  and marked. A bipolar value reads with its sign, as on the screen
+  (`SHAPE +1.5`).
 - **`SHAPE`** in `SUPERSAW`: each voice blends from a sawtooth into a
   square, band-limited all the way, at about the same loudness
   (journal/D-037, revision of 2026-11-19); on the first page, takes an

@@ -63,8 +63,16 @@ pub fn find_action(actions: &[String], query: &str) -> Option<u8> {
 pub fn value_text(spec: &SpecEntry, value: ParamValue) -> String {
     let mut text = String::new();
     match (spec.kind, value) {
-        (ParamKind::Number { decimals, unit, .. }, ParamValue::Number(number)) => {
-            let _ = write_number(number, decimals, unit, &mut text);
+        (
+            ParamKind::Number {
+                min,
+                decimals,
+                unit,
+                ..
+            },
+            ParamValue::Number(number),
+        ) => {
+            let _ = write_number(number, decimals, unit, min < 0, &mut text);
         }
         (ParamKind::Choice { .. }, ParamValue::Choice(index)) => {
             text.push_str(
@@ -84,11 +92,17 @@ pub fn value_text(spec: &SpecEntry, value: ParamValue) -> String {
 #[must_use]
 pub fn edit_text(spec: &SpecEntry, value: ParamValue) -> String {
     match (spec.kind, value) {
-        (ParamKind::Number { decimals, unit, .. }, ParamValue::Number(number))
-            if unit != Unit::Note =>
-        {
+        (
+            ParamKind::Number {
+                min,
+                decimals,
+                unit,
+                ..
+            },
+            ParamValue::Number(number),
+        ) if unit != Unit::Note => {
             let mut text = String::new();
-            let _ = write_number(number, decimals, Unit::None, &mut text);
+            let _ = write_number(number, decimals, Unit::None, min < 0, &mut text);
             text
         }
         _ => value_text(spec, value),
@@ -360,7 +374,17 @@ mod tests {
 
     #[test]
     fn what_a_set_moved_besides_itself_is_named() {
-        let mut count = spec("COUNT", number(0, Unit::None), &[]);
+        let mut count = spec(
+            "COUNT",
+            ParamKind::Number {
+                min: 1,
+                max: 32,
+                step: 1,
+                decimals: 0,
+                unit: Unit::None,
+            },
+            &[],
+        );
         count.value = Some(ParamValue::Number(4));
         let mut gate = spec("GATE", ParamKind::Toggle, &[]);
         gate.index = 1;

@@ -113,6 +113,10 @@ pub struct AppView {
     broken: bool,
     /// Which parameters the last refresh found changed.
     moved: Vec<bool>,
+    /// The value the last set asked for, to tell whether it was narrowed.
+    requested: Option<ParamValue>,
+    /// Whether the last value absorbed differs from the one asked for.
+    narrowed: bool,
 }
 
 #[wasm_bindgen]
@@ -126,6 +130,8 @@ impl AppView {
             description: AppDescription::default(),
             broken: false,
             moved: Vec::new(),
+            requested: None,
+            narrowed: false,
         }
     }
 
@@ -282,9 +288,10 @@ impl AppView {
     /// # Errors
     ///
     /// What the text should have looked like.
-    pub fn set_request(&self, at: usize, text: &str) -> Result<Vec<u8>, String> {
+    pub fn set_request(&mut self, at: usize, text: &str) -> Result<Vec<u8>, String> {
         let spec = param(&self.description, at).ok_or("no such parameter")?;
         let value = parse_value(spec, text)?;
+        self.requested = Some(value);
         Ok(frame(&Request::SetParam {
             app: self.app,
             param: spec.index,
@@ -302,7 +309,16 @@ impl AppView {
             return String::new();
         };
         spec.value = Some(value);
+        self.narrowed = self.requested.take().is_some_and(|asked| asked != value);
         value_text(spec, value)
+    }
+
+    /// Whether the module applied another value than the last set asked
+    /// for: another setting narrowed it.
+    #[wasm_bindgen(getter)]
+    #[must_use]
+    pub fn narrowed(&self) -> bool {
+        self.narrowed
     }
 
     /// How many observables.
@@ -466,7 +482,7 @@ mod tests {
         assert_eq!(view.param_name(4), "SHAPE");
         assert_eq!(view.param_text(4), "0.0");
         assert_eq!(view.param_edit_text(4), "0.0");
-        assert_eq!(view.param_range(4), "-3.0 .. 3.0");
+        assert_eq!(view.param_range(4), "-3.0 .. +3.0");
         assert_eq!(view.param_editor(8), Editor::Choice);
         assert_eq!(view.param_choices(8), ["FIRST", "SPAN"]);
         assert!(view.param_assignable(0) && !view.param_assignable(1));
@@ -518,9 +534,19 @@ mod tests {
         let request = view.set_request(4, "-1.5").unwrap();
         let answer = module.send(&request);
         assert_eq!(view.absorb_param(4, &answer[0]), "-1.5");
+        assert!(!view.narrowed());
         assert_eq!(
             module.engine.app::<RatchetApp>().settings().curve_tenths,
             -15
+        );
+        let answer = module.send(&view.set_request(4, "1.5").unwrap());
+        assert_eq!(view.absorb_param(4, &answer[0]), "+1.5");
+        assert!(!view.narrowed(), "1.5 typed, +1.5 shown: the same value");
+        let answer = module.send(&view.set_request(2, "5000").unwrap());
+        view.absorb_param(2, &answer[0]);
+        assert!(
+            view.narrowed(),
+            "FIRST is two seconds at most in MODE FIRST"
         );
         assert!(view.set_request(4, "steep").is_err());
 
