@@ -92,3 +92,18 @@ divisions 64 bits des inverses, émulées) ; en `F32`, `tick` 25,71 → 21,71 µ
 Même relevé, pour trancher l'essai : `voice` en `INT` / `F32`, 1,25 / **1,04** µs avec `SHAPE` à 0 (`F32` 17 % moins
 cher, comme au lot 9b), mais 1,37 / **1,57** µs avec `SHAPE` à 25 % (`F32` 15 % plus cher) : la seconde scie corrigée
 par voix coûte ≈ 0,1 µs en entier et ≈ 0,5 µs en `f32`. Le reste de cette entrée est inchangé.
+
+## Révision du 2026-11-21 — les comparaisons de phase par leurs bits (lot 9i)
+
+Le surcoût de `SHAPE` en `F32` (≈ 0,5 µs par échantillon, contre ≈ 0,1 en `INT`) ne venait pas du calcul : chaque
+comparaison de phase en `f32` est un `vcmp`, un transfert des drapeaux du FPU vers le cœur (`vmrs`) et un
+branchement, et la seconde scie en ajoute trois par voix. Pour des valeurs positives ou nulles, l'ordre des bits
+IEEE est celui des valeurs : le banc `f32` compare ses phases par `to_bits()`, en entier. Mêmes résultats, échantillons
+identiques au bit près ; les paires `vcmp` / `vmrs` de `next_sample` passent de 79 à 13, `.text` −1 312 o.
+
+Sur le module (`14aad64`, `STEREO ON`, `MIX` 50 %), `voice` : `F32` 1,56 → **1,18** µs à `SHAPE` 25 %, 1,03 →
+**0,88** µs à 0 ; `INT` 1,36 et 1,25 µs, inchangé. `F32` est désormais moins cher aux deux réglages (−13 % et
+−30 %). Sur l'hôte, où le transfert coûte plus que la comparaison, `F32` ralentit (≈ 29 → 39 ns) : les bancs criterion
+restent un garde-fou, pas la mesure. Essayé et écarté : `-C target-cpu=cortex-m7`, qui aurait donné au compilateur les
+sélections sans branchement de FPv5 ; le binaire produit ne contenait plus d'instruction flottante (`.text` +11 Kio),
+et c'est un changement de chaîne (D-004).
