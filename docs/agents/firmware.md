@@ -76,6 +76,11 @@ it already, this file only points to it.
   `audio` the voice's own `voice` and `voice_params`). The interrupt spins
   until the DAC's burst echoes, so `audio` hides any computation shorter than
   the burst (journal/D-039).
+* The loop's stages are wall-clock time, the audio interrupt included: a
+  stage that lasts long enough takes one (4.2 µs), so a stage's mean moves
+  with where the interrupt falls, and only sums of stages compare. `publish`
+  (`audio::publish`, after the tick) is the loop's share of new parameters:
+  the comparison, and `Setup::new` when they changed (journal/D-040).
 * The end of a transfer is read from its echo in the receive FIFO: the busy
   flag and the transfer-complete flag answer early, and the OLED then takes
   DAC bits.

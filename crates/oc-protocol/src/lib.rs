@@ -41,7 +41,7 @@ use oc_core::platform::{CV_CHANNELS, MilliVolts};
 pub use oc_core::profile::Profile;
 
 /// Protocol version, raised on any change to a message's encoding.
-pub const VERSION: u16 = 6;
+pub const VERSION: u16 = 7;
 
 /// Longest frame either side sends or accepts, zero byte included. A
 /// screen page (128 bytes) and a profile (a few hundred) both fit with room

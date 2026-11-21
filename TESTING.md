@@ -489,7 +489,7 @@ With the module running and the USB cable on the Teensy (journal/D-029):
    the same as the splash screen.
 2. `cargo probe stats --fresh 5` prints, after five seconds, one row per stage
    (the loop's `tick`, `acquire`, `update`, `outputs`, `render`, `present`,
-   `page`, `sample`, `usb`; the audio interrupt's `audio`, `voice`,
+   `page`, `sample`, `publish`, `usb`; the audio interrupt's `audio`, `voice`,
    `voice_params`, `audio_period`, `frame`) and the period, then the jitter
    histogram. The module's display takes a frame at once: one `page` per
    frame drawn.

@@ -368,7 +368,9 @@ fn main() -> ! {
         }
         record_since(&mut engine, Stage::Sample, mark);
         let report = engine.tick();
+        let mark = engine.clock().fine_count();
         audio::publish(engine.params(), &engine.calibration().outputs);
+        record_since(&mut engine, Stage::Publish, mark);
         if report.tick_count == AUDIO_REPORT_TICK {
             let since = audio::totals().since(boot_audio);
             log::info!(

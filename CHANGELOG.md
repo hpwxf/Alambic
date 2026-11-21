@@ -14,7 +14,7 @@ Architectural decisions behind each change are in `journal/` (French).
   their values and ranges, what it plays and what it can do, and `get`,
   `set`, `act` and `select` read, set (within the bounds the panel uses),
   trigger and pick one by name, as in `cargo probe set ratchet prob 50`.
-  Probe protocol 6: a module and a host tool must be updated together.
+  Probe protocol 7: a module and a host tool must be updated together.
 - The simulator's status line now lists the running applet's parameters
   and what it plays, from the same model.
 - **An Apps panel in the browser tool**: the applets, the settings of the
@@ -40,6 +40,9 @@ Architectural decisions behind each change are in `journal/` (French).
   now reads the room left before clipping at 250 mV. Squares
   clip from about 1.5 V of `LEVEL`, against 2 V for sawtooths.
   `SUPERSAW_SHAPE` sets the shape the `aliasing` example measures.
+- A `publish` stage in the profile: the loop handing the outputs'
+  parameters to the audio interrupt, which `cargo probe stats` did not
+  show. Probe protocol 7.
 
 - **`SUPERSAW` in `f32`, on trial** (journal/D-039): a second bank, the same
   voices, curves and parts in single-precision floating point, picked by a
