@@ -224,7 +224,7 @@ Avec `CALC` (D-039), six réglages ne tenaient plus à côté de l'éventail des
 Demande de l'utilisateur : les réglages sans entrée assignable (`STEREO`, `CALC`) passent en page 2, avec un ascenseur
 comme dans `RATCHET`. Quatre réglages par page (`NOTE`, `DETUNE`, `MIX`, `LEVEL` ; puis `STEREO`, `CALC`), la page
 suit le réglage choisi par l'encodeur gauche, l'ascenseur est `gfx::controls::scroll_bar` (sorti de `RATCHET` pour
-l'occasion, D-030) ; l'éventail retrouve ses deux rangées. Scénario doré `supersaw_page2`.
+l'occasion, D-030) ; l'éventail retrouve ses deux rangées. Scénario de référence `supersaw_page2`.
 
 ## Révision du 2026-11-19 — `SHAPE` : de la scie au carré
 

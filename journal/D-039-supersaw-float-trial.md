@@ -47,7 +47,7 @@ sélectionnables par un réglage**, pour les comparer sur le module.
 ## 3. Ce que l'assistant a proposé
 
 **B** avec **F1**. Le réglage `CALC` en dernière ligne de l'applet, sans entrée assignable (comme `STEREO`), `INT` au
-démarrage pour que rien ne change tant qu'on ne le touche pas (écrans dorés compris, sauf la place prise par la
+démarrage pour que rien ne change tant qu'on ne le touche pas (écrans de référence compris, sauf la place prise par la
 ligne). Le banc entier de D-037 reste intact ; `Bank` porte les deux bancs, règle les deux à chaque changement de
 paramètres (une division et une racine de plus, pas par échantillon) et n'exécute que celui choisi : basculer garde
 chaque banc dans son propre état, sans recalcul. Les calculs de préparation restent en entier là où le résultat est une

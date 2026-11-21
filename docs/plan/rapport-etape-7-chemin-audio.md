@@ -233,7 +233,7 @@ le DAC donnerait des volts d'erreur.
   * triangle, scie, carré déduits de la phase, **sans limitation de bande** (la scie et le carré replient : attendu
     pour un son de test).
 * **Le moteur garde sa propre voix à 1 kHz** (une fois par tick) et écrit son échantillon comme avant : rien ne
-  change pour les applets de CV ni pour les écrans dorés. `Engine::params()` donne les derniers paramètres à un
+  change pour les applets de CV ni pour les écrans de référence. `Engine::params()` donne les derniers paramètres à un
   backend qui fait tourner sa voix à sa propre cadence : Rack (`oc_engine_audio`, appelé à chaque `process()`, à la
   fréquence d'échantillonnage de Rack), le firmware (lot 7c).
 

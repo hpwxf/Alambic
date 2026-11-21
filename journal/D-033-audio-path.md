@@ -141,7 +141,7 @@ constantes du code.
   note), un échantillon en millivolts par appel, sans division ni allocation par échantillon ;
 * le **moteur** garde sa propre voix, à la cadence du tick (1 kHz sur tous les backends), et en écrit
   l'échantillon comme aujourd'hui : rien ne change pour le firmware avant le lot 7c, ni pour les applets de CV et
-  les écrans dorés. `Engine::params` donne les derniers paramètres à un backend qui fait tourner sa voix à sa
+  les écrans de référence. `Engine::params` donne les derniers paramètres à un backend qui fait tourner sa voix à sa
   cadence : Rack au lot 7b (`oc_engine_audio`, une voix à la fréquence d'échantillonnage de Rack, appelée à
   chaque `process()`), le firmware au lot 7c ;
 * le **sinus** vient d'une table d'un quart de période (257 points, 15 bits) calculée à la compilation en

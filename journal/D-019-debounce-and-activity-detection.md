@@ -43,7 +43,7 @@ Pour la présence de signal :
 
 **A** et **C + D**, de fait. Le commentaire de `debounce.rs` justifie A : « At the nominal 1 kHz tick rate the default
 of three samples rejects bounce shorter than 3 ms while adding at most 3 ms of latency, which is inaudible for gate
-timing. » Le scénario doré `trigger_burst.scn` **fixe ce comportement** : des impulsions de 10 ms sur TR1 sont
+timing. » Le scénario de référence `trigger_burst.scn` **fixe ce comportement** : des impulsions de 10 ms sur TR1 sont
 comptées, des impulsions d'**un tick (1 ms)** sur TR2 sont traitées comme du rebond et ignorées.
 
 ## 5. Ce qui nous ferait changer d'avis
@@ -119,7 +119,7 @@ n'est pas tenu. Le retrait du filtre temporel (révision précédente) était n�
   (révision ci-dessus) ; la capture par interruption reste à trancher avec D-023. À 1 kHz avec `N = 3`, toute impulsion de moins de 3 ms est
   ignorée, et une impulsion de 3 à 4 ms dépend de la phase d'échantillonnage. S'y ajoute la gigue de D-008 : le tick
   qui pousse l'OLED dure ≈ 1 ms de plus, pendant lequel les entrées ne sont pas lues. Or 1 ms est une largeur de
-  trigger courante en Eurorack, et le scénario doré la qualifie de rebond. Un front électronique propre (sortie
+  trigger courante en Eurorack, et le scénario de référence la qualifie de rebond. Un front électronique propre (sortie
   d'un buffer à transistor) ne rebondit pas : appliquer aux triggers le filtre des contacts mécaniques est une erreur
   de modèle. Correctif proposé : `required = 1` (ou détection de front sur deux échantillons) pour les triggers dès
   maintenant, et, avec D-023, capture des fronts par interruption GPIO ou à la cadence de l'ISR signal. Le scénario

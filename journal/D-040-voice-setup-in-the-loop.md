@@ -42,7 +42,7 @@ il ne dépend que des paramètres, qui changent au plus une fois par tick.
 
 **A**, à la suite de la lecture des relevés (D-039, lot 9b). `Voice::set_params` reste, défini comme
 `apply(&Setup::new(params, rate))`, pour la voix du moteur à 1 kHz, le simulateur et Rack : le comportement y est le
-même par construction, et les écrans dorés ne bougent pas. Le `Setup` est `Copy`, sans allocation, et sa construction
+même par construction, et les écrans de référence ne bougent pas. Le `Setup` est `Copy`, sans allocation, et sa construction
 ne touche pas à l'état de la voix ; le calculer hors section critique évite d'y bloquer l'interruption.
 
 ## 4. Ce que nous avons décidé, et pourquoi

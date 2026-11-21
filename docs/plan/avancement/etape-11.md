@@ -15,7 +15,7 @@ le banc). Étape 2 de la trajectoire de D-043. Valeurs mesurées sur un module :
 ## Mesures
 
 * **Échantillons** : identiques au bit près à `26fa243` (`TONE`, `SUPERSAW` en `INT` et en `F32`, la rampe du
-  diagnostic, les triggers de `RATCHET`) ; écrans dorés intacts.
+  diagnostic, les triggers de `RATCHET`) ; écrans de référence intacts.
 * **Hôte** (criterion contre `master`) : `voice/tone` 19,65 → 20,18 ns (dans la dispersion de `master`),
   `voice/supersaw` 36,5 → 30,8 ns, `square` 47,4 → 37,3 ns, `f32` 33,8 → 28,9 ns. Sans `#[inline]`, jusqu'à 26 % de
   perte en LTO *thin* (le profil des bancs) ; le firmware, en LTO *fat*, n'en dépend pas.

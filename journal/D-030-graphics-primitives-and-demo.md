@@ -90,7 +90,7 @@ sur l'hôte (indicatif ; mesure qui comptait aussi les pixels allumés, corrigé
   l'aiguille de l'accordeur) : un scope sur le module les suit.
 * **`AppId::Gfx` en dernier** : un réglage de démarrage enregistré avant elle se relit (énumération sérialisée).
 * Contrôles : `gfx::controls`, `gfx::plots` (`Area`), `gfx::patterns`, valeurs sur une plage par `Ratio` ;
-  `polyline` encre une fois chaque point partagé (inversible). Écrans dorés : `gfx_*.scn`, un par page. Coût de
+  `polyline` encre une fois chaque point partagé (inversible). Écrans de référence : `gfx_*.scn`, un par page. Coût de
   dessin par page sur l'hôte (criterion, indicatif) : 1,5 à 3,1 µs, l'ordre du Diagnostic (2,6 µs).
 
 ## Révision (2026-11-17) — `embedded-graphics` devient une dépendance de test
@@ -140,5 +140,5 @@ sans conséquence tant qu'aucune page n'en trace beaucoup.
 
 L'ascenseur de `RATCHET` (piste pointillée, curseur sur la part de la page affichée, D-032 révision du lot 6e) était
 une méthode privée de l'applet. `SUPERSAW` en a besoin aussi (réglages sur deux pages) : il passe dans
-`gfx::controls::scroll_bar`, même tracé au pixel près (écrans dorés de `RATCHET` inchangés), testé par propriété dans
+`gfx::controls::scroll_bar`, même tracé au pixel près (écrans de référence de `RATCHET` inchangés), testé par propriété dans
 `tests/gfx.rs`.

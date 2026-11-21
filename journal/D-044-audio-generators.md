@@ -91,7 +91,7 @@ d'une sortie par la sonde.
 **Critères d'acceptation du premier lot** (ce qui le fait passer à `adoptée`), comme pour D-043 :
 
 * **échantillons identiques au bit près** : une somme de contrôle des premiers échantillons de chaque app, relevée
-  avant le lot, inchangée après (`TONE`, `SUPERSAW` en `INT` et en `F32`, les apps CV) ; écrans dorés intacts ;
+  avant le lot, inchangée après (`TONE`, `SUPERSAW` en `INT` et en `F32`, les apps CV) ; écrans de référence intacts ;
 * criterion `voice/*` inchangé au bruit près ;
 * sur le module, `cargo probe stats` : `voice`, `audio` et `voice_params` inchangés au bruit près (`voice_params`
   plutôt en baisse) ;
@@ -128,7 +128,7 @@ Le statut reste `proposée` jusqu'à la mesure sur le module (lot 11b). Ce que l
 * **Mesuré sur l'hôte** :
   * échantillons identiques au bit près : `tests/voice_samples.rs`, relevé avant le lot (`26fa243`), passe
     inchangé (`TONE`, `SUPERSAW` en `INT` et en `F32`, la rampe du diagnostic, les triggers de `RATCHET`) ;
-    écrans dorés intacts ;
+    écrans de référence intacts ;
   * criterion, contre `master` : `voice/tone` 19,65 → 20,18 ns (dans la dispersion de `master`, 19,65 à
     20,04), `voice/supersaw` 36,5 → 30,8 ns, `square` 47,4 → 37,3 ns, `f32` 33,8 → 28,9 ns. Une première
     version perdait jusqu'à 26 % (`f32`) : la voix générique s'instancie dans la crate de l'appelant, et

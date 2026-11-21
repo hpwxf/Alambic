@@ -96,7 +96,7 @@ Statut `proposée` : adoptée lot par lot, comme D-026 à D-028.
 
 * **`Clock::fine_count` vaut zéro par défaut** (et `fine_per_micro` aussi), au lieu d'être déduit de
   `now_micros` : la `VirtualClock` des tests avance à chaque lecture de `now_micros` (coût de lecture modélisé), si
-  bien qu'un défaut qui la lirait déplacerait le temps de chaque tick et changerait les tests et les écrans dorés.
+  bien qu'un défaut qui la lirait déplacerait le temps de chaque tick et changerait les tests et les écrans de référence.
   `VirtualClock` fournit son propre compteur fin, son temps lu sans l'avancer ; une horloge sans compteur fin
   laisse le profil vide. Le simulateur et Rack, qui tournent sur la `VirtualClock`, ont donc un profil
   déterministe mais sans valeur de mesure : seul le module mesure.
