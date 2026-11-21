@@ -94,3 +94,60 @@ it already, this file only points to it.
   it, elsewhere), so profiling never changes a test or a golden screen
   (`oc_core::profile`, journal/D-029). Host benchmarks are a regression guard,
   not a hardware measurement (`docs/agents/tools.md`).
+* `scripts/profile-supersaw.sh` sets `SUPERSAW` through the probe and runs
+  `stats` in each case; the CV assignments stay the panel's. `render`
+  depends on the page shown (about 95 µs on `SUPERSAW`'s first page, its
+  voices animated, 54 µs on the second), and moves the tick's mean by
+  about 2 µs: compare a page with the same page.
+
+## DSP in `f32`
+
+What the supersaw bank taught (journal/D-039, its revisions of 2026-11-21
+for the module's figures; D-040 and D-044 for the loop's side). They hold
+for any block that runs per sample in the audio interrupt.
+
+* **Accumulators stay integers.** A phase is a `u32`, a turn being `2^32`:
+  it wraps for free and keeps 32 bits everywhere, where an `f32` phase near
+  the end of its turn keeps 24 and its sum drifts (the bank was 10 dB
+  further from the ideal supersaw at C2 until its phases became integers,
+  lot 9j). Read it as a fraction of a turn per sample; take distances
+  (to a jump, between two phases) in integers first. The same goes for
+  delay-line positions, LFO phases and counters.
+* **Avoid floating-point comparisons per sample.** The target compiles for
+  the generic FPv4 unit, without FPv5's branch-free selections (`VSEL`,
+  `VMINNM`): every `f32` comparison is a `vcmp`, a transfer of the FPU's
+  flags (`vmrs`, which stalls) and a branch. Decide in integers when the
+  data is (phases); compare `to_bits()` when both values are at least zero
+  (same order); or write the arithmetic so that it needs no test. Removing
+  the bank's phase comparisons took `voice` from 1.56 to 1.18 µs at
+  `SHAPE` 25 % (lot 9i). `-C target-cpu=cortex-m7` was tried and dropped
+  (no floating-point instruction left in the image; a toolchain change,
+  D-004).
+* **The FPU is single precision only.** `f64` is emulated in software:
+  never on the module. 64-bit integer division is a library routine too
+  (some hundred cycles): `oc_core::fixed::div_wide` divides 64 bits by 32
+  with the core's divider when the quotient fits. An `f32` division is in
+  hardware, fine in a `Setup`, never per sample (D-040).
+* **Everything the parameters decide goes in `Generator::setup`**, run in
+  the loop when they change (D-040): reciprocals, coefficients, gains. Under
+  a moving CV it runs every tick, twice (the engine's voice and
+  `audio::Publisher`), so its cost shows in `update` and `publish`, not in
+  `voice`.
+* **`core` has no `sqrt`, `round` or `floor`.** Prepare roots in integers
+  (`isqrt`) in the `Setup`; round by hand. An `as` conversion from `f32` to
+  an integer saturates (and maps NaN to zero), as the core's `vcvt` does.
+* **Measure on the module, not on the host.** For these choices x86 answers
+  the other way (bits comparisons: 29 -> 39 ns on the host, -24 % on the
+  module; `div_wide`: 57 -> 112 ns on the host, about 2 µs saved a `Setup`
+  on the module). The figure is `voice` in `cargo probe stats`; criterion
+  only guards against gross regressions.
+* **Validate against a reference, not for equality.** Pin a checksum of
+  the first samples (`crates/oc-core/tests/voice_samples.rs`) so that a
+  change of structure cannot change a bit unnoticed, retaking it only for
+  an intended change; compare with an integer or ideal rendering within a
+  tolerance; and measure the spectrum against the ideal at low and high
+  notes (`cargo run -p oc-core --example aliasing --release`): only that
+  showed the drift of `f32` phases.
+* **The interrupt uses the FPU.** Once the loop computes in floating point
+  too, entering the interrupt stacks the FPU's registers (lazily, up to 18
+  words): not measured yet, watch `audio` when it happens.
