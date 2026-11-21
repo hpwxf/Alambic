@@ -11,7 +11,8 @@ le banc). Étape 2 de la trajectoire de D-043. Valeurs mesurées sur un module :
 | relevé avant | `26fa243` | `tests/voice_samples.rs` : ce que la voix joue pour chaque applet, figé avant le lot |
 | 11a | `bbc05ae` | trait `Generator`, `Params` / `Setup` / `Voice` génériques, générateur `Basic` (niveaux et tonalités) ; banc déplacé dans `apps/supersaw/bank/` (`SupersawBank`) ; composition `apps/sound.rs` écrite à la main ; maintien par la sonde en surcouche (`held`, `any_held`) ; `#[inline]` sur le chemin par échantillon du banc |
 | 11b | `13d85a6`, `c1ae6d5` | `cargo probe stats` sur le module, avec et sans modulation ; D-044 adoptée, D-033 et D-037 révisées ; cet avancement |
-| 11c | `9eda318`, ce commit | étape `publish` au profil (protocole 7) : `audio::publish` échappait à la mesure ; le `Setup` du Supersaw ne prépare plus que le banc choisi (révision de D-039) ; bancs criterion `voice/supersaw_setup`, `supersaw_f32_setup` |
+| 11c | `9eda318`, `2895915` | étape `publish` au profil (protocole 7) : `audio::publish` échappait à la mesure ; le `Setup` du Supersaw ne prépare plus que le banc choisi (révision de D-039) ; bancs criterion `voice/supersaw_setup`, `supersaw_f32_setup` |
+| 11d | `666ea74`, `f162933`, `a487802`, ce commit | `scripts/profile-supersaw.sh` ; `Engine::params_revision` et `audio::Publisher` : un tick inchangé ne compare plus les `Params` sous section critique (révision de D-040) ; `fixed::div_wide`, 64 bits divisés par 32 avec le diviseur 32 bits du cœur, pour les inverses, `phase_step`, les normaliseurs et `lead` |
 
 ## Mesures
 
@@ -63,7 +64,28 @@ le banc). Étape 2 de la trajectoire de D-043. Valeurs mesurées sur un module :
   * `publish` coûte 1,55 µs à chaque tick même sans changement : deux sections critiques et la comparaison de
     `Params` (80 o) et de la calibration (88 o).
 
+* **Module après 11d** (`NOTE` sous le bruit de CV1, assignée au démarrage ; `DETUNE` fixe ; `SHAPE` 25 %, `STEREO
+  ON` ; script), moyennes en µs :
+
+  | Cas | `update` | `publish` | `tick` |
+  |---|---|---|---|
+  | `INT`, `f162933` (révision seule) | 12,14 | 10,86 | 26,77 |
+  | `INT`, `a487802` (avec `div_wide`) | 10,83 | 8,86 | 25,33 |
+  | `F32`, `f162933` | 9,19 | 7,47 | 22,03 |
+  | `F32`, `a487802` | 9,17 | 7,36 | 22,04 |
+  | `TONE`, `2895915` / `a487802` | 5,59 / 5,39 | 6,28 / 4,45 | 18,61 / 18,46 |
+
+  * `div_wide` : ≈ 2 µs de moins par `Setup` en `INT` (les huit inverses), ≈ 1,8 µs pour `TONE` (`phase_step`),
+    rien en `F32` ; `.text` +1 572 o ; sur l'hôte, qui divise 64 bits en matériel, `Setup::new` 57 → 112 ns.
+  * La révision : un tick inchangé coûte 1,02 µs à `publish` (minimum, `GFX DEMO` et `SUPERSAW`), contre 1,46 à
+    1,56 µs avant, soit ≈ 0,5 µs de moins par tick et non 1,5 ; ≈ 0,9 µs est le plancher de plusieurs étapes
+    (`outputs`, `present`), peut-être le coût de la mesure elle-même, à vérifier.
+  * `render` à 95 µs dans ces relevés (54 µs dans ceux de l'utilisateur), identique en `2895915`, `f162933` et
+    `a487802` : l'état de l'écran ou du branchement, pas ces lots ; `tick` max ≈ 120 µs en découle.
+
 ## Réserves
+
+* `render` à 95 µs contre 54 selon l'état de `SUPERSAW` : cause à trouver.
 
 * La voix du moteur (1 kHz) et `audio::publish` préparent toujours chacune un `Setup` quand les paramètres changent.
 

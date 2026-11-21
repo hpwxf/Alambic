@@ -67,4 +67,5 @@ sorties à ceux de `MAILBOX` : 1,55 µs par tick sur le module, que les paramèt
 `publish`). Le moteur numérote désormais ses paramètres (`Engine::params_revision`, qui avance quand `params` change) ;
 le firmware garde dans `audio::Publisher`, côté boucle, la révision et la calibration publiées, et ne prend la
 section critique que quand l'une des deux a changé. `rest_outputs` oublie la révision, pour que la publication
-suivante rende les paramètres. Le reste de cette entrée est inchangé.
+suivante rende les paramètres. Mesuré : un tick inchangé coûte 1,02 µs à `publish` au lieu de 1,46 à 1,56. Le reste
+de cette entrée est inchangé.
