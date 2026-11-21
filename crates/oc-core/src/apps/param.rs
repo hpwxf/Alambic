@@ -245,7 +245,7 @@ pub enum Refused {
     OutOfRange,
 }
 
-/// Writes every parameter of `app` under its label now, then every
+/// Writes every active parameter of `app` under its label now, then every
 /// observable it knows, as `LABEL value` separated by three spaces: one line that says what the
 /// applet is doing, whichever it is.
 ///
@@ -265,8 +265,11 @@ pub fn write_summary(app: &dyn super::App, out: &mut impl Write) -> fmt::Result 
         write!(out, "{label} ")?;
         spec.write(value, out)
     };
+    // An inactive face is left out, as the screen leaves it out.
     for (index, spec) in app.param_specs().iter().enumerate() {
-        entry(app.param_label(index), spec, app.get(index))?;
+        if app.param_active(index) {
+            entry(app.param_label(index), spec, app.get(index))?;
+        }
     }
     for (index, spec) in app.observables().iter().enumerate() {
         entry(spec.name, spec, app.observe(index))?;

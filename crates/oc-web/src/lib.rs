@@ -278,6 +278,7 @@ impl Message {
                 label,
                 kind,
                 assignable,
+                active,
                 value,
             } => {
                 let spec = SpecEntry {
@@ -287,6 +288,7 @@ impl Message {
                     kind,
                     choices: Vec::new(),
                     assignable,
+                    active,
                     value,
                 };
                 let shown =

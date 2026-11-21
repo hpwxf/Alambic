@@ -223,5 +223,10 @@ l'appelait toujours `FIRST`. Le **nom** d'un paramètre (`ParamSpec::name`) rest
 `App::param_label`, `ParamSpec::name` par défaut, `SPAN` pour le `FIRST` de `RATCHET` en `MODE SPAN`. La réponse
 `Spec` porte les deux (**protocole v5**) ; l'hôte affiche le libellé, trouve par l'un ou l'autre, et la CLI montre
 `SPAN (FIRST)` quand ils diffèrent ; la page met les libellés à jour à chaque relecture, et la ligne d'état du
-simulateur les emploie. Une face inactive (`DIVISION` avec `SYNC OFF`, `FIRST` avec `SYNC ON`) n'est pas encore
-signalée ; une méthode `param_active` le ferait si le besoin s'en fait sentir.
+simulateur les emploie.
+
+**Faces inactives** (même jour, à la demande de l'utilisateur) : `App::param_active`, vrai par défaut, dit si un
+paramètre agit maintenant. `RATCHET` : `FIRST` avec `SYNC OFF`, `DIVISION` avec `SYNC ON`, `COUNT` hors `GATE`. La
+réponse `Spec` porte l'indicateur (**protocole v6**) ; la page grise la ligne sans la bloquer (une face inactive garde
+sa valeur et la prend toujours, prête pour quand l'autre réglage la ramène), la CLI la marque `(inactive)`, la ligne
+d'état du simulateur l'omet comme l'écran.

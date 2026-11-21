@@ -958,6 +958,18 @@ impl App for RatchetApp {
         &PARAM_SPECS
     }
 
+    fn param_active(&self, index: usize) -> bool {
+        let synced = self.first_unit == FirstUnit::Period;
+        match index {
+            // A count past the last is the gate, which its own row shows.
+            0 => self.settings.count != Count::Gate,
+            // The time in milliseconds, or as a division of TR1's period.
+            2 => !synced,
+            3 => synced,
+            _ => true,
+        }
+    }
+
     fn param_label(&self, index: usize) -> &'static str {
         match index {
             // The time is a span in `MODE SPAN`, as the screen says.

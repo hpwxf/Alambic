@@ -14,7 +14,7 @@ Architectural decisions behind each change are in `journal/` (French).
   their values and ranges, what it plays and what it can do, and `get`,
   `set`, `act` and `select` read, set (within the bounds the panel uses),
   trigger and pick one by name, as in `cargo probe set ratchet prob 50`.
-  Probe protocol 5: a module and a host tool must be updated together.
+  Probe protocol 6: a module and a host tool must be updated together.
 - The simulator's status line now lists the running applet's parameters
   and what it plays, from the same model.
 - **An Apps panel in the browser tool**: the applets, the settings of the
@@ -22,8 +22,10 @@ Architectural decisions behind each change are in `journal/` (French).
   choosing as the panel would, its actions as buttons, what it plays on
   demand, and switching the module to it; values read and typed as in
   `cargo probe`. A setting reads as the module's screen labels it
-  (`RATCHET`'s `FIRST` becomes `SPAN` in `MODE SPAN`), and what a set
-  moves besides itself is read back and marked.
+  (`RATCHET`'s `FIRST` becomes `SPAN` in `MODE SPAN`), the face of a
+  setting the screen does not show is greyed (`DIVISION` with `SYNC OFF`)
+  but can still be set, and what a set moves besides itself is read back
+  and marked.
 - **`SHAPE`** in `SUPERSAW`: each voice blends from a sawtooth into a
   square, band-limited all the way, at about the same loudness
   (journal/D-037, revision of 2026-11-19); on the first page, takes an

@@ -539,7 +539,11 @@ the field showed it a moment before. `cargo probe set ratchet gate off`
 prints `COUNT 32  (moved with it)` the same way. Choose `SPAN` in `MODE`:
 the `FIRST` row now reads `SPAN`, as the module's screen does;
 `cargo probe app ratchet` lists it as `SPAN (FIRST)`, and both
-`cargo probe set ratchet span 3000` and `… first 3000` set it.
+`cargo probe set ratchet span 3000` and `… first 3000` set it. With
+`SYNC OFF` the `DIVISION` row is greyed; set `SYNC` on: the time row is
+greyed instead and `DIVISION` comes back, as the screen swaps them;
+`cargo probe app ratchet` marks the greyed one `(inactive)`. A greyed row
+still takes a value.
 *BURST* sends a burst on B; *Read what it plays* reads `RATE` (`--` until
 `TR1` has had two edges) and `SENT`.
 

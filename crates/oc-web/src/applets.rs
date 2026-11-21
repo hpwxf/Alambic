@@ -181,6 +181,7 @@ impl AppView {
                 }
                 list[at].value = fresh.value;
                 list[at].label.clone_from(&fresh.label);
+                list[at].active = fresh.active;
             }
         }
         message.kind == MessageKind::Done
@@ -260,6 +261,13 @@ impl AppView {
     #[must_use]
     pub fn param_choices(&self, at: usize) -> Vec<String> {
         param(&self.description, at).map_or_else(Vec::new, |spec| spec.choices.clone())
+    }
+
+    /// Whether parameter `at` acts now; the page greys a face of a setting
+    /// the screen does not show. A refresh keeps it current.
+    #[must_use]
+    pub fn param_active(&self, at: usize) -> bool {
+        param(&self.description, at).is_some_and(|spec| spec.active)
     }
 
     /// Whether parameter `at` takes a CV input.
@@ -464,6 +472,20 @@ mod tests {
         assert!(view.param_assignable(0) && !view.param_assignable(1));
         assert_eq!(view.actions(), ["BURST"]);
         assert_eq!(view.param_label(2), "FIRST");
+        assert!(
+            view.param_active(2) && !view.param_active(3),
+            "SYNC OFF: FIRST acts"
+        );
+
+        // SYNC ON: DIVISION acts instead, and a refresh says so.
+        module.send(&view.set_request(7, "on").unwrap());
+        for message in module.send(&view.refresh_request()) {
+            if view.absorb_refresh(&message) {
+                break;
+            }
+        }
+        assert!(!view.param_active(2) && view.param_active(3));
+        module.send(&view.set_request(7, "off").unwrap());
 
         // MODE SPAN: the time reads SPAN on the screen, and so on the page.
         module.send(&view.set_request(8, "span").unwrap());

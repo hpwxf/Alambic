@@ -110,6 +110,7 @@ fn an_applet_is_described_with_its_values_and_choice_names() {
                 unit: oc_core::apps::param::Unit::None,
             },
             assignable: true,
+            active: true,
             value: Some(ParamValue::Number(4)),
         }
     );
@@ -139,6 +140,7 @@ fn an_applet_is_described_with_its_values_and_choice_names() {
             unit: oc_core::apps::param::Unit::Bpm,
         },
         assignable: false,
+        active: true,
         value: None,
     }));
     assert!(decoded.contains(&Reply::Action {

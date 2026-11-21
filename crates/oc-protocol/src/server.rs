@@ -330,22 +330,20 @@ impl Server {
     /// [`Reply::Done`].
     fn describe(&mut self, app: &dyn App) {
         for (index, spec) in app.param_specs().iter().enumerate() {
-            self.send_spec(
-                Group::Param,
-                index,
-                spec,
-                app.param_label(index),
-                app.get(index),
-            );
+            let shown = Shown {
+                label: app.param_label(index),
+                active: app.param_active(index),
+                value: app.get(index),
+            };
+            self.send_spec(Group::Param, index, spec, shown);
         }
         for (index, spec) in app.observables().iter().enumerate() {
-            self.send_spec(
-                Group::Observable,
-                index,
-                spec,
-                spec.name,
-                app.observe(index),
-            );
+            let shown = Shown {
+                label: spec.name,
+                active: true,
+                value: app.observe(index),
+            };
+            self.send_spec(Group::Observable, index, spec, shown);
         }
         for (index, name) in app.actions().iter().enumerate() {
             self.send(&Reply::Action {
@@ -357,22 +355,16 @@ impl Server {
     }
 
     /// One [`Reply::Spec`], and the names of a choice after it.
-    fn send_spec(
-        &mut self,
-        group: Group,
-        index: usize,
-        spec: &ParamSpec,
-        label: &str,
-        value: Option<oc_core::apps::param::ParamValue>,
-    ) {
+    fn send_spec(&mut self, group: Group, index: usize, spec: &ParamSpec, shown: Shown<'_>) {
         self.send(&Reply::Spec {
             group,
             index: count(index),
             name: spec.name,
-            label,
+            label: shown.label,
             kind: ParamKind::of(spec),
             assignable: spec.assignable,
-            value,
+            active: shown.active,
+            value: shown.value,
         });
         if let Kind::Choice(names) = spec.kind {
             for (choice, name) in names.iter().enumerate() {
@@ -419,6 +411,14 @@ impl Server {
             self.outgoing.push(frame);
         }
     }
+}
+
+/// What an entry looks like now, beside its descriptor.
+#[derive(Debug, Clone, Copy)]
+struct Shown<'a> {
+    label: &'a str,
+    active: bool,
+    value: Option<oc_core::apps::param::ParamValue>,
 }
 
 /// The applet at index `app` in the module's list.

@@ -148,6 +148,15 @@ pub trait App: Any {
         self.param_specs().get(index).map_or("", |spec| spec.name)
     }
 
+    /// Whether parameter `index` acts now. One face of a setting with two
+    /// is inactive while the other shows on the screen (`RATCHET`'s
+    /// `DIVISION` with `SYNC OFF`, its `FIRST` with `SYNC ON`, its `COUNT`
+    /// in `GATE`): it keeps its value and can still be set, ready for when
+    /// the other setting brings it back.
+    fn param_active(&self, _index: usize) -> bool {
+        true
+    }
+
     /// The value of parameter `index` as the panel set it, before any CV
     /// input moves it; `None` past the last.
     fn get(&self, _index: usize) -> Option<ParamValue> {

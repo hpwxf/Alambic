@@ -97,6 +97,9 @@ pub struct SpecEntry {
     pub choices: Vec<String>,
     /// Whether it takes a CV input.
     pub assignable: bool,
+    /// Whether it acts now: false for a face of a setting the screen does
+    /// not show.
+    pub active: bool,
     /// Its value when described; `None` for an observable not known yet.
     pub value: Option<ParamValue>,
 }
@@ -466,6 +469,7 @@ impl<T: Read + Write> Client<T> {
                 label,
                 kind,
                 assignable,
+                active,
                 value,
             } => Answer::Spec(
                 group,
@@ -476,6 +480,7 @@ impl<T: Read + Write> Client<T> {
                     kind,
                     choices: Vec::new(),
                     assignable,
+                    active,
                     value,
                 },
             ),

@@ -234,11 +234,12 @@ pub fn description_text(app: &AppEntry, description: &AppDescription) -> String 
                 .map_or_else(|| "--".to_owned(), |value| value_text(spec, value));
             let _ = writeln!(
                 out,
-                "  {:>2} {:<width$}  {value:<12} {}{}",
+                "  {:>2} {:<width$}  {value:<12} {}{}{}",
                 spec.index,
                 shown_name(spec),
                 range_text(spec),
-                if spec.assignable { "  (CV)" } else { "" }
+                if spec.assignable { "  (CV)" } else { "" },
+                if spec.active { "" } else { "  (inactive)" }
             );
         }
     }
@@ -287,6 +288,7 @@ mod tests {
             kind,
             choices: choices.iter().map(|&name| name.to_owned()).collect(),
             assignable: false,
+            active: true,
             value: None,
         }
     }

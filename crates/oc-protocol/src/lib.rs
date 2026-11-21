@@ -41,7 +41,7 @@ use oc_core::platform::{CV_CHANNELS, MilliVolts};
 pub use oc_core::profile::Profile;
 
 /// Protocol version, raised on any change to a message's encoding.
-pub const VERSION: u16 = 5;
+pub const VERSION: u16 = 6;
 
 /// Longest frame either side sends or accepts, zero byte included. A
 /// screen page (128 bytes) and a profile (a few hundred) both fit with room
@@ -255,6 +255,10 @@ pub enum Reply<'a> {
         kind: ParamKind,
         /// Whether it takes a CV input.
         assignable: bool,
+        /// Whether it acts now; false for the face of a setting the screen
+        /// does not show (`App::param_active`); always true for an
+        /// observable.
+        active: bool,
         /// Its value now; `None` for an observable not known yet.
         value: Option<ParamValue>,
     },

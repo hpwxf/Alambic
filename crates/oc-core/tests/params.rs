@@ -196,8 +196,26 @@ fn the_summary_names_every_parameter_and_what_is_known() {
     write_summary(&RatchetApp::new(), &mut line).unwrap();
     assert_eq!(
         line,
-        "COUNT 4   GATE OFF   FIRST 100 MS   DIVISION /4   SHAPE 0.0 OCT   PROB 100%   \
-         PASSTHRU ON   SYNC OFF   MODE FIRST",
+        "COUNT 4   GATE OFF   FIRST 100 MS   SHAPE 0.0 OCT   PROB 100%   PASSTHRU ON   SYNC OFF   \
+         MODE FIRST",
         "no rate before two edges, no burst under way: nothing more to say"
+    );
+}
+
+#[test]
+fn ratchets_inactive_faces_follow_sync_and_gate() {
+    let mut ratchet = RatchetApp::new();
+    let [count, gate, first, division, sync] =
+        ["COUNT", "GATE", "FIRST", "DIVISION", "SYNC"].map(|name| index_of(&ratchet, name));
+    assert!(ratchet.param_active(first) && !ratchet.param_active(division));
+    ratchet.set(sync, ParamValue::Toggle(true)).unwrap();
+    assert!(!ratchet.param_active(first) && ratchet.param_active(division));
+    assert!(ratchet.param_active(count));
+    ratchet.set(gate, ParamValue::Toggle(true)).unwrap();
+    assert!(!ratchet.param_active(count) && ratchet.param_active(gate));
+    // An inactive face still takes a value, ready for when it comes back.
+    assert_eq!(
+        ratchet.set(first, ParamValue::Number(250)),
+        Ok(ParamValue::Number(250))
     );
 }
