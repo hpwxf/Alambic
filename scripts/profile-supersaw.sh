@@ -14,7 +14,7 @@ cd "$(git rev-parse --show-toplevel)"
 seconds=${1:-10}
 label=${2:-}
 probe() { cargo -q probe "$@" 2>/dev/null; }
-keep='^(/dev|us |tick|update|outputs|publish|audio|voice|voice_params|frame) '
+keep='^(/dev|us |tick|update|outputs|render|publish|audio|voice|voice_params|frame) '
 
 probe select supersaw >/dev/null
 probe set supersaw mix 50 >/dev/null

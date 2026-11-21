@@ -75,6 +75,9 @@ le banc). Étape 2 de la trajectoire de D-043. Valeurs mesurées sur un module :
   | `F32`, `a487802` | 9,17 | 7,36 | 22,04 |
   | `TONE`, `2895915` / `a487802` | 5,59 / 5,39 | 6,28 / 4,45 | 18,61 / 18,46 |
 
+  * Avec `NOTE` et `DETUNE` sous bruit (page 1), `a487802` contre `2895915` : `INT` `update` 12,33 → 11,12 µs,
+    `publish` 10,78 → 9,08 µs ; `F32` `update` 9,45 → 9,44 µs, `publish` 6,27 → 7,08 µs, dans la dispersion de
+    `publish` en `F32` d'un relevé à l'autre (6,3 à 7,5 µs à firmware égal) ; `render` 100,7 µs.
   * `div_wide` : ≈ 2 µs de moins par `Setup` en `INT` (les huit inverses), ≈ 1,8 µs pour `TONE` (`phase_step`),
     rien en `F32` ; `.text` +1 572 o ; sur l'hôte, qui divise 64 bits en matériel, `Setup::new` 57 → 112 ns.
   * La révision : un tick inchangé coûte 1,02 µs à `publish` (minimum, `GFX DEMO` et `SUPERSAW`), contre 1,46 à
