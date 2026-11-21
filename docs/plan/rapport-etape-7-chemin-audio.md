@@ -272,14 +272,14 @@ Rien à corriger dans `oc-core` : il fallait la cadence audio du lot 7c.
 * **Déroulé d'une période** (une seule interruption, qui attend le bus) :
   1. attendre que le tronçon d'écran précédent soit sorti, relever le CS de l'OLED ;
   2. déposer dans la FIFO les mots des voies du DAC qui ont changé (`TCR` 24 bits sur PCS0 + mot) ;
-  3. pendant leur envoi : relever la boîte aux lettres, calculer l'échantillon suivant (`Voice::next_sample` puis
+  3. pendant leur envoi : relever `MAILBOX`, calculer l'échantillon suivant (`Voice::next_sample` puis
      calibration en codes du DAC) ;
   4. attendre la fin des mots du DAC, puis placer D/C, baisser le CS de l'OLED, déposer un tronçon (`TCR` de
      `8 × n` bits sur PCS3).
 
   L'échantillon calculé en période *n* sort en période *n + 1* : un échantillon de latence, sans gigue de calcul.
 * **Côté boucle** : `audio::MutedOutputs` (l'`AnalogOut` du moteur ne fait plus rien), `audio::MailboxDisplay` (le
-  `present` du moteur copie la trame de 1 Kio dans une boîte aux lettres, la dernière gagne), `audio::publish`
+  `present` du moteur copie la trame de 1 Kio dans `MAILBOX`, la dernière gagne), `audio::publish`
   après chaque tick (paramètres + calibration des sorties). Le partage passe par des
   `critical_section::Mutex<RefCell<…>>`.
 * **Dans `oc-drivers`, testés sur l'hôte** :
@@ -561,7 +561,7 @@ t = 0       PIT canal 0 : top.  DMAMUX (ENBL|TRIG|A_ON) → DMA canal 0 copie l'
 t ≈ 0,5     Interruption audio (priorité 0) :
               - efface le drapeau d'interruption du DMA ; filtre les doubles ;
               - compte les rafales terminées par leur écho (4 mots reçus chacune) → position du DMA dans l'anneau ;
-              - prend la boîte aux lettres (paramètres, calibration, trame, contraste) ;
+              - prend `MAILBOX` (paramètres, calibration, trame, contraste) ;
               - calcule l'échantillon suivant (Voice) → 4 codes (calibration) → l'écrit à l'emplacement k + 2 ;
               - attend l'écho de la rafale en cours (≈ jusqu'à t ≈ 5,5) ;
               - si la place restante ≥ tronçon (9 µs) + relâchement (3 µs) : D/C, CS de l'OLED bas (dsb +
@@ -701,7 +701,7 @@ l'**instant** d'écriture ne dépend plus de ce code, et ce code n'attend plus l
 **Q3. Pourquoi pas un grand tampon calculé par blocs (le « double tampon » des cours) ?**
 C'est la suite naturelle (D-033, « calcul par blocs »), mais elle n'était pas nécessaire : un échantillon par
 interruption coûte 3,4 µs sur 21, et garde une latence de ≈ 60 µs. Un bloc de 32 échantillons réduirait le coût fixe
-de l'interruption (entrée, sortie, boîtes aux lettres) mais ajouterait ≈ 0,7 ms de latence, et l'envoi de l'écran,
+de l'interruption (entrée, sortie, `MAILBOX`) mais ajouterait ≈ 0,7 ms de latence, et l'envoi de l'écran,
 qui doit tomber *entre* deux rafales, garderait de toute façon une interruption par période.
 
 **Q4. Concrètement, une « boucle mineure », une « boucle majeure » ?**
@@ -814,7 +814,7 @@ que la marge ; écrire *k + 2* donne une période entière de marge, pour 21 µs
 | `336817a` | plan | D-033, plan de l'étape 7 |
 | `b293d6a` | 7a | PCS0 pour le DAC, PCS3 pour l'OLED, 22 MHz, voies écrites au changement |
 | `7993063` | 7b | `oc_core::audio` (paramètres, voix, formes), `TONE`, Rack `oc_engine_audio` |
-| `21cdbb6` | 7c | interruption GPT2, `FrameStream`, `fifo`, boîtes aux lettres, étapes du profil |
+| `21cdbb6` | 7c | interruption GPT2, `FrameStream`, `fifo`, `MAILBOX`, étapes du profil |
 | `69e9099` | 7c | correctifs du module (essais 2 à 6) : repli PERCLK, double déclenchement, écho en réception, ordre GPIO/SPI |
 | `27211a5` | 7e | DAC en DMA déclenché par le PIT, interruption du DMA, DMAMUX `A_ON`, DWT en tête |
 
@@ -828,7 +828,7 @@ que la marge ; écrire *k + 2* donne une période entière de marge, pour 21 µs
 | `crates/oc-drivers/src/ssd130x.rs` | `FrameStream`, `page_commands`, `release` |
 | `crates/oc-drivers/src/dac8565.rs` | `channel_word`, `ChangedCodes` |
 | `crates/oc-drivers/src/fifo.rs` | octets → mots de FIFO |
-| `crates/oc-firmware/src/audio.rs` | le chemin audio, sûr : boîtes aux lettres, interruption, écran |
+| `crates/oc-firmware/src/audio.rs` | le chemin audio, sûr : `MAILBOX`, interruption, écran |
 | `crates/oc-firmware/src/audio_irq.rs` | l'`unsafe` : anneau, DMA, DMAMUX, gestionnaires, NVIC |
 | `crates/oc-firmware/src/board.rs` | constantes de cadence, d'horloge, de tronçon ; `bus_clocks` |
 | `journal/D-033-audio-path.md` | décision et ses six révisions |

@@ -55,7 +55,7 @@ partagé, ce sera par une bibliothèque DSP commune (un module ou une crate `dsp
   les apps CV et `TONE`.
 * **C — des générateurs derrière `dyn` dans l'interruption.** Ouvert sans macro, mais un appel indirect par
   échantillon, un état à loger dans une mémoire statique sans allocateur, et un `Setup` qui n'est plus une valeur
-  `Copy` de taille fixe à déposer dans la boîte aux lettres : D-040 serait à refaire.
+  `Copy` de taille fixe à déposer dans `MAILBOX` : D-040 serait à refaire.
 * **D — l'app rend elle-même ses échantillons** (une méthode audio sur `App`). Mélange les deux contextes : l'app
   vit dans la boucle, ses échantillons dans l'interruption ; contraire à D-033 et D-040.
 
@@ -115,7 +115,7 @@ Le statut reste `proposée` jusqu'à la mesure sur le module (lot 11b). Ce que l
 * **`audio`** : le trait `Generator` (`Params`, `Setup`, `State`, `REST`, `REST_SETUP`, `setup`, `start`,
   `apply`, `next` ; supertraits `Copy + PartialEq + Debug`, le générateur étant nommé par un type marqueur),
   `Params<G>`, `Setup<G>`, `Voice<G>`, et `basic` (le générateur `Basic`, niveaux et tonalités, et ses
-  `Channel` / `Tone`). `Setup::rest` reste une `const fn` : la boîte aux lettres du firmware est une `static`.
+  `Channel` / `Tone`). `Setup::rest` reste une `const fn` : `MAILBOX`, dans le firmware, est une `static`.
 * **Le banc** : `audio/supersaw/` est devenu `apps/supersaw/bank/` (déplacé par `git mv`), avec le générateur
   `SupersawBank` (`SupersawParams` : le banc et la part de chaque sortie, `None` pour 0 V).
 * **La composition** : `apps/sound.rs`, **écrite à la main** (le point laissé ouvert) : `Sound`, ses trois
@@ -136,7 +136,7 @@ Le statut reste `proposée` jusqu'à la mesure sur le module (lot 11b). Ce que l
     bancs) ; `#[inline]` sur ce chemin, et la surcouche sautée quand rien n'est maintenu, ont tout rendu.
     Le gain est propre aux bancs : le firmware est en LTO *fat*, une seule unité ;
   * firmware contre `master` : `.text` +1 380 o (164 Kio sur 192 d'ITCM), `.rodata` +400 o, `.data` −16 o
-    (la boîte aux lettres du `Setup`).
+    (`MAILBOX`, qui porte le `Setup`).
 
 ## Lot 11b (2026-11-21) — mesure sur le module, adoptée
 
@@ -159,7 +159,7 @@ Trame (1 344,7 µs), période de la boucle et gigue inchangées.
 * **`voice` baisse de 7 %** : l'aiguillage par générateur, une correspondance par échantillon et non plus par sortie,
   coûte moins que l'enum `Channel` ; le premier critère de § 5 ne joue pas.
 * **`voice_params` monte de 0,03 µs** (une vingtaine de cycles) au lieu de baisser : le `Setup` du Supersaw
-  dominait déjà la somme, la boîte aux lettres n'a perdu que 16 octets, et la copie d'un enum n'est pas plus courte.
+  dominait déjà la somme, `MAILBOX` n'a perdu que 16 octets, et la copie d'un enum n'est pas plus courte.
   Écart dans le bruit, loin du seuil d'une microseconde de D-040 ; ce relevé est le pire cas (le bruit change le
   `Setup` à chaque tick, une copie par milliseconde).
 * **`update` et `outputs`** : −1,2 et +0,8 µs, −0,4 µs à eux deux ; tous deux préparent un `Setup` (la voix du moteur

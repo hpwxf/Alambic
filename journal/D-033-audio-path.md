@@ -162,7 +162,7 @@ constantes du code.
   NVIC la plus haute (0).
 * **Déroulé d'une période** : attendre que le tronçon d'OLED précédent soit sorti (il a eu toute la période),
   relever le CS de l'OLED ; déposer les mots des voies qui changent (TCR de 24 bits, PCS0, réception masquée) ;
-  pendant leur envoi, relever la boîte aux lettres et calculer l'échantillon suivant ; attendre la fin des mots du
+  pendant leur envoi, relever `MAILBOX` et calculer l'échantillon suivant ; attendre la fin des mots du
   DAC ; puis, si l'écran a quelque chose à envoyer, placer D/C, baisser le CS de l'OLED et déposer un tronçon
   (TCR de `8 × n` bits sur PCS3, octets regroupés par quatre dans les mots de la FIFO, comme le fait `imxrt-hal`).
   L'échantillon calculé en période *n* sort en période *n + 1* : un échantillon de latence, sans gigue de calcul.
@@ -176,8 +176,8 @@ constantes du code.
   4 cycles de 132 MHz (30 ns), sous les 40 ns de SYNC haut de la fiche. Le délai entre transferts (`DBT`) est
   porté à 6 cycles au moins (45 ns).
 * **Ce que la boucle fait encore** : le moteur garde son `AnalogOut`, mais le firmware y branche une sortie
-  muette ; après chaque tick, la boucle publie `Engine::params` et la calibration des sorties dans une boîte aux
-  lettres (section critique courte). L'écran du moteur devient une boîte aux lettres lui aussi : `present` copie
+  muette ; après chaque tick, la boucle publie `Engine::params` et la calibration des sorties dans `MAILBOX`
+  (section critique courte). L'écran du moteur y passe aussi : `present` copie
   la trame (la dernière gagne), `set_contrast` dépose la commande ; l'interruption les prend entre deux trames.
   Le moteur ne pagine plus l'écran (une page par trame : `present` ne coûte qu'une copie de 1 Kio).
 * **Profil** : trois étapes de plus, remplies par l'interruption et versées dans le profil à chaque tick
@@ -285,7 +285,7 @@ Trois essais ont corrigé la conception ci-dessus ; ce qui tourne :
 
 L'interruption recalculait la voix (`Voice::set_params`) à chaque changement de paramètres : jusqu'à 11 µs sur 21
 quand une CV bouge, mesuré avec le Supersaw (D-039). La boucle prépare désormais un `oc_core::audio::Setup` hors
-section critique et le dépose dans la boîte aux lettres à la place des `Params` ; l'interruption l'applique par
+section critique et le dépose dans `MAILBOX` à la place des `Params` ; l'interruption l'applique par
 `Voice::apply`, une copie. Le reste de cette entrée est inchangé.
 
 ## Révision du 2026-11-21 — des générateurs (D-044)

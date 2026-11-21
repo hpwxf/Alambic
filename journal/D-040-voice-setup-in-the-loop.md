@@ -29,7 +29,7 @@ il ne dépend que des paramètres, qui changent au plus une fois par tick.
 * **A — préparer dans la boucle.** Une fonction pure, `Setup::new(&Params, rate)`, calcule tout ce qui dépend des
   paramètres (pas, inverses, gains, normaliseurs, coefficients des deux bancs) ; `Voice::apply(&Setup)` ne fait que
   copier en gardant les phases et l'état des filtres. La boucle calcule le `Setup` hors section critique quand les
-  paramètres changent et le dépose dans la boîte aux lettres ; l'interruption l'applique. Coût : une boîte aux lettres
+  paramètres changent et le dépose dans `MAILBOX` ; l'interruption l'applique. Coût : une `MAILBOX`
   plus grande (≈ 300 octets copiés sous section critique à chaque changement, côté boucle), la même latence (la
   période suivante).
 * **B — garder la préparation dans l'interruption et la rendre moins chère** : inverses en `f32` ou en 32 bits,

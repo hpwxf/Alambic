@@ -60,5 +60,5 @@ bus SPI, D-010), et D-002 garde le comportement indépendant de ce choix.
 
 La boucle à 1 kHz reste le contexte de contrôle (entrées, panneau, applets, dessin, USB). Une interruption de
 timer à 48 kHz, priorité la plus haute, s'y ajoute : elle seule écrit le DAC et envoie l'écran. La boucle lui
-passe les paramètres des sorties et la trame dessinée par des boîtes aux lettres sous section critique ; la gigue
+passe les paramètres des sorties et la trame dessinée par `MAILBOX`, sous section critique ; la gigue
 de la boucle ne touche plus les sorties.

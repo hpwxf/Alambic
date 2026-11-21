@@ -20,7 +20,7 @@ le banc). Étape 2 de la trajectoire de D-043. Valeurs mesurées sur un module :
   `voice/supersaw` 36,5 → 30,8 ns, `square` 47,4 → 37,3 ns, `f32` 33,8 → 28,9 ns. Sans `#[inline]`, jusqu'à 26 % de
   perte en LTO *thin* (le profil des bancs) ; le firmware, en LTO *fat*, n'en dépend pas.
 * **Code** (différence de `cargo xtask size`) : `.text` +1 380 o (164 Kio sur 192 d'ITCM), `.rodata` +400 o,
-  `.data` −16 o (la boîte aux lettres du `Setup`).
+  `.data` −16 o (`MAILBOX`, qui porte le `Setup`).
 * **Module** (`SUPERSAW` `F32`, `NOTE` et `DETUNE` sous bruit, `MIX` 50 %, `SHAPE` 25 %, `STEREO ON` ; `b5c444a`
   contre `bbc05ae`) :
 

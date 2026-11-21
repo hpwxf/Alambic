@@ -23,7 +23,7 @@ Ordre : 8a → 8b → 8c → 8d éventuel. Version 0.6.0 à la clôture.
 1. Coût dans l'interruption : estimé à quelques centaines de cycles par échantillon (≈ 0,5 µs) ; mesuré en 8c.
 2. Débordements en entier : écarts de pas, gains et passe-haut bornés par des tests aux extrêmes (note C8,
    désaccord 100 %, mix 0 et 100 %).
-3. `Params` grossit (banc en plus) : copie dans la boîte aux lettres un peu plus longue, sous section critique ;
+3. `Params` grossit (banc en plus) : copie dans `MAILBOX` un peu plus longue, sous section critique ;
    à vérifier au profil.
 4. `AppId` sérialisé : la variante s'ajoute en fin ; menu DIAGNOSTIC, SCOPE, GFX DEMO, RATCHET, TONE, SUPERSAW.
 5. Images de reconstruction non filtrées par la sortie (étude § 10) : hors de portée du calcul, noté à l'écoute.
