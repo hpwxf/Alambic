@@ -289,6 +289,17 @@ fn voice(criterion: &mut Criterion) {
         });
     });
 
+    // And its squares.
+    sound.bank.shape = FULL;
+    bank.set_params(&Params::supersaw(sound));
+    group.bench_function("supersaw_f32_square_sample_to_codes", |bencher| {
+        bencher.iter(|| {
+            let samples = bank.next_sample();
+            black_box(samples.map(|level| output.to_code(level)))
+        });
+    });
+    sound.bank.shape = 0;
+
     // What the loop prepares whenever the parameters change, a CV moving
     // them every tick (journal/D-040): the shared preparation, then the
     // picked bank's coefficients, in each arithmetic.

@@ -41,13 +41,13 @@ impl Saw {
         let mut value = polyblep_saw(self.phase, self.step, self.inverse);
         if shape != 0.0 {
             let mut ahead = self.phase + lead;
-            if ahead >= 1.0 {
+            if !below(ahead, 1.0) {
                 ahead -= 1.0;
             }
             value -= shape * polyblep_saw(ahead, self.step, self.inverse);
         }
         self.phase += self.step;
-        if self.phase >= 1.0 {
+        if !below(self.phase, 1.0) {
             self.phase -= 1.0;
         }
         value
@@ -59,16 +59,24 @@ impl Saw {
 /// `polyblep_saw`, its unit being one.
 fn polyblep_saw(phase: f32, step: f32, inverse: f32) -> f32 {
     let naive = 2.0 * phase - 1.0;
-    let residual = if phase < step {
+    let residual = if below(phase, step) {
         let rest = 1.0 - phase * inverse;
         -rest * rest
-    } else if phase > 1.0 - step {
+    } else if below(1.0 - step, phase) {
         let rest = 1.0 - (1.0 - phase) * inverse;
         rest * rest
     } else {
         0.0
     };
     naive - residual
+}
+
+/// Whether `low < high`, both at least zero: the order of their bits is
+/// theirs, so an integer comparison gives it. A floating-point one costs
+/// the core a transfer of the FPU's flags and a stall before the branch,
+/// several per voice and per sample here (journal/D-039).
+fn below(low: f32, high: f32) -> bool {
+    low.to_bits() < high.to_bits()
 }
 
 /// A one-pole high-pass, `y = a (y + x - x_prev)`.
@@ -300,7 +308,29 @@ fn millivolts(level: f32) -> MilliVolts {
 
 #[cfg(test)]
 mod tests {
-    use super::{from_turns, millivolts, polyblep_saw, turns};
+    use super::{below, from_turns, millivolts, polyblep_saw, turns};
+
+    #[test]
+    fn below_orders_non_negative_values_as_the_comparison_does() {
+        let values = [
+            0.0,
+            f32::from_bits(1),
+            f32::MIN_POSITIVE,
+            1e-7,
+            0.25,
+            0.5 - f32::EPSILON,
+            0.5,
+            1.0 - f32::EPSILON / 2.0,
+            1.0,
+            1.0 + f32::EPSILON,
+            2.0,
+        ];
+        for low in values {
+            for high in values {
+                assert_eq!(below(low, high), low < high, "{low} < {high}");
+            }
+        }
+    }
 
     #[test]
     fn the_saw_is_naive_away_from_its_jump() {
