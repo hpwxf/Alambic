@@ -51,8 +51,10 @@ Choix de l'utilisateur (2026-11-17), avec les détails tranchés par l'assistant
   page) ; encodeur droit : le changer ; `up` : une rafale à la main.
   * `COUNT` : 1 à 32 répétitions, ou `GATE` (en tournant au-delà de 32) : des répétitions tant que TR1 reste haut,
     au plus 64.
-  * `SHAPE` : une valeur signée, −3,0 à +3,0 octaves par pas de 0,1 : **0 uniforme**, en dessous la rafale
-    **accélère**, au-dessus elle **ralentit** ; la valeur absolue est l'intensité.
+  * `SHAPE` : une valeur signée, −3,0 à +3,0 par pas de 0,1, un codage abstrait et non une unité : d'une courbe
+    **exponentielle** à −3,0, par une **droite** à 0 (**uniforme**), à une courbe **logarithmique** à +3,0 ; en
+    dessous de 0 la rafale **accélère**, au-dessus elle **ralentit** ; la valeur absolue est l'intensité. Chaque
+    modèle la lit à sa façon (exposant du dernier facteur pour `FIRST`, moitié de la courbure `c` pour `SPAN`).
   * `MODE` choisit le placement, deux modèles gardés côte à côte pour être comparés en situation :
     * `FIRST` : un premier intervalle, puis des intervalles qui varient géométriquement jusqu'à
       `FIRST × 2^SHAPE` pour le dernier ;
@@ -114,3 +116,12 @@ Demandée par l'utilisateur après l'essai sur le module. La décision ne change
 Le choix d'entrée au clic (`--`, `CVn=`, `CVn+` à l'encodeur droit) est remplacé par un sous-menu d'assignation :
 entrée, lecture en direct et bornes vues, échelle, décalage, bornes réglables, effet `SET` / `ADD` / `MUL`. Les
 correspondances de ce § 4 restent celles de `SET` (l'ancien `=`) et `ADD` (l'ancien `+`). Voir D-035.
+
+## Révision du 2026-11-21 — `SHAPE` n'est pas en octaves
+
+Correction de l'utilisateur, à l'essai du modèle de paramètres (D-043) qui affichait `SHAPE` en `OCT` : `SHAPE` est
+un codage abstrait, de l'exponentiel au logarithmique en passant par le linéaire à 0, pas une grandeur en octaves ;
+le réglage de temps (`FIRST` ou `SPAN`) est une durée en millisecondes ou, avec `SYNC ON`, une fraction de la
+période de TR1 (le dernier intervalle de `FIRST` valant `FIRST × 2^SHAPE`). Le comportement ne change pas : la
+description ci-dessus, le README, la documentation de `ratchet` et `burst` et le modèle de paramètres (sans unité,
+avec son signe) disent désormais cela. L'entrée CV du temps le divise toujours par deux à chaque volt.

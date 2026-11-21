@@ -8,9 +8,13 @@
 //!   `k / (N + 1)` of it for repeat `k` of `N`, bent by the curve. A span of
 //!   one period of `TR1` fills the step exactly.
 //!
-//! The curve, in octaves from −3 to +3, sets both the way and how strongly:
-//! 0 is even, below 0 the burst accelerates (shorter and shorter intervals,
+//! The curve, −3.0 to +3.0, is an abstract value, not a unit: it goes from
+//! an exponential curve at −3.0, through a straight line at 0 (even
+//! repeats), to a logarithmic one at +3.0, and sets both the way and how
+//! strongly. Below 0 the burst accelerates (shorter and shorter intervals,
 //! the repeats crowding towards the end of a span), above 0 it slows down.
+//! Each model reads it its own way: the exponent of [`Model::First`]'s last
+//! factor, `2^curve`, and half the bend `c` of [`Model::Span`].
 //! Each repeat fires with a chance, 0 to 100 %.
 
 use crate::fixed::{self, ONE};
@@ -36,8 +40,8 @@ pub const MAX_GATE_REPEATS: u32 = 64;
 /// shape (and, in [`Model::Span`], spreads over its span).
 const GATE_REFERENCE_REPEATS: i64 = 8;
 
-/// The curve's bound either side of 0 (even), in tenths of an octave: three
-/// octaves, the last interval an eighth or eight times the first.
+/// The curve's bound either side of 0 (even), in tenths: 3.0, where
+/// [`Model::First`]'s last interval is an eighth or eight times the first.
 pub const CURVE_TENTHS: i32 = 30;
 
 /// How the repeats are placed in time.
@@ -69,8 +73,8 @@ pub struct Burst {
     /// [`Model::First`]: the interval before the first repeat;
     /// [`Model::Span`]: the time the repeats are spread over. Microseconds.
     pub time_micros: u32,
-    /// The curve, in tenths of an octave, `-CURVE_TENTHS..=CURVE_TENTHS`:
-    /// below 0 accelerating, 0 even, above 0 slowing down.
+    /// The curve, in tenths, `-CURVE_TENTHS..=CURVE_TENTHS`: below 0
+    /// accelerating, 0 even, above 0 slowing down.
     pub curve_tenths: i32,
     /// The chance each repeat fires, in percent, `0..=100`.
     pub chance_percent: u32,
@@ -94,8 +98,9 @@ impl Burst {
         }
     }
 
-    /// The curve in octaves, 16.16, signed.
-    fn curve_octaves(&self) -> i64 {
+    /// The curve as a signed 16.16 number: [`Model::First`]'s exponent, half
+    /// [`Model::Span`]'s bend.
+    fn curve_q16(&self) -> i64 {
         i64::from(self.curve_tenths.clamp(-CURVE_TENTHS, CURVE_TENTHS)) * i64::from(ONE) / 10
     }
 
@@ -125,7 +130,7 @@ impl Burst {
         } else {
             (i64::from(index.max(1)) - 1) * one / steps
         };
-        let factor = fixed::exp2(self.curve_octaves() * progress / one);
+        let factor = fixed::exp2(self.curve_q16() * progress / one);
         i64::from(self.time_micros) * factor / one
     }
 
@@ -160,7 +165,7 @@ impl Burst {
         if self.is_even() {
             return x;
         }
-        let curve = 2 * self.curve_octaves().abs();
+        let curve = 2 * self.curve_q16().abs();
         let slow = |x: i64| (fixed::exp2(curve * x / one) - one) * one / (fixed::exp2(curve) - one);
         if self.curve_tenths > 0 {
             slow(x)
@@ -216,8 +221,9 @@ pub fn time_from(model: Model, base_micros: u32, millivolts: MilliVolts, effect:
     time.clamp(MIN_INTERVAL_MICROS, longest)
 }
 
-/// The curve an input sets, moves (an octave per volt, from 0, even, at 0 V
-/// when it is followed) or multiplies; within ±[`CURVE_TENTHS`].
+/// The curve an input sets, moves (1.0 per volt, a tenth per 100 mV, from
+/// 0, even, at 0 V when it is followed) or multiplies; within
+/// ±[`CURVE_TENTHS`].
 #[must_use]
 pub fn curve_from(base_tenths: i32, millivolts: MilliVolts, effect: Effect) -> i32 {
     let curve = match effect {
@@ -247,9 +253,9 @@ fn volts_q16(millivolts: MilliVolts) -> i64 {
     i64::from(millivolts) * i64::from(ONE) / 1_000
 }
 
-/// `value * 2^octaves`, `octaves` in 16.16.
-fn scale(value: u32, octaves: i64) -> u32 {
-    let scaled = i64::from(value) * fixed::exp2(octaves) / i64::from(ONE);
+/// `value * 2^exponent`, `exponent` in 16.16: a time halved per volt.
+fn scale(value: u32, exponent: i64) -> u32 {
+    let scaled = i64::from(value) * fixed::exp2(exponent) / i64::from(ONE);
     u32::try_from(scaled.max(0)).unwrap_or(u32::MAX)
 }
 
@@ -301,7 +307,7 @@ mod tests {
         let fast = intervals::<4>(&burst(Model::First, Count::Repeats(4), -10));
         let slow = intervals::<4>(&burst(Model::First, Count::Repeats(4), 10));
         assert!(falling(&fast) && rising(&slow), "{fast:?} {slow:?}");
-        // An octave: the last interval half, or twice, the first.
+        // A curve of 1.0: the last interval half, or twice, the first (2^±1).
         assert_eq!((fast[0], slow[0]), (100_000, 100_000));
         assert!(
             close(fast[3], 50_000) && close(slow[3], 200_000),
@@ -357,7 +363,7 @@ mod tests {
         );
         assert_eq!(count_from(Count::Gate, 5_000, Effect::Add), Count::Gate);
         assert!(time_from(Model::First, 100_000, 1_000, Effect::Add).abs_diff(50_000) <= 50);
-        assert_eq!(curve_from(-5, 1_000, Effect::Add), 5, "an octave per volt");
+        assert_eq!(curve_from(-5, 1_000, Effect::Add), 5, "1.0 per volt");
         assert_eq!(curve_from(0, 9_000, Effect::Add), 30);
         assert_eq!(chance_from(50, 1_000, Effect::Add), 70);
         assert_eq!(chance_from(50, -5_000, Effect::Add), 0);

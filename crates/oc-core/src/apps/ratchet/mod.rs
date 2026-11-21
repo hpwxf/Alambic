@@ -16,8 +16,12 @@
 //! the time between two triggers) instead of milliseconds, until the rate is
 //! lost.
 //!
-//! `SHAPE` is one signed curve, −3.0 to +3.0 octaves: 0 even, below 0 the
-//! burst accelerates, above 0 it slows down. Two models place the repeats,
+//! `SHAPE` is one signed curve, −3.0 to +3.0, an abstract value rather than
+//! a unit: from an exponential curve at −3.0, through a straight line at 0
+//! (even), to a logarithmic one at +3.0; below 0 the burst accelerates,
+//! above 0 it slows down. The time setting, `FIRST` or `SPAN`, is a duration
+//! in milliseconds, or a fraction of `TR1`'s period with `SYNC ON`. Two
+//! models place the repeats,
 //! to compare in situation (`MODE` on page 2, see [`burst`]): `FIRST`, a first
 //! interval then intervals changing by a constant factor up to the first times
 //! `2^SHAPE`; `SPAN`, the repeats spread over a span, crowding towards its end
@@ -122,8 +126,8 @@ pub enum Setting {
     /// The first interval (`MODE FIRST`) or the span of the burst
     /// (`MODE SPAN`).
     Time,
-    /// The curve, −3.0 to +3.0 octaves: 0 even, below accelerating, above
-    /// slowing down.
+    /// The curve, −3.0 to +3.0, from exponential through even (0) to
+    /// logarithmic: below accelerating, above slowing down.
     Shape,
     /// The chance each repeat fires.
     Chance,
@@ -254,11 +258,12 @@ const DEFAULT_DIVISION: usize = 8;
 /// effects.
 #[must_use]
 pub fn sweep(setting: Setting, model: Model) -> Option<(MilliVolts, MilliVolts)> {
-    // Octaves as millivolts, at one volt per octave.
-    let octaves = |longer: u32, shorter: u32| {
+    // How many times `longer` halves down to `shorter`, as millivolts: a
+    // volt halves the time.
+    let halvings = |longer: u32, shorter: u32| {
         fixed::log2(i64::from(longer) * i64::from(ONE) / i64::from(shorter.max(1)))
-            .map_or(0, |octaves| {
-                MilliVolts::try_from(octaves * 1_000 / i64::from(ONE)).unwrap_or(0)
+            .map_or(0, |halvings| {
+                MilliVolts::try_from(halvings * 1_000 / i64::from(ONE)).unwrap_or(0)
             })
     };
     let range = match setting {
@@ -268,8 +273,8 @@ pub fn sweep(setting: Setting, model: Model) -> Option<(MilliVolts, MilliVolts)>
         Setting::Time => {
             let follow = follow_time_micros(model);
             (
-                -octaves(longest_time(model), follow),
-                octaves(follow, MIN_INTERVAL_MICROS),
+                -halvings(longest_time(model), follow),
+                halvings(follow, MIN_INTERVAL_MICROS),
             )
         }
         // A tenth per 100 mV.
@@ -916,8 +921,8 @@ impl RatchetApp {
 }
 
 /// Where `setting` sits in its range in `burst`, in thousandths: the count
-/// from one repeat to `GATE`, the time on a logarithmic scale (the inputs
-/// move it by octaves), the curve from −3.0 to +3.0, the chance from 0 %.
+/// from one repeat to `GATE`, the time on a logarithmic scale (an input
+/// halves it per volt), the curve from −3.0 to +3.0, the chance from 0 %.
 fn position(setting: Setting, burst: &Burst) -> i32 {
     let permille = match setting {
         Setting::Count => match burst.count {
@@ -925,12 +930,12 @@ fn position(setting: Setting, burst: &Burst) -> i32 {
             Count::Gate => 1_000,
         },
         Setting::Time => {
-            let octaves = |micros: u32| {
+            let halvings = |micros: u32| {
                 fixed::log2(i64::from(micros) * i64::from(ONE) / i64::from(MIN_INTERVAL_MICROS))
                     .unwrap_or(0)
             };
-            let full = octaves(longest_time(burst.model)).max(1);
-            octaves(burst.time_micros) * 1_000 / full
+            let full = halvings(longest_time(burst.model)).max(1);
+            halvings(burst.time_micros) * 1_000 / full
         }
         Setting::Shape => {
             (i64::from(burst.curve_tenths) + i64::from(CURVE_TENTHS)) * 1_000

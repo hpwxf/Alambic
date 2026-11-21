@@ -319,7 +319,7 @@ fn the_panel_walks_and_bounds_the_settings() {
     let mut engine = ratchet();
     set(&mut engine, Setting::Time, -100);
     assert_eq!(engine.app::<RatchetApp>().settings().time_micros, 2_000);
-    // The shape, -3.0 to +3.0 in tenths of an octave.
+    // The shape, -3.0 to +3.0 in tenths.
     set(&mut engine, Setting::Shape, -100);
     assert_eq!(engine.app::<RatchetApp>().settings().curve_tenths, -30);
     set(&mut engine, Setting::Shape, 100);
@@ -571,8 +571,8 @@ fn each_setting_is_swept_end_to_end_by_its_own_range() {
     assert_eq!(sweep(Setting::Count, Model::First), Some((0, 7_750)));
     assert_eq!(sweep(Setting::Shape, Model::First), Some((-3_000, 3_000)));
     assert_eq!(sweep(Setting::Chance, Model::First), Some((0, 5_000)));
-    // The time is 100 ms at 0 V: about 4.3 octaves down to 2 s, 5.6 up to
-    // 2 ms; SPAN from 400 ms, up to 8 s.
+    // The time is 100 ms at 0 V and halves per volt: about 4.3 V of
+    // halvings to 2 s, 5.6 V to 2 ms; SPAN from 400 ms, up to 8 s.
     let (slow, fast) = sweep(Setting::Time, Model::First).unwrap();
     assert!((-4_330..=-4_310).contains(&slow) && (5_630..=5_650).contains(&fast));
     let (slow, fast) = sweep(Setting::Time, Model::Span).unwrap();
