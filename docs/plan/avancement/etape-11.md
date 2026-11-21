@@ -80,12 +80,12 @@ le banc). Étape 2 de la trajectoire de D-043. Valeurs mesurées sur un module :
   * La révision : un tick inchangé coûte 1,02 µs à `publish` (minimum, `GFX DEMO` et `SUPERSAW`), contre 1,46 à
     1,56 µs avant, soit ≈ 0,5 µs de moins par tick et non 1,5 ; ≈ 0,9 µs est le plancher de plusieurs étapes
     (`outputs`, `present`), peut-être le coût de la mesure elle-même, à vérifier.
-  * `render` à 95 µs dans ces relevés (54 µs dans ceux de l'utilisateur), identique en `2895915`, `f162933` et
-    `a487802` : l'état de l'écran ou du branchement, pas ces lots ; `tick` max ≈ 120 µs en découle.
+  * `render` à 95 µs dans ces relevés, faits sur la page 1 de `SUPERSAW` (l'éventail des voix, animé), contre 54 µs
+    sur la page 2 dans ceux de l'utilisateur ; identique en `2895915`, `f162933` et `a487802`. `tick` max ≈ 120 µs
+    en découle.
 
 ## Réserves
 
-* `render` à 95 µs contre 54 selon l'état de `SUPERSAW` : cause à trouver.
 
 * La voix du moteur (1 kHz) et `audio::publish` préparent toujours chacune un `Setup` quand les paramètres changent.
 
