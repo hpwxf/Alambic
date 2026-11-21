@@ -32,6 +32,7 @@ mod fixed;
 mod float;
 
 use crate::audio::{Generator, MilliHertz, phase_step};
+use crate::fixed::div_wide;
 use crate::platform::{CV_CHANNELS, MilliVolts};
 
 /// Sawtooths in the bank.
@@ -226,15 +227,16 @@ impl Setup {
         let width = params.width.clamp(NARROWEST_WIDTH, SQUARE_WIDTH);
         let loudness = shape_loudness(params.shape, width);
         let normalisers = (
-            normaliser(all) * UNIT / loudness,
-            normaliser(one_side) * UNIT / loudness,
+            louder(normaliser(all), loudness),
+            louder(normaliser(one_side), loudness),
         );
         // In 1.15, from 0 (a sawtooth) to one (a square).
         let shape = fraction(params.shape) >> 1;
         // The second sawtooth's lead, a turn being `2^32`: the width back,
         // its complement on. The same pulse, but its narrow part comes out
         // upwards, where the outputs have 6 V of room instead of 3.
-        let lead = u32::try_from((u64::from(FULL - width) << 32) / u64::from(FULL)).unwrap_or(0);
+        let lead =
+            u32::try_from(div_wide(u64::from(FULL - width) << 32, u32::from(FULL))).unwrap_or(0);
         let blend = (shape, lead);
         let coefficients = match params.arithmetic {
             Arithmetic::Fixed => Coefficients::Fixed(fixed::Setup::new(
@@ -437,7 +439,9 @@ impl Generator for SupersawBank {
 
 /// `amount` in thousandths of [`FULL`] as a 16.16 fraction, at most one.
 fn fraction(amount: u16) -> i64 {
-    i64::from(amount.min(FULL)) * UNIT / i64::from(FULL)
+    // In 32 bits: a division by a constant becomes a multiplication there,
+    // a library call in 64 (journal/D-040).
+    i64::from(u32::from(amount.min(FULL)) * (1 << 16) / u32::from(FULL))
 }
 
 /// Szabo's detune curve at `detune`, in 16.16: about 0.003 at rest, one at
@@ -501,8 +505,16 @@ pub fn shape_loudness(shape: u16, width: u16) -> i64 {
 fn normaliser(power: i64) -> i64 {
     let power = u64::try_from(power).unwrap_or(0);
     // The centre gain stays above 0.44, so the root is far from zero.
-    let root = i64::try_from(power.isqrt()).unwrap_or(1).max(1);
-    (1 << 32) / root
+    let root = u32::try_from(power.isqrt()).unwrap_or(u32::MAX).max(1);
+    i64::try_from(div_wide(1 << 32, root)).unwrap_or(i64::MAX)
+}
+
+/// `normaliser` in 16.16 steps over `loudness` in 16.16: the normaliser of
+/// a part whose voices are `loudness` louder than sawtooths.
+fn louder(normaliser: i64, loudness: i64) -> i64 {
+    let scaled = u64::try_from(normaliser).unwrap_or(0) << 16;
+    let loudness = u32::try_from(loudness).unwrap_or(u32::MAX).max(1);
+    i64::try_from(div_wide(scaled, loudness)).unwrap_or(i64::MAX)
 }
 
 #[cfg(test)]

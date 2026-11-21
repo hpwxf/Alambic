@@ -231,7 +231,12 @@ impl<G: Generator> Voice<G> {
 #[must_use]
 pub fn phase_step(frequency: MilliHertz, rate_hz: u32) -> u32 {
     let turn = 1u64 << 32;
-    let step = (u64::from(frequency) << 32) / (u64::from(rate_hz.max(1)) * 1_000);
+    // Divided in 32 bits whenever the rate in millihertz fits (journal/D-040).
+    let numerator = u64::from(frequency) << 32;
+    let step = match rate_hz.max(1).checked_mul(1_000) {
+        Some(millihertz) => crate::fixed::div_wide(numerator, millihertz),
+        None => numerator / (u64::from(rate_hz) * 1_000),
+    };
     // One step short of half a turn: the highest pitch that is still itself.
     u32::try_from(step.min(turn / 2 - 1)).unwrap_or(u32::MAX)
 }

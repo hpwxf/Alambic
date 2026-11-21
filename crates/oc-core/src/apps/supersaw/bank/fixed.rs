@@ -115,7 +115,7 @@ fn inverse(step: u32) -> u64 {
     if step == 0 {
         0
     } else {
-        (1u64 << 48) / u64::from(step)
+        crate::fixed::div_wide(1 << 48, step)
     }
 }
 
