@@ -5,7 +5,7 @@
 | **Identifiant** | D-039 |
 | **Date** | 2026-11-19 |
 | **Auteur** | Pascal Havé |
-| **Statut** | proposée |
+| **Statut** | adoptée, révisée |
 | **Commits** | ce commit (ADR et code) |
 | **Relations** | révise D-005 (première exception au « pas de flottant dans `oc-core` », prévue par son § 5) ; étend D-037 (le banc entier reste, un banc `f32` s'ajoute) ; mesuré par D-029 (profil `audio` de l'interruption, D-033) ; budget de code D-038 |
 
@@ -129,3 +129,17 @@ Dernières comparaisons flottantes, celles de `millivolts` (le `clamp` et le sig
 arrondi par l'ajout d'une demie signée (`copysign`), conversion saturante, borne en entier. Mêmes valeurs, échantillons
 identiques au bit près ; plus aucun `vcmp` dans `next_sample` ; `.text` −96 o. Module (`f67d414`), `voice` en `F32` :
 1,15 → **1,07** µs à `SHAPE` 25 %, 0,86 → **0,78** µs à 0, soit −22 % et −38 % contre `INT` (1,37 et 1,25 µs).
+
+## Décision du 2026-11-21 — `F32` adopté, banc entier retiré
+
+Tranché par l'utilisateur sur les mesures de cette entrée : le Supersaw ne garde que son banc `f32` (F2, comparaisons
+sans flottant). Sur le module, `voice` 1,07 / 0,78 µs (`SHAPE` 25 % / 0) contre 1,37 / 1,25 µs en entier, le `Setup`
+≈ 4,7 µs contre 7 à 9 ; précision égale au banc entier à 0,1 dB près (exemple `aliasing`). C'est le cas du § 5 « `F32`
+au même coût ou moins » : les futurs blocs DSP s'écrivent en `f32`, accumulateurs en entier, selon les règles
+consignées pour les agents (`docs/agents/firmware.md`, « DSP in `f32` »). D-005 est révisée en conséquence.
+
+Ce qui part : le réglage `CALC` (page 2 : `LEVEL` et `STEREO`), `Arithmetic`, `apps/supersaw/bank/fixed.rs`, les tests
+qui comparaient les deux bancs (le banc reste épinglé par `tests/voice_samples.rs` et mesuré contre la supersaw idéale
+par `aliasing`), `SUPERSAW_CALC`. Ce qui reste en entier : la préparation commune (courbe de désaccord, gains,
+normaliseurs, par `fixed::div_wide`), qui ne tourne qu'au changement de paramètres. Non fait : l'écoute comparée des
+deux bancs aux notes basses.

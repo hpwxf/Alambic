@@ -35,7 +35,7 @@ Architectural decisions behind each change are in `journal/` (French).
 - **`WIDTH`** in `SUPERSAW`: the pulse's width at a full `SHAPE`, 5 to
   50 % (a square), its narrow part upwards where the outputs have the most
   room, at about the same loudness; on the first page after `SHAPE`, takes
-  an input. `LEVEL` moves to the second page with `STEREO` and `CALC`.
+  an input. `LEVEL` moves to the second page with `STEREO`.
   `SUPERSAW_WIDTH` sets the width the `aliasing` example measures, which
   now reads the room left before clipping at 250 mV. Squares
   clip from about 1.5 V of `LEVEL`, against 2 V for sawtooths.
@@ -44,15 +44,20 @@ Architectural decisions behind each change are in `journal/` (French).
   parameters to the audio interrupt, which `cargo probe stats` did not
   show. Probe protocol 7.
 
-- **`SUPERSAW` in `f32`, on trial** (journal/D-039): a second bank, the same
-  voices, curves and parts in single-precision floating point, picked by a
-  new `CALC` setting (`INT` at start, `F32`), to compare the two on the
-  module (`cargo probe stats`, by ear). Both banks follow every change of
-  parameters and only the picked one runs, so switching resumes each where
-  it stopped. The two differ by under a millivolt RMS.
 
 ### Changed
 
+- **`SUPERSAW` computes in `f32`** (journal/D-039): its bank, the same
+  voices, curves and parts in single-precision floating point with integer
+  phases, replaces the integer one after a trial of both on the module. A
+  sample costs the audio interrupt 0.78 to 1.07 µs instead of 1.25 to
+  1.37, the preparation under a moving CV about 4.7 µs instead of 7 to 9,
+  at the same distance from an ideal supersaw; the samples differ from the
+  integer bank's by under a millivolt RMS.
+- Preparing new parameters is cheaper: the engine numbers them
+  (`Engine::params_revision`), so the firmware compares a revision rather
+  than the whole parameters every tick, and the supersaw's preparation
+  divides 64 bits by 32 with the core's divider (`oc_core::fixed::div_wide`).
 - The outputs are rendered by generators (journal/D-044): `oc_core::audio`
   holds the mechanism and names no applet; `SUPERSAW`'s bank moves into the
   applet (`oc_core::apps::supersaw::bank`), and the types backends use come
@@ -71,8 +76,8 @@ Architectural decisions behind each change are in `journal/` (French).
   behaviour.
 
 - `SUPERSAW`'s settings are on two pages, with a scroll bar as in
-  `RATCHET`: `NOTE`, `DETUNE`, `MIX`, `LEVEL`, then `STEREO` and `CALC`, which
-  take no input.
+  `RATCHET`: `NOTE`, `DETUNE`, `MIX`, `LEVEL`, then `STEREO`, which takes
+  no input.
 - Ratchet's scroll bar is now a control of its own,
   `oc_core::gfx::controls::scroll_bar`.
 - Two profile stages inside the audio interrupt, `voice` (one sample) and
@@ -80,8 +85,9 @@ Architectural decisions behind each change are in `journal/` (French).
   burst echoes, so it hides the voice's computation. `cargo probe stats`
   prints two decimals. The probe protocol is now version 3: host tools and
   firmware must be updated together.
-- `SUPERSAW_CALC=f32` makes the `aliasing` example measure the `f32` bank; a
-  criterion benchmark, `supersaw_f32_sample_to_codes`.
+- Criterion benchmarks for the supersaw's squares and its preparation
+  (`supersaw_square_sample_to_codes`, `supersaw_setup`), and
+  `scripts/profile-supersaw.sh` to profile it on the module.
 
 ## 0.6.0 — 2026-11-18 (Rack plugin 2.6.0)
 

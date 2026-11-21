@@ -1,8 +1,8 @@
-//! The supersaw bank in `f32`, the trial of journal/D-039: the same voices,
-//! curves and parts as the integer bank, written as floating point would
-//! write them, so the two can be compared on the module.
+//! The supersaw bank in `f32` (journal/D-039): the voices, curves and parts
+//! of journal/D-037, adopted over the integer bank they were first written
+//! in, cheaper on the module and as precise.
 //!
-//! The phases run as the integer bank's, a turn being `2^32`, and wrap for
+//! The phases run as integers, a turn being `2^32`, and wrap for
 //! free: in `f32` a phase near the end of its turn keeps 24 bits, and its
 //! sum drifts off pitch at low notes (journal/D-039, F2). Each sample
 //! reads it as a fraction of a turn; the `PolyBLEP` correction multiplies
@@ -55,9 +55,9 @@ impl Saw {
 
 /// A sawtooth at `phase` (a turn being `2^32`), rising from -1 to 1 over the
 /// turn, with its jump at the wrap smoothed over the samples on either
-/// side; the integer bank's `polyblep_saw`, its unit being one. Where it is
-/// against the jump is decided in integers, and the distance to it is taken
-/// there too, exactly, before it becomes a fraction.
+/// side, its unit being one. Where it is against the jump is decided in
+/// integers, and the distance to it is taken there too, exactly, before it
+/// becomes a fraction.
 fn polyblep_saw(phase: u32, step: u32, inverse: f32) -> f32 {
     let naive = 2.0 * turns(phase) - 1.0;
     let residual = if phase < step {
@@ -101,13 +101,13 @@ impl HighPass {
     }
 }
 
-/// One over a step of the integer bank as a fraction of a turn, zero at
+/// One over a step (a turn being `2^32`) as a fraction of a turn, zero at
 /// rest.
 fn inverse(step: u32) -> f32 {
     if step == 0 { 0.0 } else { 1.0 / turns(step) }
 }
 
-/// What the parameters decide for the `f32` bank, part of the supersaw's
+/// What the parameters decide for the bank, part of the supersaw's
 /// [`super::Setup`] (journal/D-040).
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub(super) struct Setup {
@@ -124,7 +124,21 @@ pub(super) struct Setup {
 }
 
 impl Setup {
-    /// From the preparation both banks share: the voices' steps, their gains
+    /// Nothing played.
+    pub(super) const OFF: Self = Self {
+        steps: [0; VOICES],
+        inverses: [0.0; VOICES],
+        sub_step: 0,
+        sub_inverse: 0.0,
+        gains: [0.0; VOICES],
+        normalisers: (0.0, 0.0),
+        coefficient: 0.0,
+        shape: 0.0,
+        lead: 1 << 31,
+        amplitude: 0.0,
+    };
+
+    /// From the preparation in integers: the voices' steps, their gains
     /// in 1.15, the normalisers `2^32 / root` of gains in 1.15, and the
     /// blend: the shape in 1.15 and the lead a turn being `2^32`.
     pub(super) fn new(
@@ -143,7 +157,7 @@ impl Setup {
             gains: gains.map(|gain| fraction(gain, 15)),
             // `2^32 / (root 2^15)`: one over the root is it over `2^17`.
             normalisers: (fraction(normalisers.0, 17), fraction(normalisers.1, 17)),
-            // `1 / (1 + 2 pi f / fs)`, the integer bank's coefficient.
+            // `1 / (1 + 2 pi f / fs)`.
             coefficient: 1.0 / (1.0 + core::f32::consts::TAU * turns(base)),
             shape: fraction(shape, 15),
             lead,
@@ -196,12 +210,12 @@ impl Bank {
         }
     }
 
-    /// Each voice's phase step, a turn being `2^32` as in the integer bank.
+    /// Each voice's phase step, a turn being `2^32`.
     pub(super) fn steps(&self) -> [u32; VOICES] {
         self.saws.map(|saw| saw.step)
     }
 
-    /// Each voice's phase now, a turn being `2^32` as in the integer bank.
+    /// Each voice's phase now, a turn being `2^32`.
     pub(super) fn phases(&self) -> [u32; VOICES] {
         self.saws.map(|saw| saw.phase)
     }
@@ -243,7 +257,7 @@ impl Bank {
         ];
         let mut parts = [0; 3];
         for ((part, filter), sum) in parts.iter_mut().zip(&mut self.filters).zip(sums) {
-            // Falling sawtooths, as in the integer bank.
+            // Falling sawtooths (journal/D-037, revision of 2026-11-18).
             *part = millivolts(-filter.next(sum, self.coefficient) * self.amplitude);
         }
         // A sawtooth whatever the shape.
@@ -257,8 +271,7 @@ impl Bank {
     }
 }
 
-/// A phase or a step of the integer bank, a turn being `2^32`, as a fraction
-/// of a turn.
+/// A phase or a step, a turn being `2^32`, as a fraction of a turn.
 const fn turns(phase: u32) -> f32 {
     #[allow(clippy::cast_precision_loss)]
     // A fraction of a turn needs 24 bits, not 32.

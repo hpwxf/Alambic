@@ -1,6 +1,5 @@
 //! Seven detuned band-limited sawtooths around one pitch (journal/D-037),
-//! computed in two arithmetics: fixed point (`fixed`, the bank of D-037)
-//! and `f32` (`float`, the trial of journal/D-039).
+//! computed in `f32` with integer phases (`float`, journal/D-039).
 //!
 //! The detune curve, the spread of the seven voices and the two mix laws are
 //! Adam Szabo's measurements of the JP-8000 (*How to Emulate the Super Saw*,
@@ -17,18 +16,17 @@
 //! that doubles the level reached without clipping, and the ear does not
 //! hear a waveform's polarity (journal/D-037, revision of 2026-11-18).
 //!
-//! This module holds what both arithmetics share: the parameters and the
-//! parts, Szabo's curves, and the preparation they both start from (each
-//! voice's phase step, each voice's gain, the normalisers), in integers. Each
-//! submodule turns that preparation into its own coefficients and renders
-//! the samples; [`Supersaw::arithmetic`] picks which one runs.
+//! This module holds the parameters and the parts, Szabo's curves, and the
+//! preparation the bank starts from (each voice's phase step, each voice's
+//! gain, the normalisers), in integers; `float` turns it into its
+//! coefficients and renders the samples. An integer bank ran beside it on
+//! trial until journal/D-039 was decided.
 //!
 //! The bank is `SUPERSAW`'s own (journal/D-044): it lives with the applet,
 //! and reaches the outputs as the [`SupersawBank`] generator. Should another
 //! applet need it, it moves to a shared DSP library rather than back into
 //! `audio`.
 
-mod fixed;
 mod float;
 
 use crate::audio::{Generator, MilliHertz, phase_step};
@@ -80,16 +78,6 @@ const DETUNE_CURVE: [i64; 65] = [
     65_523,
 ];
 
-/// How the bank computes its samples (journal/D-039).
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash)]
-pub enum Arithmetic {
-    /// Fixed point, the bank of journal/D-037.
-    #[default]
-    Fixed,
-    /// Single-precision floating point, the trial of journal/D-039.
-    Float,
-}
-
 /// What a supersaw plays, as an applet publishes it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Supersaw {
@@ -110,8 +98,6 @@ pub struct Supersaw {
     pub width: u16,
     /// Peak level of one sawtooth; the sum is scaled to sound about as loud.
     pub amplitude: MilliVolts,
-    /// Which of the two banks plays it.
-    pub arithmetic: Arithmetic,
 }
 
 impl Supersaw {
@@ -123,7 +109,6 @@ impl Supersaw {
         shape: 0,
         width: SQUARE_WIDTH,
         amplitude: 0,
-        arithmetic: Arithmetic::Fixed,
     };
 }
 
@@ -181,33 +166,24 @@ const PHASES: [u32; VOICES] = {
     phases
 };
 
-/// Everything a supersaw's parameters decide for the bank they pick,
-/// computed once when they change (journal/D-040). Building it touches no
-/// bank, so it can run outside the audio context; [`Bank::apply`] only copies
-/// it. The other bank's coefficients are not prepared: nothing renders them,
-/// and switching [`Supersaw::arithmetic`] is itself a change of parameters.
+/// Everything a supersaw's parameters decide, computed once when they
+/// change (journal/D-040). Building it touches no bank, so it can run
+/// outside the audio context; [`Bank::apply`] only copies it.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Setup {
     params: Supersaw,
-    coefficients: Coefficients,
-}
-
-/// The coefficients of the bank [`Supersaw::arithmetic`] picks.
-#[derive(Debug, Clone, Copy, PartialEq)]
-enum Coefficients {
-    Fixed(fixed::Setup),
-    Float(float::Setup),
+    coefficients: float::Setup,
 }
 
 impl Setup {
     /// Nothing played: what a new bank holds.
     pub const OFF: Self = Self {
         params: Supersaw::OFF,
-        coefficients: Coefficients::Fixed(fixed::Setup::OFF),
+        coefficients: float::Setup::OFF,
     };
 
-    /// What `params` decide at `rate_hz`: the preparation both banks share,
-    /// then the picked bank's coefficients from it.
+    /// What `params` decide at `rate_hz`: the preparation in integers, then
+    /// the bank's coefficients from it.
     #[must_use]
     pub fn new(params: &Supersaw, rate_hz: u32) -> Self {
         let base = phase_step(params.frequency, rate_hz);
@@ -238,25 +214,9 @@ impl Setup {
         let lead =
             u32::try_from(div_wide(u64::from(FULL - width) << 32, u32::from(FULL))).unwrap_or(0);
         let blend = (shape, lead);
-        let coefficients = match params.arithmetic {
-            Arithmetic::Fixed => Coefficients::Fixed(fixed::Setup::new(
-                &steps,
-                &gains,
-                normalisers,
-                blend,
-                params.amplitude,
-            )),
-            Arithmetic::Float => Coefficients::Float(float::Setup::new(
-                &steps,
-                &gains,
-                normalisers,
-                blend,
-                params.amplitude,
-            )),
-        };
         Self {
             params: *params,
-            coefficients,
+            coefficients: float::Setup::new(&steps, &gains, normalisers, blend, params.amplitude),
         }
     }
 
@@ -267,14 +227,10 @@ impl Setup {
     }
 }
 
-/// The running state of a supersaw in both arithmetics. Only the one
-/// [`Supersaw::arithmetic`] picks runs and follows the parameters; the other
-/// keeps its phases, and switching hands it new coefficients and resumes it
-/// where it stopped.
+/// The running state of a supersaw.
 #[derive(Debug, Clone)]
 pub struct Bank {
     params: Supersaw,
-    fixed: fixed::Bank,
     float: float::Bank,
 }
 
@@ -284,7 +240,6 @@ impl Bank {
     pub const fn new() -> Self {
         Self {
             params: Supersaw::OFF,
-            fixed: fixed::Bank::new(&PHASES),
             float: float::Bank::new(&PHASES),
         }
     }
@@ -295,28 +250,18 @@ impl Bank {
         &self.params
     }
 
-    /// Each voice's phase step in the bank [`Supersaw::arithmetic`] picks, a
-    /// turn being `2^32` (the `f32` bank's are the integer ones rounded to 24
-    /// bits): what an analysis needs to tell a voice's harmonics from what
-    /// folds back.
+    /// Each voice's phase step, a turn being `2^32`: what an analysis needs
+    /// to tell a voice's harmonics from what folds back.
     #[must_use]
     pub fn steps(&self) -> [u32; VOICES] {
-        match self.params.arithmetic {
-            Arithmetic::Fixed => self.fixed.steps(),
-            Arithmetic::Float => self.float.steps(),
-        }
+        self.float.steps()
     }
 
-    /// Each voice's phase now in the bank [`Supersaw::arithmetic`] picks, a
-    /// turn being `2^32`: with [`Self::steps`], what a reference rendering
-    /// needs to start where the bank playing does. The other bank's phases
-    /// stand where it stopped.
+    /// Each voice's phase now, a turn being `2^32`: with [`Self::steps`],
+    /// what a reference rendering needs to start where the bank does.
     #[must_use]
     pub fn phases(&self) -> [u32; VOICES] {
-        match self.params.arithmetic {
-            Arithmetic::Fixed => self.fixed.phases(),
-            Arithmetic::Float => self.float.phases(),
-        }
+        self.float.phases()
     }
 
     /// Plays `params` at `rate_hz` from the next sample on, keeping the
@@ -329,20 +274,13 @@ impl Bank {
     /// phases and the filters' state: copies only, no division.
     pub fn apply(&mut self, setup: &Setup) {
         self.params = setup.params;
-        match &setup.coefficients {
-            Coefficients::Fixed(coefficients) => self.fixed.apply(coefficients),
-            Coefficients::Float(coefficients) => self.float.apply(coefficients),
-        }
+        self.float.apply(&setup.coefficients);
     }
 
-    /// One sample of every part from the bank [`Supersaw::arithmetic`]
-    /// picks, then advances.
+    /// One sample of every part, then advances.
     #[inline]
     pub fn next_frame(&mut self) -> Frame {
-        match self.params.arithmetic {
-            Arithmetic::Fixed => self.fixed.next_frame(),
-            Arithmetic::Float => self.float.next_frame(),
-        }
+        self.float.next_frame()
     }
 }
 
@@ -472,7 +410,7 @@ pub fn mix_gains(mix: u16) -> (i64, i64) {
 }
 
 /// Each voice's gain at `mix`, in 1.15: the centre's law for [`CENTRE`],
-/// the sides' for the six others ([`mix_gains`]). What both banks, and any
+/// the sides' for the six others ([`mix_gains`]). What the bank, and any
 /// reference rendering, weigh the voices by.
 #[must_use]
 pub fn voice_gains(mix: u16) -> [i64; VOICES] {
@@ -520,8 +458,8 @@ fn louder(normaliser: i64, loudness: i64) -> i64 {
 #[cfg(test)]
 mod tests {
     use super::{
-        Arithmetic, Bank, CENTRE, FULL, LEFT, NARROWEST_WIDTH, OFFSETS, PHASES, RIGHT,
-        SQUARE_WIDTH, Supersaw, UNIT, VOICES, detune_curve, mix_gains, shape_loudness,
+        Bank, CENTRE, FULL, LEFT, NARROWEST_WIDTH, OFFSETS, PHASES, RIGHT, SQUARE_WIDTH, Supersaw,
+        UNIT, VOICES, detune_curve, mix_gains, shape_loudness,
     };
 
     #[test]
@@ -575,67 +513,25 @@ mod tests {
     }
 
     #[test]
-    fn the_steps_are_those_of_the_bank_playing() {
-        let mut params = Supersaw {
+    fn the_phases_move_by_their_steps() {
+        let params = Supersaw {
             frequency: 440_000,
             detune: FULL,
             mix: FULL / 2,
             shape: 0,
             width: SQUARE_WIDTH,
             amplitude: 1_000,
-            arithmetic: Arithmetic::Fixed,
         };
         let mut bank = Bank::new();
         bank.set(&params, 47_619);
-        let fixed = bank.steps();
-        params.arithmetic = Arithmetic::Float;
-        bank.set(&params, 47_619);
-        // The same steps, rounded to an `f32`'s 24 bits.
-        for (float, fixed) in bank.steps().iter().zip(fixed) {
-            assert!(float.abs_diff(fixed) <= 1 << 8, "{float} against {fixed}");
-        }
-    }
-
-    #[test]
-    fn the_phases_are_those_of_the_bank_playing() {
-        // A thousand samples in each arithmetic: the bank playing has moved
-        // a thousand steps on, the other has not moved.
-        let mut params = Supersaw {
-            frequency: 440_000,
-            detune: FULL,
-            mix: FULL / 2,
-            shape: 0,
-            width: SQUARE_WIDTH,
-            amplitude: 1_000,
-            arithmetic: Arithmetic::Float,
-        };
-        let mut bank = Bank::new();
-        bank.set(&params, 47_619);
-        let start = bank.phases();
-        // The integer phases rounded to an `f32`'s 24 bits.
-        for (got, want) in start.iter().zip(PHASES) {
-            assert!(got.abs_diff(want) <= 1 << 8, "{got} against {want}");
-        }
+        assert_eq!(bank.phases(), PHASES);
         for _ in 0..1_000 {
             bank.next_frame();
         }
-        let moved = |from: &[u32; VOICES], steps: &[u32; VOICES]| -> [u32; VOICES] {
-            core::array::from_fn(|index| from[index].wrapping_add(steps[index].wrapping_mul(1_000)))
-        };
-        let expected = moved(&start, &bank.steps());
-        for (got, want) in bank.phases().iter().zip(expected) {
-            // The `f32` phase drifts by its roundings: far below a
-            // thousandth of a turn over a thousand samples.
-            let apart = got.wrapping_sub(want).cast_signed().unsigned_abs();
-            assert!(apart < 1 << 22, "{got} against {want}");
-        }
-        params.arithmetic = Arithmetic::Fixed;
-        bank.set(&params, 47_619);
-        assert_eq!(bank.phases(), PHASES, "the integer bank has not moved");
-        for _ in 0..1_000 {
-            bank.next_frame();
-        }
-        assert_eq!(bank.phases(), moved(&PHASES, &bank.steps()));
+        let moved: [u32; VOICES] = core::array::from_fn(|index| {
+            PHASES[index].wrapping_add(bank.steps()[index].wrapping_mul(1_000))
+        });
+        assert_eq!(bank.phases(), moved, "integer phases: exact");
     }
 
     #[test]
@@ -648,7 +544,6 @@ mod tests {
             shape: 0,
             width: SQUARE_WIDTH,
             amplitude: 3_000,
-            arithmetic: super::Arithmetic::Fixed,
         };
         bank.set(&params, 47_619);
         assert!(bank.steps().iter().all(|&step| step < 1 << 31));

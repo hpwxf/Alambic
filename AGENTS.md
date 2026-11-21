@@ -128,12 +128,14 @@ Details per crate: `docs/agents/code-map.md`.
   image has is `apps/sound.rs`. **Anything that depends on the parameters
   alone belongs in `Generator::setup`** (through `Setup::new`), never per
   sample (journal/D-040).
-* **Internal unit: millivolts, `i32`** (`oc_core::platform::MilliVolts`). No
-  floating point in the signal path, with one exception on trial: the `f32`
-  supersaw bank (`apps/supersaw/bank/float.rs`, journal/D-039), millivolts at its
-  edges, `core` only (no `sqrt` or `round` without `std`). Otherwise `f32`
-  appears only in Rack's C++ (`Alambic::process()`); `oc-vcv-ffi`'s ABI stays
-  `int32_t` millivolts.
+* **Internal unit: millivolts, `i32`** (`oc_core::platform::MilliVolts`).
+  Floating point only inside a DSP block, which computes in `f32` with
+  integer accumulators and renders millivolts at its edges (the supersaw
+  bank, `apps/supersaw/bank/float.rs`, journal/D-039; the rules in
+  `docs/agents/firmware.md`, "DSP in `f32`"); `core` only (no `sqrt` or
+  `round` without `std`). Parameters, control, conversions and calibration
+  stay integer; `oc-vcv-ffi`'s ABI stays `int32_t` millivolts, `f32` in
+  Rack's C++ (`Alambic::process()`).
 * **Backends exchange raw converter codes**, not millivolts
   (`AnalogIn::read_code`, `AnalogOut::write_code`); `Engine` converts them
   with its `Calibration` (journal/D-027). The simulator and Rack quantise

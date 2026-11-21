@@ -278,3 +278,10 @@ Le banc n'est plus dans `oc_core::audio::supersaw` : il vit dans l'app, `apps/su
 `float.rs`), derrière le générateur `SupersawBank`. Les parts `Mono` / `Left` / `Right` / `Sub` et leur affectation
 aux sorties A à D sont des paramètres de ce générateur (`SupersawParams`). Échantillons identiques au bit près ; le
 reste de cette entrée est inchangé.
+
+## Révision du 2026-11-21 — le banc en `f32` (D-039)
+
+Le banc entier de cette entrée (§ 3 : sept scies PolyBLEP en entier) est retiré : le Supersaw tourne sur son banc
+`f32`, aux phases entières, moins cher et aussi précis sur le module (D-039, décision du 2026-11-21). Voix, courbes de
+Szabo, parts, passe-haut, `SHAPE` et `WIDTH` sont inchangés ; le réglage `CALC` disparaît. Le reste de cette entrée est
+inchangé.

@@ -2,8 +2,9 @@
 //! a checksum of the first samples of every sound the applets make, through
 //! parameter changes, so that a change of how the voice is built cannot
 //! change one bit of what it renders. The checksums were taken before the
-//! generators of D-044, on the voice of D-033 and D-040; the `f32` one was
-//! retaken when its phases became integers (journal/D-039, F2), on purpose.
+//! generators of D-044, on the voice of D-033 and D-040; `SUPERSAW`'s is its
+//! `f32` bank's, retaken when its phases became integers (journal/D-039,
+//! F2), on purpose, and kept when the integer bank went.
 //!
 //! Switching between two kinds of sound (a tone, then the supersaw) is left
 //! out on purpose: D-044 starts a generator afresh when the kind changes,
@@ -92,18 +93,10 @@ fn supersaw_changes() -> Vec<(usize, ParamValue)> {
 }
 
 #[test]
-fn supersaw_in_integers_plays_the_same_samples() {
+fn supersaw_plays_the_same_samples() {
     let mut saw = SupersawApp::new();
     let sum = checksum_of(&mut saw, &supersaw_changes());
-    assert_eq!(sum, 0x21a3_bf79_b10e_c2d8, "SUPERSAW INT: {sum:#018x}");
-}
-
-#[test]
-fn supersaw_in_f32_plays_the_same_samples() {
-    let mut saw = SupersawApp::new();
-    saw.set(7, ParamValue::Choice(1)).unwrap();
-    let sum = checksum_of(&mut saw, &supersaw_changes());
-    assert_eq!(sum, 0x9739_0e1f_5598_da60, "SUPERSAW F32: {sum:#018x}");
+    assert_eq!(sum, 0x9739_0e1f_5598_da60, "SUPERSAW: {sum:#018x}");
 }
 
 #[test]

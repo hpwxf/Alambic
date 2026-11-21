@@ -14,9 +14,7 @@ use oc_core::apps::AppId;
 use oc_core::apps::diagnostic::DiagnosticApp;
 use oc_core::apps::ratchet::RatchetApp;
 use oc_core::apps::sound::{Params, Setup, Voice};
-use oc_core::apps::supersaw::bank::{
-    Arithmetic, FULL, Part, SQUARE_WIDTH, Supersaw, SupersawParams,
-};
+use oc_core::apps::supersaw::bank::{FULL, Part, SQUARE_WIDTH, Supersaw, SupersawParams};
 use oc_core::apps::tone::ToneApp;
 use oc_core::apps::{InputSnapshot, TickContext};
 use oc_core::buttons::ButtonReader;
@@ -241,7 +239,7 @@ fn voice(criterion: &mut Criterion) {
     });
 
     // The seven sawtooths, their sums and high-passes and the sub-octave
-    // (journal/D-037), every part read.
+    // (journal/D-037), in `f32` (journal/D-039), every part read.
     let mut bank = Voice::new(48_000);
     let mut sound = SupersawParams {
         bank: Supersaw {
@@ -251,7 +249,6 @@ fn voice(criterion: &mut Criterion) {
             shape: 0,
             width: SQUARE_WIDTH,
             amplitude: 1_000,
-            arithmetic: Arithmetic::Fixed,
         },
         parts: [
             Some(Part::Left),
@@ -279,40 +276,12 @@ fn voice(criterion: &mut Criterion) {
     });
     sound.bank.shape = 0;
 
-    // The same in `f32` (journal/D-039).
-    sound.bank.arithmetic = Arithmetic::Float;
-    bank.set_params(&Params::supersaw(sound));
-    group.bench_function("supersaw_f32_sample_to_codes", |bencher| {
-        bencher.iter(|| {
-            let samples = bank.next_sample();
-            black_box(samples.map(|level| output.to_code(level)))
-        });
-    });
-
-    // And its squares.
-    sound.bank.shape = FULL;
-    bank.set_params(&Params::supersaw(sound));
-    group.bench_function("supersaw_f32_square_sample_to_codes", |bencher| {
-        bencher.iter(|| {
-            let samples = bank.next_sample();
-            black_box(samples.map(|level| output.to_code(level)))
-        });
-    });
-    sound.bank.shape = 0;
-
     // What the loop prepares whenever the parameters change, a CV moving
-    // them every tick (journal/D-040): the shared preparation, then the
-    // picked bank's coefficients, in each arithmetic.
-    for (name, arithmetic) in [
-        ("supersaw_setup", Arithmetic::Fixed),
-        ("supersaw_f32_setup", Arithmetic::Float),
-    ] {
-        sound.bank.arithmetic = arithmetic;
-        let params = Params::supersaw(sound);
-        group.bench_function(name, |bencher| {
-            bencher.iter(|| black_box(Setup::new(black_box(&params), 47_619)));
-        });
-    }
+    // them every tick (journal/D-040).
+    let params = Params::supersaw(sound);
+    group.bench_function("supersaw_setup", |bencher| {
+        bencher.iter(|| black_box(Setup::new(black_box(&params), 47_619)));
+    });
 
     group.finish();
 }

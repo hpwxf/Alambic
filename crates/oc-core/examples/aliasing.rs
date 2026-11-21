@@ -2,8 +2,8 @@
 //! on the bank the module plays (lot 8c′, journal/D-037): the decision on
 //! oversampling four times (lot 8d) rests on these figures.
 //!
-//! The bank is the one in `oc_core::apps::supersaw::bank`, integer arithmetic
-//! included, rendered at the module's 47 619 Hz and read in millivolts as the
+//! The bank is the one in `oc_core::apps::supersaw::bank`, in `f32` with
+//! integer phases (journal/D-039), rendered at the module's 47 619 Hz and read in millivolts as the
 //! DAC receives them; the sawtooths it replaces, naive ramps at the same
 //! pitches and gains, are the reference. Each voice's pitch is known exactly
 //! from its phase step, so a spectrum separates its harmonics from
@@ -19,11 +19,9 @@
 //! ```sh
 //! cargo run -p oc-core --example aliasing --release            # the table
 //! cargo run -p oc-core --example aliasing --release -- out/    # and the WAVs
-//! SUPERSAW_CALC=f32 cargo run -p oc-core --example aliasing --release   # the f32 bank
 //! SUPERSAW_SHAPE=1000 cargo run -p oc-core --example aliasing --release # squares
 //! ```
 //!
-//! `SUPERSAW_CALC=f32` measures the bank in `f32` instead (journal/D-039);
 //! `SUPERSAW_SHAPE`, in thousandths, the voices' shape (0, a sawtooth, by
 //! default), and `SUPERSAW_WIDTH` the pulse's width (500, a square), the
 //! references blended the same way. The highest level that clips nowhere is
@@ -53,7 +51,7 @@ use std::io::Write as _;
 use std::path::Path;
 
 use oc_core::apps::supersaw::bank::{
-    Arithmetic, Bank, CENTRE, FULL, NARROWEST_WIDTH, SQUARE_WIDTH, Supersaw, VOICES, voice_gains,
+    Bank, CENTRE, FULL, NARROWEST_WIDTH, SQUARE_WIDTH, Supersaw, VOICES, voice_gains,
 };
 use oc_core::apps::tone;
 use oc_core::calibration::{CV_OUT_MAX_MV, CV_OUT_MIN_MV};
@@ -109,14 +107,6 @@ const DETUNES: [u16; 3] = [0, 500, FULL];
 /// The mix measured: the default, half way.
 const MIX: u16 = FULL / 2;
 
-/// The bank measured: integers unless `SUPERSAW_CALC` is `f32`.
-fn arithmetic() -> Arithmetic {
-    match std::env::var("SUPERSAW_CALC").as_deref() {
-        Ok("f32") => Arithmetic::Float,
-        _ => Arithmetic::Fixed,
-    }
-}
-
 /// The voices' shape measured, in thousandths: `SUPERSAW_SHAPE`, a
 /// sawtooth (0) unless it says otherwise.
 fn shape() -> u16 {
@@ -143,12 +133,7 @@ fn shape_fraction(shape: u16) -> f64 {
 }
 
 fn main() {
-    println!(
-        "Bank: {:?}, shape {} %, width {} %.",
-        arithmetic(),
-        shape() / 10,
-        width() / 10
-    );
+    println!("Bank: shape {} %, width {} %.", shape() / 10, width() / 10);
     let wav_dir = std::env::args().nth(1);
     if let Some(dir) = &wav_dir {
         fs::create_dir_all(dir).expect("the WAV directory must be writable");
@@ -178,7 +163,6 @@ fn main() {
                 shape: shape(),
                 width: width(),
                 amplitude: LEVEL_MV,
-                arithmetic: arithmetic(),
             };
             let (played, steps, phases) = render(&params);
             let naive = naive(&params, &steps, &phases);
@@ -240,7 +224,6 @@ fn write_pairs(dir: &Path) {
                 shape: shape(),
                 width: width(),
                 amplitude,
-                arithmetic: arithmetic(),
             };
             let clean: Vec<f64> = play(&at(LEVEL_MV), PAIR_LENGTH)
                 .iter()
@@ -306,7 +289,6 @@ fn against_ideal() {
                 shape: shape(),
                 width: width(),
                 amplitude: LEVEL_MV,
-                arithmetic: arithmetic(),
             };
             let (played, steps, phases) = render_for(&params, LENGTH);
             let ideal = ideal(&params, &steps, &phases, LENGTH);
@@ -348,7 +330,6 @@ fn clipping() {
                     shape: shape(),
                     width: width(),
                     amplitude: level,
-                    arithmetic: arithmetic(),
                 };
                 let (played, ..) = render(&params);
                 let clipped = played
@@ -376,7 +357,6 @@ fn clipping() {
                 shape: shape(),
                 width: width(),
                 amplitude: LEVEL_MV,
-                arithmetic: arithmetic(),
             };
             let (played, ..) = render(&params);
             let low = played.iter().copied().fold(0.0, f64::min);
@@ -422,7 +402,6 @@ fn worst_level() {
                         shape,
                         width,
                         amplitude: ROOM_LEVEL_MV,
-                        arithmetic: arithmetic(),
                     };
                     let played = play(&params, PAIR_LENGTH);
                     let low = played.iter().copied().fold(0.0, f64::min);
