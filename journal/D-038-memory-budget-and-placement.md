@@ -6,7 +6,7 @@
 | **Date** | 2026-11-18 |
 | **Auteur** | Pascal Havé |
 | **Statut** | adoptée, révisée |
-| **Commits** | `0438059` (ADR seul, aucun code) ; révisions : profondeur de la pile estimée par `cargo xtask size`, moteur hors de la pile, `main` coupé en `boot` et `run` ; seuil de l'ITCM dans `xtask size`, runtime configuré par `oc-firmware` |
+| **Commits** | `0438059` (ADR seul, aucun code) ; révisions : profondeur de la pile estimée par `cargo xtask size`, moteur hors de la pile, `main` coupé en `boot` et `run` ; seuil de l'ITCM dans `xtask size`, runtime configuré par `oc-firmware`, code froid en `s` |
 | **Relations** | précise D-004 (script de lien généré par `imxrt-rt`, disposition vérifiée par `cargo xtask size`) ; DMA et anneau du DAC (D-033) ; tampons de mesure à venir (capture du signal par la sonde, D-029) ; firmware de test par feature (`settings-stress`, D-028) ; applets résidents (D-021) |
 
 ## 1. Contexte
@@ -274,3 +274,23 @@ sans changer la disposition.
 Ce qui ferait changer d'avis : une version de `teensy4-bsp` dont le `build.rs` changerait la disposition par défaut
 ne nous toucherait plus, et c'est voulu ; mais une évolution d'`imxrt-rt` qui changerait le script généré se verrait
 dans la liste de contrôle de `cargo xtask size`, comme avant.
+
+## Révision (2026-11-22) — le code froid compilé en `s`
+
+Mesuré le même jour sur le module (`SUPERSAW`, sans CV) : tout le firmware en `opt-level = "s"` gagne 49 Kio d'ITCM
+mais double `voice` (0,98 → 2,05 µs) ; en `z`, il révélait un défaut de `Lpspi::flush` (écran noir, corrigé
+par `FramedSpi`). La quasi-totalité de l'écart vient d'`oc-core` et d'`oc-firmware`, où le DSP côtoie l'interface ;
+`#[optimize(size)]` n'étant pas stable, la granularité est le crate.
+
+Décidé : en `s`, par `[profile.release.package.<crate>]`, les crates que seule la boucle à 1 kHz appelle — pile USB
+(`usb-device`, `usbd-serial`, `imxrt-usbd`), protocole de la sonde (`postcard`, `cobs`, `serde`, `oc-protocol`,
+`heapless`), réglages (`sequential-storage`, `embassy-futures`, `futures-util`), `log`, `teensy4-panic`. `s` plutôt
+que `z`, dont l'outliner est le chemin le moins éprouvé. Avec LTO fat, une fonction garde le niveau du crate qui la
+définit (vérifié par la bissection de l'écran noir). Gain : `.text` −5,4 Kio (37,5 Kio libres) ; `usb` inchangé,
+`voice` identique ; `audio` 3,86 → 4,10 µs en moyenne, minimum et maximum inchangés, alors que le code de
+l'interruption est identique, octet pour octet : un effet de placement (les fonctions qu'elle appelle ont glissé), que
+tout changement de taille du code peut produire.
+
+Écarté pour l'instant : séparer le DSP d'`oc-core` dans un crate gardé en O3 pour passer le reste en `s`
+(≈ 45 Kio de plus), qui toucherait D-044 et l'interruption d'`oc-firmware` ; l'option **B** (repartage des bancs)
+donne plus, sans coût de temps, et reste la suite quand `xtask size` avertira.
