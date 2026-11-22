@@ -129,12 +129,19 @@ impl ColumnFont {
         self.height
     }
 
+    /// Distance from one glyph to the next, in pixels: usable in a `const`,
+    /// where a layout checks at compile time that its labels fit.
+    #[must_use]
+    pub const fn advance(&self) -> i32 {
+        self.width + self.spacing
+    }
+
     /// Width of `line` in pixels, as `embedded-graphics` measures it.
     #[must_use]
     pub fn width_of(&self, line: &str) -> i32 {
         let count = i32::try_from(line.chars().count()).unwrap_or(i32::MAX);
         count
-            .saturating_mul(self.width + self.spacing)
+            .saturating_mul(self.advance())
             .saturating_sub(self.spacing)
             .max(0)
     }

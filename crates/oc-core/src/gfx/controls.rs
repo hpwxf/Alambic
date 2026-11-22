@@ -171,6 +171,19 @@ pub fn header(
     height + 3
 }
 
+/// Width of the scroll bar at the left edge of a list, the same on every
+/// screen that has one so that their rows line up from one screen to the next.
+pub const SCROLL_WIDTH: i32 = 3;
+
+/// Left edge of a list's rows, right of the scroll bar and a gap.
+pub const LIST_LEFT: i32 = SCROLL_WIDTH + 1;
+
+/// The band over the selected row of a list, `height` high from `top`, from
+/// [`LIST_LEFT`] to the right edge: the scroll bar stays outside it.
+pub fn row_highlight(frame: &mut FrameBuffer, top: i32, height: i32, ink: Ink) {
+    fill_rect(frame, LIST_LEFT, top, WIDTH_I32 - LIST_LEFT, height, ink);
+}
+
 /// The track of a [`scroll_bar`] without its thumb: the place of one on a
 /// screen with a single page, so that it lines up with the screens that
 /// scroll.
@@ -195,6 +208,37 @@ pub fn scroll_bar(
     scroll_track(frame, x, y, width, height);
     let top = y + page * height / pages;
     let bottom = y + (page + 1) * height / pages;
+    fill_rect(frame, x, top, width, bottom - top, Ink::Lit);
+}
+
+/// A scroll bar for a list of `total` items of which `shown`, from `first`,
+/// are on screen: the thumb's length is the share shown and its place the
+/// share above it, so that a window sliding one item at a time reads as
+/// such, not as a page. A window past the end is held at the last place.
+#[allow(clippy::too_many_arguments)]
+// A box and a window: grouping either into a struct for its only callers
+// would add a type without making a call any clearer.
+pub fn scroll_window(
+    frame: &mut FrameBuffer,
+    x: i32,
+    y: i32,
+    width: i32,
+    height: i32,
+    first: usize,
+    shown: usize,
+    total: usize,
+) {
+    let total = total.max(1);
+    let shown = shown.clamp(1, total);
+    let first = first.min(total - shown);
+    let share = |items: usize| {
+        let items = i32::try_from(items).unwrap_or(i32::MAX);
+        let total = i32::try_from(total).unwrap_or(i32::MAX);
+        items.saturating_mul(height) / total
+    };
+    scroll_track(frame, x, y, width, height);
+    let top = y + share(first);
+    let bottom = y + share(first + shown);
     fill_rect(frame, x, top, width, bottom - top, Ink::Lit);
 }
 
