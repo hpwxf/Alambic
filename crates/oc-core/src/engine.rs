@@ -13,7 +13,7 @@
 //! ticks after the drawing, and the next frame waits for the last page
 //! (journal/D-023, option C+; `docs/agents/firmware.md`, "The screen").
 
-use crate::apps::sound::{Params, Setup, Voice};
+use crate::apps::sound::Params;
 use crate::apps::{App, AppHost, AppId};
 use crate::apps::{InputSnapshot, TickContext};
 use crate::buttons::{ButtonEvents, ButtonReader};
@@ -46,8 +46,8 @@ const MAX_REPORTED_DURATION_MICROS: u32 = 1_000_000;
 /// spend its 1 kHz budget on the signal path instead.
 pub const DEFAULT_RENDER_INTERVAL: u32 = 1;
 
-/// Ticks a second on every backend, the rate of the engine's own
-/// [`Voice`]: a tone it renders is sampled once a tick.
+/// Ticks a second on every backend; the rate of a voice played once a tick,
+/// as the simulator's is.
 pub const TICK_RATE_HZ: u32 = 1_000;
 
 /// Outcome of one tick.
@@ -61,7 +61,9 @@ pub struct TickReport {
     pub duration_micros: u32,
     /// Number of ticks executed since the engine was created.
     pub tick_count: u64,
-    /// Levels written to the CV outputs during this tick.
+    /// Levels the CV outputs carried when this tick started, as the backend
+    /// played them ([`Engine::write_outputs`], [`Engine::set_played`]): one
+    /// tick behind [`Engine::params`] (journal/D-040).
     pub cv_out: [MilliVolts; CV_CHANNELS],
     /// Whether the screen was redrawn during this tick. A one-page display
     /// was also sent the frame; a paged one gets it over the next ticks.
@@ -126,8 +128,8 @@ pub struct Engine<A, O, D, C, K, S> {
     params: Params,
     /// Moves on whenever [`Self::params`] changes.
     params_revision: u32,
-    /// Renders [`Self::params`] once a tick, for the outputs it writes.
-    voice: Voice,
+    /// What the outputs last played, as the backend reported it.
+    played: [MilliVolts; CV_CHANNELS],
     screen: Screen,
     tick_count: u64,
     previous_micros: Option<u64>,
@@ -181,7 +183,7 @@ where
             forced_outputs: [None; CV_CHANNELS],
             params: Params::REST,
             params_revision: 0,
-            voice: Voice::new(TICK_RATE_HZ),
+            played: [0; CV_CHANNELS],
             screen: Screen::Splash,
             tick_count: 0,
             previous_micros: None,
@@ -264,12 +266,9 @@ where
             snapshot.silence_controls();
         }
         let mark = self.clock.fine_count();
-        let outputs = self.render_params(&snapshot);
+        self.update_params(&snapshot);
         self.record_since(Stage::Update, mark);
-
-        let mark = self.clock.fine_count();
-        self.write_outputs(&outputs);
-        self.record_since(Stage::Outputs, mark);
+        let outputs = self.played;
 
         // A tick either draws the screen or sends one page of it, never both:
         // drawing and a whole frame together outlast a period (journal/D-023,
@@ -324,9 +323,9 @@ where
         }
     }
 
-    /// What the outputs carry on this tick, from the screen in charge, then
-    /// the levels a probe holds; renders it once through the engine's voice.
-    fn render_params(&mut self, snapshot: &InputSnapshot) -> [MilliVolts; CV_CHANNELS] {
+    /// What the outputs carry from this tick on, from the screen in charge,
+    /// then the levels a probe holds.
+    fn update_params(&mut self, snapshot: &InputSnapshot) {
         let mut params = match self.screen {
             Screen::System => Params::REST,
             Screen::Calibration => Params::levels([self.wizard.output_level(); CV_CHANNELS]),
@@ -341,10 +340,7 @@ where
                 }
             }
         }
-        if self.replace_params(params) {
-            self.voice.apply(&Setup::new(&params, TICK_RATE_HZ));
-        }
-        self.voice.next_sample()
+        self.replace_params(params);
     }
 
     /// Runs one tick of the boot animation.
@@ -358,9 +354,8 @@ where
         self.boot_buttons = self.buttons.update(&controls);
         self.splash.advance(elapsed);
 
-        let outputs = [0; CV_CHANNELS];
+        let outputs = self.played;
         self.replace_params(Params::REST);
-        self.write_outputs(&outputs);
 
         let mark = self.clock.fine_count();
         self.splash.render(self.display.frame_mut());
@@ -406,7 +401,8 @@ where
         self.previous_fine = None;
         self.forced_outputs = [None; CV_CHANNELS];
         self.replace_params(Params::REST);
-        self.voice = Voice::new(TICK_RATE_HZ);
+        // The backend's voice restarts at rest too (`testing::MockEngine`).
+        self.played = [0; CV_CHANNELS];
         self.last_duration_micros = 0;
         self.ticks_since_render = 0;
         self.next_page = None;
@@ -436,9 +432,9 @@ where
     }
 
     /// What the outputs carry since the last tick, levels held by the probe
-    /// included: what a backend's own [`Voice`] renders at its audio rate
-    /// (journal/D-033). The engine renders it once a tick for the outputs it
-    /// writes itself.
+    /// included: what a backend's voice renders at its own rate
+    /// ([`crate::audio::Player`], journal/D-033, D-040). The engine renders
+    /// none.
     #[must_use]
     pub const fn params(&self) -> &Params {
         &self.params
@@ -452,14 +448,19 @@ where
         self.params_revision
     }
 
-    /// Makes `params` what the outputs carry; whether they changed.
-    fn replace_params(&mut self, params: Params) -> bool {
-        let changed = params != self.params;
-        if changed {
+    /// The levels the outputs carry, as a backend that plays them itself
+    /// played them, for the next tick to report: Rack, or the module's audio
+    /// interrupt, which write no output of the engine (journal/D-040).
+    pub const fn set_played(&mut self, levels: [MilliVolts; CV_CHANNELS]) {
+        self.played = levels;
+    }
+
+    /// Makes `params` what the outputs carry.
+    fn replace_params(&mut self, params: Params) {
+        if params != self.params {
             self.params = params;
             self.params_revision = self.params_revision.wrapping_add(1);
         }
-        changed
     }
 
     /// The levels held by [`Self::force_output`].
@@ -685,14 +686,20 @@ where
         snapshot
     }
 
-    /// Converts and stages one level per output, then moves them together.
-    fn write_outputs(&mut self, levels: &[MilliVolts; CV_CHANNELS]) {
+    /// Writes `levels` on the outputs the engine was given, converted by its
+    /// calibration and moved together, and keeps them for the next tick to
+    /// report ([`Self::set_played`]): for a backend that plays its voice
+    /// into the engine's outputs, the simulator once a tick (journal/D-040).
+    pub fn write_outputs(&mut self, levels: &[MilliVolts; CV_CHANNELS]) {
+        let mark = self.clock.fine_count();
         for channel in crate::platform::CvChannel::ALL {
             let index = channel.index();
             let code = self.settings.calibration.outputs[index].to_code(levels[index]);
             self.analog_out.write_code(channel, code);
         }
         self.analog_out.flush();
+        self.played = *levels;
+        self.record_since(Stage::Outputs, mark);
     }
 
     /// The calibration currently converting every input and output.
@@ -880,11 +887,12 @@ fn clamp_duration(raw: u64) -> u32 {
 
 #[cfg(test)]
 mod tests {
-    use super::{MAX_REPORTED_DURATION_MICROS, clamp_duration};
+    use super::{MAX_REPORTED_DURATION_MICROS, TICK_RATE_HZ, clamp_duration};
     use crate::apps::diagnostic::{DiagnosticApp, OutputMode};
+    use crate::apps::sound::Player;
     use crate::platform::{CV_CHANNELS, CvChannel};
     use crate::splash;
-    use crate::testing::{adc_reading, mock_engine_at_boot};
+    use crate::testing::{adc_reading, bare_mock_engine_at_boot, mock_engine_at_boot};
 
     #[test]
     fn durations_are_clamped_to_something_believable() {
@@ -1093,5 +1101,24 @@ mod tests {
         engine.parts_mut().0.patch(CvChannel::Two, -800);
         engine.tick();
         assert_ne!(engine.params_revision(), first, "a new level is new params");
+    }
+
+    #[test]
+    fn the_engine_reports_what_the_outputs_played() {
+        let mut engine = bare_mock_engine_at_boot(0);
+        engine.skip_splash();
+        engine.parts_mut().0.patch(CvChannel::Two, 1_500);
+        assert_eq!(engine.tick().cv_out, [0; CV_CHANNELS], "nothing played yet");
+        assert_eq!(engine.parts_mut().1.flushes, 0, "the tick writes no output");
+
+        let mut player = Player::new(TICK_RATE_HZ);
+        let levels = player.play(engine.params_revision(), engine.params());
+        assert_eq!(levels[1], adc_reading(1_500), "one sample of the params");
+        engine.write_outputs(&levels);
+        assert_eq!(engine.parts_mut().1.level(CvChannel::Two), levels[1]);
+        assert_eq!(engine.tick().cv_out, levels, "reported on the next tick");
+
+        engine.set_played([1, 2, 3, 4]);
+        assert_eq!(engine.tick().cv_out, [1, 2, 3, 4], "or what a backend gave");
     }
 }

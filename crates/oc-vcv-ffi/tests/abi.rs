@@ -128,6 +128,8 @@ fn two_engines_are_independent() {
         oc_engine_set_cv_in(first, 1, 4_000);
         oc_engine_tick(first, u64::from(DURATION_MICROS) * 2);
         oc_engine_tick(second, u64::from(DURATION_MICROS) * 2);
+        oc_engine_audio(first, 48_000);
+        oc_engine_audio(second, 48_000);
 
         // The level crosses the modelled 12-bit ADC on the way.
         assert_eq!(oc_engine_cv_out(first, 1), adc_reading(4_000));
@@ -185,7 +187,7 @@ fn settings_round_trip_through_the_patch_bytes() {
     }
 }
 
-/// A held level reads back from the audio call as the tick wrote it, at any
+/// A held level reads back from the audio call as the tick set it, at any
 /// rate, a zero one included.
 #[test]
 fn the_audio_call_keeps_held_levels() {
@@ -195,9 +197,11 @@ fn the_audio_call_keeps_held_levels() {
     unsafe {
         oc_engine_set_cv_in(engine, 0, 2_000);
         oc_engine_tick(engine, 1_000_000);
+        oc_engine_audio(engine, 48_000);
         let ticked: Vec<i32> = (0..4)
             .map(|channel| oc_engine_cv_out(engine, channel))
             .collect();
+        assert_eq!(ticked[1], adc_reading(0), "the tick's levels are played");
         for rate in [44_100, 96_000, 0] {
             oc_engine_audio(engine, rate);
             let sampled: Vec<i32> = (0..4)

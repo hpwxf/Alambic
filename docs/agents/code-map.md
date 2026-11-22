@@ -8,7 +8,7 @@ rationale behind each crate is in the journal entry cited.
 
 | Crate | Role |
 |---|---|
-| `crates/oc-core` | **All** behaviour: platform traits, `Engine::tick`, the applets and the app menu, the output parameters and the voice (`audio`), CV modulation of a parameter and its submenu (`modulation`), graphics (`gfx`, `text`), buttons and the chord, calibration, settings, framebuffer, profiling. Knows nothing about registers or an OS. |
+| `crates/oc-core` | **All** behaviour: platform traits, `Engine::tick`, the applets and the app menu, the output parameters and the voice (`audio`; backends play it through `audio::Player`, `audio::Follower`), CV modulation of a parameter and its submenu (`modulation`), graphics (`gfx`, `text`), buttons and the chord, calibration, settings, framebuffer, profiling. Knows nothing about registers or an OS. |
 | `crates/oc-drivers` | Peripheral protocols (DAC8565, SH1106 / SSD1306 / SSD1309, triggers, shared SPI bus) over `embedded-hal` 1.0 only, tested against recording mock buses. |
 | `crates/oc-firmware` | Pure wiring: `teensy4-bsp` / `imxrt-hal` resources into the `oc-core` traits, the 1 kHz loop, the audio path. The one crate that cannot be tested on the host. |
 | `crates/oc-protocol` | Probe messages (`Request`, `Reply`), `postcard` + COBS framing, `FrameReader`, and the module's side (`server`) (journal/D-029). |

@@ -58,6 +58,16 @@ Architectural decisions behind each change are in `journal/` (French).
   (`Engine::params_revision`), so the firmware compares a revision rather
   than the whole parameters every tick, and the supersaw's preparation
   divides 64 bits by 32 with the core's divider (`oc_core::fixed::div_wide`).
+- The engine renders no voice of its own (journal/D-040): each backend
+  plays its outputs at its own rate, through an `oc_core::audio::Player`
+  (once a tick in the simulator, which writes it with
+  `Engine::write_outputs`; once a sample in Rack) or the module's audio
+  interrupt, and reports what played (`Engine::set_played`); an
+  `oc_core::audio::Follower` decides, for all of them and the firmware's
+  `audio::Publisher`, when new parameters need preparing. Parameters that change no longer get prepared
+  twice a tick, on the module and in Rack; what the engine shows of the
+  outputs (`DIAGNOSTIC`, the probe's stream) is what they played, one tick
+  behind, and on the module the interrupt's real samples.
 - The outputs are rendered by generators (journal/D-044): `oc_core::audio`
   holds the mechanism and names no applet; `SUPERSAW`'s bank moves into the
   applet (`oc_core::apps::supersaw::bank`), and the types backends use come

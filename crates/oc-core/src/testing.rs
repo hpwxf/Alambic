@@ -15,8 +15,9 @@ use embedded_storage_async::nor_flash::{
     ErrorType, NorFlash, NorFlashError, NorFlashErrorKind, ReadNorFlash,
 };
 
+use crate::apps::sound::Player;
 use crate::calibration::{CvInputCalibration, CvOutputCalibration};
-use crate::engine::{Engine, TickReport};
+use crate::engine::{Engine, TICK_RATE_HZ, TickReport};
 use crate::framebuffer::FrameBuffer;
 use crate::platform::{
     AnalogIn, AnalogOut, CV_CHANNELS, Clock, ControlEvents, Controls, CvChannel, DigitalIn,
@@ -326,20 +327,22 @@ impl Display for MockDisplay {
     }
 }
 
-/// An [`Engine`] wired to the mock platform, bare: what a backend wraps, as
-/// the simulator does.
+/// An [`Engine`] wired to the mock platform, with no voice: what a backend
+/// that plays the outputs itself wraps, as the simulator does.
 pub type BareMockEngine =
     Engine<MockAnalogIn, MockAnalogOut, MockDigitalIn, MockControls, VirtualClock, MockDisplay>;
 
-/// An [`Engine`] wired to the mock platform, whose outputs tests read from
-/// [`Self::outputs`] rather than from the tick's report.
+/// An [`Engine`] wired to the mock platform whose outputs play once a tick,
+/// as the simulator plays them: the engine renders no voice (journal/D-040).
 ///
 /// It is the engine for every other purpose: it dereferences to it. Its own
-/// [`Self::tick`] and [`Self::reset`] stand in front of the engine's: a test
-/// that reached the engine's own tick would see outputs that never move.
+/// [`Self::tick`] and [`Self::reset`] stand in front of the engine's, and
+/// what the jacks carry reads from [`Self::outputs`]: a test that reached
+/// the engine's own tick would see outputs that never move.
 #[derive(Debug)]
 pub struct MockEngine {
     engine: BareMockEngine,
+    player: Player,
     outputs: [MilliVolts; CV_CHANNELS],
 }
 
@@ -349,14 +352,20 @@ impl MockEngine {
     pub fn new(engine: BareMockEngine) -> Self {
         Self {
             engine,
+            player: Player::new(TICK_RATE_HZ),
             outputs: [0; CV_CHANNELS],
         }
     }
 
-    /// Runs one tick; the engine's report.
+    /// Runs one tick, then plays one sample of the outputs and writes it
+    /// ([`Engine::write_outputs`]), as the simulator does; the engine's
+    /// report, whose [`TickReport::cv_out`] is what played before the tick.
     pub fn tick(&mut self) -> TickReport {
         let report = self.engine.tick();
-        self.outputs = report.cv_out;
+        self.outputs = self
+            .player
+            .play(self.engine.params_revision(), self.engine.params());
+        self.engine.write_outputs(&self.outputs);
         report
     }
 
@@ -367,9 +376,11 @@ impl MockEngine {
         self.outputs
     }
 
-    /// Restarts the engine ([`Engine::reset`]).
+    /// Restarts the engine ([`Engine::reset`]) and its voice, as Rack does
+    /// on its own reset.
     pub fn reset(&mut self) {
         self.engine.reset();
+        self.player = Player::new(TICK_RATE_HZ);
         self.outputs = [0; CV_CHANNELS];
     }
 }
@@ -412,7 +423,8 @@ pub fn mock_engine_at_boot(clock_read_cost_micros: u64) -> MockEngine {
     MockEngine::new(bare_mock_engine_at_boot(clock_read_cost_micros))
 }
 
-/// [`mock_engine_at_boot`] bare, for a backend that wraps it.
+/// [`mock_engine_at_boot`] without its voice, for a backend that plays the
+/// outputs itself ([`Engine::write_outputs`]).
 #[must_use]
 pub fn bare_mock_engine_at_boot(clock_read_cost_micros: u64) -> BareMockEngine {
     Engine::new(

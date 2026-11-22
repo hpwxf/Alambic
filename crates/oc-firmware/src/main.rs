@@ -368,6 +368,9 @@ fn main() -> ! {
             panel.sample();
         }
         record_since(&mut engine, Stage::Sample, mark);
+        // The interrupt plays the outputs; the engine renders no voice and
+        // reports what it played (journal/D-040).
+        engine.set_played(audio::played());
         let report = engine.tick();
         let mark = engine.clock().fine_count();
         publisher.publish(

@@ -488,7 +488,7 @@ With the module running and the USB cable on the Teensy (journal/D-029):
 1. `cargo probe info` prints the port it found and `oc-firmware X.Y.Z (build)`,
    the same as the splash screen.
 2. `cargo probe stats --fresh 5` prints, after five seconds, one row per stage
-   (the loop's `tick`, `acquire`, `update`, `outputs`, `render`, `present`,
+   (the loop's `tick`, `acquire`, `update`, `render`, `present`,
    `page`, `sample`, `publish`, `usb`; the audio interrupt's `audio`, `voice`,
    `voice_params`, `audio_period`, `frame`) and the period, then the jitter
    histogram. The module's display takes a frame at once: one `page` per
@@ -707,8 +707,8 @@ The DAC's chip select is the SPI controller's own (PCS0) and the DAC runs at
    four outputs, and `cargo probe out` at −3, 0 and +5 V with a multimeter.
    A shift or a jump means the DAC took bytes meant for the OLED.
 3. Open `SCOPE` (it copies `CV1` to all four outputs) with an LFO on `CV1`,
-   then `cargo probe stats`: the `outputs` stage writes four words at
-   22 MHz; record this module's value.
+   then `cargo probe stats`: the `audio` stage waits for the DAC's burst
+   of four words at 22 MHz; record this module's value.
 
 Keep the default if all three pass; otherwise note which failed and keep
 `oled-spi-8mhz`.
@@ -795,8 +795,8 @@ Results on the TLM module: `docs/plan/avancement/etape-8.md`.
    noise into `CV1` on `NOTE` (`ADD`), so the parameters change every tick.
    Read `voice` (one sample) and `voice_params` (taking new parameters,
    case C), not `audio`: the interrupt spins until the DAC's burst echoes,
-   so `audio` measures the burst and hides the computation; and `update`
-   with `publish` for the preparation (journal/D-040). Compare a page of
+   so `audio` measures the burst and hides the computation; and `publish`
+   for the preparation (journal/D-040). Compare a page of
    the applet with the same page: `render` depends on it.
 2. By ear, from C1 to C8, `SHAPE` and `WIDTH` across their course: no
    zipper noise on a moving CV, no pitch drift at low notes.

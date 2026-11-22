@@ -6,9 +6,11 @@
 //! that renders one sample of every output from a prepared [`Setup`]. A
 //! [`Voice`] renders them at its own rate, keeping the generator's state
 //! (phases, filters) across changes so a new note or level does not click.
-//! The engine runs one voice at the tick rate; a backend with an audio
-//! context runs its own at that context's rate, from
-//! [`Engine::params`](crate::engine::Engine::params).
+//! The engine renders none: every backend plays [`Engine::params`] at its
+//! own rate, through a [`Player`] or, on the module, its audio interrupt's
+//! voice, and a [`Follower`] tells either when they changed (journal/D-040).
+//!
+//! [`Engine::params`]: crate::engine::Engine::params
 //!
 //! This module holds the mechanism only, and names no applet: the trait,
 //! the voice, [`Params`] with the outputs a probe holds over the sound, and

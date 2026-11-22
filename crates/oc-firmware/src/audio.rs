@@ -21,9 +21,9 @@
 //!
 //! # The loop's side
 //!
-//! The engine keeps its output and display traits: [`MutedOutputs`] drops
-//! its codes, [`MailboxDisplay`] hands its frames over; after each tick the
-//! loop's [`Publisher`] hands on [`oc_core::Engine::params`] when its
+//! The engine keeps its output and display traits: [`MutedOutputs`] stands
+//! for outputs it never writes, [`MailboxDisplay`] hands its frames over;
+//! after each tick the loop's [`Publisher`] hands on [`oc_core::Engine::params`] when its
 //! revision moved, and prepares the voice's [`Setup`] there, outside any critical section: the
 //! interrupt only copies it (journal/D-040). Everything the
 //! contexts share sits in [`critical_section::Mutex`]es: the loop's sections
@@ -48,7 +48,7 @@ use oc_core::apps::sound::{Params, Setup, Voice};
 use oc_core::audio::Follower;
 use oc_core::calibration::CvOutputCalibration;
 use oc_core::framebuffer::{FrameBuffer, LEN};
-use oc_core::platform::{AnalogOut, CV_CHANNELS, CvChannel, Display};
+use oc_core::platform::{AnalogOut, CV_CHANNELS, CvChannel, Display, MilliVolts};
 use oc_core::profile::{Stage, Stat};
 use oc_drivers::dac8565::channel_word;
 use oc_drivers::fifo;
@@ -74,6 +74,9 @@ struct Mailbox {
     /// Set when `setup` or `calibration` changed since the interrupt took
     /// them.
     fresh: bool,
+    /// The levels of the last sample the interrupt computed, for the engine
+    /// to report (`oc_core::Engine::set_played`).
+    played: [MilliVolts; CV_CHANNELS],
     frame: [u8; LEN],
     /// Set when `frame` holds a frame the interrupt has not taken.
     frame_ready: bool,
@@ -116,6 +119,7 @@ static MAILBOX: Mutex<RefCell<Mailbox>> = Mutex::new(RefCell::new(Mailbox {
     setup: Setup::rest(board::AUDIO_RATE_HZ),
     calibration: [CvOutputCalibration::FACTORY; CV_CHANNELS],
     fresh: false,
+    played: [0; CV_CHANNELS],
     frame: [0; LEN],
     frame_ready: false,
     contrast: None,
@@ -420,8 +424,15 @@ fn hand_over(setup: Option<&Setup>, calibration: &[CvOutputCalibration; CV_CHANN
     });
 }
 
-/// Restarts the DMA paused by [`rest_outputs`], where it stopped in the
-/// ring.
+/// The levels of the last sample the interrupt computed: what the outputs
+/// carry, for the engine to report instead of rendering them a second time
+/// (journal/D-040).
+pub(crate) fn played() -> [MilliVolts; CV_CHANNELS] {
+    critical_section::with(|cs| MAILBOX.borrow_ref(cs).played)
+}
+
+/// Restarts the DMA paused by [`Publisher::rest_outputs`], where it stopped
+/// in the ring.
 pub(crate) fn resume_outputs() {
     critical_section::with(|cs| {
         if let Some(state) = STATE.borrow_ref_mut(cs).as_mut() {
@@ -524,6 +535,7 @@ impl AudioState {
         mail.stats
             .voice
             .record(DWT::cycle_count().wrapping_sub(start));
+        mail.played = samples;
         let mut codes = [0; CV_CHANNELS];
         for channel in CvChannel::ALL {
             let index = channel.index();
@@ -658,9 +670,9 @@ fn settle(pin: &Output, high: bool) {
     }
 }
 
-/// The engine's outputs on the module: the audio interrupt writes the DAC
-/// from [`Publisher::publish`], so the codes the engine computes once a tick are
-/// dropped.
+/// The engine's outputs on the module, never written: the audio interrupt
+/// writes the DAC from [`Publisher::publish`], and the loop never calls
+/// [`oc_core::Engine::write_outputs`] (journal/D-040).
 #[derive(Debug)]
 pub(crate) struct MutedOutputs;
 

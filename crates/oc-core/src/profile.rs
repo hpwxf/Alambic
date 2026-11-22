@@ -27,7 +27,8 @@ pub enum Stage {
     Acquire,
     /// The applet, the wizard or the menu deciding the outputs.
     Update,
-    /// Converting and writing the outputs.
+    /// Converting and writing the outputs ([`crate::Engine::write_outputs`]);
+    /// absent on the module and in Rack, which play them themselves.
     Outputs,
     /// Drawing the frame, on the ticks that redraw.
     Render,

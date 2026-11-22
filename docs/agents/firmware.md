@@ -50,9 +50,13 @@ it already, this file only points to it.
   of `crates/oc-firmware/src/audio.rs`; DMA, ring and handlers:
   `audio_irq.rs`.
 * The two share mailboxes behind `critical_section::Mutex`, short copies
-  only. The engine's own outputs are muted on the module
-  (`audio::MutedOutputs`); elsewhere the engine's voice runs at the tick rate,
-  and Rack runs another at its sample rate (`oc_engine_audio`).
+  only. The engine renders no voice (journal/D-040): on the module the
+  interrupt plays and the loop reports what it played
+  (`Engine::set_played`), the engine's outputs (`audio::MutedOutputs`)
+  never written; the simulator plays an `oc_core::audio::Player` once a
+  tick and writes it (`Engine::write_outputs`), Rack once a sample
+  (`oc_engine_audio`). The firmware's `audio::Publisher` and the
+  `Player` decide when to prepare through one `oc_core::audio::Follower`.
 
 ## The screen
 
@@ -132,9 +136,8 @@ for any block that runs per sample in the audio interrupt.
   hardware, fine in a `Setup`, never per sample (D-040).
 * **Everything the parameters decide goes in `Generator::setup`**, run in
   the loop when they change (D-040): reciprocals, coefficients, gains. Under
-  a moving CV it runs every tick, twice (the engine's voice and
-  `audio::Publisher`), so its cost shows in `update` and `publish`, not in
-  `voice`.
+  a moving CV it runs every tick, in `audio::Publisher`, so its cost shows
+  in `publish`, not in `voice`.
 * **`core` has no `sqrt`, `round` or `floor`.** Prepare roots in integers
   (`isqrt`) in the `Setup`; round by hand. An `as` conversion from `f32` to
   an integer saturates (and maps NaN to zero), as the core's `vcvt` does.

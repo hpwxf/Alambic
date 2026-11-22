@@ -410,7 +410,10 @@ fn the_screen_shows_a_forced_output_as_the_jack_carries_it() {
     let mut free = mock_engine(0);
     let mut forced = mock_engine(0);
     forced.force_output(CvChannel::One, Some(1_000));
+    // The screen shows what the outputs played on the tick before
+    // (journal/D-040): two ticks, the level then its picture.
     for engine in [&mut free, &mut forced] {
+        engine.tick();
         engine.tick();
     }
     let free_frame = free.parts_mut().4.frame_mut().clone();
@@ -420,6 +423,7 @@ fn the_screen_shows_a_forced_output_as_the_jack_carries_it() {
     // Released, the two screens agree again.
     forced.force_output(CvChannel::One, None);
     for engine in [&mut free, &mut forced] {
+        engine.tick();
         engine.tick();
     }
     assert_eq!(

@@ -64,9 +64,9 @@ type HostEngine =
 ///
 /// Its layout is not part of the ABI; C++ only ever holds a pointer to it,
 /// obtained from [`oc_engine_new`] and released through [`oc_engine_free`].
-/// The last tick's CV outputs and framebuffer are cached here so the getter
-/// functions can take a `const` pointer instead of needing to re-borrow the
-/// engine mutably.
+/// The last CV outputs played and the last tick's framebuffer are cached
+/// here so the getter functions can take a `const` pointer instead of
+/// needing to re-borrow the engine mutably.
 #[derive(Debug)]
 pub struct OcEngine {
     engine: HostEngine,
@@ -80,8 +80,8 @@ pub struct OcEngine {
     /// capture does (journal/D-019).
     trigger_seen: [bool; TRIGGER_CHANNELS],
     /// Plays the engine's output parameters at Rack's sample rate, prepared
-    /// again only when they change (journal/D-033, D-040):
-    /// [`oc_engine_audio`].
+    /// again only when they change; the engine renders none (journal/D-033,
+    /// D-040): [`oc_engine_audio`].
     player: Player,
 }
 
@@ -304,9 +304,9 @@ pub unsafe extern "C" fn oc_engine_reset(engine: *mut OcEngine) {
     }));
 }
 
-/// Runs one complete tick at the given timestamp and caches its CV outputs
-/// and rendered framebuffer for [`oc_engine_cv_out`] and
-/// [`oc_engine_framebuffer`].
+/// Runs one complete tick at the given timestamp and caches its rendered
+/// framebuffer for [`oc_engine_framebuffer`]. It plays no output:
+/// [`oc_engine_audio`] does, at Rack's rate (journal/D-040).
 ///
 /// `now_micros` must be monotonically non-decreasing across calls for a
 /// given engine (wrapping is tolerated, see [`oc_core::platform::Clock`]);
@@ -327,7 +327,7 @@ pub unsafe extern "C" fn oc_engine_tick(engine: *mut OcEngine, now_micros: u64) 
             return;
         };
         engine.engine.clock().set(now_micros);
-        let report = engine.engine.tick();
+        engine.engine.tick();
         // Rack has no flash: the settings in force go out with the patch the
         // next time Rack saves it (`oc_engine_settings_save` from
         // `dataToJson`), so a SAVE on the settings screen needs nothing more.
@@ -336,7 +336,6 @@ pub unsafe extern "C" fn oc_engine_tick(engine: *mut OcEngine, now_micros: u64) 
                 .engine
                 .report_save(oc_core::toast::SaveOutcome::WithDocument);
         }
-        engine.cv_out = report.cv_out;
         engine.framebuffer = *engine.engine.frame().as_bytes();
         // The next tick starts from the level as it stands.
         engine.trigger_seen = engine.trigger_levels;
@@ -347,13 +346,13 @@ pub unsafe extern "C" fn oc_engine_tick(engine: *mut OcEngine, now_micros: u64) 
     }));
 }
 
-/// Renders one sample of every output at `sample_rate_hz` from the
+/// Plays one sample of every output at `sample_rate_hz` from the
 /// parameters of the most recent [`oc_engine_tick`], and caches it for
-/// [`oc_engine_cv_out`] (journal/D-033).
+/// [`oc_engine_cv_out`] (journal/D-033, D-040).
 ///
 /// The plugin calls it once per `process()`, after its ticks: a tone then
 /// plays at Rack's sample rate, while a held level reads back as the tick
-/// wrote it. The voice is prepared again only when the parameters change.
+/// set it. The voice is prepared again only when the parameters change.
 /// A tone keeps its phase across ticks and rate changes. A rate of zero is
 /// taken as one.
 ///
@@ -372,14 +371,15 @@ pub unsafe extern "C" fn oc_engine_audio(engine: *mut OcEngine, sample_rate_hz: 
         if engine.player.rate_hz() != sample_rate_hz.max(1) {
             engine.player.set_rate(sample_rate_hz);
         }
+        // Rack reads millivolts: the engine's outputs need no codes.
         engine.cv_out = engine
             .player
             .play(engine.engine.params_revision(), engine.engine.params());
+        engine.engine.set_played(engine.cv_out);
     }));
 }
 
-/// Reads the CV output level written by the most recent [`oc_engine_tick`]
-/// or [`oc_engine_audio`].
+/// Reads the CV output level played by the most recent [`oc_engine_audio`].
 ///
 /// A null `engine` or a channel index outside `0..4` returns `0`, the same
 /// level a freshly created, never-ticked engine reports.
@@ -596,10 +596,11 @@ pub fn core_banner() -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::{
-        OcEngine, as_mut, oc_engine_button, oc_engine_buttons, oc_engine_cv_channels,
-        oc_engine_cv_out, oc_engine_encoder, oc_engine_encoders, oc_engine_framebuffer,
-        oc_engine_framebuffer_len, oc_engine_free, oc_engine_new, oc_engine_reset,
-        oc_engine_set_cv_in, oc_engine_set_trigger, oc_engine_tick, oc_engine_trigger_channels,
+        OcEngine, as_mut, oc_engine_audio, oc_engine_button, oc_engine_buttons,
+        oc_engine_cv_channels, oc_engine_cv_out, oc_engine_encoder, oc_engine_encoders,
+        oc_engine_framebuffer, oc_engine_framebuffer_len, oc_engine_free, oc_engine_new,
+        oc_engine_reset, oc_engine_set_cv_in, oc_engine_set_trigger, oc_engine_tick,
+        oc_engine_trigger_channels,
     };
     use oc_core::apps::diagnostic::DiagnosticApp;
     use oc_core::framebuffer::LEN;
@@ -662,6 +663,7 @@ mod tests {
         unsafe {
             oc_engine_set_cv_in(engine, 1, 2_500);
             oc_engine_tick(engine, u64::from(DURATION_MICROS) * 2);
+            oc_engine_audio(engine, 48_000);
             assert_eq!(oc_engine_cv_out(engine, 1), 2_500);
             oc_engine_free(engine);
         }
@@ -675,6 +677,7 @@ mod tests {
         unsafe {
             oc_engine_set_cv_in(engine, 1, 2_500);
             oc_engine_tick(engine, u64::from(DURATION_MICROS) * 2);
+            oc_engine_audio(engine, 48_000);
             assert_eq!(
                 oc_engine_cv_out(engine, 1),
                 2_500,
@@ -689,6 +692,7 @@ mod tests {
             );
 
             oc_engine_tick(engine, u64::from(DURATION_MICROS) * 2 + 1_000);
+            oc_engine_audio(engine, 48_000);
             assert_eq!(
                 oc_engine_cv_out(engine, 1),
                 0,
