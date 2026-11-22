@@ -322,11 +322,10 @@ function drawParams() {
     const markCell = cell("", "status");
     if (appView.param_assignable(at)) {
       entry.mark = document.createElement("button");
-      entry.mark.className = "needs-probe";
-      entry.mark.textContent = appView.input_mark(at);
-      entry.mark.title = "its CV input";
+      entry.mark.className = "needs-probe input-mark";
       entry.mark.addEventListener("click", () => toggleInputPanel(at));
       markCell.append(entry.mark);
+      showMark(entry, at);
     }
     row.append(label, editCell, cell(appView.param_range(at), "status"), markCell, status);
     markActive(row, at);
@@ -344,6 +343,7 @@ function toggleInputPanel(at) {
   if (entry.panel) {
     entry.panel.row.remove();
     entry.panel = null;
+    showMark(entry, at);
     return;
   }
   const row = document.createElement("tr");
@@ -372,11 +372,27 @@ function toggleInputPanel(at) {
     line.append(label);
     editors.set(field, editor);
   }
+  status.textContent = "each change goes to the module at once; closing this keeps it";
   line.append(status);
   td.append(line);
   row.append(td);
   entry.row.after(row);
   entry.panel = { row, editors, status, sending: null };
+  showMark(entry, at);
+}
+
+/**
+ * The button that opens parameter `at`'s input panel: its input as the
+ * module's screen marks it (`+CV2`, `CV` while none), and an arrow that
+ * says whether the panel is open.
+ */
+function showMark(entry, at) {
+  const open = entry.panel !== null;
+  entry.mark.textContent = `${appView.input_mark(at)} ${open ? "\u25BE" : "\u25B8"}`;
+  entry.mark.setAttribute("aria-expanded", String(open));
+  entry.mark.title = open
+    ? "Close the CV input panel: what is set stays on the module"
+    : "Open the CV input panel: input, scale, shift, bounds, effect";
 }
 
 /** The field that edits one field of an input: a list or a text field. */
@@ -396,8 +412,9 @@ function inputEditor(field) {
 
 /** Shows parameter `at`'s input as the module holds it, mark and fields. */
 function showInput(at) {
-  const { mark, panel } = paramRows[at];
-  if (mark) mark.textContent = appView.input_mark(at);
+  const entry = paramRows[at];
+  const { mark, panel } = entry;
+  if (mark) showMark(entry, at);
   if (!panel) return;
   for (const [field, editor] of panel.editors) editor.value = appView.input_field_text(at, field);
 }
