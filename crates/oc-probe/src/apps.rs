@@ -1,15 +1,19 @@
 //! The applets as the host reads and writes them (journal/D-043): finding
 //! one and its parameters by name, a value as text, and text back into a
-//! value of the parameter's kind.
+//! value of the parameter's kind; a parameter's CV input the same way
+//! (journal/D-045).
 //!
 //! The text of a number is the module's own ([`write_number`]), so a value
 //! reads the same in `cargo probe`, in the simulator's status line and in
-//! the browser.
+//! the browser; an input's fields read as the module's submenu writes them
+//! ([`Assign::field`]).
 
 use std::fmt::Write as _;
 
 use oc_core::apps::param::{Unit, write_number};
-use oc_protocol::{ParamKind, ParamValue};
+use oc_core::modulation::AssignLine;
+use oc_core::platform::CvChannel;
+use oc_protocol::{Assign, Effect, ParamKind, ParamValue};
 
 use crate::client::{AppDescription, AppEntry, SpecEntry};
 
@@ -193,6 +197,80 @@ fn note_number(text: &str) -> Option<i32> {
     Some((octave + 1) * 12 + semitone + sharp)
 }
 
+/// `assign` as the submenu writes its fields, on one line: `CV2 x0.50
+/// +0.25V -1.0..+5.0 ADD`; `--` without an input.
+#[must_use]
+pub fn input_text(assign: &Assign) -> String {
+    if assign.input.is_none() {
+        return "--".to_owned();
+    }
+    let field = |line| assign.field(line);
+    format!(
+        "{} {} {} {}..{} {}",
+        field(AssignLine::Input).as_str(),
+        field(AssignLine::Scale).as_str(),
+        field(AssignLine::Shift).as_str(),
+        field(AssignLine::Min).as_str(),
+        field(AssignLine::Max).as_str(),
+        field(AssignLine::Effect).as_str(),
+    )
+}
+
+/// The fields of an input a host can set, by the name the submenu gives
+/// them.
+pub const INPUT_FIELDS: [&str; 6] = ["input", "scale", "shift", "min", "max", "effect"];
+
+/// `assign` with `field` (one of [`INPUT_FIELDS`]) read from `text`: the
+/// input `cv1` to `cv4` or `none`; the scale as a factor (`0.5`, `-1`); the
+/// shift and the bounds in volts (`-2.5`); the effect `set`, `add` or
+/// `mul`. Whether the module takes it is the module's to say.
+///
+/// # Errors
+///
+/// The field's name and what it takes, when `text` is not that.
+pub fn parse_input_field(mut assign: Assign, field: &str, text: &str) -> Result<Assign, String> {
+    let lower = text.to_ascii_lowercase();
+    let volts = || fixed(text, 3).ok_or_else(|| format!("{field}: volts, as -2.5"));
+    match field.to_ascii_lowercase().as_str() {
+        "input" => {
+            assign.input = match lower.trim_start_matches("cv") {
+                "none" | "--" | "" => None,
+                number => {
+                    let index = number.parse::<usize>().ok().and_then(|n| n.checked_sub(1));
+                    Some(
+                        index
+                            .and_then(|index| CvChannel::ALL.get(index).copied())
+                            .ok_or_else(|| format!("{field}: cv1 to cv4, or none"))?,
+                    )
+                }
+            };
+        }
+        "scale" => {
+            let factor = lower.trim_start_matches('x');
+            assign.scale_percent =
+                fixed(factor, 2).ok_or_else(|| format!("{field}: a factor, as 0.5 or -1"))?;
+        }
+        "shift" => assign.shift_mv = volts()?,
+        "min" => assign.min_mv = volts()?,
+        "max" => assign.max_mv = volts()?,
+        "effect" => {
+            assign.effect = match lower.as_str() {
+                "set" => Effect::Set,
+                "add" => Effect::Add,
+                "mul" => Effect::Mul,
+                _ => return Err(format!("{field}: set, add or mul")),
+            };
+        }
+        _ => {
+            return Err(format!(
+                "no field {field}; there are: {}",
+                INPUT_FIELDS.join(", ")
+            ));
+        }
+    }
+    Ok(assign)
+}
+
 /// The parameters whose value differs from `before` to `after`, but for
 /// `except` (the one just set), as `NAME value` with their new value: what
 /// a set moved besides itself (journal/D-043).
@@ -246,13 +324,17 @@ pub fn description_text(app: &AppEntry, description: &AppDescription) -> String 
             let value = spec
                 .value
                 .map_or_else(|| "--".to_owned(), |value| value_text(spec, value));
+            let input = match (spec.assignable, &spec.input) {
+                (true, Some(input)) => format!("  CV {}", input_text(&input.assign)),
+                (true, None) => "  (CV)".to_owned(),
+                (false, _) => String::new(),
+            };
             let _ = writeln!(
                 out,
-                "  {:>2} {:<width$}  {value:<12} {}{}{}",
+                "  {:>2} {:<width$}  {value:<12} {}{input}{}",
                 spec.index,
                 shown_name(spec),
                 range_text(spec),
-                if spec.assignable { "  (CV)" } else { "" },
                 if spec.active { "" } else { "  (inactive)" }
             );
         }
@@ -304,6 +386,7 @@ mod tests {
             assignable: false,
             active: true,
             value: None,
+            input: None,
         }
     }
 

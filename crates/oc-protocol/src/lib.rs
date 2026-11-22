@@ -17,7 +17,9 @@
 //! what each applet is set by, can be read for and can be asked to do, and
 //! [`Request::SetParam`] goes through the bounds a detent goes through.
 //! An applet is named by its index in the module's list, a parameter by its
-//! index in the applet's.
+//! index in the applet's. The CV input of an assignable parameter is read
+//! and set the same way, by the parameter's index ([`Request::GetAssign`],
+//! [`Request::SetAssign`], journal/D-045).
 //!
 //! The crate is `no_std` and allocation-free, so the firmware and the host
 //! tool share the exact same types; replies borrow their text and bytes from
@@ -37,11 +39,12 @@ use serde::{Deserialize, Serialize};
 
 use oc_core::apps::param::{Kind, ParamSpec, Unit};
 pub use oc_core::apps::param::{ParamValue, Refused};
+pub use oc_core::modulation::{Assign, Effect};
 use oc_core::platform::{CV_CHANNELS, MilliVolts};
 pub use oc_core::profile::Profile;
 
 /// Protocol version, raised on any change to a message's encoding.
-pub const VERSION: u16 = 7;
+pub const VERSION: u16 = 8;
 
 /// Longest frame either side sends or accepts, zero byte included. A
 /// screen page (128 bytes) and a profile (a few hundred) both fit with room
@@ -87,7 +90,8 @@ pub enum Request {
     ListApps,
     /// What applet `app` is set by, can be read for and can be asked to do:
     /// one [`Reply::Spec`] per parameter then per observable, a
-    /// [`Reply::ChoiceName`] after each choice for each of its names, one
+    /// [`Reply::ChoiceName`] after each choice for each of its names, a
+    /// [`Reply::Assign`] after each assignable parameter, one
     /// [`Reply::Action`] per action, then [`Reply::Done`].
     DescribeApp {
         /// The applet's index.
@@ -132,6 +136,25 @@ pub enum Request {
     SelectApp {
         /// The applet's index.
         app: u8,
+    },
+    /// The CV input parameter `param` of applet `app` takes:
+    /// [`Reply::Assign`].
+    GetAssign {
+        /// The applet's index.
+        app: u8,
+        /// The parameter's index.
+        param: u8,
+    },
+    /// Gives parameter `param` of applet `app` the CV input `assign`, within
+    /// the bounds the submenu stops at: [`Reply::Assign`] with what it
+    /// applied.
+    SetAssign {
+        /// The applet's index.
+        app: u8,
+        /// The parameter's index.
+        param: u8,
+        /// The input asked for.
+        assign: Assign,
     },
 }
 
@@ -286,6 +309,18 @@ pub enum Reply<'a> {
     /// An observable's value, `None` while unknown, answering
     /// [`Request::Observe`].
     Observed(Option<ParamValue>),
+    /// The CV input of an assignable parameter, answering
+    /// [`Request::GetAssign`] or [`Request::SetAssign`], or after the
+    /// parameter's [`Reply::Spec`] in a description.
+    Assign {
+        /// The parameter's index.
+        index: u8,
+        /// Its input.
+        assign: Assign,
+        /// The signal that sweeps the parameter end to end when it follows
+        /// its input, from which a host fits an input as `CENTER` does.
+        sweep: Option<(MilliVolts, MilliVolts)>,
+    },
     /// The request was carried out and has nothing else to say.
     Done,
     /// The request was refused.

@@ -222,7 +222,9 @@ impl Server {
             | Request::SetParam { .. }
             | Request::Observe { .. }
             | Request::Act { .. }
-            | Request::SelectApp { .. }) => match self.serve_app(request, engine) {
+            | Request::SelectApp { .. }
+            | Request::GetAssign { .. }
+            | Request::SetAssign { .. }) => match self.serve_app(request, engine) {
                 Some(reply) => reply,
                 None => return,
             },
@@ -297,6 +299,22 @@ impl Server {
                 }
                 None => Reply::Error(Error::NoSuchApp),
             },
+            Request::GetAssign { app, param } => match app_id(app) {
+                Some(id) => assign_reply(engine.apps().get(id), param)
+                    .unwrap_or(Reply::Error(Error::Refused(Refused::NoSuch))),
+                None => Reply::Error(Error::NoSuchApp),
+            },
+            Request::SetAssign { app, param, assign } => match app_id(app) {
+                Some(id) => {
+                    let app = engine.app_mut(id);
+                    match app.set_assign(usize::from(param), assign) {
+                        Ok(_) => assign_reply(app, param)
+                            .unwrap_or(Reply::Error(Error::Refused(Refused::NoSuch))),
+                        Err(refused) => Reply::Error(Error::Refused(refused)),
+                    }
+                }
+                None => Reply::Error(Error::NoSuchApp),
+            },
             _ => Reply::Error(Error::Unsupported),
         };
         Some(reply)
@@ -336,6 +354,9 @@ impl Server {
                 value: app.get(index),
             };
             self.send_spec(Group::Param, index, spec, shown);
+            if let Some(reply) = assign_reply(app, count(index)) {
+                self.send(&reply);
+            }
         }
         for (index, spec) in app.observables().iter().enumerate() {
             let shown = Shown {
@@ -422,6 +443,17 @@ struct Shown<'a> {
 }
 
 /// The applet at index `app` in the module's list.
+/// The [`Reply::Assign`] of parameter `param` of `app`, `None` for one
+/// that takes no input.
+fn assign_reply(app: &dyn App, param: u8) -> Option<Reply<'static>> {
+    let index = usize::from(param);
+    Some(Reply::Assign {
+        index: param,
+        assign: app.assign(index)?,
+        sweep: app.assign_sweep(index),
+    })
+}
+
 fn app_id(app: u8) -> Option<AppId> {
     AppId::from_index(usize::from(app))
 }

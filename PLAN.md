@@ -82,7 +82,7 @@ assignable, par le trait `App` ; l'état du sous-menu, recopié dans `TONE`, `RA
 |---|---|---|
 | **12a** — ADR et plan | D-045, plan de l'étape | ✅ |
 | **12b** — cœur | `modulation::slots` : `Modulations<N>` (assignations, CV, sous-menu ouvert) et `slot_of` ; `Assign::check` ; trait `assigns` / `assigns_mut` / `assign_sweep`, `assign` / `set_assign` sur `dyn App` (une copie, pas une par table : `.text` +2 940 → +696 o) ; `TONE`, `RATCHET`, `SUPERSAW` branchées, écrans de référence identiques ; `tests/params.rs` ; `.rodata` +240 o | ✅ |
-| **12c** — protocole v8 | `GetAssign`, `SetAssign`, `Reply::Assign`, assignations dans `DescribeApp` | à faire |
+| **12c** — protocole v8 | `GetAssign`, `SetAssign`, `Reply::Assign` (l'entrée et la plage qui balaie le paramètre), un `Reply::Assign` après le `Spec` de chaque paramètre assignable dans `DescribeApp` ; client : `InputEntry` attachée au `SpecEntry`, `get_assign`, `set_assign` ; `oc_probe::apps` : `input_text` (les champs du sous-menu, `Assign::field`), `parse_input_field` ; `oc-web` reçoit `Reply::Assign` ; tests serveur et client ; `.text` +6 336 o (le sérialiseur de `Reply` sort de `Server::send`, −2 432 o, en une fonction de 6 036 o ; `SetAssign` décodé dans `Usb::serve`, +1 458 o), `.rodata` +72 o : 167 Kio d'ITCM sur 192 | ✅ |
 | **12d** — client et CLI | `oc-probe assign`, `CENTER` côté hôte sur `Stream` | à faire |
 | **12e** — page web | un sous-panneau CV commun sous chaque réglage assignable | à faire |
 
@@ -126,7 +126,7 @@ Valeurs seules ; le raisonnement est dans `journal/`.
 | profil | release LTO fat, `overflow-checks = true` ; panique → journal USB + SOS | D-018 |
 | entrées | anti-rebond 3 échantillons (boutons), front sur 1 échantillon (triggers) ; activité CV par crête-à-crête (256 éch., 40 mV), aucune présence de câble sur aucun backend | D-019 |
 | démarrage | écran 1,5 s, sorties à 0 V, rendu à chaque tick | D-020 |
-| applets | `AppHost` (tous résidents), menu par accord haut + bas, haut / bas au relâchement ; `DIAGNOSTIC`, `SCOPE`, `GFX DEMO`, `RATCHET`, `TONE`, `SUPERSAW` ; trait `App` et registre (`&dyn App`), modèle de paramètres, d'observables et d'actions partagé par le panneau, la sonde (protocole v7) et le simulateur ; écran et navigation propres à chaque app | D-021, D-030, D-032, D-033, D-037, D-043 |
+| applets | `AppHost` (tous résidents), menu par accord haut + bas, haut / bas au relâchement ; `DIAGNOSTIC`, `SCOPE`, `GFX DEMO`, `RATCHET`, `TONE`, `SUPERSAW` ; trait `App` et registre (`&dyn App`), modèle de paramètres, d'observables et d'actions partagé par le panneau, la sonde (protocole v8, assignations des CV comprises, D-045) et le simulateur ; écran et navigation propres à chaque app | D-021, D-030, D-032, D-033, D-037, D-043 |
 | licence | `MIT OR Apache-2.0` (workspace) | D-022 |
 | présence d'entrée | déduite dans `oc-core` (activité récente + maintien) : CV 50 mV / 300 ms, trigger verrou ou horloge 2 s ; jamais fournie par un backend | D-024 |
 | identifiant de build | hash court + `-dirty` sous la version, écran de démarrage des trois backends ; version et hash dans le titre de `SETUP` ; calculé par `oc-buildinfo` (vergen-gix, sans binaire `git`), jamais dans `oc-core` | D-025 |

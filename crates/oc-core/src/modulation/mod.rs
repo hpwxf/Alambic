@@ -214,8 +214,10 @@ impl Assign {
     }
 
     /// The value of `line` as the submenu shows it: the input, the scale as
-    /// a factor (`x0.50`), the shift and the bounds in volts, the effect.
-    fn field(&self, line: AssignLine) -> TextBuf<16> {
+    /// a factor (`x0.50`), the shift and the bounds in volts, the effect; a
+    /// host writes it the same way.
+    #[must_use]
+    pub fn field(&self, line: AssignLine) -> TextBuf<16> {
         let mut out = TextBuf::<16>::new();
         let _ = match line {
             AssignLine::Input => match self.input {

@@ -6,7 +6,7 @@
 //! what `cargo probe` does.
 
 use oc_probe::apps::{edit_text, parse_value, value_text};
-use oc_probe::client::{AppDescription, AppEntry, SpecEntry};
+use oc_probe::client::{AppDescription, AppEntry, InputEntry, SpecEntry};
 use oc_protocol::{Group, ParamKind, ParamValue, Request};
 use wasm_bindgen::prelude::wasm_bindgen;
 
@@ -31,6 +31,8 @@ pub(crate) enum Applet {
     Value(ParamValue),
     /// An observable's value, `None` while unknown.
     Observed(Option<ParamValue>),
+    /// The CV input of the parameter at that index (journal/D-045).
+    Input(u8, InputEntry),
 }
 
 /// How the page edits a parameter.
@@ -156,6 +158,9 @@ impl AppView {
                 }
             }
             Some(Applet::Action(name)) => self.description.actions.push(name.clone()),
+            Some(Applet::Input(index, input)) => {
+                self.broken |= self.description.add_input(*index, *input).is_err();
+            }
             _ => {}
         }
         message.kind == MessageKind::Done
@@ -188,6 +193,12 @@ impl AppView {
                 list[at].value = fresh.value;
                 list[at].label.clone_from(&fresh.label);
                 list[at].active = fresh.active;
+            }
+        }
+        if let Some(Applet::Input(index, input)) = &message.applet {
+            let params = &mut self.description.params;
+            if let Some(spec) = params.iter_mut().find(|spec| spec.index == *index) {
+                spec.input = Some(*input);
             }
         }
         message.kind == MessageKind::Done
