@@ -74,7 +74,7 @@ par l'USB à travers la même interface. L'écran et la navigation restent propr
 
 ### Étape 12 — assignation des CV par la sonde (lots faits, reste l'essai sur le module)
 
-Demandée le 2026-11-22 (D-045, proposée) : la sonde lit et règle l'assignation des CV de chaque paramètre
+Demandée le 2026-11-22 (D-045, adoptée) : la sonde lit et règle l'assignation des CV de chaque paramètre
 assignable, par le trait `App` ; l'état du sous-menu, recopié dans `TONE`, `RATCHET` et `SUPERSAW`, sort dans
 `oc_core::modulation`. Plan : [etape-12-assignation-sonde.md](docs/plan/etape-12-assignation-sonde.md).
 
@@ -141,5 +141,6 @@ Valeurs seules ; le raisonnement est dans `journal/`.
 | publication | à chaque étiquette `v*` : release GitHub avec les images du firmware (ELF et HEX SH1106, HEX SSD1306 / SSD1309, SHA-256) ; page web sur GitHub Pages | D-034 |
 | chemin audio | **47 619 Hz** (PERCLK / 21 ; 48 kHz impossible, quartz de GPT2 muet) ; le canal 0 du PIT déclenche le DMA qui écrit les quatre voies du DAC à chaque période (instant fixé par le matériel) ; `DAC_CS` en PCS0 matériel, DAC à 22 MHz (plafond 25 MHz en 3,3 V) ; l'interruption de fin de copie du DMA calcule l'échantillon et cède des tronçons à l'OLED, celle de LPSPI4 relève son CS ; voix séparée du contrôle, préparée dans la boucle (`Setup`), copiée par l'interruption ; générateurs (`Generator`) composés dans `apps/sound.rs`, aiguillage statique, `audio` ne nomme aucune applet ; applet `TONE` | D-033, D-040, D-044 |
 | rendu audio | un échantillon par période, calculé dans l'interruption de fin de copie du DMA, deux emplacements d'avance (≈ 60 µs) ; pas de blocs tant que `voice` reste loin de la moitié de la période ; `Voice::next_sample` seule API de `oc-core` | D-042 |
+| assignation des CV | une entrée par paramètre assignable, nommée par l'index du paramètre (son rang parmi les `assignable`) ; état du sous-menu commun (`modulation::slots::Modulations`) ; trait `assigns` / `assigns_mut` / `assign_sweep`, `assign` / `set_assign` sur `dyn App` ; sonde : `GetAssign`, `SetAssign` (protocole 8), CLI `cargo probe assign`, `CENTER` côté hôte ; un seul sous-panneau web | D-045 |
 | applet Supersaw | sept scies PolyBLEP en `f32` (phases entières), désaccord et mix de Szabo, passe-haut sur la fondamentale ; banc dans l'app (générateur `SupersawBank`) partagé par les sorties : A / B mono ou stéréo, C sub-octave ; entrées assignables par `oc_core::modulation` sauf `STEREO`, CV1 en V/oct sur `NOTE` au démarrage ; ×4 non nécessaire (repliement mesuré) ; forme de la scie au carré (`SHAPE`) ; scies descendantes, `LEVEL` à 3 V au plus | D-037, D-044 |
 | budget mémoire | disposition de `teensy4-bsp` : code en ITCM, bancs 6 / 10 (192 + 320 Kio) ; coût d'une applet par différence de `xtask size` ; ITCM à court : bancs repartagés, puis code en flash ; tampon de mesure : feature de test, `.uninit` en OCRAM ; arena dans `oc-core` au premier grand usage d'applet ; tampons du DMA en DTCM ; profondeur de la pile estimée par `cargo xtask size` (`stack-depth` : `FAIL` au-delà de `.stack`, `warn` sous 2 Kio) | D-038 |

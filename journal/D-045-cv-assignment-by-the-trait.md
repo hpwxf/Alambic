@@ -5,8 +5,8 @@
 | **Identifiant** | D-045 |
 | **Date** | 2026-11-22 |
 | **Auteur** | Pascal Havé |
-| **Statut** | proposée |
-| **Commits** | ce commit (ADR et plan) ; implémentation aux lots 12b à 12e |
+| **Statut** | adoptée |
+| **Commits** | `cab6b5d` (ADR et plan) ; `fc4c04c` (cœur, 12b), `06c97b8` (protocole 8, 12c), `0cc4889` (CLI, 12d), `8b44f2b` (page web, 12e), `e25b47d` (pile, 12f) ; adoptée dans ce commit |
 | **Relations** | prolonge D-035 (le sous-menu d'assignation) et D-036 (sa mécanique dans `oc_core::modulation`) ; étend le modèle de D-043 (trait `App`, protocole de la sonde) ; prépare la persistance des assignations (réserve de l'étape 8, D-028) |
 
 ## 1. Contexte
@@ -52,9 +52,22 @@ assignable.
 
 ## 4. Ce que nous avons décidé, et pourquoi
 
-B, à confirmer par les lots 12b à 12e : passe à `adoptée` quand les écrans de référence restent identiques après la
-mise en commun (12b) et que la CLI règle une assignation sur le module (12d). Le plan est
-`docs/plan/etape-12-assignation-sonde.md`.
+B, adoptée le 2026-11-22 sur les deux critères posés à la proposition :
+
+* **les écrans de référence restent identiques** après la mise en commun dans `Modulations` (12b) : les scénarios
+  d'`oc-sim` passent sans `UPDATE_SCREENS` ;
+* **la CLI règle une assignation sur le module** (12d) : `cargo probe assign supersaw detune input=cv2 effect=add`
+  appliquée, relue par `assign` et marquée `+CV2` à l'écran ; `cargo probe app` décrit les six applets.
+
+Pourquoi B : l'app garde ce qu'une CV fait à ses valeurs (D-036), le trait n'en voit qu'une tranche et une plage, et
+l'index d'un paramètre suffit à nommer son entrée, si bien que le panneau, la sonde, la CLI et la page web passent par
+un seul mécanisme sans code propre à chaque app. Deux précisions venues de la mise en œuvre :
+`assign` / `set_assign` sont des méthodes de `dyn App`, pas des méthodes par défaut du trait (une copie par table
+d'app coûtait ≈ 1,9 Kio de `.text`) ; `CENTER` se fait côté hôte, sur les lectures de `Stream`, avec le même
+`Assign::center`.
+
+Restent à essayer sur le module, sans enjeu pour la décision : le sous-panneau web champ par champ (TESTING 9.1c) et
+`--center` sous un LFO (TESTING 9.1b). Le plan est `docs/plan/etape-12-assignation-sonde.md`.
 
 ## 5. Ce qui nous ferait changer d'avis
 
