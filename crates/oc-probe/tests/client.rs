@@ -82,10 +82,21 @@ fn the_profile_comes_back_and_prints() {
     assert!(profile.stage(Stage::Tick).count() >= 3);
     let table = render::profile_table(&profile);
     assert!(table.contains("period"), "{table}");
-    // The columns line up whatever the stage's name: every row of the table
-    // as long as its header.
-    let rows: Vec<&str> = table.lines().take_while(|line| !line.is_empty()).collect();
-    assert!(rows.iter().all(|row| row.len() == rows[0].len()), "{table}");
+    // The columns line up whatever the stage's name: every row's note starts
+    // where the header's does. Section titles carry no numbers.
+    let header = table.lines().next().unwrap();
+    let notes = header.find("  what").unwrap();
+    let rows: Vec<&str> = table
+        .lines()
+        .take_while(|line| !line.is_empty())
+        .filter(|line| line.starts_with("  "))
+        .collect();
+    assert!(rows.len() >= 2, "{table}");
+    assert!(
+        rows.iter()
+            .all(|row| row.get(notes..notes + 2) == Some("  ") && row.as_bytes()[notes - 1] != b' '),
+        "{table}"
+    );
     client.clear_profile().unwrap();
 }
 

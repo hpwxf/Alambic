@@ -16,24 +16,130 @@ fn micros(profile: &Profile, fine: u32) -> String {
     format!("{}.{:02}", nanos / 1_000, nanos % 1_000 / 10)
 }
 
-/// Width of the stage column: the longest stage's name (`audio_period`), so
-/// that every row's numbers line up under the header.
-fn name_width() -> usize {
-    Stage::ALL
-        .iter()
-        .map(|stage| stage.name().len())
-        .chain(["period".len()])
-        .max()
-        .unwrap_or(0)
+/// One row of the table: a stage, or the period between two ticks, which
+/// the profile keeps apart from the stages.
+#[derive(Clone, Copy)]
+enum Row {
+    Stage(Stage),
+    Period,
 }
 
-fn stat_row(out: &mut String, name: &str, profile: &Profile, stat: &Stat) {
+impl Row {
+    fn name(self) -> &'static str {
+        match self {
+            Self::Stage(stage) => stage.name(),
+            Self::Period => "period",
+        }
+    }
+}
+
+/// The table's sections, each row with a short note: the reader of
+/// `cargo probe stats` should not need the source to know what a row times
+/// or which other row it sits inside.
+const GROUPS: [(&str, &[(Row, &str)]); 4] = [
+    (
+        "loop, one pass per tick",
+        &[
+            (Row::Period, "start to start of two passes"),
+            (
+                Row::Stage(Stage::Sample),
+                "ADC conversions, triggers, panel, before the tick",
+            ),
+            (
+                Row::Stage(Stage::Tick),
+                "Engine::tick, whole: the next section, render, present, page",
+            ),
+            (
+                Row::Stage(Stage::Publish),
+                "outputs' parameters handed to the audio interrupt",
+            ),
+            (Row::Stage(Stage::Usb), "USB poll and probe requests"),
+        ],
+    ),
+    (
+        "inside the tick",
+        &[
+            (
+                Row::Stage(Stage::Acquire),
+                "panel and inputs read into the engine",
+            ),
+            (
+                Row::Stage(Stage::Update),
+                "applet, wizard or menu deciding the outputs",
+            ),
+            (
+                Row::Stage(Stage::Outputs),
+                "outputs converted and written (host backends)",
+            ),
+        ],
+    ),
+    (
+        "screen",
+        &[
+            (
+                Row::Stage(Stage::Render),
+                "drawing a frame, in the tick, on the ticks that redraw",
+            ),
+            (
+                Row::Stage(Stage::Present),
+                "handing over a whole frame, in the tick",
+            ),
+            (
+                Row::Stage(Stage::Page),
+                "sending one page per tick (paged display)",
+            ),
+            (
+                Row::Stage(Stage::Frame),
+                "a frame's transfer to the OLED, piece by piece (wall time)",
+            ),
+        ],
+    ),
+    (
+        "audio interrupt",
+        &[
+            (
+                Row::Stage(Stage::AudioPeriod),
+                "start to start of two runs: the sample rate",
+            ),
+            (
+                Row::Stage(Stage::Audio),
+                "one run: a sample to the DAC, a piece of the screen",
+            ),
+            (
+                Row::Stage(Stage::Voice),
+                "rendering one sample of the voice, inside audio",
+            ),
+            (
+                Row::Stage(Stage::VoiceParams),
+                "taking new parameters, inside audio",
+            ),
+        ],
+    ),
+];
+
+/// Width of the name column: the longest row's name (`audio_period`) plus
+/// the indent under a section title, so that every row's numbers line up
+/// under the header.
+fn name_width() -> usize {
+    GROUPS
+        .iter()
+        .flat_map(|(_, rows)| rows.iter().map(|(row, _)| row.name().len()))
+        .max()
+        .unwrap_or(0)
+        + INDENT.len()
+}
+
+/// What sets a row apart from its section's title.
+const INDENT: &str = "  ";
+
+fn stat_row(out: &mut String, name: &str, profile: &Profile, stat: &Stat, note: &str) {
     let width = name_width();
     let cell =
         |value: Option<u32>| value.map_or_else(|| "-".to_owned(), |fine| micros(profile, fine));
+    let name = format!("{INDENT}{name}");
     let _ = writeln!(
         out,
-        "{name:<width$} {:>9} {:>9} {:>9} {:>9}",
+        "{name:<width$} {:>9} {:>9} {:>9} {:>9}  {note}",
         stat.count(),
         cell(stat.min()),
         cell(stat.mean()),
@@ -41,8 +147,8 @@ fn stat_row(out: &mut String, name: &str, profile: &Profile, stat: &Stat) {
     );
 }
 
-/// The profile as a table: one row per stage that ran, the period, then
-/// the jitter histogram.
+/// The profile as a table: the stages that ran, by section, each with a
+/// note, then the jitter histogram.
 #[must_use]
 pub fn profile_table(profile: &Profile) -> String {
     let mut out = String::new();
@@ -53,16 +159,29 @@ pub fn profile_table(profile: &Profile) -> String {
     let width = name_width();
     let _ = writeln!(
         out,
-        "{:<width$} {:>9} {:>9} {:>9} {:>9}",
+        "{:<width$} {:>9} {:>9} {:>9} {:>9}  what",
         "us", "count", "min", "mean", "max"
     );
-    for stage in Stage::ALL {
-        let stat = profile.stage(stage);
-        if stat.count() > 0 {
-            stat_row(&mut out, stage.name(), profile, stat);
+    for (title, rows) in GROUPS {
+        let ran: Vec<(&Stat, Row, &str)> = rows
+            .iter()
+            .map(|&(row, note)| {
+                let stat = match row {
+                    Row::Stage(stage) => profile.stage(stage),
+                    Row::Period => profile.period(),
+                };
+                (stat, row, note)
+            })
+            .filter(|(stat, row, _)| stat.count() > 0 || matches!(row, Row::Period))
+            .collect();
+        if ran.is_empty() {
+            continue;
+        }
+        let _ = writeln!(out, "{title}");
+        for (stat, row, note) in ran {
+            stat_row(&mut out, row.name(), profile, stat, note);
         }
     }
-    stat_row(&mut out, "period", profile, profile.period());
 
     let expected = profile.expected_period_micros();
     if expected > 0 {
@@ -174,4 +293,21 @@ pub fn screen_png(screen: &[u8; LEN], scale: u32, out: impl io::Write) -> io::Re
     encoder.set_depth(png::BitDepth::Eight);
     let mut writer = encoder.write_header().map_err(io::Error::other)?;
     writer.write_image_data(&pixels).map_err(io::Error::other)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn every_stage_sits_in_exactly_one_section() {
+        for stage in Stage::ALL {
+            let seen = GROUPS
+                .iter()
+                .flat_map(|(_, rows)| rows.iter())
+                .filter(|(row, _)| matches!(row, Row::Stage(listed) if *listed == stage))
+                .count();
+            assert_eq!(seen, 1, "{}", stage.name());
+        }
+    }
 }
