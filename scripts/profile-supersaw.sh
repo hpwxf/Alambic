@@ -6,8 +6,8 @@
 # Usage: scripts/profile-supersaw.sh [seconds per case] [label]
 #   SHAPE=0 scripts/profile-supersaw.sh      # SHAPE, 25 % by default
 #
-# The probe sets the applet's settings, not its CV assignments: patch and
-# assign the inputs on the panel first (NOTE takes CV1 at start-up).
+# The probe assigns CV1 to NOTE and CV2 to DETUNE, both added
+# (journal/D-045): patch a signal into them, noise will do.
 set -euo pipefail
 cd "$(git rev-parse --show-toplevel)"
 seconds=${1:-10}
@@ -28,7 +28,11 @@ probe select supersaw >/dev/null
 probe set supersaw mix 50 >/dev/null
 probe set supersaw shape "${SHAPE:-25}" >/dev/null
 probe set supersaw stereo on >/dev/null
+probe assign supersaw note input=cv1 effect=add >/dev/null
+probe assign supersaw detune input=cv2 effect=add >/dev/null
 
-sleep 1
+# Long enough for what the sets put on the screen to go: a profile taken
+# with it there draws another frame.
+sleep 5
 echo "=== ${label:+$label, }SHAPE ${SHAPE:-25} % ($seconds s)"
 probe stats --fresh "$seconds" | filter

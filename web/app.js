@@ -304,7 +304,8 @@ function drawParams() {
     const editor = paramEditor(at);
     const status = cell("", "status");
     const label = cell(appView.param_label(at));
-    paramRows.push({ row, label, editor, status, sending: null });
+    const entry = { row, label, editor, status, sending: null, mark: null, panel: null };
+    paramRows.push(entry);
     // A list sends what it picks; a field sends on Enter, even a value it
     // already shows, and when it loses the focus with a new one.
     editor.addEventListener("change", () => setParam(at, editor.value));
@@ -318,15 +319,130 @@ function drawParams() {
     }
     const editCell = document.createElement("td");
     editCell.append(editor);
-    row.append(
-      label,
-      editCell,
-      cell(appView.param_range(at), "status"),
-      cell(appView.param_assignable(at) ? "CV" : "", "status"),
-      status,
-    );
+    const markCell = cell("", "status");
+    if (appView.param_assignable(at)) {
+      entry.mark = document.createElement("button");
+      entry.mark.className = "needs-probe input-mark";
+      entry.mark.addEventListener("click", () => toggleInputPanel(at));
+      markCell.append(entry.mark);
+      showMark(entry, at);
+    }
+    row.append(label, editCell, cell(appView.param_range(at), "status"), markCell, status);
     markActive(row, at);
     body.append(row);
+  }
+}
+
+/**
+ * Opens or closes the CV input panel of parameter `at`, under its row: the
+ * same panel for every assignable setting of every app (journal/D-045), the
+ * fields of the module's submenu, each set as `cargo probe assign` would.
+ */
+function toggleInputPanel(at) {
+  const entry = paramRows[at];
+  if (entry.panel) {
+    entry.panel.row.remove();
+    entry.panel = null;
+    showMark(entry, at);
+    return;
+  }
+  const row = document.createElement("tr");
+  row.className = "input-panel";
+  const td = document.createElement("td");
+  td.colSpan = 5;
+  const line = document.createElement("div");
+  line.className = "row";
+  const status = document.createElement("span");
+  status.className = "status";
+  const editors = new Map();
+  for (const field of oc.AppView.input_fields()) {
+    const editor = inputEditor(field);
+    editor.value = appView.input_field_text(at, field);
+    editor.addEventListener("change", () => setInput(at, field, editor.value));
+    if (editor.tagName === "INPUT") {
+      editor.addEventListener("keydown", (event) => {
+        if (event.key === "Enter") {
+          event.preventDefault();
+          setInput(at, field, editor.value);
+        }
+      });
+    }
+    const label = document.createElement("label");
+    label.append(`${field.toUpperCase()} `, editor);
+    line.append(label);
+    editors.set(field, editor);
+  }
+  status.textContent = "each change goes to the module at once; closing this keeps it";
+  line.append(status);
+  td.append(line);
+  row.append(td);
+  entry.row.after(row);
+  entry.panel = { row, editors, status, sending: null };
+  showMark(entry, at);
+}
+
+/**
+ * The button that opens parameter `at`'s input panel: its input as the
+ * module's screen marks it (`+CV2`, `CV` while none), and an arrow that
+ * says whether the panel is open.
+ */
+function showMark(entry, at) {
+  const open = entry.panel !== null;
+  entry.mark.textContent = `${appView.input_mark(at)} ${open ? "\u25BE" : "\u25B8"}`;
+  entry.mark.setAttribute("aria-expanded", String(open));
+  entry.mark.title = open
+    ? "Close the CV input panel: what is set stays on the module"
+    : "Open the CV input panel: input, scale, shift, bounds, effect";
+}
+
+/** The field that edits one field of an input: a list or a text field. */
+function inputEditor(field) {
+  const choices = oc.AppView.input_choices(field);
+  if (choices.length === 0) {
+    const input = document.createElement("input");
+    input.type = "text";
+    input.className = "needs-probe input-field";
+    return input;
+  }
+  const select = document.createElement("select");
+  select.className = "needs-probe";
+  for (const name of choices) select.add(new Option(name, name));
+  return select;
+}
+
+/** Shows parameter `at`'s input as the module holds it, mark and fields. */
+function showInput(at) {
+  const entry = paramRows[at];
+  const { mark, panel } = entry;
+  if (mark) showMark(entry, at);
+  if (!panel) return;
+  for (const [field, editor] of panel.editors) editor.value = appView.input_field_text(at, field);
+}
+
+/** Sets one field of parameter `at`'s input and shows what the applet applied. */
+async function setInput(at, field, text) {
+  const { panel } = paramRows[at];
+  if (!session || !appView || !panel) return;
+  const key = `${field}=${text}`;
+  if (panel.sending === key) return;
+  let frame;
+  try {
+    frame = appView.assign_request(at, field, text);
+  } catch (error) {
+    panel.status.textContent = String(error);
+    return;
+  }
+  panel.sending = key;
+  try {
+    const [item] = await session.ask(frame, 1, true);
+    const shown = appView.absorb_input(at, item.message);
+    release([item]);
+    panel.status.textContent = `set: ${shown}`;
+  } catch (error) {
+    panel.status.textContent = `error: ${error.message}`;
+  } finally {
+    panel.sending = null;
+    showInput(at);
   }
 }
 
@@ -408,6 +524,7 @@ async function refreshValues(cause) {
     markActive(row, at);
     editor.value = appView.param_edit_text(at);
     if (appView.param_moved(at)) status.textContent = `moved with ${cause}: ${appView.param_text(at)}`;
+    showInput(at);
   });
   drawObservables();
 }

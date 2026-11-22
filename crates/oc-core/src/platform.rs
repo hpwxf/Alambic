@@ -31,7 +31,9 @@ pub const BUTTONS: usize = 4;
 ///
 /// The same indices address the four inputs (`CV1`..`CV4` on the panel) and
 /// the four outputs (`A`..`D` on the panel).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, serde::Serialize, serde::Deserialize,
+)]
 pub enum CvChannel {
     /// Input `CV1`, output `A`.
     One,

@@ -12,14 +12,14 @@ use oc_core::TickReport;
 use oc_core::apps::param::{Kind, ParamSpec, Refused};
 use oc_core::apps::{App, AppId};
 use oc_core::platform::{
-    AnalogIn, AnalogOut, CV_CHANNELS, Clock, Controls, CvChannel, DigitalIn, Display,
+    AnalogIn, AnalogOut, CV_CHANNELS, Clock, Controls, CvChannel, DigitalIn, Display, MilliVolts,
     TriggerChannel,
 };
 
 use crate::queue::ByteQueue;
 use crate::{
-    Error, FrameReader, Group, MAX_FRAME, ParamKind, Reply, Request, SCREEN_PAGES, Sample, VERSION,
-    decode, encode,
+    Assign, Error, FrameReader, Group, MAX_FRAME, ParamKind, Reply, Request, SCREEN_PAGES, Sample,
+    VERSION, decode, encode,
 };
 
 /// Room for the frames waiting to go out: a full screen capture (eight
@@ -222,7 +222,9 @@ impl Server {
             | Request::SetParam { .. }
             | Request::Observe { .. }
             | Request::Act { .. }
-            | Request::SelectApp { .. }) => match self.serve_app(request, engine) {
+            | Request::SelectApp { .. }
+            | Request::GetAssign { .. }
+            | Request::SetAssign { .. }) => match self.serve_app(request, engine) {
                 Some(reply) => reply,
                 None => return,
             },
@@ -297,6 +299,20 @@ impl Server {
                 }
                 None => Reply::Error(Error::NoSuchApp),
             },
+            Request::GetAssign { app, param } => match app_id(app) {
+                Some(id) => input_reply(engine.apps().get(id), param),
+                None => Reply::Error(Error::NoSuchApp),
+            },
+            Request::SetAssign { app, param, assign } => match app_id(app) {
+                Some(id) => {
+                    let app = engine.app_mut(id);
+                    match app.set_assign(usize::from(param), assign) {
+                        Ok(_) => input_reply(app, param),
+                        Err(refused) => Reply::Error(Error::Refused(refused)),
+                    }
+                }
+                None => Reply::Error(Error::NoSuchApp),
+            },
             _ => Reply::Error(Error::Unsupported),
         };
         Some(reply)
@@ -336,6 +352,7 @@ impl Server {
                 value: app.get(index),
             };
             self.send_spec(Group::Param, index, spec, shown);
+            self.send_input(app, count(index));
         }
         for (index, spec) in app.observables().iter().enumerate() {
             let shown = Shown {
@@ -378,6 +395,26 @@ impl Server {
         }
     }
 
+    /// The [`Reply::Assign`] of parameter `param` of `app`, if it takes an
+    /// input. Not inlined: a [`Reply`] is the size of its largest variant
+    /// (the profile, ≈ 460 bytes), and built in [`Self::describe`] it would
+    /// sit on its frame under every reply the description sends, on the
+    /// deepest path of the main stack.
+    #[inline(never)]
+    fn send_input(&mut self, app: &dyn App, param: u8) {
+        if let Some((assign, sweep)) = input_of(app, param) {
+            self.send(&Reply::Assign {
+                index: param,
+                assign,
+                sweep,
+            });
+        }
+    }
+
+    // Not inlined: its two copies of the framebuffer (2 KiB) would sit on
+    // the frame of `Usb::serve` under every other request, `DescribeApp`
+    // included, on the deepest path of the main stack (16 KiB).
+    #[inline(never)]
     fn send_screen<A, O, D, C, K, S>(&mut self, engine: &mut Engine<A, O, D, C, K, S>)
     where
         A: AnalogIn,
@@ -396,7 +433,7 @@ impl Server {
         if screen.rotated {
             upright.rotate_half_turn();
         }
-        let frame = *upright.as_bytes();
+        let frame = upright.as_bytes();
         for (page, bytes) in
             (0..SCREEN_PAGES).zip(frame.chunks(frame.len() / usize::from(SCREEN_PAGES)))
         {
@@ -422,6 +459,25 @@ struct Shown<'a> {
 }
 
 /// The applet at index `app` in the module's list.
+/// The input parameter `param` of `app` takes and the signal that sweeps
+/// it, `None` for one that takes none.
+fn input_of(app: &dyn App, param: u8) -> Option<(Assign, Option<(MilliVolts, MilliVolts)>)> {
+    let index = usize::from(param);
+    Some((app.assign(index)?, app.assign_sweep(index)))
+}
+
+/// The answer to a request about parameter `param`'s input.
+fn input_reply(app: &dyn App, param: u8) -> Reply<'static> {
+    match input_of(app, param) {
+        Some((assign, sweep)) => Reply::Assign {
+            index: param,
+            assign,
+            sweep,
+        },
+        None => Reply::Error(Error::Refused(Refused::NoSuch)),
+    }
+}
+
 fn app_id(app: u8) -> Option<AppId> {
     AppId::from_index(usize::from(app))
 }

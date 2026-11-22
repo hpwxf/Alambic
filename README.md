@@ -363,6 +363,8 @@ cargo probe set ratchet prob 50  # as the panel would, within its bounds
 cargo probe get supersaw freq  # a parameter or what it plays now
 cargo probe act ratchet burst  # an action, here a burst as `up` starts one
 cargo probe select tone        # hand it the outputs and the screen
+cargo probe assign supersaw detune input=cv2 effect=add  # a parameter's CV input, field by field
+cargo probe assign supersaw detune --center 5  # fit it to what CV2 carries, as CENTER does
 ```
 
 `cargo probe` is an alias of `cargo run -q -p oc-probe --`. The tool finds the

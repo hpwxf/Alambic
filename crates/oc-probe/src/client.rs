@@ -12,7 +12,7 @@ use std::io::{self, Read, Write};
 use oc_core::framebuffer::LEN;
 use oc_core::platform::{CvChannel, MilliVolts};
 use oc_protocol::{
-    Error, FrameReader, Group, MAX_FRAME, ParamKind, ParamValue, Profile, Reply, Request,
+    Assign, Error, FrameReader, Group, MAX_FRAME, ParamKind, ParamValue, Profile, Reply, Request,
     SCREEN_PAGES, Sample, VERSION, decode, encode,
 };
 
@@ -102,6 +102,19 @@ pub struct SpecEntry {
     pub active: bool,
     /// Its value when described; `None` for an observable not known yet.
     pub value: Option<ParamValue>,
+    /// Its CV input when described; `None` for a parameter that takes none
+    /// and for an observable (journal/D-045).
+    pub input: Option<InputEntry>,
+}
+
+/// The CV input of an assignable parameter.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct InputEntry {
+    /// The input and how its signal is shaped.
+    pub assign: Assign,
+    /// The signal that sweeps the parameter end to end when it follows its
+    /// input, from which `CENTER` fits an input to it.
+    pub sweep: Option<(MilliVolts, MilliVolts)>,
 }
 
 /// Everything an applet declares, with its values when described.
@@ -147,6 +160,25 @@ impl AppDescription {
             _ => Err("a name after its choice"),
         }
     }
+
+    /// Gives parameter `index` the input that follows its entry.
+    ///
+    /// # Errors
+    ///
+    /// When it does not follow that parameter, the order the module keeps.
+    pub fn add_input(
+        &mut self,
+        index: u8,
+        input: InputEntry,
+    ) -> std::result::Result<(), &'static str> {
+        match self.params.last_mut() {
+            Some(spec) if spec.index == index && spec.assignable => {
+                spec.input = Some(input);
+                Ok(())
+            }
+            _ => Err("an input after its parameter"),
+        }
+    }
 }
 
 /// An answer, copied out of the frame it was decoded from.
@@ -168,6 +200,7 @@ enum Answer {
     Action(String),
     Value(ParamValue),
     Observed(Option<ParamValue>),
+    Input(u8, InputEntry),
 }
 
 /// A session with one module.
@@ -338,6 +371,9 @@ impl<T: Read + Write> Client<T> {
                     .add_choice_name(group, index, name)
                     .map_err(ProbeError::Unexpected)?,
                 Answer::Action(name) => description.actions.push(name),
+                Answer::Input(index, input) => description
+                    .add_input(index, input)
+                    .map_err(ProbeError::Unexpected)?,
                 Answer::Done => return Ok(description),
                 _ => return Err(ProbeError::Unexpected("a description")),
             }
@@ -397,6 +433,31 @@ impl<T: Read + Write> Client<T> {
     /// As [`Self::describe`].
     pub fn select_app(&mut self, app: u8) -> Result<()> {
         self.done(&Request::SelectApp { app })
+    }
+
+    /// The CV input parameter `param` of applet `app` takes.
+    ///
+    /// # Errors
+    ///
+    /// As [`Self::get_param`]; a parameter that takes none.
+    pub fn get_assign(&mut self, app: u8, param: u8) -> Result<InputEntry> {
+        match self.ask(&Request::GetAssign { app, param })? {
+            Answer::Input(_, input) => Ok(input),
+            _ => Err(ProbeError::Unexpected("an input")),
+        }
+    }
+
+    /// Gives parameter `param` of applet `app` the CV input `assign`, as
+    /// the submenu could: what the applet applied.
+    ///
+    /// # Errors
+    ///
+    /// As [`Self::get_assign`]; a value the submenu stops short of.
+    pub fn set_assign(&mut self, app: u8, param: u8, assign: Assign) -> Result<InputEntry> {
+        match self.ask(&Request::SetAssign { app, param, assign })? {
+            Answer::Input(_, input) => Ok(input),
+            _ => Err(ProbeError::Unexpected("an input")),
+        }
     }
 
     fn done(&mut self, request: &Request) -> Result<()> {
@@ -482,6 +543,7 @@ impl<T: Read + Write> Client<T> {
                     assignable,
                     active,
                     value,
+                    input: None,
                 },
             ),
             Reply::ChoiceName {
@@ -494,6 +556,11 @@ impl<T: Read + Write> Client<T> {
             Reply::Action { name, .. } => Answer::Action(name.to_owned()),
             Reply::Value(value) => Answer::Value(value),
             Reply::Observed(value) => Answer::Observed(value),
+            Reply::Assign {
+                index,
+                assign,
+                sweep,
+            } => Answer::Input(index, InputEntry { assign, sweep }),
         };
         Ok(Some(answer))
     }

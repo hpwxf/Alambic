@@ -24,7 +24,8 @@ use crate::fmt::{TextBuf, write_volts};
 use crate::framebuffer::{FrameBuffer, ROW_HEIGHT, WIDTH_I32};
 use crate::gfx::controls::scroll_track;
 use crate::gfx::{self, Ink, Point};
-use crate::modulation::editor::{AssignEditor, Param};
+use crate::modulation::editor::Param;
+use crate::modulation::slots::Modulations;
 use crate::modulation::{Assign, AssignLine, Effect, multiplied};
 use crate::platform::{Button, CV_CHANNELS, MilliVolts};
 use crate::text::fonts::FONT_5X8;
@@ -176,12 +177,9 @@ pub struct ToneApp {
     selected: usize,
     note: u8,
     amplitude: MilliVolts,
-    /// The input of each setting, by its index in [`Setting::ALL`].
-    assigns: [Assign; 2],
-    /// The selected setting's input submenu, `None` while it is closed.
-    assigning: Option<AssignEditor>,
-    /// The last inputs.
-    cv: [MilliVolts; CV_CHANNELS],
+    /// The input of each setting, by its index in [`Setting::ALL`], and the
+    /// submenu.
+    inputs: Modulations<2>,
 }
 
 impl ToneApp {
@@ -192,19 +190,14 @@ impl ToneApp {
             selected: 0,
             note: REFERENCE_NOTE,
             amplitude: DEFAULT_AMPLITUDE_MV,
-            assigns: [Assign::NONE; 2],
-            assigning: None,
-            cv: [0; CV_CHANNELS],
+            inputs: Modulations::new([Assign::NONE; 2]),
         }
     }
 
     /// Consumes one snapshot and returns what the outputs carry.
     pub fn update(&mut self, input: &InputSnapshot) -> Params {
         self.follow_panel(input);
-        self.cv = input.cv;
-        if let Some(editor) = &mut self.assigning {
-            editor.observe(&self.assigns[self.selected], &self.cv, input.elapsed_micros);
-        }
+        self.inputs.read(&input.cv, input.elapsed_micros);
         self.params()
     }
 
@@ -212,18 +205,14 @@ impl ToneApp {
     /// encoder picks a setting, the right one changes it, and its click
     /// opens the setting's submenu.
     fn follow_panel(&mut self, input: &InputSnapshot) {
-        let selected = self.selected();
-        if let Some(editor) = &mut self.assigning {
-            if !editor.follow(&mut self.assigns[self.selected], input, selected.sweep()) {
-                self.assigning = None;
-            }
+        if self.inputs.follow(input, Some(self.selected().sweep())) {
             return;
         }
         let pick = i32::try_from(self.selected).unwrap_or(0) + i32::from(input.controls.delta(0));
         let last = i32::try_from(Setting::ALL.len() - 1).unwrap_or(0);
         self.selected = usize::try_from(pick.clamp(0, last)).unwrap_or(0);
         if input.buttons.pressed(Button::RightEncoder) {
-            self.assigning = Some(AssignEditor::new());
+            self.inputs.open(self.selected);
         }
         let turn = i32::from(input.controls.delta(1));
         match self.selected() {
@@ -275,23 +264,20 @@ impl ToneApp {
     /// The input `setting` takes.
     #[must_use]
     pub const fn assign(&self, setting: Setting) -> &Assign {
-        &self.assigns[setting.index()]
+        self.inputs.assign(setting.index())
     }
 
     /// The field picked in the selected setting's input submenu, `None`
     /// while it is closed.
     #[must_use]
     pub const fn assigning(&self) -> Option<AssignLine> {
-        match &self.assigning {
-            Some(editor) => Some(editor.line()),
-            None => None,
-        }
+        self.inputs.line()
     }
 
     /// The shaped signal of `setting`'s input and its effect, `None` without
     /// an input.
     fn reading(&self, setting: Setting) -> Option<(MilliVolts, Effect)> {
-        self.assign(setting).reading(&self.cv)
+        self.inputs.reading(setting.index())
     }
 
     /// The pitch played: the note and its input.
@@ -370,15 +356,15 @@ impl ToneApp {
             );
             draw_wave(frame, wave, left + 2, WAVE_COLUMN - 5);
         }
-        if let Some(editor) = &self.assigning {
-            self.render_submenu(frame, editor);
+        if self.inputs.is_open() {
+            self.render_submenu(frame);
         }
     }
 
     /// The selected setting's input submenu over the main screen: the
     /// setting, the value played now and where both sit in its course
     /// (journal/D-036).
-    fn render_submenu(&self, frame: &mut FrameBuffer, editor: &AssignEditor) {
+    fn render_submenu(&self, frame: &mut FrameBuffer) {
         let setting = self.selected();
         let (now, panel, played) = match setting {
             Setting::Note => (
@@ -402,7 +388,7 @@ impl ToneApp {
             panel_permille: panel,
             now_permille: played,
         };
-        editor.render(frame, self.assign(setting), &self.cv, &param);
+        self.inputs.render(frame, &param);
     }
 
     /// The value of `setting` on screen, as the panel sets it: what its input
@@ -458,6 +444,18 @@ impl App for ToneApp {
             _ => return None,
         };
         Some(ParamValue::Number(number))
+    }
+
+    fn assigns(&self) -> &[Assign] {
+        self.inputs.as_slice()
+    }
+
+    fn assigns_mut(&mut self) -> &mut [Assign] {
+        self.inputs.as_mut_slice()
+    }
+
+    fn assign_sweep(&self, index: usize) -> Option<(MilliVolts, MilliVolts)> {
+        Setting::ALL.get(index).map(|setting| setting.sweep())
     }
 
     fn update(&mut self, input: &InputSnapshot) -> Params {

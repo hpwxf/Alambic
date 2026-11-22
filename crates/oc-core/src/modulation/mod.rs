@@ -2,7 +2,7 @@
 //! input, how its signal is shaped (`clamp(cv × scale + shift, min, max)`),
 //! what it does to the panel's value (`SET`, `ADD`, `MUL`), and the range
 //! seen lately that `CENTER` fits it to. The submenu that edits it is
-//! [`editor`].
+//! [`editor`]; the state an applet keeps of its inputs, [`slots`].
 //!
 //! What a parameter means stays with its applet: the signal that sweeps it
 //! end to end when it follows its input (the `sweep` this module takes), how
@@ -10,15 +10,19 @@
 //! shows.
 
 pub mod editor;
+pub mod slots;
 
 use core::fmt::Write as _;
 
+use serde::{Deserialize, Serialize};
+
+use crate::apps::param::Refused;
 use crate::fmt::TextBuf;
 use crate::platform::{CV_CHANNELS, CvChannel, MilliVolts};
 
 /// What an input does to the value its parameter has on the panel
 /// (journal/D-035).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Effect {
     /// The parameter follows the input, from a fixed value at 0 V.
     Set,
@@ -153,7 +157,7 @@ const EFFECTS: [Effect; 3] = [Effect::Set, Effect::Add, Effect::Mul];
 
 /// The input a parameter takes and how its signal is shaped (journal/D-035):
 /// `clamp(cv × scale + shift, min, max)`, then the effect.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Assign {
     /// The input, `None` for the panel's value alone.
     pub input: Option<CvChannel>,
@@ -210,8 +214,10 @@ impl Assign {
     }
 
     /// The value of `line` as the submenu shows it: the input, the scale as
-    /// a factor (`x0.50`), the shift and the bounds in volts, the effect.
-    fn field(&self, line: AssignLine) -> TextBuf<16> {
+    /// a factor (`x0.50`), the shift and the bounds in volts, the effect; a
+    /// host writes it the same way.
+    #[must_use]
+    pub fn field(&self, line: AssignLine) -> TextBuf<16> {
         let mut out = TextBuf::<16>::new();
         let _ = match line {
             AssignLine::Input => match self.input {
@@ -281,6 +287,29 @@ impl Assign {
         self.scale_percent = i32::try_from(scale).unwrap_or(100);
         self.shift_mv = MilliVolts::try_from(shift).unwrap_or(0);
         true
+    }
+
+    /// `self` if the submenu could have set it: the scale, the shift and the
+    /// bounds within the ranges the right encoder stops at, the lower bound
+    /// not above the upper. A value set from afar (journal/D-045) behaves as
+    /// one turned by hand, as [`ParamSpec::check`](crate::apps::param::ParamSpec::check)
+    /// has it for a parameter; it need not fall on a detent.
+    ///
+    /// # Errors
+    ///
+    /// [`Refused::OutOfRange`] for a value outside its range, or bounds the
+    /// wrong way round.
+    pub const fn check(self) -> Result<Self, Refused> {
+        let in_range = self.scale_percent.abs() <= SCALE_RANGE_PERCENT
+            && self.shift_mv.abs() <= ASSIGN_RANGE_MV
+            && -ASSIGN_RANGE_MV <= self.min_mv
+            && self.min_mv <= self.max_mv
+            && self.max_mv <= ASSIGN_RANGE_MV;
+        if in_range {
+            Ok(self)
+        } else {
+            Err(Refused::OutOfRange)
+        }
     }
 
     /// Whether the parameter follows its input, the panel's value unused.

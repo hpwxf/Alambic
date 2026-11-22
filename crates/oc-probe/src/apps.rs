@@ -1,17 +1,22 @@
 //! The applets as the host reads and writes them (journal/D-043): finding
 //! one and its parameters by name, a value as text, and text back into a
-//! value of the parameter's kind.
+//! value of the parameter's kind; a parameter's CV input the same way
+//! (journal/D-045).
 //!
 //! The text of a number is the module's own ([`write_number`]), so a value
 //! reads the same in `cargo probe`, in the simulator's status line and in
-//! the browser.
+//! the browser; an input's fields read as the module's submenu writes them
+//! ([`Assign::field`]).
 
 use std::fmt::Write as _;
 
 use oc_core::apps::param::{Unit, write_number};
-use oc_protocol::{ParamKind, ParamValue};
+use oc_core::modulation::{AssignLine, CENTER_MIN_SPAN_MV, usable_range};
+use oc_core::platform::CvChannel;
+use oc_protocol::{Assign, Effect, ParamKind, ParamValue, Sample};
 
-use crate::client::{AppDescription, AppEntry, SpecEntry};
+use crate::client::{AppDescription, AppEntry, InputEntry, SpecEntry};
+use crate::measure;
 
 /// A name as the user may type it: case and anything but letters and
 /// digits ignored, so `gfx-demo` finds `GFX DEMO`.
@@ -193,6 +198,111 @@ fn note_number(text: &str) -> Option<i32> {
     Some((octave + 1) * 12 + semitone + sharp)
 }
 
+/// `assign` as the submenu writes its fields, on one line: `CV2 x0.50
+/// +0.25V -1.0..+5.0 ADD`; `--` without an input.
+#[must_use]
+pub fn input_text(assign: &Assign) -> String {
+    if assign.input.is_none() {
+        return "--".to_owned();
+    }
+    let field = |line| assign.field(line);
+    format!(
+        "{} {} {} {}..{} {}",
+        field(AssignLine::Input).as_str(),
+        field(AssignLine::Scale).as_str(),
+        field(AssignLine::Shift).as_str(),
+        field(AssignLine::Min).as_str(),
+        field(AssignLine::Max).as_str(),
+        field(AssignLine::Effect).as_str(),
+    )
+}
+
+/// The fields of an input a host can set, by the name the submenu gives
+/// them.
+pub const INPUT_FIELDS: [&str; 6] = ["input", "scale", "shift", "min", "max", "effect"];
+
+/// `assign` with `field` (one of [`INPUT_FIELDS`]) read from `text`: the
+/// input `cv1` to `cv4` or `none`; the scale as a factor (`0.5`, `-1`); the
+/// shift and the bounds in volts (`-2.5`); the effect `set`, `add` or
+/// `mul`. Whether the module takes it is the module's to say.
+///
+/// # Errors
+///
+/// The field's name and what it takes, when `text` is not that.
+pub fn parse_input_field(mut assign: Assign, field: &str, text: &str) -> Result<Assign, String> {
+    let lower = text.to_ascii_lowercase();
+    // As the submenu writes them, `+0.25V` and `x0.50` read back.
+    let volts =
+        || fixed(lower.trim_end_matches('v'), 3).ok_or_else(|| format!("{field}: volts, as -2.5"));
+    match field.to_ascii_lowercase().as_str() {
+        "input" => {
+            assign.input = match lower.trim_start_matches("cv") {
+                "none" | "--" | "" => None,
+                number => {
+                    let index = number.parse::<usize>().ok().and_then(|n| n.checked_sub(1));
+                    Some(
+                        index
+                            .and_then(|index| CvChannel::ALL.get(index).copied())
+                            .ok_or_else(|| format!("{field}: cv1 to cv4, or none"))?,
+                    )
+                }
+            };
+        }
+        "scale" => {
+            let factor = lower.trim_start_matches('x');
+            assign.scale_percent =
+                fixed(factor, 2).ok_or_else(|| format!("{field}: a factor, as 0.5 or -1"))?;
+        }
+        "shift" => assign.shift_mv = volts()?,
+        "min" => assign.min_mv = volts()?,
+        "max" => assign.max_mv = volts()?,
+        "effect" => {
+            assign.effect = match lower.as_str() {
+                "set" => Effect::Set,
+                "add" => Effect::Add,
+                "mul" => Effect::Mul,
+                _ => return Err(format!("{field}: set, add or mul")),
+            };
+        }
+        _ => {
+            return Err(format!(
+                "no field {field}; there are: {}",
+                INPUT_FIELDS.join(", ")
+            ));
+        }
+    }
+    Ok(assign)
+}
+
+/// `input` with the scale and shift that carry what its input read over
+/// `samples` onto the range its parameter can use, as the submenu's
+/// `CENTER` does with the readings it saw: the same
+/// [`Assign::center`], from the host's readings (journal/D-045).
+///
+/// # Errors
+///
+/// Without an input, a sweep, samples, or a signal that moves
+/// [`CENTER_MIN_SPAN_MV`] at least.
+pub fn centered(input: &InputEntry, samples: &[Sample]) -> Result<Assign, String> {
+    let mut assign = input.assign;
+    let channel = assign.input.ok_or("no input to fit: set one first")?;
+    let sweep = input.sweep.ok_or("the module gives no range for it")?;
+    let spread = measure::input_spread(samples).ok_or("no sample came")?;
+    let seen = &spread[channel.index()];
+    if assign.center(
+        (seen.min_mv, seen.max_mv),
+        usable_range(sweep, assign.effect),
+    ) {
+        Ok(assign)
+    } else {
+        Err(format!(
+            "CV{} moved {} mV, less than the {CENTER_MIN_SPAN_MV} mV CENTER needs",
+            channel.index() + 1,
+            seen.max_mv - seen.min_mv
+        ))
+    }
+}
+
 /// The parameters whose value differs from `before` to `after`, but for
 /// `except` (the one just set), as `NAME value` with their new value: what
 /// a set moved besides itself (journal/D-043).
@@ -216,7 +326,10 @@ pub fn moved(before: &AppDescription, after: &AppDescription, except: u8) -> Vec
         .collect()
 }
 
-/// One applet's parameters, observables and actions, a line each.
+/// One applet's parameters, observables and actions, a line each: the
+/// index, the name, the value, the CV input of a parameter that takes one
+/// (journal/D-045), then the range. The input's column has the width of the
+/// longest, so that inputs read down one column whatever the ranges.
 #[must_use]
 pub fn description_text(app: &AppEntry, description: &AppDescription) -> String {
     let mut out = String::new();
@@ -234,6 +347,12 @@ pub fn description_text(app: &AppEntry, description: &AppDescription) -> String 
         .map(|spec| shown_name(spec).len())
         .max()
         .unwrap_or(0);
+    let input_width = description
+        .params
+        .iter()
+        .map(|spec| input_column(spec).chars().count())
+        .max()
+        .unwrap_or(0);
     for (title, list) in [
         ("parameters", &description.params),
         ("observables", &description.observables),
@@ -246,21 +365,38 @@ pub fn description_text(app: &AppEntry, description: &AppDescription) -> String 
             let value = spec
                 .value
                 .map_or_else(|| "--".to_owned(), |value| value_text(spec, value));
-            let _ = writeln!(
-                out,
-                "  {:>2} {:<width$}  {value:<12} {}{}{}",
+            let mut line = format!(
+                "  {:>2} {:<width$}  {value:<12}",
                 spec.index,
-                shown_name(spec),
+                shown_name(spec)
+            );
+            if input_width > 0 {
+                let _ = write!(line, " {:<input_width$} ", input_column(spec));
+            }
+            let _ = write!(
+                line,
+                " {}{}",
                 range_text(spec),
-                if spec.assignable { "  (CV)" } else { "" },
                 if spec.active { "" } else { "  (inactive)" }
             );
+            let _ = writeln!(out, "{}", line.trim_end());
         }
     }
     if !description.actions.is_empty() {
         let _ = writeln!(out, "actions: {}", description.actions.join(", "));
     }
     out
+}
+
+/// What the input column shows of `spec`: `CV` and the input as the
+/// submenu writes it, `CV ?` for an input not described, nothing for a
+/// parameter or an observable that takes none.
+fn input_column(spec: &SpecEntry) -> String {
+    match (spec.assignable, &spec.input) {
+        (true, Some(input)) => format!("CV {}", input_text(&input.assign)),
+        (true, None) => "CV ?".to_owned(),
+        (false, _) => String::new(),
+    }
 }
 
 /// An entry's label, with its name after it when they differ
@@ -304,6 +440,7 @@ mod tests {
             assignable: false,
             active: true,
             value: None,
+            input: None,
         }
     }
 
@@ -419,5 +556,103 @@ mod tests {
         assert!(find_spec(&list, "passthru").is_some());
         assert!(find_spec(&list, "0").is_some());
         assert!(find_spec(&list, "pass").is_none());
+    }
+
+    #[test]
+    fn centring_carries_the_signal_read_onto_the_parameters_sweep() {
+        use oc_core::platform::CvChannel;
+        use oc_protocol::{Assign, Effect, Sample};
+
+        use super::centered;
+        use crate::client::InputEntry;
+
+        let input = InputEntry {
+            assign: Assign {
+                input: Some(CvChannel::Two),
+                effect: Effect::Set,
+                ..Assign::NONE
+            },
+            sweep: Some((0, 4_000)),
+        };
+        // CV2 swings from 1 V to 3 V; the other inputs do not matter.
+        let samples: Vec<Sample> = (0..=20)
+            .map(|step| Sample {
+                cv_in: [5_000, 1_000 + step * 100, -3_000, 0],
+                ..Sample::default()
+            })
+            .collect();
+        let assign = centered(&input, &samples).unwrap();
+        assert_eq!(
+            assign.shape(1_000),
+            0,
+            "the lowest reading at the sweep's start"
+        );
+        assert_eq!(assign.shape(3_000), 4_000, "the highest at its end");
+
+        let still = vec![Sample::default(); 5];
+        assert!(centered(&input, &still).unwrap_err().contains("moved 0 mV"));
+        let unplugged = InputEntry {
+            assign: Assign::NONE,
+            ..input
+        };
+        assert!(centered(&unplugged, &samples).is_err());
+        assert!(centered(&input, &[]).is_err());
+    }
+
+    #[test]
+    fn inputs_and_ranges_each_read_down_one_column() {
+        use oc_protocol::Assign;
+
+        use super::description_text;
+        use crate::client::{AppEntry, InputEntry};
+
+        let mut long = spec(
+            "LONG",
+            ParamKind::Choice { count: 2 },
+            &["A-LONG-NAME", "B"],
+        );
+        long.index = 0;
+        let mut cv = spec("CV", number(0, Unit::None), &[]);
+        cv.index = 1;
+        cv.assignable = true;
+        cv.input = Some(InputEntry {
+            assign: Assign::NONE,
+            sweep: None,
+        });
+        let mut set = cv.clone();
+        set.index = 2;
+        set.input = Some(InputEntry {
+            assign: Assign {
+                input: Some(oc_core::platform::CvChannel::Two),
+                ..Assign::NONE
+            },
+            sweep: None,
+        });
+        let description = AppDescription {
+            params: vec![long, cv, set],
+            ..AppDescription::default()
+        };
+        let app = AppEntry {
+            index: 0,
+            name: "TEST".to_owned(),
+            running: false,
+        };
+        let text = description_text(&app, &description);
+        let rows: Vec<&str> = text.lines().skip(2).collect();
+        let column = |row: &str, needle: &str| {
+            row.find(needle)
+                .unwrap_or_else(|| panic!("{needle} in {row}"))
+        };
+        assert_eq!(
+            column(rows[1], "CV --"),
+            column(rows[2], "CV CV2"),
+            "{text}"
+        );
+        assert_eq!(
+            column(rows[0], "A-LONG-NAME"),
+            column(rows[1], "-100"),
+            "{text}"
+        );
+        assert!(!rows[0].contains("CV"), "LONG takes no input: {text}");
     }
 }

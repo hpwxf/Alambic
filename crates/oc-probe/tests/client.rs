@@ -197,6 +197,76 @@ fn an_applet_is_found_described_and_set_by_name() {
 }
 
 #[test]
+fn an_input_is_described_and_set_by_its_fields() {
+    use oc_core::apps::supersaw::{Setting, SupersawApp};
+    use oc_probe::apps;
+
+    let mut client = session();
+    let list = client.apps().unwrap();
+    let supersaw = apps::find_app(&list, "supersaw").unwrap().clone();
+    let description = client.describe(supersaw.index).unwrap();
+    let detune = apps::find_spec(&description.params, "detune").unwrap();
+    let input = detune.input.expect("DETUNE takes an input");
+    assert_eq!(apps::input_text(&input.assign), "--");
+    let note = apps::find_spec(&description.params, "note").unwrap();
+    let text = apps::input_text(&note.input.unwrap().assign);
+    assert_eq!(
+        text, "CV1 x1.00 +0.00V -10.0..+10.0 ADD",
+        "CV1 on NOTE at start"
+    );
+    assert!(
+        apps::description_text(&supersaw, &description).contains("CV CV1 x1.00"),
+        "the description shows it"
+    );
+
+    let mut assign = input.assign;
+    for (field, text) in [
+        ("input", "cv2"),
+        ("effect", "mul"),
+        ("scale", "0.5"),
+        ("shift", "-0.25"),
+        ("min", "0"),
+        ("max", "5"),
+    ] {
+        assign = apps::parse_input_field(assign, field, text).unwrap();
+    }
+    let applied = client
+        .set_assign(supersaw.index, detune.index, assign)
+        .unwrap();
+    assert_eq!(
+        apps::input_text(&applied.assign),
+        "CV2 x0.50 -0.25V +0.0..+5.0 MUL"
+    );
+    assert_eq!(
+        client
+            .get_assign(supersaw.index, detune.index)
+            .unwrap()
+            .assign,
+        assign
+    );
+    assert!(apps::parse_input_field(assign, "input", "cv5").is_err());
+    assert!(apps::parse_input_field(assign, "gain", "1").is_err());
+    assert!(matches!(
+        client.set_assign(
+            supersaw.index,
+            detune.index,
+            apps::parse_input_field(assign, "scale", "3").unwrap()
+        ),
+        Err(ProbeError::Refused(Error::Refused(
+            oc_protocol::Refused::OutOfRange
+        )))
+    ));
+    assert_eq!(
+        client
+            .into_inner()
+            .engine
+            .app::<SupersawApp>()
+            .assign(Setting::Detune),
+        Some(&assign)
+    );
+}
+
+#[test]
 fn an_applet_selected_from_afar_runs() {
     let mut client = session();
     let list = client.apps().unwrap();

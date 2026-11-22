@@ -48,6 +48,8 @@ use crate::apps::supersaw::SupersawApp;
 use crate::apps::tone::ToneApp;
 use crate::buttons::ButtonEvents;
 use crate::framebuffer::FrameBuffer;
+use crate::modulation::Assign;
+use crate::modulation::slots::slot_of;
 use crate::platform::{
     BUTTONS, CV_CHANNELS, ControlEvents, ENCODERS, MilliVolts, TRIGGER_CHANNELS,
 };
@@ -204,6 +206,51 @@ pub trait App: Any {
     /// [`Refused::NoSuch`] past the last action.
     fn act(&mut self, _index: usize) -> Result<(), Refused> {
         Err(Refused::NoSuch)
+    }
+
+    /// The input of each assignable parameter, in their order
+    /// ([`slot_of`]): what `assign` and `set_assign` on `dyn App` reach
+    /// (journal/D-045).
+    fn assigns(&self) -> &[Assign] {
+        &[]
+    }
+
+    /// The same inputs, to change.
+    fn assigns_mut(&mut self) -> &mut [Assign] {
+        &mut []
+    }
+
+    /// The signal that sweeps parameter `index` end to end when it follows
+    /// its input (journal/D-036), from which a host fits an input to it as
+    /// `CENTER` does; `None` for one that takes no input.
+    fn assign_sweep(&self, _index: usize) -> Option<(MilliVolts, MilliVolts)> {
+        None
+    }
+}
+
+// Once for every applet rather than in each one's table: what an applet
+// gives of its inputs is the slice and the specs, the rest is common.
+impl dyn App {
+    /// The input parameter `index` takes, `None` for one that takes none.
+    #[must_use]
+    pub fn assign(&self, index: usize) -> Option<Assign> {
+        let slot = slot_of(self.param_specs(), index)?;
+        self.assigns().get(slot).copied()
+    }
+
+    /// Gives parameter `index` the input `assign`, as the submenu could
+    /// have: what it applied.
+    ///
+    /// # Errors
+    ///
+    /// [`Refused::NoSuch`] for a parameter that takes no input,
+    /// [`Refused::OutOfRange`] for a value the submenu stops short of
+    /// ([`Assign::check`]).
+    pub fn set_assign(&mut self, index: usize, assign: Assign) -> Result<Assign, Refused> {
+        let slot = slot_of(self.param_specs(), index).ok_or(Refused::NoSuch)?;
+        let assign = assign.check()?;
+        *self.assigns_mut().get_mut(slot).ok_or(Refused::NoSuch)? = assign;
+        Ok(assign)
     }
 }
 

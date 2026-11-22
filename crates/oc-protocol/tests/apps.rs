@@ -311,3 +311,116 @@ fn a_label_follows_the_setting_that_changes_it() {
         "MODE SPAN: the screen says SPAN, the name stays"
     );
 }
+
+#[test]
+fn an_input_is_read_and_set_from_afar_by_its_parameters_index() {
+    use oc_core::apps::ratchet::Setting;
+    use oc_core::platform::CvChannel;
+    use oc_protocol::{Assign, Effect};
+
+    let (mut server, mut engine) = opened();
+    let count = 0;
+    let Reply::Assign {
+        index,
+        assign,
+        sweep,
+    } = ask(
+        &mut server,
+        &mut engine,
+        &Request::GetAssign {
+            app: RATCHET,
+            param: count,
+        },
+    )
+    else {
+        panic!("COUNT takes an input");
+    };
+    assert_eq!((index, assign), (count, Assign::NONE));
+    assert!(sweep.is_some(), "COUNT says what sweeps it");
+
+    let wanted = Assign {
+        input: Some(CvChannel::Three),
+        effect: Effect::Set,
+        scale_percent: 50,
+        ..Assign::NONE
+    };
+    assert!(matches!(
+        ask(
+            &mut server,
+            &mut engine,
+            &Request::SetAssign {
+                app: RATCHET,
+                param: count,
+                assign: wanted,
+            }
+        ),
+        Reply::Assign { assign, .. } if assign == wanted
+    ));
+    assert_eq!(
+        engine.app::<RatchetApp>().assign(Setting::Count),
+        Some(&wanted)
+    );
+
+    let gate = 1;
+    for request in [
+        Request::GetAssign {
+            app: RATCHET,
+            param: gate,
+        },
+        Request::SetAssign {
+            app: RATCHET,
+            param: gate,
+            assign: wanted,
+        },
+    ] {
+        assert_eq!(
+            ask(&mut server, &mut engine, &request),
+            Reply::Error(Error::Refused(Refused::NoSuch)),
+            "GATE takes no input: {request:?}"
+        );
+    }
+    assert_eq!(
+        ask(
+            &mut server,
+            &mut engine,
+            &Request::SetAssign {
+                app: RATCHET,
+                param: count,
+                assign: Assign {
+                    min_mv: 1_000,
+                    max_mv: 0,
+                    ..wanted
+                },
+            }
+        ),
+        Reply::Error(Error::Refused(Refused::OutOfRange))
+    );
+}
+
+#[test]
+fn a_description_gives_each_input_after_its_parameter() {
+    let (mut server, mut engine) = opened();
+    let frames = replies(
+        &mut server,
+        &mut engine,
+        &Request::DescribeApp { app: RATCHET },
+    );
+    let mut last_param = None;
+    let mut inputs = Vec::new();
+    for mut frame in frames {
+        match decode::<Reply<'_>>(&mut frame).unwrap() {
+            Reply::Spec {
+                group: Group::Param,
+                index,
+                assignable,
+                ..
+            } => last_param = Some((index, assignable)),
+            Reply::Assign { index, .. } => {
+                assert_eq!(last_param, Some((index, true)), "after its own spec");
+                inputs.push(index);
+            }
+            _ => {}
+        }
+    }
+    assert_eq!(inputs, [0, 2, 4, 5], "COUNT, FIRST, SHAPE, PROB");
+}

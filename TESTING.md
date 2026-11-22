@@ -506,6 +506,13 @@ With the module running and the USB cable on the Teensy (journal/D-029):
    set ratchet first 5000` prints `FIRST 2000 MS`, narrowed by `MODE FIRST`;
    `cargo probe act ratchet burst` sends a burst on B, as `up` does;
    `cargo probe get ratchet rate` reads `--` until `TR1` has had two edges.
+   CV inputs (journal/D-045): `cargo probe app supersaw` shows `CV CV1 x1.00
+   ...` on `NOTE`; `cargo probe assign supersaw detune input=cv2 effect=add`
+   prints `DETUNE CV CV2 x1.00 +0.00V -10.0..+10.0 ADD` and the screen shows
+   `+CV2` on `DETUNE` at once; with an LFO on CV2, `cargo probe assign
+   supersaw detune --center 5` sets the scale and shift that `CENTER` would,
+   and the submenu opened on the panel shows the same fields;
+   `cargo probe assign supersaw stereo` says it takes no CV input.
 7. `cargo probe reboot`, then `cargo xtask flash`: the flash goes through with
    no PROGRAM press.
 
@@ -546,6 +553,18 @@ greyed instead and `DIVISION` comes back, as the screen swaps them;
 still takes a value.
 *BURST* sends a burst on B; *Read what it plays* reads `RATE` (`--` until
 `TR1` has had two edges) and `SENT`.
+
+CV inputs (journal/D-045): pick `SUPERSAW`. `NOTE`'s button reads `+CV1 ▸`,
+the others `CV ▸`, `STEREO` has none. Open `DETUNE`'s (its arrow turns to
+`▾`, and no column above or below moves): the panel shows
+`INPUT --`, `SCALE x1.00`, `SHIFT +0.00V`, `MIN -10.0`, `MAX +10.0`,
+`EFFECT ADD`. Choose `CV2`: the button reads `+CV2` and the module's screen
+marks `DETUNE` `+CV2` at once; type `x0.50` in `SCALE`, Enter: `set`;
+`-12` in `MIN`, Enter: `error`, refused (the submenu stops at −10 V), the
+field back at its value. Open the module's own submenu on `DETUNE`: the
+same fields. Close the panel with its button: the screen keeps `+CV2`, and
+reopening it shows the same fields. Do the same on one of `RATCHET`'s and
+one of `TONE`'s settings: the same panel.
 
 ### 9.2 — CV inputs
 

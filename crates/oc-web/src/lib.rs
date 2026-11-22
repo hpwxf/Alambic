@@ -26,7 +26,7 @@ pub use applets::{AppList, AppView, Editor};
 use oc_core::framebuffer::LEN;
 use oc_halfkay::Report;
 use oc_image::flash::{FlashImage, Format, firmware_image};
-use oc_probe::client::{AppEntry, ProbeError, SpecEntry};
+use oc_probe::client::{AppEntry, InputEntry, ProbeError, SpecEntry};
 use oc_probe::{apps, render};
 use oc_protocol::{Error, FrameReader, MAX_FRAME, Reply, Request, VERSION, decode, encode};
 
@@ -290,6 +290,7 @@ impl Message {
                     assignable,
                     active,
                     value,
+                    input: None,
                 };
                 let shown =
                     value.map_or_else(|| "--".to_owned(), |value| apps::value_text(&spec, value));
@@ -319,6 +320,14 @@ impl Message {
             Reply::Observed(value) => Self::applet(
                 value.map_or_else(|| "--".to_owned(), |value| format!("{value:?}")),
                 Applet::Observed(value),
+            ),
+            Reply::Assign {
+                index,
+                assign,
+                sweep,
+            } => Self::applet(
+                format!("  {index} CV {}", apps::input_text(&assign)),
+                Applet::Input(index, InputEntry { assign, sweep }),
             ),
         }
     }

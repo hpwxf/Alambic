@@ -36,9 +36,10 @@ use crate::framebuffer::{FrameBuffer, ROW_HEIGHT, WIDTH_I32};
 use crate::gfx::controls::scroll_bar;
 use crate::gfx::plots::Area;
 use crate::gfx::{self, Ink, Point};
-use crate::modulation::editor::{AssignEditor, Param};
+use crate::modulation::editor::Param;
+use crate::modulation::slots::Modulations;
 use crate::modulation::{Assign, AssignLine, Effect, multiplied};
-use crate::platform::{Button, CV_CHANNELS, CvChannel, MilliVolts};
+use crate::platform::{Button, CvChannel, MilliVolts};
 use crate::text::fonts::FONT_5X8;
 use crate::text::{self, Alignment, TextStyle};
 
@@ -296,12 +297,9 @@ pub struct SupersawApp {
     width: u16,
     level: MilliVolts,
     stereo: bool,
-    /// The input of each setting that takes one (see `Setting::input_slot`).
-    assigns: [Assign; 6],
-    /// The selected setting's input submenu, `None` while it is closed.
-    assigning: Option<AssignEditor>,
-    /// The last inputs.
-    cv: [MilliVolts; CV_CHANNELS],
+    /// The input of each setting that takes one (see `Setting::input_slot`),
+    /// and the submenu.
+    inputs: Modulations<6>,
 }
 
 impl SupersawApp {
@@ -317,20 +315,14 @@ impl SupersawApp {
             width: SQUARE_WIDTH,
             level: DEFAULT_LEVEL_MV,
             stereo: false,
-            assigns: DEFAULT_ASSIGNS,
-            assigning: None,
-            cv: [0; CV_CHANNELS],
+            inputs: Modulations::new(DEFAULT_ASSIGNS),
         }
     }
 
     /// Consumes one snapshot and returns what the outputs carry.
     pub fn update(&mut self, input: &InputSnapshot) -> Params {
         self.follow_panel(input);
-        self.cv = input.cv;
-        let slot = self.selected().input_slot();
-        if let (Some(editor), Some(slot)) = (&mut self.assigning, slot) {
-            editor.observe(&self.assigns[slot], &self.cv, input.elapsed_micros);
-        }
+        self.inputs.read(&input.cv, input.elapsed_micros);
         self.params()
     }
 
@@ -338,20 +330,17 @@ impl SupersawApp {
     /// encoder picks a setting, the right one changes it, and its click
     /// opens the setting's submenu.
     fn follow_panel(&mut self, input: &InputSnapshot) {
-        let selected = self.selected();
-        if let (Some(editor), Some(slot), Some(sweep)) =
-            (&mut self.assigning, selected.input_slot(), sweep(selected))
-        {
-            if !editor.follow(&mut self.assigns[slot], input, sweep) {
-                self.assigning = None;
-            }
+        if self.inputs.follow(input, sweep(self.selected())) {
             return;
         }
         let pick = i32::try_from(self.selected).unwrap_or(0) + i32::from(input.controls.delta(0));
         let last = i32::try_from(Setting::ALL.len() - 1).unwrap_or(0);
         self.selected = usize::try_from(pick.clamp(0, last)).unwrap_or(0);
-        if input.buttons.pressed(Button::RightEncoder) && self.selected().input_slot().is_some() {
-            self.assigning = Some(AssignEditor::new());
+        if let (true, Some(slot)) = (
+            input.buttons.pressed(Button::RightEncoder),
+            self.selected().input_slot(),
+        ) {
+            self.inputs.open(slot);
         }
         let turn = input.controls.delta(1);
         if turn != 0 {
@@ -457,24 +446,22 @@ impl SupersawApp {
     /// The input `setting` takes, `None` for `STEREO`.
     #[must_use]
     pub fn assign(&self, setting: Setting) -> Option<&Assign> {
-        setting.input_slot().map(|slot| &self.assigns[slot])
+        setting.input_slot().map(|slot| self.inputs.assign(slot))
     }
 
     /// The field picked in the selected setting's input submenu, `None`
     /// while it is closed.
     #[must_use]
     pub const fn assigning(&self) -> Option<AssignLine> {
-        match &self.assigning {
-            Some(editor) => Some(editor.line()),
-            None => None,
-        }
+        self.inputs.line()
     }
 
     /// The shaped signal of `setting`'s input and its effect, `None` without
     /// an input.
     fn reading(&self, setting: Setting) -> Option<(MilliVolts, Effect)> {
-        self.assign(setting)
-            .and_then(|assign| assign.reading(&self.cv))
+        setting
+            .input_slot()
+            .and_then(|slot| self.inputs.reading(slot))
     }
 
     /// The pitch played: the note and its input.
@@ -592,15 +579,15 @@ impl SupersawApp {
             }
         }
         self.draw_spread(frame);
-        if let (Some(editor), Some(assign)) = (&self.assigning, self.assign(self.selected())) {
-            self.render_submenu(frame, editor, assign);
+        if self.inputs.is_open() {
+            self.render_submenu(frame);
         }
     }
 
     /// The selected setting's input submenu over the main screen: the
     /// setting, the value played now and where both sit in its course
     /// (journal/D-036).
-    fn render_submenu(&self, frame: &mut FrameBuffer, editor: &AssignEditor, assign: &Assign) {
+    fn render_submenu(&self, frame: &mut FrameBuffer) {
         let setting = self.selected();
         let mut now = TextBuf::<16>::new();
         let (panel, played) = match setting {
@@ -645,7 +632,7 @@ impl SupersawApp {
             panel_permille: panel,
             now_permille: played,
         };
-        editor.render(frame, assign, &self.cv, &param);
+        self.inputs.render(frame, &param);
     }
 
     /// The value of `setting` on screen, as the panel sets it: what its input
@@ -792,6 +779,18 @@ impl App for SupersawApp {
             _ => return None,
         };
         Some(ParamValue::Number(number))
+    }
+
+    fn assigns(&self) -> &[Assign] {
+        self.inputs.as_slice()
+    }
+
+    fn assigns_mut(&mut self) -> &mut [Assign] {
+        self.inputs.as_mut_slice()
+    }
+
+    fn assign_sweep(&self, index: usize) -> Option<(MilliVolts, MilliVolts)> {
+        sweep(*Setting::ALL.get(index)?)
     }
 
     fn update(&mut self, input: &InputSnapshot) -> Params {
