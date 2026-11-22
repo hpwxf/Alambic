@@ -912,7 +912,8 @@ mod tests {
 
         let report = engine.tick();
         assert_eq!(
-            report.cv_out, [0; CV_CHANNELS],
+            engine.outputs(),
+            [0; CV_CHANNELS],
             "outputs stay at rest during the boot animation"
         );
         assert!(report.rendered);
@@ -938,10 +939,10 @@ mod tests {
         }
 
         engine.clock().advance(1_000);
-        let report = engine.tick();
+        engine.tick();
 
         assert_eq!(
-            report.cv_out[1],
+            engine.outputs()[1],
             adc_reading(4_000),
             "once booted, inputs must reach the matching output again"
         );
@@ -961,9 +962,10 @@ mod tests {
         engine.reset();
         assert_eq!(engine.tick_count(), 0);
 
-        let report = engine.tick();
+        engine.tick();
         assert_eq!(
-            report.cv_out, [0; CV_CHANNELS],
+            engine.outputs(),
+            [0; CV_CHANNELS],
             "a reset engine boots again before resuming normal execution"
         );
     }
@@ -1074,8 +1076,8 @@ mod tests {
             analog_in.patch(CvChannel::Two, 1_500);
         }
 
-        let report = engine.tick();
-        assert_eq!(report.cv_out[1], adc_reading(1_500));
+        engine.tick();
+        assert_eq!(engine.outputs()[1], adc_reading(1_500));
     }
 
     #[test]

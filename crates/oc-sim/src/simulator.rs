@@ -19,7 +19,7 @@ use oc_core::platform::{
     BUTTONS, Button, CV_CHANNELS, CvChannel, MilliVolts, TRIGGER_CHANNELS, TriggerChannel,
 };
 use oc_core::settings::{LoadOutcome, SettingsStore};
-use oc_core::testing::{MEMORY_FLASH_BYTES, MemoryFlash, MockEngine, mock_engine_at_boot};
+use oc_core::testing::{BareMockEngine, MEMORY_FLASH_BYTES, MemoryFlash, bare_mock_engine_at_boot};
 use oc_core::toast::SaveOutcome;
 
 use crate::clock::TICK_MICROS;
@@ -48,7 +48,7 @@ const TICK_COST_MICROS: u64 = 120;
 /// A module running entirely in memory.
 #[derive(Debug)]
 pub struct Simulator {
-    engine: MockEngine,
+    engine: BareMockEngine,
     tick: u64,
     button_hold: [u32; BUTTONS],
     trigger_hold: [u32; TRIGGER_CHANNELS],
@@ -77,7 +77,7 @@ impl Simulator {
     #[must_use]
     pub fn new() -> Self {
         Self {
-            engine: mock_engine_at_boot(TICK_COST_MICROS),
+            engine: bare_mock_engine_at_boot(TICK_COST_MICROS),
             tick: 0,
             button_hold: [0; BUTTONS],
             trigger_hold: [0; TRIGGER_CHANNELS],

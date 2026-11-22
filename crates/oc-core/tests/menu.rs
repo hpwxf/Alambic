@@ -114,9 +114,9 @@ fn the_menu_launches_the_highlighted_app() {
     assert_eq!(engine.current_app(), AppId::Scope);
 
     engine.clock().advance(1_000);
-    let report = engine.tick();
+    engine.tick();
     assert_eq!(
-        report.cv_out,
+        engine.outputs(),
         [adc_reading(1_500); CV_CHANNELS],
         "the scope buffers CV1 to every output, which the diagnostic applet never does"
     );
@@ -179,10 +179,10 @@ fn the_running_app_keeps_driving_the_outputs_while_the_menu_is_open() {
     };
 
     engine.clock().advance(1_000);
-    let report = engine.tick();
+    engine.tick();
 
     assert_eq!(
-        report.cv_out[1],
+        engine.outputs()[1],
         adc_reading(4_000),
         "the applet underneath keeps mirroring its inputs"
     );

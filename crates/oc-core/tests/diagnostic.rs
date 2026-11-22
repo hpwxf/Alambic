@@ -81,7 +81,7 @@ fn a_fresh_engine_starts_in_offset_mode_at_zero_volts() {
         report.elapsed_micros, 0,
         "the first tick has no predecessor"
     );
-    assert_eq!(report.cv_out, [0; 4]);
+    assert_eq!(engine.outputs(), [0; 4]);
     assert_eq!(engine.app::<DiagnosticApp>().mode(), OutputMode::Offset);
     assert_eq!(engine.app::<DiagnosticApp>().selected(), 0);
 }
@@ -97,22 +97,23 @@ fn known_input_levels_are_mirrored_on_the_matching_outputs() {
         analog_in.patch(CvChannel::Four, 1_234);
     }
 
-    let report = engine.tick();
+    engine.tick();
 
     // Channel one is selected, so it carries the offset (0 V) rather than its
     // input. The others mirror their input as the ADC reads it, clamped to the
     // output range: the outputs only go down to -3 V.
-    assert_eq!(report.cv_out[0], 0);
+    assert_eq!(engine.outputs()[0], 0);
     assert_eq!(
-        report.cv_out[1],
+        engine.outputs()[1],
         adc_reading(5_000),
         "+5 V is inside the output range"
     );
     assert_eq!(
-        report.cv_out[2], CV_OUT_MIN_MV,
+        engine.outputs()[2],
+        CV_OUT_MIN_MV,
         "-5 V must clamp to the output floor rather than wrap"
     );
-    assert_eq!(report.cv_out[3], adc_reading(1_234));
+    assert_eq!(engine.outputs()[3], adc_reading(1_234));
 }
 
 #[test]
@@ -440,8 +441,8 @@ fn the_ramp_sweeps_the_whole_output_range_and_stays_in_bounds() {
     // A little over one full 2 s period at 1 kHz.
     for _ in 0..2_200 {
         engine.clock().advance(1_000);
-        let report = engine.tick();
-        for level in report.cv_out {
+        engine.tick();
+        for level in engine.outputs() {
             assert!(
                 (CV_OUT_MIN_MV..=CV_OUT_MAX_MV).contains(&level),
                 "the ramp left the output range at {level} mV"
@@ -464,10 +465,10 @@ fn the_four_ramp_channels_are_a_quarter_period_apart() {
     tap(&mut engine, Button::Up);
 
     engine.clock().advance(1_000);
-    let report = engine.tick();
+    engine.tick();
     let span = CV_OUT_MAX_MV - CV_OUT_MIN_MV;
     for index in 0..3 {
-        let step = report.cv_out[index + 1] - report.cv_out[index];
+        let step = engine.outputs()[index + 1] - engine.outputs()[index];
         let expected = span / 4;
         let normalised = step.rem_euclid(span);
         assert!(
@@ -564,7 +565,7 @@ fn the_screen_can_be_redrawn_less_often_than_the_signal_path_runs() {
         let report = engine.tick();
         rendered += u32::from(report.rendered);
         // Whatever the redraw rate, the outputs are refreshed every tick.
-        assert_eq!(report.cv_out[1], adc_reading(1_500));
+        assert_eq!(engine.outputs()[1], adc_reading(1_500));
     }
 
     assert_eq!(rendered, 5);

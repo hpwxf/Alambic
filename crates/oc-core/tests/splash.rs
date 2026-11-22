@@ -31,7 +31,7 @@ fn a_fresh_engine_shows_the_banner_and_holds_the_outputs_at_rest() {
     }
 
     let report = engine.tick();
-    assert_eq!(report.cv_out, [0; 4], "the outputs must stay at rest");
+    assert_eq!(engine.outputs(), [0; 4], "the outputs must stay at rest");
     assert!(report.rendered);
 
     let frame = engine.frame().clone();
@@ -81,10 +81,11 @@ fn inputs_are_ignored_until_the_animation_completes() {
 
     run_ticks(&mut engine, 1);
     engine.clock().advance(1_000);
-    let report = engine.tick();
+    engine.tick();
 
     assert_eq!(
-        report.cv_out[1], 5_000,
+        engine.outputs()[1],
+        5_000,
         "normal execution begins once the border has fully traced"
     );
     assert_eq!(engine.app::<DiagnosticApp>().mode(), OutputMode::Offset);
@@ -125,9 +126,10 @@ fn resetting_a_booted_engine_plays_the_animation_again() {
         "reset restores the default applet state"
     );
 
-    let report = engine.tick();
+    engine.tick();
     assert_eq!(
-        report.cv_out, [0; 4],
+        engine.outputs(),
+        [0; 4],
         "a reset engine boots again before resuming normal execution"
     );
 }
@@ -141,8 +143,8 @@ fn skipping_the_splash_screen_starts_normal_execution_immediately() {
         analog_in.patch(CvChannel::Three, -1_000);
     }
 
-    let report = engine.tick();
-    assert_eq!(report.cv_out[2], adc_reading(-1_000));
+    engine.tick();
+    assert_eq!(engine.outputs()[2], adc_reading(-1_000));
 }
 
 #[test]

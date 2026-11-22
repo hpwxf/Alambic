@@ -79,7 +79,8 @@ fn tone() -> MockEngine {
 fn the_engine_publishes_the_tones_and_samples_them_once_a_tick() {
     let mut engine = tone();
     engine.clock().advance(1_000);
-    let first = engine.tick().cv_out;
+    engine.tick();
+    let first = engine.outputs();
     assert_eq!(
         first[..3],
         [0, 0, 0],
@@ -91,7 +92,8 @@ fn the_engine_publishes_the_tones_and_samples_them_once_a_tick() {
     };
     assert_eq!(played.frequency, frequency(REFERENCE_NOTE, 0));
     engine.clock().advance(1_000);
-    assert_ne!(engine.tick().cv_out[0], 0, "the sine moves on");
+    engine.tick();
+    assert_ne!(engine.outputs()[0], 0, "the sine moves on");
 }
 
 #[test]
@@ -99,8 +101,8 @@ fn a_probe_holds_an_output_over_the_tone() {
     let mut engine = tone();
     engine.force_output(CvChannel::Two, Some(1_234));
     engine.clock().advance(1_000);
-    let report = engine.tick();
-    assert_eq!(report.cv_out[1], 1_234);
+    engine.tick();
+    assert_eq!(engine.outputs()[1], 1_234);
     // Held over the sound, which plays on beneath (journal/D-044).
     assert_eq!(engine.params().held[1], Some(1_234));
     let channels = engine.params().as_basic().unwrap().channels;
@@ -117,10 +119,10 @@ fn every_cv_applet_publishes_held_levels() {
         settings.startup_app = app;
         engine.apply_settings(settings);
         engine.clock().advance(1_000);
-        let report = engine.tick();
+        engine.tick();
         assert_eq!(
             *engine.params(),
-            Params::levels(report.cv_out),
+            Params::levels(engine.outputs()),
             "{app:?} holds what it writes"
         );
     }
