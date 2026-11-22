@@ -22,7 +22,7 @@ use crate::audio::wave::{ONE, Waveform};
 use crate::fixed;
 use crate::fmt::{TextBuf, write_volts};
 use crate::framebuffer::{FrameBuffer, ROW_HEIGHT, WIDTH_I32};
-use crate::gfx::controls::scroll_track;
+use crate::gfx::controls::{LIST_LEFT, SCROLL_WIDTH, row_highlight, scroll_track};
 use crate::gfx::{self, Ink, Point};
 use crate::modulation::editor::Param;
 use crate::modulation::slots::Modulations;
@@ -97,12 +97,6 @@ const VALUE_RIGHT: i32 = 98;
 /// Rows under the title the scroll bar's place spans, above the waveforms'
 /// labels.
 const SETTING_ROWS: i32 = 4;
-
-/// Width of the scroll bar's place left of the settings.
-const SCROLL_WIDTH: i32 = 3;
-
-/// Left edge of the settings' rows, right of the scroll bar and a gap.
-const ROW_LEFT: i32 = SCROLL_WIDTH + 1;
 
 /// What `TONE` is set by (journal/D-043), one per [`Setting`]: the note and
 /// the peak level, in millivolts, read as volts.
@@ -321,7 +315,7 @@ impl ToneApp {
         );
         for (row, setting) in (1..).zip(Setting::ALL) {
             let top = row * ROW_HEIGHT;
-            text::draw(frame, setting.label(), Point::new(ROW_LEFT + 1, top), lit);
+            text::draw(frame, setting.label(), Point::new(LIST_LEFT + 1, top), lit);
             let assign = self.assign(setting);
             // A setting that follows its input has no use for the panel's
             // value: its input stands in its place.
@@ -333,14 +327,7 @@ impl ToneApp {
             assign.write(&mut name);
             text::draw(frame, name.as_str(), Point::new(last - 1, top), right);
             if setting == self.selected() {
-                gfx::fill_rect(
-                    frame,
-                    ROW_LEFT,
-                    top,
-                    WIDTH_I32 - ROW_LEFT,
-                    ROW_HEIGHT,
-                    Ink::Invert,
-                );
+                row_highlight(frame, top, ROW_HEIGHT, Ink::Invert);
             }
         }
 
@@ -578,9 +565,9 @@ fn level_text(level: MilliVolts) -> TextBuf<16> {
 #[cfg(test)]
 mod tests {
     use super::{
-        AMPLITUDE_STEP_MV, DEFAULT_AMPLITUDE_MV, HIGHEST_NOTE, LOWEST_NOTE, MAX_AMPLITUDE_MV,
-        NOTE_SWEEP, ROW_LEFT, SET_NOTE, Setting, ToneApp, frequency, frequency_from, level_from,
-        note_name,
+        AMPLITUDE_STEP_MV, DEFAULT_AMPLITUDE_MV, HIGHEST_NOTE, LIST_LEFT, LOWEST_NOTE,
+        MAX_AMPLITUDE_MV, NOTE_SWEEP, SET_NOTE, Setting, ToneApp, frequency, frequency_from,
+        level_from, note_name,
     };
     use crate::apps::{InputSnapshot, TickContext};
     use crate::audio::basic::{Channel, Tone};
@@ -684,7 +671,7 @@ mod tests {
         let lit_in_row = |tone: &ToneApp, row: i32| {
             let mut frame = FrameBuffer::new();
             tone.render(&mut frame, &TickContext::default());
-            (ROW_LEFT..ROW_LEFT + 4)
+            (LIST_LEFT..LIST_LEFT + 4)
                 .filter(|&x| frame.pixel(x, row * ROW_HEIGHT))
                 .count()
         };

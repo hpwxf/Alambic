@@ -203,12 +203,7 @@ pub fn scroll_bar(
     page: usize,
     pages: usize,
 ) {
-    let pages = i32::try_from(pages.max(1)).unwrap_or(1);
-    let page = i32::try_from(page).unwrap_or(0).min(pages - 1);
-    scroll_track(frame, x, y, width, height);
-    let top = y + page * height / pages;
-    let bottom = y + (page + 1) * height / pages;
-    fill_rect(frame, x, top, width, bottom - top, Ink::Lit);
+    scroll_window(frame, x, y, width, height, page, 1, pages.max(1));
 }
 
 /// A scroll bar for a list of `total` items of which `shown`, from `first`,
