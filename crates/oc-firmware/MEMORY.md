@@ -64,7 +64,9 @@ stay in DTCM) is recorded in journal/D-038.
 Run `cargo xtask size` for the current figures. That command prints a selective
 section table (runtime sections only — DWARF is omitted on purpose) and runs an
 automated layout checklist; it exits non-zero if any hard placement invariant
-fails. The flash *loadable* size is reported separately by
+fails. Its budgets come from the bank split the image applies (the
+`__flexram_config` symbol), not from the table above, and it warns when less
+than 16 KiB of ITCM is left. The flash *loadable* size is reported separately by
 `cargo xtask flash --dry-run`, not by the naive `llvm-size` total.
 
 ## Stack overflow protection

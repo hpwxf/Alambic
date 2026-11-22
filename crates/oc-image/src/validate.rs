@@ -61,30 +61,18 @@ pub const FCB_TAG: [u8; 4] = *b"FCFB";
 /// Instruction Tightly Coupled Memory on the i.MX RT1062.
 ///
 /// Address window: `0x0000_0000`..`0x0008_0000` — exclusive end **`0x0008_0000`**,
-/// i.e. a **512 KiB** maximum aperture. On the Teensy 4.0 BSP `FlexRAM` split
-/// only [`ITCM_USABLE`] is actually backed for `.text`; anything past the
-/// configured banks faults even if it still falls inside this window.
+/// i.e. a **512 KiB** maximum aperture. Only the `FlexRAM` banks the image
+/// gives ITCM are backed; anything past them faults even if it still falls
+/// inside this window. `cargo xtask size` reads that split from the ELF.
 pub const ITCM: Range<u32> = 0x0000_0000..0x0008_0000;
-
-/// Usable ITCM on the Teensy 4.0 BSP `FlexRAM` split (6 × 32 KiB banks).
-///
-/// Hard size budget for `.text`: **192 KiB**. The address aperture
-/// ([`ITCM`]) is larger (512 KiB) but unbacked banks fault on access.
-pub const ITCM_USABLE: u64 = 192 * 1024;
 
 /// Data Tightly Coupled Memory on the i.MX RT1062.
 ///
 /// Address window: `0x2000_0000`..`0x2008_0000` — exclusive end **`0x2008_0000`**,
-/// i.e. a **512 KiB** maximum aperture. On the Teensy 4.0 BSP `FlexRAM` split
-/// only [`DTCM_USABLE`] is backed for `.stack`, `.vector_table`, `.data` and
-/// `.bss` combined.
+/// i.e. a **512 KiB** maximum aperture. Only the `FlexRAM` banks the image
+/// gives DTCM are backed, shared by `.stack`, `.vector_table`, `.data` and
+/// `.bss`; `cargo xtask size` reads that split from the ELF.
 pub const DTCM: Range<u32> = 0x2000_0000..0x2008_0000;
-
-/// Usable DTCM on the Teensy 4.0 BSP `FlexRAM` split (10 × 32 KiB banks).
-///
-/// Hard combined size budget for `.stack` + `.vector_table` + `.data` +
-/// `.bss`: **320 KiB**. The address aperture ([`DTCM`]) is larger (512 KiB).
-pub const DTCM_USABLE: u64 = 320 * 1024;
 
 /// On-chip RAM window used for rodata / heap on this firmware.
 ///

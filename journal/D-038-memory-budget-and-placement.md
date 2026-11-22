@@ -6,7 +6,7 @@
 | **Date** | 2026-11-18 |
 | **Auteur** | Pascal Havé |
 | **Statut** | adoptée, révisée |
-| **Commits** | ce commit (ADR seul, aucun code) ; révision : profondeur de la pile estimée par `cargo xtask size`, moteur hors de la pile, `main` coupé en `boot` et `run` |
+| **Commits** | `0438059` (ADR seul, aucun code) ; révisions : profondeur de la pile estimée par `cargo xtask size`, moteur hors de la pile, `main` coupé en `boot` et `run` ; seuil de l'ITCM dans `xtask size` |
 | **Relations** | précise D-004 (script de lien généré par `imxrt-rt`, disposition vérifiée par `cargo xtask size`) ; DMA et anneau du DAC (D-033) ; tampons de mesure à venir (capture du signal par la sonde, D-029) ; firmware de test par feature (`settings-stress`, D-028) ; applets résidents (D-021) |
 
 ## 1. Contexte
@@ -230,3 +230,20 @@ l'ordre de grandeur des écarts dus au code produit. `update` est deux fois plus
 identiques : plus de ticks prennent le chemin court. La cause n'est pas établie (le code d'`oc-core` est le même dans
 les deux images ; reste ce que l'optimiseur fait de la boucle autour).
 
+
+## Révision (2026-11-22) — le seuil de l'ITCM surveillé par `cargo xtask size`
+
+Le seuil de §5 (moins de 16 Kio d'ITCM libres) n'était relevé par aucun outil : `text-itcm` restait `pass` jusqu'au
+dernier octet, et les budgets affichés (192 et 320 Kio) étaient des constantes d'`oc-image` copiées du choix du BSP.
+Un essai (2026-11-22, `.text` rempli par une `static` placée dans `.text.itcm_fill`) a montré que le dépassement
+lui-même n'est pas un danger : à l'octet près, l'éditeur de liens refuse l'image
+(`section '.text' will not fit in region 'ITCM': overflowed by 4 bytes`), et une ITCM remplie exactement passe tous
+les contrôles. Ce qui manquait, c'était le préavis.
+
+Décidé : `cargo xtask size` lit le partage réellement appliqué dans l'ELF, le symbole absolu `__flexram_config` que
+le script de `imxrt-rt` définit et que son code de démarrage écrit dans `GPR17` (deux bits par banc), au lieu de le
+supposer. Les budgets d'ITCM et de DTCM en découlent ; ils suivront un repartage sans qu'on touche à l'outil.
+`text-itcm` passe à `warn` sous 16 Kio libres, avec le renvoi à cette entrée, et à `FAIL` si `.text` dépasse les
+bancs alloués ; un contrôle `dtcm-budget` fait de même pour la fin des sections de la DTCM. Un ELF sans
+`__flexram_config` est refusé : on ne vérifierait plus rien de sûr. Les constantes `ITCM_USABLE` et `DTCM_USABLE`
+d'`oc-image` disparaissent, l'outil web n'en faisait pas usage.
