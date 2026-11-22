@@ -294,7 +294,9 @@ where
             let mark = self.clock.fine_count();
             match self.screen {
                 Screen::Menu => self.menu.render(self.display.frame_mut()),
-                Screen::System => self.system.render(self.display.frame_mut()),
+                Screen::System => self
+                    .system
+                    .render(self.display.frame_mut(), self.splash.build_id()),
                 Screen::Calibration => self.wizard.render(self.display.frame_mut()),
                 Screen::App | Screen::Splash => {
                     self.apps.render(self.display.frame_mut(), &context);
@@ -482,10 +484,11 @@ where
         self.profile.record(stage, fine);
     }
 
-    /// Sets the build identifier drawn under the version on the splash screen
-    /// (short commit hash, `-dirty` if the tree differed). Each backend passes
-    /// the `OC_BUILD_ID` its build script computed (journal/D-025); it
-    /// survives [`Self::reset`].
+    /// Sets the build identifier drawn under the version on the splash screen,
+    /// and after it in the title of the settings screen (short commit hash,
+    /// `-dirty` if the tree differed). Each backend passes the `OC_BUILD_ID`
+    /// its build script computed (journal/D-025); it survives
+    /// [`Self::reset`].
     pub const fn set_build_id(&mut self, build_id: &'static str) {
         self.splash.set_build_id(build_id);
     }
