@@ -39,7 +39,7 @@ use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::ptr;
 
 use oc_core::Engine;
-use oc_core::apps::sound::Voice;
+use oc_core::apps::sound::Player;
 use oc_core::framebuffer::LEN as FRAMEBUFFER_LEN;
 use oc_core::platform::{
     BUTTONS, Button, CV_CHANNELS, CvChannel, ENCODERS, MilliVolts, TRIGGER_CHANNELS, TriggerChannel,
@@ -79,9 +79,10 @@ pub struct OcEngine {
     /// pulse between two ticks must still reach it, as the module's edge
     /// capture does (journal/D-019).
     trigger_seen: [bool; TRIGGER_CHANNELS],
-    /// Renders the engine's output parameters at Rack's sample rate
-    /// (journal/D-033): [`oc_engine_audio`].
-    voice: Voice,
+    /// Plays the engine's output parameters at Rack's sample rate, prepared
+    /// again only when they change (journal/D-033, D-040):
+    /// [`oc_engine_audio`].
+    player: Player,
 }
 
 /// The voice's rate until [`oc_engine_audio`] gives Rack's.
@@ -121,7 +122,7 @@ pub extern "C" fn oc_engine_new() -> *mut OcEngine {
         framebuffer: [0; FRAMEBUFFER_LEN],
         trigger_levels: [false; TRIGGER_CHANNELS],
         trigger_seen: [false; TRIGGER_CHANNELS],
-        voice: Voice::new(DEFAULT_SAMPLE_RATE_HZ),
+        player: Player::new(DEFAULT_SAMPLE_RATE_HZ),
     });
     built.map_or(ptr::null_mut(), |engine| Box::into_raw(Box::new(engine)))
 }
@@ -299,7 +300,7 @@ pub unsafe extern "C" fn oc_engine_reset(engine: *mut OcEngine) {
         engine.cv_out = [0; CV_CHANNELS];
         engine.framebuffer = [0; FRAMEBUFFER_LEN];
         engine.trigger_seen = engine.trigger_levels;
-        engine.voice = Voice::new(engine.voice.rate_hz());
+        engine.player = Player::new(engine.player.rate_hz());
     }));
 }
 
@@ -352,8 +353,9 @@ pub unsafe extern "C" fn oc_engine_tick(engine: *mut OcEngine, now_micros: u64) 
 ///
 /// The plugin calls it once per `process()`, after its ticks: a tone then
 /// plays at Rack's sample rate, while a held level reads back as the tick
-/// wrote it. A tone keeps its phase across ticks and rate changes. A rate of
-/// zero is taken as one.
+/// wrote it. The voice is prepared again only when the parameters change.
+/// A tone keeps its phase across ticks and rate changes. A rate of zero is
+/// taken as one.
 ///
 /// A null `engine` is a no-op.
 ///
@@ -367,11 +369,12 @@ pub unsafe extern "C" fn oc_engine_audio(engine: *mut OcEngine, sample_rate_hz: 
         let Some(engine) = (unsafe { as_mut(engine) }) else {
             return;
         };
-        if engine.voice.rate_hz() != sample_rate_hz.max(1) {
-            engine.voice.set_rate(sample_rate_hz);
+        if engine.player.rate_hz() != sample_rate_hz.max(1) {
+            engine.player.set_rate(sample_rate_hz);
         }
-        engine.voice.set_params(engine.engine.params());
-        engine.cv_out = engine.voice.next_sample();
+        engine.cv_out = engine
+            .player
+            .play(engine.engine.params_revision(), engine.engine.params());
     }));
 }
 

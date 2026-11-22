@@ -24,6 +24,10 @@ pub type Setup = audio::Setup<Sound>;
 /// The voice every backend runs.
 pub type Voice = audio::Voice<Sound>;
 
+/// The voice a backend plays the engine's outputs with, following its
+/// parameters (journal/D-040).
+pub type Player = audio::Player<Sound>;
+
 /// Every kind of sound this image's applets make.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Sound;

@@ -266,6 +266,46 @@ impl Follower {
     }
 }
 
+/// A voice that follows the parameters a publisher numbers: what a backend
+/// plays the engine's outputs with, at its own rate (journal/D-040).
+#[derive(Debug, Clone)]
+pub struct Player<G: Generator> {
+    voice: Voice<G>,
+    follower: Follower,
+}
+
+impl<G: Generator> Player<G> {
+    /// A player at `rate_hz` samples a second (at least one), every output
+    /// at rest until its first [`Self::play`].
+    #[must_use]
+    pub fn new(rate_hz: u32) -> Self {
+        Self {
+            voice: Voice::new(rate_hz),
+            follower: Follower::new(),
+        }
+    }
+
+    /// Samples a second.
+    #[must_use]
+    pub const fn rate_hz(&self) -> u32 {
+        self.voice.rate_hz()
+    }
+
+    /// Changes the rate, keeping the phases; the frequencies stay as they are.
+    pub fn set_rate(&mut self, rate_hz: u32) {
+        self.voice.set_rate(rate_hz);
+    }
+
+    /// One sample of every output of `params`, then advances; the voice is
+    /// prepared again only when `revision` moved on.
+    pub fn play(&mut self, revision: u32, params: &Params<G>) -> [MilliVolts; CV_CHANNELS] {
+        if let Some(setup) = self.follower.setup(revision, params, self.voice.rate_hz()) {
+            self.voice.apply(&setup);
+        }
+        self.voice.next_sample()
+    }
+}
+
 /// The phase a sample advances for `frequency` at `rate_hz`, held below half
 /// a turn: at or above half the rate, a tone would alias to another pitch.
 #[must_use]
@@ -295,7 +335,7 @@ pub(crate) fn scale(value: i32, amplitude: MilliVolts) -> MilliVolts {
 mod tests {
     use super::basic::{Basic, BasicParams, Channel, Tone};
     use super::wave::Waveform;
-    use super::{Follower, Params, Setup, Voice, phase_step};
+    use super::{Follower, Params, Player, Setup, Voice, phase_step};
 
     type BasicVoice = Voice<Basic>;
 
@@ -372,6 +412,19 @@ mod tests {
         assert!(follower.setup(8, &params, 1_000).is_some(), "moved on");
         follower.forget();
         assert!(follower.setup(8, &params, 1_000).is_some(), "forgotten");
+    }
+
+    #[test]
+    fn a_player_plays_what_a_voice_given_the_params_plays() {
+        let mut player = Player::<Basic>::new(47_619);
+        let mut voice = BasicVoice::new(47_619);
+        for (revision, frequency) in [(1, 110_000), (2, 4_186_000), (3, 220_000)] {
+            let params = with(0, tone(Waveform::Sine, frequency, 1_000));
+            voice.set_params(&params);
+            for _ in 0..500 {
+                assert_eq!(player.play(revision, &params), voice.next_sample());
+            }
+        }
     }
 
     #[test]
