@@ -231,7 +231,9 @@ pub const INPUT_FIELDS: [&str; 6] = ["input", "scale", "shift", "min", "max", "e
 /// The field's name and what it takes, when `text` is not that.
 pub fn parse_input_field(mut assign: Assign, field: &str, text: &str) -> Result<Assign, String> {
     let lower = text.to_ascii_lowercase();
-    let volts = || fixed(text, 3).ok_or_else(|| format!("{field}: volts, as -2.5"));
+    // As the submenu writes them, `+0.25V` and `x0.50` read back.
+    let volts =
+        || fixed(lower.trim_end_matches('v'), 3).ok_or_else(|| format!("{field}: volts, as -2.5"));
     match field.to_ascii_lowercase().as_str() {
         "input" => {
             assign.input = match lower.trim_start_matches("cv") {

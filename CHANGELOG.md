@@ -19,7 +19,10 @@ Architectural decisions behind each change are in `journal/` (French).
   shows each assignable parameter's input as its submenu writes it, and
   `cargo probe assign supersaw detune input=cv2 effect=add scale=0.5` sets
   it field by field, within the submenu's bounds; `--center 5` fits the
-  scale and shift to what the input carries, as `CENTER` does. Probe
+  scale and shift to what the input carries, as `CENTER` does. In the
+  browser tool, each such setting has a button showing its input as the
+  module's screen marks it (`+CV2`), which opens the same panel for every
+  setting of every app: the submenu's fields, each set at once. Probe
   protocol 8.
 - The simulator's status line now lists the running applet's parameters
   and what it plays, from the same model.

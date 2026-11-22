@@ -5,7 +5,11 @@
 //! `oc-probe`'s own code, the command line's, so the page shows and accepts
 //! what `cargo probe` does.
 
-use oc_probe::apps::{edit_text, parse_value, value_text};
+use oc_core::fmt::TextBuf;
+use oc_core::modulation::AssignLine;
+use oc_probe::apps::{
+    INPUT_FIELDS, edit_text, input_text, parse_input_field, parse_value, value_text,
+};
 use oc_probe::client::{AppDescription, AppEntry, InputEntry, SpecEntry};
 use oc_protocol::{Group, ParamKind, ParamValue, Request};
 use wasm_bindgen::prelude::wasm_bindgen;
@@ -293,6 +297,95 @@ impl AppView {
         param(&self.description, at).is_some_and(|spec| spec.assignable)
     }
 
+    /// The CV input of parameter `at` as the module's main screen marks it
+    /// (`+CV2`), `CV` while it takes none yet, empty for a parameter that
+    /// takes none: what opens its input panel.
+    #[must_use]
+    pub fn input_mark(&self, at: usize) -> String {
+        let Some(spec) = param(&self.description, at).filter(|spec| spec.assignable) else {
+            return String::new();
+        };
+        let mut mark = TextBuf::<8>::new();
+        if let Some(input) = &spec.input {
+            input.assign.write(&mut mark);
+        }
+        if mark.as_str().is_empty() {
+            "CV".to_owned()
+        } else {
+            mark.as_str().to_owned()
+        }
+    }
+
+    /// The CV input of parameter `at` on one line, as `cargo probe assign`
+    /// prints it; empty for a parameter that takes none.
+    #[must_use]
+    pub fn input_text(&self, at: usize) -> String {
+        input(&self.description, at).map_or_else(String::new, |input| input_text(&input.assign))
+    }
+
+    /// The fields of an input panel, the same for every assignable
+    /// parameter of every applet (journal/D-045): `input`, `scale`,
+    /// `shift`, `min`, `max`, `effect`.
+    #[must_use]
+    pub fn input_fields() -> Vec<String> {
+        INPUT_FIELDS.iter().map(|&field| field.to_owned()).collect()
+    }
+
+    /// Field `field` of parameter `at`'s input as the module's submenu
+    /// writes it (`x0.50`, `+0.25V`, `ADD`), which reads back as typed.
+    #[must_use]
+    pub fn input_field_text(&self, at: usize, field: &str) -> String {
+        let Some((input, line)) = input(&self.description, at).zip(input_line(field)) else {
+            return String::new();
+        };
+        input.assign.field(line).as_str().to_owned()
+    }
+
+    /// The values field `field` takes when it is a list (`--`, `CV1`… for
+    /// the input; `SET`, `ADD`, `MUL` for the effect), empty when it is
+    /// typed.
+    #[must_use]
+    pub fn input_choices(field: &str) -> Vec<String> {
+        let names: &[&str] = match field {
+            "input" => &["--", "CV1", "CV2", "CV3", "CV4"],
+            "effect" => &["SET", "ADD", "MUL"],
+            _ => &[],
+        };
+        names.iter().map(|&name| name.to_owned()).collect()
+    }
+
+    /// The request that sets field `field` of parameter `at`'s input to
+    /// what `text` says, the other fields kept, as `cargo probe assign`
+    /// reads it.
+    ///
+    /// # Errors
+    ///
+    /// What the text should have looked like, or a parameter without an
+    /// input.
+    pub fn assign_request(&self, at: usize, field: &str, text: &str) -> Result<Vec<u8>, String> {
+        let spec = param(&self.description, at).ok_or("no such parameter")?;
+        let input = spec.input.ok_or("it takes no CV input")?;
+        let assign = parse_input_field(input.assign, field, text)?;
+        Ok(frame(&Request::SetAssign {
+            app: self.app,
+            param: spec.index,
+            assign,
+        }))
+    }
+
+    /// Takes the input the module answered for parameter `at` and keeps
+    /// it; its text, or an empty one if the message carried none.
+    pub fn absorb_input(&mut self, at: usize, message: &Message) -> String {
+        let Some(Applet::Input(_, input)) = message.applet else {
+            return String::new();
+        };
+        let Some(spec) = self.description.params.get_mut(at) else {
+            return String::new();
+        };
+        spec.input = Some(input);
+        input_text(&input.assign)
+    }
+
     /// The request that sets parameter `at` to what `text` says, as
     /// `cargo probe set` reads it.
     ///
@@ -399,6 +492,23 @@ impl AppView {
 
 fn param(description: &AppDescription, at: usize) -> Option<&SpecEntry> {
     description.params.get(at)
+}
+
+fn input(description: &AppDescription, at: usize) -> Option<&InputEntry> {
+    param(description, at).and_then(|spec| spec.input.as_ref())
+}
+
+/// The submenu's field a panel field names.
+fn input_line(field: &str) -> Option<AssignLine> {
+    Some(match field {
+        "input" => AssignLine::Input,
+        "scale" => AssignLine::Scale,
+        "shift" => AssignLine::Shift,
+        "min" => AssignLine::Min,
+        "max" => AssignLine::Max,
+        "effect" => AssignLine::Effect,
+        _ => return None,
+    })
 }
 
 fn observable(description: &AppDescription, at: usize) -> Option<&SpecEntry> {
@@ -565,5 +675,66 @@ mod tests {
         assert_eq!(view.absorb_observed(0, &rate[0]), "--");
         module.send(&view.select_request());
         assert_eq!(module.engine.current_app(), AppId::Ratchet);
+    }
+
+    #[test]
+    fn every_input_panel_shows_and_sets_its_fields_as_the_command_line_does() {
+        use oc_core::apps::supersaw::{Setting, SupersawApp};
+        use oc_core::platform::CvChannel;
+        use oc_protocol::Effect;
+
+        let mut module = Module::new();
+        let supersaw = u8::try_from(AppId::Supersaw.index()).unwrap();
+        let mut view = AppView::new(supersaw);
+        for message in module.send(&view.describe_request()) {
+            if view.absorb(&message) {
+                break;
+            }
+        }
+        assert!(!view.broken());
+        assert_eq!(view.param_name(0), "NOTE");
+        assert_eq!(view.input_mark(0), "+CV1", "CV1 on NOTE at start");
+        assert_eq!(view.input_mark(1), "CV", "DETUNE takes one, none yet");
+        let stereo = view.param_count() - 1;
+        assert_eq!(view.input_mark(stereo), "", "STEREO takes none");
+        assert!(view.assign_request(stereo, "input", "cv2").is_err());
+
+        // Every field reads back as the panel shows it.
+        let fields = AppView::input_fields();
+        assert_eq!(fields, ["input", "scale", "shift", "min", "max", "effect"]);
+        for field in &fields {
+            let shown = view.input_field_text(0, field);
+            let request = view.assign_request(0, field, &shown).unwrap();
+            let [message] = module.send(&request).try_into().unwrap();
+            assert_eq!(
+                view.absorb_input(0, &message),
+                "CV1 x1.00 +0.00V -10.0..+10.0 ADD",
+                "{field} {shown}"
+            );
+        }
+        assert_eq!(AppView::input_choices("effect"), ["SET", "ADD", "MUL"]);
+        assert_eq!(AppView::input_choices("scale"), Vec::<String>::new());
+
+        for (field, text) in [("input", "CV3"), ("effect", "MUL"), ("shift", "+0.25V")] {
+            let request = view.assign_request(1, field, text).unwrap();
+            let [message] = module.send(&request).try_into().unwrap();
+            view.absorb_input(1, &message);
+        }
+        assert_eq!(view.input_mark(1), "*CV3");
+        assert_eq!(view.input_text(1), "CV3 x1.00 +0.25V -10.0..+10.0 MUL");
+        let detune = *module
+            .engine
+            .app::<SupersawApp>()
+            .assign(Setting::Detune)
+            .unwrap();
+        assert_eq!(
+            (detune.input, detune.effect, detune.shift_mv),
+            (Some(CvChannel::Three), Effect::Mul, 250)
+        );
+        assert!(
+            view.assign_request(1, "scale", "x2.5").is_ok(),
+            "the module refuses it, not the page"
+        );
+        assert!(view.assign_request(1, "gain", "1").is_err());
     }
 }

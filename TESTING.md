@@ -554,6 +554,16 @@ still takes a value.
 *BURST* sends a burst on B; *Read what it plays* reads `RATE` (`--` until
 `TR1` has had two edges) and `SENT`.
 
+CV inputs (journal/D-045): pick `SUPERSAW`. `NOTE`'s button reads `+CV1`,
+the others `CV`, `STEREO` has none. Open `DETUNE`'s: the panel shows
+`INPUT --`, `SCALE x1.00`, `SHIFT +0.00V`, `MIN -10.0`, `MAX +10.0`,
+`EFFECT ADD`. Choose `CV2`: the button reads `+CV2` and the module's screen
+marks `DETUNE` `+CV2` at once; type `x0.50` in `SCALE`, Enter: `set`;
+`-12` in `MIN`, Enter: `error`, refused (the submenu stops at −10 V), the
+field back at its value. Open the module's own submenu on `DETUNE`: the
+same fields. Do the same on one of `RATCHET`'s and one of `TONE`'s
+settings: the same panel.
+
 ### 9.2 — CV inputs
 
 For each of the four front-panel CV jacks in turn:

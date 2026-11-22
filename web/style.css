@@ -110,4 +110,6 @@ table.apps td { padding: 2px 10px 2px 0; vertical-align: middle; }
 table.apps input[type="text"] { width: 8em; }
 table.apps:empty, tbody:empty { display: none; }
 table.apps tr.inactive { opacity: 0.45; }
+table.apps tr.input-panel td { padding: 0 0 6px 1.5em; }
+table.apps input.input-field { width: 5em; }
 code { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 0.9em; }
