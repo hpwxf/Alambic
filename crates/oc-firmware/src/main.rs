@@ -84,7 +84,7 @@ use oc_drivers::shared_bus::SharedBus;
 use oc_drivers::ssd130x::Ssd130x;
 use oc_drivers::triggers::Triggers;
 use oc_protocol::server::{Identity, Server};
-use static_cell::ConstStaticCell;
+use static_cell::{ConstStaticCell, StaticCell};
 
 use crate::clock::SystemClock;
 use crate::cv_in::CvInputs;
@@ -98,13 +98,30 @@ use crate::usb::Usb;
 /// and Linux; messages logged later in `main` still go out during the loop.
 const USB_ENUMERATION_WAIT_MS: u32 = 1_000;
 
-/// The probe's session. Its queues are a few KiB: built in place in a
-/// static rather than on the 16 KiB stack, next to the engine.
+/// The probe's session. Its queues are a few KiB (≈ 4.5 KiB in all):
+/// built in place in a static, as [`ENGINE`] is, rather than on the 16 KiB
+/// stack (journal/D-038).
 static PROBE: ConstStaticCell<Server> = ConstStaticCell::new(Server::new(Identity {
     firmware: env!("CARGO_PKG_VERSION"),
     build: env!("OC_BUILD_ID"),
     can_reboot: false,
 }));
+
+/// The engine as this firmware composes it.
+type FirmwareEngine = Engine<
+    CvInputs,
+    audio::MutedOutputs,
+    Triggers<board::TriggerPin>,
+    Panel<bsp::hal::gpio::Input>,
+    SystemClock,
+    audio::MailboxDisplay,
+>;
+
+/// The engine: every applet, the framebuffer, the profile (≈ 3.5 KiB). In
+/// a static rather than on the 16 KiB stack, which the loop and every
+/// interrupt share and whose deepest path `cargo xtask size` watches
+/// (journal/D-038).
+static ENGINE: StaticCell<FirmwareEngine> = StaticCell::new();
 
 /// How long the boot check of the audio path watches it, in microseconds:
 /// a few thousand periods, short enough not to delay the start-up.
@@ -288,13 +305,11 @@ fn main() -> ! {
     log::info!("panel ok; entering 1 kHz loop");
     usb.poll();
 
-    let mut engine = Engine::new(
+    let engine = engine_in_static(
         cv_inputs,
-        audio::MutedOutputs,
         triggers,
         panel,
         SystemClock::new(gpt1, &mut cortex.DCB, &mut cortex.DWT),
-        audio::MailboxDisplay::new(),
     );
     engine.set_render_interval(board::RENDER_INTERVAL_TICKS);
     engine
@@ -367,7 +382,7 @@ fn main() -> ! {
             triggers.sample_capturing();
             panel.sample();
         }
-        record_since(&mut engine, Stage::Sample, mark);
+        record_since(engine, Stage::Sample, mark);
         // The interrupt plays the outputs; the engine renders no voice and
         // reports what it played (journal/D-040).
         engine.set_played(audio::played());
@@ -378,7 +393,7 @@ fn main() -> ! {
             engine.params(),
             &engine.calibration().outputs,
         );
-        record_since(&mut engine, Stage::Publish, mark);
+        record_since(engine, Stage::Publish, mark);
         if report.tick_count == AUDIO_REPORT_TICK {
             let since = audio::totals().since(boot_audio);
             log::info!(
@@ -393,7 +408,7 @@ fn main() -> ! {
             );
         }
         audio::drain_stats(engine.profile_mut());
-        probe.after_tick(&report, &mut engine);
+        probe.after_tick(&report, engine);
         if engine.take_save_request() {
             // Blocks for an erase now and then (tens of milliseconds); only
             // ever after an explicit SAVE on the settings screen. The boot
@@ -428,10 +443,10 @@ fn main() -> ! {
         // either has nothing queued or drops into a full ring buffer.
         let mark = engine.clock().fine_count();
         usb.poll();
-        usb.serve(probe, &mut engine);
-        record_since(&mut engine, Stage::Usb, mark);
+        usb.serve(probe, engine);
+        record_since(engine, Stage::Usb, mark);
         if probe.take_reboot_request() || usb.take_reboot_request() {
-            restart_into_loader(&mut usb, probe, &mut engine);
+            restart_into_loader(&mut usb, probe, engine);
         }
 
         // Cooperative pacing against the microsecond clock, on a fixed
@@ -459,7 +474,7 @@ fn main() -> ! {
                     break;
                 }
                 usb.poll();
-                usb.serve(probe, &mut engine);
+                usb.serve(probe, engine);
                 let took = engine.clock().now_micros() - before;
                 longest_poll_micros = longest_poll_micros.max(took);
             }
@@ -513,6 +528,28 @@ fn record_since<A, O, D, C, S>(
 {
     let fine = engine.clock().fine_count().wrapping_sub(mark);
     engine.profile_mut().record(stage, fine);
+}
+
+/// Builds the engine in [`ENGINE`], once. Not inlined: built in `main`,
+/// the value would keep its place on `main`'s frame for the whole loop,
+/// under every other call.
+#[inline(never)]
+fn engine_in_static(
+    cv_inputs: CvInputs,
+    triggers: Triggers<board::TriggerPin>,
+    panel: Panel<bsp::hal::gpio::Input>,
+    clock: SystemClock,
+) -> &'static mut FirmwareEngine {
+    ENGINE.init_with(|| {
+        Engine::new(
+            cv_inputs,
+            audio::MutedOutputs,
+            triggers,
+            panel,
+            clock,
+            audio::MailboxDisplay::new(),
+        )
+    })
 }
 
 /// Compile-time reminder that the engine drives exactly four channels.

@@ -94,3 +94,5 @@ calls followed, the deepest path from `main` plus that of every handler in
 the vector table, each with its exception frame. It fails past `.stack` and
 warns under 2 KiB of room, and prints the deepest path. It does not follow
 calls through a pointer (trait objects), which is what the margin is for.
+The engine and the probe's server live in statics (`ENGINE`, `PROBE` in
+`src/main.rs`) rather than on this stack.

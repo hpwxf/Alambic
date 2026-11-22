@@ -191,3 +191,9 @@ module divergent.
 chemin le plus profond) : mesure sur le module ; la marge sous 2 Kio durablement : réduire le cadre de `main` (le
 moteur et le serveur de la sonde hors de la pile) ou agrandir `.stack` (`TEENSY4_STACK_SIZE`), par révision de cette
 entrée.
+
+Suite, le même jour : le moteur (≈ 3,5 Kio : toutes les apps, le framebuffer, le profil) sort de la pile de `main`
+pour une `static` (`StaticCell`), construit par une fonction non inlinée pour que sa valeur temporaire ne reste pas sur
+le cadre de la boucle ; le serveur de la sonde y était déjà (`ConstStaticCell`). Cadre de `main` 9 776 → 6 120 o,
+estimation 16 064 → 12 336 o : `pass`, 4 048 o de marge ; `.bss` +4 Kio en DTCM.
+
