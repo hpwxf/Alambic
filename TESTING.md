@@ -506,6 +506,13 @@ With the module running and the USB cable on the Teensy (journal/D-029):
    set ratchet first 5000` prints `FIRST 2000 MS`, narrowed by `MODE FIRST`;
    `cargo probe act ratchet burst` sends a burst on B, as `up` does;
    `cargo probe get ratchet rate` reads `--` until `TR1` has had two edges.
+   CV inputs (journal/D-045): `cargo probe app supersaw` shows `CV CV1 x1.00
+   ...` on `NOTE`; `cargo probe assign supersaw detune input=cv2 effect=add`
+   prints `DETUNE CV CV2 x1.00 +0.00V -10.0..+10.0 ADD` and the screen shows
+   `+CV2` on `DETUNE` at once; with an LFO on CV2, `cargo probe assign
+   supersaw detune --center 5` sets the scale and shift that `CENTER` would,
+   and the submenu opened on the panel shows the same fields;
+   `cargo probe assign supersaw stereo` says it takes no CV input.
 7. `cargo probe reboot`, then `cargo xtask flash`: the flash goes through with
    no PROGRAM press.
 

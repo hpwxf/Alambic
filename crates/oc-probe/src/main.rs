@@ -126,6 +126,28 @@ enum Command {
         /// The applet: its name or its index.
         app: String,
     },
+    /// Reads the CV input of an applet's parameter, or sets it field by
+    /// field as its submenu does, and prints what it applied
+    /// (journal/D-045).
+    Assign(AssignArgs),
+}
+
+/// What `assign` reads or changes.
+#[derive(Debug, Args)]
+struct AssignArgs {
+    /// The applet: its name or its index.
+    app: String,
+    /// The parameter: its name or its index.
+    param: String,
+    /// Fields to change, as `field=value`: `input=cv2` (or `none`),
+    /// `effect=add` (`set`, `mul`), `scale=0.5`, `shift=-0.25`, `min=0`,
+    /// `max=5` (volts); the others are kept.
+    #[arg(allow_hyphen_values = true, value_name = "FIELD=VALUE")]
+    fields: Vec<String>,
+    /// Then fits the scale and shift to what the input carries over this
+    /// many seconds, as the submenu's `CENTER` does.
+    #[arg(long, value_name = "SECONDS")]
+    center: Option<u64>,
 }
 
 /// What `sweep` steps through.
@@ -218,7 +240,39 @@ fn main() -> anyhow::Result<()> {
             eprintln!("{} drives the outputs and the screen", app.name);
             Ok(())
         }
+        Command::Assign(args) => assign(&mut session, &args),
     }
+}
+
+/// Prints a parameter's CV input, after changing the fields given and
+/// fitting it to its signal when asked.
+fn assign(session: &mut Session, args: &AssignArgs) -> anyhow::Result<()> {
+    let (app, description) = described(session, &args.app)?;
+    let spec = apps::find_spec(&description.params, &args.param)
+        .with_context(|| format!("{} has no parameter {}", app.name, args.param))?;
+    let mut input = spec
+        .input
+        .with_context(|| format!("{} {} takes no CV input", app.name, spec.label))?;
+    if !args.fields.is_empty() {
+        let mut assign = input.assign;
+        for field in &args.fields {
+            let (name, text) = field
+                .split_once('=')
+                .with_context(|| format!("{field}: write it field=value"))?;
+            assign = apps::parse_input_field(assign, name, text).map_err(anyhow::Error::msg)?;
+        }
+        input = session.set_assign(app.index, spec.index, assign)?;
+    }
+    if let Some(seconds) = args.center {
+        session.stream(1)?;
+        eprintln!("reading the input for {seconds} s of the module's clock");
+        let samples = collect(session, seconds * 1_000_000)?;
+        session.stream(0)?;
+        let assign = apps::centered(&input, &samples).map_err(anyhow::Error::msg)?;
+        input = session.set_assign(app.index, spec.index, assign)?;
+    }
+    println!("{} CV {}", spec.label, apps::input_text(&input.assign));
+    Ok(())
 }
 
 /// The applet `query` names on the module.

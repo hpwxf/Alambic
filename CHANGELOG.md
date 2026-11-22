@@ -15,6 +15,12 @@ Architectural decisions behind each change are in `journal/` (French).
   `set`, `act` and `select` read, set (within the bounds the panel uses),
   trigger and pick one by name, as in `cargo probe set ratchet prob 50`.
   Probe protocol 7: a module and a host tool must be updated together.
+- **CV inputs through the probe** (journal/D-045): `cargo probe app`
+  shows each assignable parameter's input as its submenu writes it, and
+  `cargo probe assign supersaw detune input=cv2 effect=add scale=0.5` sets
+  it field by field, within the submenu's bounds; `--center 5` fits the
+  scale and shift to what the input carries, as `CENTER` does. Probe
+  protocol 8.
 - The simulator's status line now lists the running applet's parameters
   and what it plays, from the same model.
 - **An Apps panel in the browser tool**: the applets, the settings of the

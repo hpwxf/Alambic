@@ -11,11 +11,12 @@
 use std::fmt::Write as _;
 
 use oc_core::apps::param::{Unit, write_number};
-use oc_core::modulation::AssignLine;
+use oc_core::modulation::{AssignLine, CENTER_MIN_SPAN_MV, usable_range};
 use oc_core::platform::CvChannel;
-use oc_protocol::{Assign, Effect, ParamKind, ParamValue};
+use oc_protocol::{Assign, Effect, ParamKind, ParamValue, Sample};
 
-use crate::client::{AppDescription, AppEntry, SpecEntry};
+use crate::client::{AppDescription, AppEntry, InputEntry, SpecEntry};
+use crate::measure;
 
 /// A name as the user may type it: case and anything but letters and
 /// digits ignored, so `gfx-demo` finds `GFX DEMO`.
@@ -271,6 +272,35 @@ pub fn parse_input_field(mut assign: Assign, field: &str, text: &str) -> Result<
     Ok(assign)
 }
 
+/// `input` with the scale and shift that carry what its input read over
+/// `samples` onto the range its parameter can use, as the submenu's
+/// `CENTER` does with the readings it saw: the same
+/// [`Assign::center`], from the host's readings (journal/D-045).
+///
+/// # Errors
+///
+/// Without an input, a sweep, samples, or a signal that moves
+/// [`CENTER_MIN_SPAN_MV`] at least.
+pub fn centered(input: &InputEntry, samples: &[Sample]) -> Result<Assign, String> {
+    let mut assign = input.assign;
+    let channel = assign.input.ok_or("no input to fit: set one first")?;
+    let sweep = input.sweep.ok_or("the module gives no range for it")?;
+    let spread = measure::input_spread(samples).ok_or("no sample came")?;
+    let seen = &spread[channel.index()];
+    if assign.center(
+        (seen.min_mv, seen.max_mv),
+        usable_range(sweep, assign.effect),
+    ) {
+        Ok(assign)
+    } else {
+        Err(format!(
+            "CV{} moved {} mV, less than the {CENTER_MIN_SPAN_MV} mV CENTER needs",
+            channel.index() + 1,
+            seen.max_mv - seen.min_mv
+        ))
+    }
+}
+
 /// The parameters whose value differs from `before` to `after`, but for
 /// `except` (the one just set), as `NAME value` with their new value: what
 /// a set moved besides itself (journal/D-043).
@@ -502,5 +532,46 @@ mod tests {
         assert!(find_spec(&list, "passthru").is_some());
         assert!(find_spec(&list, "0").is_some());
         assert!(find_spec(&list, "pass").is_none());
+    }
+
+    #[test]
+    fn centring_carries_the_signal_read_onto_the_parameters_sweep() {
+        use oc_core::platform::CvChannel;
+        use oc_protocol::{Assign, Effect, Sample};
+
+        use super::centered;
+        use crate::client::InputEntry;
+
+        let input = InputEntry {
+            assign: Assign {
+                input: Some(CvChannel::Two),
+                effect: Effect::Set,
+                ..Assign::NONE
+            },
+            sweep: Some((0, 4_000)),
+        };
+        // CV2 swings from 1 V to 3 V; the other inputs do not matter.
+        let samples: Vec<Sample> = (0..=20)
+            .map(|step| Sample {
+                cv_in: [5_000, 1_000 + step * 100, -3_000, 0],
+                ..Sample::default()
+            })
+            .collect();
+        let assign = centered(&input, &samples).unwrap();
+        assert_eq!(
+            assign.shape(1_000),
+            0,
+            "the lowest reading at the sweep's start"
+        );
+        assert_eq!(assign.shape(3_000), 4_000, "the highest at its end");
+
+        let still = vec![Sample::default(); 5];
+        assert!(centered(&input, &still).unwrap_err().contains("moved 0 mV"));
+        let unplugged = InputEntry {
+            assign: Assign::NONE,
+            ..input
+        };
+        assert!(centered(&unplugged, &samples).is_err());
+        assert!(centered(&input, &[]).is_err());
     }
 }
