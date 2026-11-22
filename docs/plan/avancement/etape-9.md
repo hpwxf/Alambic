@@ -41,5 +41,7 @@ ouverte en chemin). Valeurs mesurées sur un module : indicatives.
 
 ## Réserves
 
-* L'écoute comparée des deux bancs aux notes basses n'a pas été faite avant le retrait.
-* La voix du moteur (1 kHz) et `audio::Publisher` préparent toujours chacune un `Setup` quand les paramètres changent.
+* L'écoute comparée des deux bancs aux notes basses n'a pas été faite avant le retrait ; le banc `f32` seul a été
+  écouté sur le module par l'utilisateur après, sans remarque.
+* Le double `Setup` de la boucle (la voix du moteur et `audio::Publisher`) est levé à l'étape 11 (lot 11e,
+  `c339f5c`) : le moteur ne rend plus de voix (D-040, révision du 2026-11-22).

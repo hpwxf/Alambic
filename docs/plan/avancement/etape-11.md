@@ -13,6 +13,7 @@ le banc). Étape 2 de la trajectoire de D-043. Valeurs mesurées sur un module :
 | 11b | `13d85a6`, `c1ae6d5` | `cargo probe stats` sur le module, avec et sans modulation ; D-044 adoptée, D-033 et D-037 révisées ; cet avancement |
 | 11c | `9eda318`, `2895915` | étape `publish` au profil (protocole 7) : `audio::publish` échappait à la mesure ; le `Setup` du Supersaw ne prépare plus que le banc choisi (révision de D-039) ; bancs criterion `voice/supersaw_setup`, `supersaw_f32_setup` |
 | 11d | `666ea74`, `f162933`, `a487802`, ce commit | `scripts/profile-supersaw.sh` ; `Engine::params_revision` et `audio::Publisher` : un tick inchangé ne compare plus les `Params` sous section critique (révision de D-040) ; `fixed::div_wide`, 64 bits divisés par 32 avec le diviseur 32 bits du cœur, pour les inverses, `phase_step`, les normaliseurs et `lead` |
+| 11e | `178002f`, `0a3fb97`, `b3eed29`, `d554a9f`, `c339f5c`, ce commit | le moteur ne rend plus de voix : chaque backend joue la sienne (`audio::Player` ; l'interruption du module), rapportée par `Engine::write_outputs` ou `Engine::set_played` ; un `audio::Follower` partagé avec `audio::Publisher` décide quand préparer, un seul `Setup` par changement (révision de D-040) ; en cinq temps : l'ADR, `Follower` (et `Publisher`), `Player` (et Rack), les sorties du `MockEngine` lues à part, puis le moteur sans voix |
 
 ## Mesures
 
@@ -87,11 +88,35 @@ le banc). Étape 2 de la trajectoire de D-043. Valeurs mesurées sur un module :
     sur la page 2 dans ceux de l'utilisateur ; identique en `2895915`, `f162933` et `a487802`. `tick` max ≈ 120 µs
     en découle.
 
+* **Module après 11e** (`SUPERSAW`, `NOTE` sous le bruit de CV1, `DETUNE` fixe, `MIX` 50 %, `SHAPE` 25 %, `STEREO
+  ON`, page 1 ; `scripts/profile-supersaw.sh`, 10 s), moyennes en µs :
+
+  | Étape | `db252e8` | premier essai | `c339f5c` |
+  |---|---|---|---|
+  | `update` | 8,39 | 2,04 | **2,05** |
+  | `outputs` | — | 2,72 | absente |
+  | `publish` | 7,41 | 4,80 | 4,98 |
+  | `update` + `outputs` + `publish` | 16,7 | 9,6 | **7,0** |
+  | `tick` (max) | 21,06 | 16,41 | **15,02** (108) |
+  | `voice` / `voice_params` | 1,04 / 0,34 | 1,03 / 0,35 | 0,98 / 0,33 |
+  | `audio` | 3,95 | 3,94 | 3,87 |
+
+  Le premier essai coupait seulement la voix du moteur du module (`play_elsewhere`), qui écrivait encore ses sorties
+  muettes ; `c339f5c` ne les écrit plus : `tick` −6,0 µs contre `db252e8`. `voice` −0,05 µs, `next_sample` étant
+  désormais intégré à l'interruption, à la limite de la dispersion ; `render` 93,0 µs (page 1), trame 1 345 µs,
+  inchangés.
+* **Code 11e** (`cargo xtask size`, contre `80ac02d`) : `.text` +544 o ; `Voice::next_sample`, que seule
+  l'interruption appelle désormais, y est intégré (`DMA0_DMA16` +3,2 Kio, la fonction −3,3 Kio).
+* **Écoute 11e** : les voix de `SUPERSAW` écoutées sur le module par l'utilisateur, sans remarque, sur la forme
+  précédente du lot (le moteur sans voix, `Publisher` sans `Follower` : même chemin du module) ; `c339f5c` flashé et
+  mesuré ensuite (relevé fait sur le même code, aux commentaires près). `cargo probe stream` montrait, dès le premier
+  essai, les échantillons de l'interruption (`DIAGNOSTIC` recopie ses entrées, `SUPERSAW` A / B en stéréo, C à la
+  sous-octave, D à 0 V).
+
 ## Réserves
 
-
-* La voix du moteur (1 kHz) et `audio::publish` préparent toujours chacune un `Setup` quand les paramètres changent.
-
+* Levée (11e) : la voix du moteur (1 kHz) et `audio::Publisher` préparaient chacune un `Setup` quand les paramètres
+  changent ; le moteur ne rend plus de voix (D-040, révision du 2026-11-22).
 * La composition (`apps/sound.rs`) est écrite à la main ; une macro si la liste des générateurs s'allonge.
 * Un générateur à la fois : plusieurs emplacements et un routage vers les sorties attendent plusieurs apps sonores
   simultanées (étapes 3 et 5 de D-043).
