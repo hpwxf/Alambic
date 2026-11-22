@@ -8,11 +8,12 @@
 //! opens or closes — that is [`Engine::tick`](crate::Engine)'s job — so this
 //! module only knows how to move a highlight and draw a list.
 
-use crate::gfx::{self, Ink, Point};
+use crate::gfx::controls::{LIST_LEFT, SCROLL_WIDTH, row_highlight, scroll_track};
+use crate::gfx::{Ink, Point};
 
 use crate::apps::AppId;
 use crate::buttons::ButtonEvents;
-use crate::framebuffer::{FrameBuffer, WIDTH_I32};
+use crate::framebuffer::FrameBuffer;
 use crate::framebuffer::{ROW_HEIGHT, ROWS};
 use crate::platform::Button;
 use crate::text::fonts::FONT_5X8;
@@ -31,7 +32,7 @@ const TITLE: &str = "SELECT APP";
 const FIRST_ROW: i32 = 1;
 
 /// Horizontal padding of a list entry, so text does not touch the highlight edge.
-const TEXT_INSET: i32 = 2;
+const TEXT_INSET: i32 = LIST_LEFT + 2;
 
 /// Label of the entry that opens the system settings.
 const SETUP_LABEL: &str = "SETUP";
@@ -150,17 +151,26 @@ impl Menu {
         frame.clear();
         text::draw(frame, TITLE, Point::zero(), TextStyle::lit(&FONT_5X8));
 
+        // One page: the scroll bar's place, empty, lines the entries up
+        // with the screens that scroll.
+        let rows = i32::try_from(ENTRIES).unwrap_or(1);
+        scroll_track(
+            frame,
+            0,
+            FIRST_ROW * ROW_HEIGHT,
+            SCROLL_WIDTH,
+            rows * ROW_HEIGHT,
+        );
         for index in 0..ENTRIES {
             let label = match MenuEntry::at(index) {
                 MenuEntry::App(id) => id.name(),
                 MenuEntry::Setup => SETUP_LABEL,
             };
             let row = MenuEntry::row(index);
-            let top_left = Point::new(0, row * ROW_HEIGHT);
+            let top_left = Point::new(LIST_LEFT, row * ROW_HEIGHT);
             let highlighted = index == self.selected;
             if highlighted {
-                let at: Point = top_left;
-                gfx::fill_rect(frame, at.x, at.y, WIDTH_I32, ROW_HEIGHT, Ink::Lit);
+                row_highlight(frame, top_left.y, ROW_HEIGHT, Ink::Lit);
             }
             let style = if highlighted {
                 TextStyle::dark(&FONT_5X8)
@@ -174,7 +184,7 @@ impl Menu {
 
 #[cfg(test)]
 mod tests {
-    use super::{FIRST_ROW, Menu, MenuEntry, MenuOutcome};
+    use super::{FIRST_ROW, LIST_LEFT, Menu, MenuEntry, MenuOutcome};
     use crate::apps::AppId;
     use crate::buttons::{ButtonEvents, ButtonReader};
     use crate::framebuffer::ROW_HEIGHT;
@@ -296,15 +306,30 @@ mod tests {
         let row = usize::try_from(FIRST_ROW).unwrap();
         let page = &frame.as_bytes()[row * WIDTH..(row + 1) * WIDTH];
         let band: u8 = 0xFF;
+        let row_left = usize::try_from(LIST_LEFT).unwrap();
         assert_eq!(
             page[WIDTH - 1],
             band,
-            "the highlight runs the full width of the screen"
+            "the highlight runs to the right edge of the screen"
         );
         assert!(
-            page.iter().any(|&byte| byte != band),
+            page[row_left..].iter().any(|&byte| byte != band),
             "the app name is punched out of the band in inverse video"
         );
+        assert_ne!(
+            page[0], band,
+            "the scroll bar's place stays outside the highlight"
+        );
+    }
+
+    #[test]
+    fn the_empty_scroll_track_stays_left_of_the_highlight() {
+        let mut frame = FrameBuffer::new();
+        Menu::new().render(&mut frame);
+
+        assert!(frame.pixel(1, ROW_HEIGHT));
+        assert!(!frame.pixel(0, ROW_HEIGHT));
+        assert!(frame.pixel(LIST_LEFT, ROW_HEIGHT));
     }
 
     #[test]

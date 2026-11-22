@@ -1,0 +1,12 @@
+# oc-sim scenario v1
+# Open the app menu by holding up and down together and move the highlight
+# down one entry, then stop with the menu still up: the golden snapshot is
+# the list itself, entries right of the empty scroll track the screens that
+# scroll line up with, the highlight clear of it.
+ticks 200
+20  button up down
+60  button down down
+70  button up up
+70  button down up
+90  button down down
+100 button down up

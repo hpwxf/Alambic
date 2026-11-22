@@ -211,6 +211,14 @@ fn the_app_menu_switches_to_the_scope() {
 }
 
 #[test]
+fn the_app_menu_lists_the_apps_right_of_the_scroll_track() {
+    let mut simulator = replay("app_menu_open");
+
+    assert!(simulator.menu_is_open(), "nothing was launched");
+    assert_screen_matches(&mut simulator, "app_menu_open");
+}
+
+#[test]
 fn ratchet_bursts_a_trigger_onto_b() {
     let mut simulator = replay("ratchet");
     assert_eq!(simulator.current_app(), AppId::Ratchet);
@@ -345,6 +353,7 @@ fn every_scenario_replays_identically_twice() {
         "encoder_offset",
         "mode_cycle",
         "app_menu",
+        "app_menu_open",
         "gfx_curves",
         "gfx_meters",
     ] {
@@ -403,6 +412,7 @@ fn every_scenario_file_has_a_test_and_a_snapshot() {
         "encoder_offset",
         "mode_cycle",
         "app_menu",
+        "app_menu_open",
         "setup_menu",
         "calibration_wizard",
         "gfx_fonts",
