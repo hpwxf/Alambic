@@ -137,10 +137,14 @@ const RESTART_DRAIN_MS: u32 = 50;
 
 // Wiring is one linear sequence of pin moves into concrete driver types;
 // factoring it out only invents type parameters and does not shrink the
-// real complexity, so the length lint is waived for this entry point alone.
+// real complexity, so the length lint is waived for this function alone.
 #[allow(clippy::too_many_lines)]
-#[bsp::rt::entry]
-fn main() -> ! {
+// Not inlined: the start-up's temporaries (the board's resources, the USB
+// device and the settings store as they are built, buffers of the OLED and
+// the audio path, about 4 KiB) live on its frame and are gone before the
+// loop, rather than staying under every call it makes (journal/D-038).
+#[inline(never)]
+fn boot() -> Running {
     let bsp_board::Resources {
         pins,
         mut gpio1,
@@ -321,7 +325,7 @@ fn main() -> ! {
     // Loaded before the first tick, so the splash already uses the stored
     // screen preferences and the outputs the stored calibration. A module
     // whose flash cannot be used still starts, on the defaults.
-    let mut settings_store = match SettingsFlash::new() {
+    let settings_store = match SettingsFlash::new() {
         Ok(flash) => {
             let mut store = SettingsStore::new(flash);
             let (settings, outcome) = store.load_or_default();
@@ -336,6 +340,8 @@ fn main() -> ! {
     };
     usb.poll();
 
+    #[cfg(feature = "settings-stress")]
+    let mut settings_store = settings_store;
     #[cfg(feature = "settings-stress")]
     if let Some(store) = settings_store.as_mut() {
         let original = *engine.settings();
@@ -358,7 +364,39 @@ fn main() -> ! {
     log::info!(
         "boot done; this log now shows events only, live data: cargo probe (stats, stream, inputs)"
     );
+    Running {
+        engine,
+        usb,
+        settings_store,
+    }
+}
 
+/// What the loop keeps of the start-up.
+struct Running {
+    engine: &'static mut FirmwareEngine,
+    usb: Usb,
+    /// `None` when the flash cannot hold the settings.
+    settings_store: Option<SettingsStore<SettingsFlash>>,
+}
+
+/// Wires the module, then runs the loop: [`boot`] and [`run`] one after
+/// the other, so that the start-up's frame is gone before the loop's
+/// (journal/D-038); what the loop keeps stays here, written by `boot`.
+#[bsp::rt::entry]
+fn main() -> ! {
+    let mut running = boot();
+    run(&mut running)
+}
+
+/// Runs the 1 kHz loop for good. Not inlined: its frame is the loop's
+/// alone.
+#[inline(never)]
+fn run(running: &mut Running) -> ! {
+    let Running {
+        engine,
+        usb,
+        settings_store,
+    } = running;
     let probe = PROBE.take();
     // The audio path's counts as the loop starts, for the report a few
     // seconds in.
@@ -446,7 +484,7 @@ fn main() -> ! {
         usb.serve(probe, engine);
         record_since(engine, Stage::Usb, mark);
         if probe.take_reboot_request() || usb.take_reboot_request() {
-            restart_into_loader(&mut usb, probe, engine);
+            restart_into_loader(usb, probe, engine);
         }
 
         // Cooperative pacing against the microsecond clock, on a fixed
@@ -530,9 +568,9 @@ fn record_since<A, O, D, C, S>(
     engine.profile_mut().record(stage, fine);
 }
 
-/// Builds the engine in [`ENGINE`], once. Not inlined: built in `main`,
-/// the value would keep its place on `main`'s frame for the whole loop,
-/// under every other call.
+/// Builds the engine in [`ENGINE`], once. Not inlined: built in [`boot`],
+/// the value would add its 3.5 KiB to the start-up's frame, the deepest
+/// path of the stack.
 #[inline(never)]
 fn engine_in_static(
     cv_inputs: CvInputs,

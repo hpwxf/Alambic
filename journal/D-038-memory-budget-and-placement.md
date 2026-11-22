@@ -197,3 +197,32 @@ pour une `static` (`StaticCell`), construit par une fonction non inlinée pour q
 le cadre de la boucle ; le serveur de la sonde y était déjà (`ConstStaticCell`). Cadre de `main` 9 776 → 6 120 o,
 estimation 16 064 → 12 336 o : `pass`, 4 048 o de marge ; `.bss` +4 Kio en DTCM.
 
+Puis : `main` coupé en `boot()` et `run()`, non inlinées. L'optimiseur avait inliné tout le démarrage dans `main`
+(l'USB, le chargement des réglages, l'OLED, le chemin audio), et ses temporaires (≈ 4 Kio) restaient sur le cadre
+pendant toute la boucle. `boot()` rend ce que la boucle garde (`Running` : le moteur par référence, l'`Usb`, le
+magasin de réglages) directement sur le cadre de `main`, qui le prête à `run()`. Le cadre de `main` tombe à 1 992 o.
+Pendant la boucle, la pile atteint ≈ 8 464 o (≈ 9 336 o avec les interruptions), contre ≈ 11 464 o. Le chemin le plus
+profond est maintenant celui du démarrage : `boot` 6 408 o et `engine_in_static` 2 328 o, ≈ 11 688 o au total avec
+les interruptions, `pass` avec 4 696 o de marge. Le moteur reste une `static` : sur la pile, ses 3,6 Kio
+s'ajouteraient à `Running`, donc sous les deux chemins.
+
+Pour la vitesse, la DTCM est la même mémoire, sans cache, que la pile. Mesuré sur le module le même jour, sur les
+images de la branche `probe-cv-assign` qui portent ces deux changements (`scripts/profile-supersaw.sh 10`, `NOTE` et
+`DETUNE` sous bruit, trois relevés de 10 s par image ; l'image en `static` mesurée avant et après l'autre pour vérifier
+la reproductibilité) ; la comparaison couvre ensemble le moteur en `static` et le découpage :
+
+| µs, moyenne | moteur sur la pile, `main` d'un seul tenant | moteur en `static`, `boot` / `run` |
+|---|---|---|
+| `tick` | 16,31 | 15,46 à 15,64 |
+| `update` | 4,36 (min 2,14, max 7,30) | 2,24 à 2,25 (min 2,16, max 7,3) |
+| `render` | 99,5 | 100,1 à 100,3 |
+| `publish` | 4,95 | 4,93 |
+| `audio` | 3,87 | 3,90 |
+| `voice` | 0,99 | 0,98 |
+| `voice_params` | 0,34 | 0,36 |
+
+Rien n'est plus lent. Le chemin audio, qui ne touche pas au moteur, varie de ±0,03 µs d'une image à l'autre : c'est
+l'ordre de grandeur des écarts dus au code produit. `update` est deux fois plus court en moyenne, pour des extrêmes
+identiques : plus de ticks prennent le chemin court. La cause n'est pas établie (le code d'`oc-core` est le même dans
+les deux images ; reste ce que l'optimiseur fait de la boucle autour).
+
