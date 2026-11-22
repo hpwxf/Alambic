@@ -13,7 +13,16 @@ cd "$(git rev-parse --show-toplevel)"
 seconds=${1:-10}
 label=${2:-}
 probe() { cargo -q probe "$@" 2>/dev/null; }
-keep='^(/dev|us |tick|update|outputs|render|publish|audio|voice|voice_params|frame) '
+# Rows sit two spaces under their section's title (`cargo probe stats`); a
+# title is printed only when one of its rows is kept.
+keep='tick|update|outputs|render|publish|audio|voice|voice_params|frame'
+filter() {
+  awk -v keep="^  ($keep) " '
+    /^\/dev|^us / { print; next }
+    /^[^ ]/ { title = $0; next }
+    $0 ~ keep { if (title != "") { print title; title = "" } print }
+  '
+}
 
 probe select supersaw >/dev/null
 probe set supersaw mix 50 >/dev/null
@@ -22,4 +31,4 @@ probe set supersaw stereo on >/dev/null
 
 sleep 1
 echo "=== ${label:+$label, }SHAPE ${SHAPE:-25} % ($seconds s)"
-probe stats --fresh "$seconds" | grep -E "$keep"
+probe stats --fresh "$seconds" | filter
