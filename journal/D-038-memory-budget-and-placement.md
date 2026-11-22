@@ -5,8 +5,8 @@
 | **Identifiant** | D-038 |
 | **Date** | 2026-11-18 |
 | **Auteur** | Pascal Havé |
-| **Statut** | adoptée |
-| **Commits** | ce commit (ADR seul, aucun code) |
+| **Statut** | adoptée, révisée |
+| **Commits** | ce commit (ADR seul, aucun code) ; révision : profondeur de la pile estimée par `cargo xtask size`, moteur hors de la pile, `main` coupé en `boot` et `run` |
 | **Relations** | précise D-004 (script de lien généré par `imxrt-rt`, disposition vérifiée par `cargo xtask size`) ; DMA et anneau du DAC (D-033) ; tampons de mesure à venir (capture du signal par la sonde, D-029) ; firmware de test par feature (`settings-stress`, D-028) ; applets résidents (D-021) |
 
 ## 1. Contexte
@@ -154,3 +154,75 @@ la place de celui du BSP, ou des défauts de cache dans l'interruption) qu'aucun
   sauvegarde en flash, à trancher alors avec D-021 et D-028.
 * **Un changement de disposition par `teensy4-bsp` ou `imxrt-rt`** : la liste de contrôle de `cargo xtask size` le
   dirait ; ce constat serait alors à refaire.
+
+## Révision (2026-11-22) — la profondeur de la pile estimée par `cargo xtask size`
+
+L'entrée ne parlait que de l'ITCM, de la DTCM et de l'OCRAM ; la pile principale, 16 Kio au bas de la DTCM, partagée
+par la boucle et toutes les interruptions, n'était surveillée par rien. Le 2026-11-22, un ajout au serveur de la sonde
+(l'assignation des CV, sur la branche `probe-cv-assign`) a fait planter le module sur `cargo probe app supersaw` : le
+chemin le plus profond depuis `main` (`main` 9 792 o, `Usb::serve`, `describe`, `send_spec`, `send`, le sérialiseur)
+atteignait ≈ 16 260 o avant l'interruption audio, la pile sortait sous `0x2000_0000` et la première écriture faisait
+faute. Sans cet ajout, le même chemin en est à 15 192 o. Rien ne le laissait voir :
+les tests tournent sur l'hôte, sur une grande pile, et un cadre grossit en silence quand l'optimiseur inline une
+fonction aux grandes variables locales (un `Reply` de ≈ 460 o, deux copies du framebuffer).
+
+**Décision** : `cargo xtask size` estime la profondeur de la pile et l'ajoute à sa liste de contrôle (`stack-depth`),
+par une fonction pure sur le texte de `llvm-objdump` (`xtask::stack_check`), testée sur un désassemblage figé :
+
+* le cadre de chaque fonction lu dans son prologue (`push`, `vpush`, `str … [sp, #-n]!`, `sub sp`) ;
+* les appels directs suivis (`bl`, et les appels terminaux `b.w` vers le début d'une autre fonction), le chemin de
+  panique écarté (il finit dans une boucle), la récursion coupée à la première répétition ;
+* le chemin le plus profond depuis `main`, plus celui de chaque gestionnaire de la table des vecteurs avec son cadre
+  d'exception étendu (104 o, registres flottants compris), comme s'ils s'imbriquaient tous ; les gestionnaires qui ne
+  reviennent pas (`HardFault`, le gestionnaire par défaut) écartés ;
+* `FAIL` au-delà de la taille de `.stack`, `warn` sous 2 Kio de marge.
+
+Ce qu'elle ne voit pas, et pour quoi la marge existe : les appels par pointeur (`blx rN` : objets-traits, pointeurs de
+fonction), un cadre qui grandit à l'exécution, la récursion. Sur le firmware fautif elle donne `FAIL` (≈ 17 152 o,
+768 o de trop). Sur celui de ce commit, `warn` : ≈ 16 064 o avec les interruptions, 320 o de marge, dont 9 776 o pour le
+seul cadre de `main`.
+
+**Écarté pour l'instant** : peindre la pile au démarrage et lire la hauteur atteinte par la sonde. Ce serait la mesure
+réelle, appels par pointeur compris, mais seulement des chemins parcourus pendant l'essai ; l'estimation statique
+couvre tous les chemins directs à chaque compilation. Les deux se complètent ; la mesure viendra si l'estimation et le
+module divergent.
+
+**Ce qui ferait changer d'avis** : un plantage de pile que l'estimation ne voyait pas (un appel par pointeur sur le
+chemin le plus profond) : mesure sur le module ; la marge sous 2 Kio durablement : réduire le cadre de `main` (le
+moteur et le serveur de la sonde hors de la pile) ou agrandir `.stack` (`TEENSY4_STACK_SIZE`), par révision de cette
+entrée.
+
+Suite, le même jour : le moteur (≈ 3,5 Kio : toutes les apps, le framebuffer, le profil) sort de la pile de `main`
+pour une `static` (`StaticCell`), construit par une fonction non inlinée pour que sa valeur temporaire ne reste pas sur
+le cadre de la boucle ; le serveur de la sonde y était déjà (`ConstStaticCell`). Cadre de `main` 9 776 → 6 120 o,
+estimation 16 064 → 12 336 o : `pass`, 4 048 o de marge ; `.bss` +4 Kio en DTCM.
+
+Puis : `main` coupé en `boot()` et `run()`, non inlinées. L'optimiseur avait inliné tout le démarrage dans `main`
+(l'USB, le chargement des réglages, l'OLED, le chemin audio), et ses temporaires (≈ 4 Kio) restaient sur le cadre
+pendant toute la boucle. `boot()` rend ce que la boucle garde (`Running` : le moteur par référence, l'`Usb`, le
+magasin de réglages) directement sur le cadre de `main`, qui le prête à `run()`. Le cadre de `main` tombe à 1 992 o.
+Pendant la boucle, la pile atteint ≈ 8 464 o (≈ 9 336 o avec les interruptions), contre ≈ 11 464 o. Le chemin le plus
+profond est maintenant celui du démarrage : `boot` 6 408 o et `engine_in_static` 2 328 o, ≈ 11 688 o au total avec
+les interruptions, `pass` avec 4 696 o de marge. Le moteur reste une `static` : sur la pile, ses 3,6 Kio
+s'ajouteraient à `Running`, donc sous les deux chemins.
+
+Pour la vitesse, la DTCM est la même mémoire, sans cache, que la pile. Mesuré sur le module le même jour, sur les
+images de la branche `probe-cv-assign` qui portent ces deux changements (`scripts/profile-supersaw.sh 10`, `NOTE` et
+`DETUNE` sous bruit, trois relevés de 10 s par image ; l'image en `static` mesurée avant et après l'autre pour vérifier
+la reproductibilité) ; la comparaison couvre ensemble le moteur en `static` et le découpage :
+
+| µs, moyenne | moteur sur la pile, `main` d'un seul tenant | moteur en `static`, `boot` / `run` |
+|---|---|---|
+| `tick` | 16,31 | 15,46 à 15,64 |
+| `update` | 4,36 (min 2,14, max 7,30) | 2,24 à 2,25 (min 2,16, max 7,3) |
+| `render` | 99,5 | 100,1 à 100,3 |
+| `publish` | 4,95 | 4,93 |
+| `audio` | 3,87 | 3,90 |
+| `voice` | 0,99 | 0,98 |
+| `voice_params` | 0,34 | 0,36 |
+
+Rien n'est plus lent. Le chemin audio, qui ne touche pas au moteur, varie de ±0,03 µs d'une image à l'autre : c'est
+l'ordre de grandeur des écarts dus au code produit. `update` est deux fois plus court en moyenne, pour des extrêmes
+identiques : plus de ticks prennent le chemin court. La cause n'est pas établie (le code d'`oc-core` est le même dans
+les deux images ; reste ce que l'optimiseur fait de la boucle autour).
+

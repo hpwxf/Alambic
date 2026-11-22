@@ -85,3 +85,14 @@ before `.vector_table`, with no overlap.
 
 Stack size is 16 KiB and can be overridden at build time through the
 `TEENSY4_STACK_SIZE` environment variable honoured by the BSP build script.
+
+Faulting on overflow is not the same as fitting: the main loop and every
+interrupt share this one stack, and nothing else watches how deep it gets.
+`cargo xtask size` estimates it (checklist item `stack-depth`, journal/D-038):
+each function's frame read from its prologue in the disassembly, the direct
+calls followed, the deepest path from `main` plus that of every handler in
+the vector table, each with its exception frame. It fails past `.stack` and
+warns under 2 KiB of room, and prints the deepest path. It does not follow
+calls through a pointer (trait objects), which is what the margin is for.
+The engine and the probe's server live in statics (`ENGINE`, `PROBE` in
+`src/main.rs`) rather than on this stack.

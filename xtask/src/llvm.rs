@@ -10,7 +10,7 @@ use std::process::Command;
 use anyhow::{Context, Result, bail};
 
 use crate::{cargo, paths};
-use xtask::size_check;
+use xtask::{size_check, stack_check};
 
 /// Stable `llvm-size` flags: long option names, `SysV` table, hex radix.
 ///
@@ -47,8 +47,29 @@ pub(crate) fn report_size(elf: &Path) -> Result<()> {
     );
     println!();
 
-    let report = size_check::check_layout(&sections);
+    let mut report = size_check::check_layout(&sections);
+    let stack = stack_estimate(elf)?;
+    if let Some(stack_size) = sections
+        .iter()
+        .find(|section| section.name == ".stack")
+        .map(|section| section.size)
+    {
+        report
+            .items
+            .push(stack_check::check_stack(&stack, stack_size));
+    }
     println!("{}", size_check::format_checklist(&report));
+    println!();
+    println!(
+        "{}",
+        stack_check::format_path("deepest stack path from main", &stack.main, 8)
+    );
+    if let Some(deepest) = stack.interrupts.iter().max_by_key(|path| path.bytes) {
+        println!(
+            "{}",
+            stack_check::format_path("deepest interrupt", deepest, 4)
+        );
+    }
 
     if report.failed() {
         let failed = report
@@ -61,6 +82,34 @@ pub(crate) fn report_size(elf: &Path) -> Result<()> {
     }
 
     Ok(())
+}
+
+/// The main stack's deepest use in `elf`, from its disassembly and its
+/// vector table (see `xtask::stack_check`).
+fn stack_estimate(elf: &Path) -> Result<stack_check::StackEstimate> {
+    let disassembly = objdump(elf, &["--disassemble", "--demangle", "--no-show-raw-insn"])?;
+    let vectors = objdump(elf, &["--full-contents", "--section=.vector_table"])?;
+    let graph = stack_check::parse_disassembly(&disassembly);
+    let vectors = stack_check::parse_vector_table(&vectors).map_err(anyhow::Error::msg)?;
+    stack_check::estimate(&graph, &vectors).map_err(anyhow::Error::msg)
+}
+
+/// What `llvm-objdump` prints for `elf` with `args`.
+fn objdump(elf: &Path, args: &[&str]) -> Result<String> {
+    let output = Command::new(tool("llvm-objdump")?)
+        .args(args)
+        .arg(elf)
+        .output()
+        .with_context(|| format!("cannot run llvm-objdump on {}", elf.display()))?;
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        bail!(
+            "llvm-objdump failed with {}: {}",
+            output.status,
+            stderr.trim()
+        );
+    }
+    String::from_utf8(output.stdout).context("llvm-objdump wrote non-UTF-8 output")
 }
 
 /// Converts `elf` into an Intel HEX image at `destination`.

@@ -21,7 +21,9 @@ it already, this file only points to it.
   `-Tt4link.x`. A hand-written `memory.x` would conflict with it.
 * **No `flip-link`**: it needs a `MEMORY { RAM }` region. `imxrt-rt` already
   puts `.stack` at the bottom of DTCM, so an overflow faults; `cargo xtask
-  size` checks it. Layout, reserved flash and the checklist:
+  size` checks it, and estimates how deep the stack gets (`stack-depth`,
+  journal/D-038): a big local inlined into the probe server once overflowed
+  it. Layout, reserved flash and the checklist:
   `crates/oc-firmware/MEMORY.md`.
 * **Never set `RUSTFLAGS` in the environment**: it replaces
   `target.thumbv7em-none-eabihf.rustflags` and silently drops `-Tt4link.x`.
