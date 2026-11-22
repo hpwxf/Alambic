@@ -171,6 +171,13 @@ pub fn header(
     height + 3
 }
 
+/// The track of a [`scroll_bar`] without its thumb: the place of one on a
+/// screen with a single page, so that it lines up with the screens that
+/// scroll.
+pub fn scroll_track(frame: &mut FrameBuffer, x: i32, y: i32, width: i32, height: i32) {
+    dotted_vline(frame, x + width / 2, y, height, 2, Ink::Lit);
+}
+
 /// A scroll bar `width` pixels wide and `height` high from `(x, y)`, for a
 /// list shown `pages` at a time: a dotted track down its middle, and a thumb
 /// over the share of it that `page`, from 0, takes.
@@ -185,7 +192,7 @@ pub fn scroll_bar(
 ) {
     let pages = i32::try_from(pages.max(1)).unwrap_or(1);
     let page = i32::try_from(page).unwrap_or(0).min(pages - 1);
-    dotted_vline(frame, x + width / 2, y, height, 2, Ink::Lit);
+    scroll_track(frame, x, y, width, height);
     let top = y + page * height / pages;
     let bottom = y + (page + 1) * height / pages;
     fill_rect(frame, x, top, width, bottom - top, Ink::Lit);

@@ -280,12 +280,17 @@ fn supersaw_shows_level_and_stereo_on_its_second_page() {
 }
 
 #[test]
-fn tone_plays_its_note_raised_by_cv1() {
+fn tone_plays_its_note_raised_by_the_cv1_it_was_given() {
+    use oc_core::apps::tone::Setting;
+    use oc_core::platform::CvChannel;
     let simulator = replay("tone");
     assert_eq!(simulator.current_app(), AppId::Tone);
     let tone = simulator.app::<ToneApp>();
     assert_eq!(tone.note(), 72, "C5");
     assert_eq!(tone.amplitude(), 1_500);
+    assert_eq!(tone.selected(), Setting::Note);
+    assert_eq!(tone.assigning(), None);
+    assert_eq!(tone.assign(Setting::Note).input, Some(CvChannel::One));
     // Half an octave above C5 (523.25 Hz): 739.99 Hz, CV1 as the module's
     // converter reads 500 mV.
     assert!(
@@ -295,6 +300,24 @@ fn tone_plays_its_note_raised_by_cv1() {
     );
     let mut simulator = simulator;
     assert_screen_matches(&mut simulator, "tone");
+}
+
+#[test]
+fn tone_shows_the_input_submenu_of_its_level() {
+    use oc_core::apps::tone::Setting;
+    use oc_core::modulation::AssignLine;
+    use oc_core::platform::CvChannel;
+    let mut simulator = replay("tone_inputs");
+    let tone = simulator.app::<ToneApp>();
+    assert_eq!(tone.selected(), Setting::Level);
+    assert_eq!(tone.assigning(), Some(AssignLine::Input));
+    assert_eq!(tone.assign(Setting::Level).input, Some(CvChannel::Two));
+    assert!(
+        tone.played_amplitude().abs_diff(1_600) <= 5,
+        "{}",
+        tone.played_amplitude()
+    );
+    assert_screen_matches(&mut simulator, "tone_inputs");
 }
 
 #[test]
@@ -391,6 +414,7 @@ fn every_scenario_file_has_a_test_and_a_snapshot() {
         "ratchet_inputs",
         "ratchet_tempo",
         "tone",
+        "tone_inputs",
         "supersaw",
         "supersaw_inputs",
         "supersaw_page2",

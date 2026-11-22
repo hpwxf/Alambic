@@ -27,10 +27,10 @@ use self::bank::{
 };
 use crate::apps::param::{ParamSpec, ParamValue, Refused, Unit};
 use crate::apps::sound::Params;
-use crate::apps::tone::{self, HIGHEST_NOTE, LOWEST_NOTE, note_name};
+use crate::apps::tone::{self, HIGHEST_NOTE, LOWEST_NOTE, note_name, pitch_permille, write_hertz};
+pub use crate::apps::tone::{SET_NOTE, frequency_from};
 use crate::apps::{App, AppId, InputSnapshot, TickContext};
 use crate::audio::MilliHertz;
-use crate::fixed::{self, ONE};
 use crate::fmt::{TextBuf, write_volts};
 use crate::framebuffer::{FrameBuffer, ROW_HEIGHT, WIDTH_I32};
 use crate::gfx::controls::scroll_bar;
@@ -63,10 +63,6 @@ pub const LEVEL_STEP_MV: MilliVolts = 100;
 /// The signal that sweeps the detune, the mix or the level over its whole
 /// course when it follows its input: 0 to 5 V, 20 % per volt.
 const COURSE_MV: MilliVolts = 5_000;
-
-/// The note an input that sets `NOTE` gives at 0 V, C4: −3 V reach C1 and
-/// +4 V C8.
-pub const SET_NOTE: u8 = 60;
 
 /// What `SUPERSAW` is set by (journal/D-043), in the order of the screen:
 /// one per [`Setting`]. Amounts are in thousandths, read as percent with
@@ -191,30 +187,11 @@ impl Setting {
 pub const fn sweep(setting: Setting) -> Option<(MilliVolts, MilliVolts)> {
     match setting {
         // C1 to C8 at one volt per octave, C4 at 0 V.
-        Setting::Note => Some((
-            (LOWEST_NOTE as MilliVolts - SET_NOTE as MilliVolts) * 1_000 / 12,
-            (HIGHEST_NOTE as MilliVolts - SET_NOTE as MilliVolts) * 1_000 / 12,
-        )),
+        Setting::Note => Some(tone::NOTE_SWEEP),
         Setting::Detune | Setting::Mix | Setting::Shape | Setting::Width | Setting::Level => {
             Some((0, COURSE_MV))
         }
         Setting::Stereo => None,
-    }
-}
-
-/// The pitch an input makes of `note`: added at one volt per octave, set at
-/// one volt per octave from [`SET_NOTE`], or the frequency multiplied (5 V
-/// leaving it, 10 V an octave up).
-#[must_use]
-pub fn frequency_from(note: u8, millivolts: MilliVolts, effect: Effect) -> MilliHertz {
-    match effect {
-        Effect::Add => tone::frequency(note, millivolts),
-        Effect::Set => tone::frequency(SET_NOTE, millivolts),
-        Effect::Mul => {
-            let product = multiplied(i64::from(tone::frequency(note, 0)), millivolts);
-            let (low, high) = tone::FREQUENCY_RANGE;
-            MilliHertz::try_from(product.clamp(i64::from(low), i64::from(high))).unwrap_or(low)
-        }
     }
 }
 
@@ -836,23 +813,6 @@ impl Default for SupersawApp {
 fn step_amount(amount: u16, detents: i32) -> u16 {
     let moved = i32::from(amount) + detents * i32::from(AMOUNT_STEP);
     u16::try_from(moved.clamp(0, i32::from(FULL))).unwrap_or(0)
-}
-
-/// `110.00 Hz`.
-fn write_hertz(frequency: MilliHertz) -> TextBuf<16> {
-    let mut line = TextBuf::<16>::new();
-    let hertz = frequency.saturating_add(5) / 10;
-    let _ = write!(line, "{}.{:02} Hz", hertz / 100, hertz % 100);
-    line
-}
-
-/// Where `frequency` sits from C1 to C8, in thousandths, an octave a
-/// seventh of the course.
-fn pitch_permille(frequency: MilliHertz) -> i32 {
-    let lowest = i64::from(tone::frequency(LOWEST_NOTE, 0));
-    let octaves = fixed::log2(i64::from(frequency) * i64::from(ONE) / lowest).unwrap_or(0);
-    let span = i64::from(HIGHEST_NOTE - LOWEST_NOTE) / 12;
-    i32::try_from(octaves * 1_000 / (span * i64::from(ONE))).unwrap_or(0)
 }
 
 /// Where `width` sits on its course from 5 to 50 %, in thousandths.

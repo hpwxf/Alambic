@@ -295,3 +295,15 @@ des générateurs d'une image est `apps/sound.rs` (`Basic` pour les niveaux et l
 rend un générateur à la fois, le maintien d'une sortie par la sonde passe par une surcouche. L'interruption, le
 `Setup` préparé dans la boucle (D-040) et un échantillon par période (D-042) sont inchangés ; `voice` 1,68 → 1,56 µs
 sur le module. Le reste de cette entrée est inchangé.
+
+## Révision du 2026-11-21 — `TONE` à réglages et entrées assignables
+
+Demandée par l'utilisateur après des parasites entendus jusque sur le sinus : `CV1` s'ajoutait toujours à la note,
+et une entrée débranchée lit quelques millivolts de bruit sur le module (D-037, révision du 2026-11-18). `TONE` prend
+la navigation de `RATCHET` et de `SUPERSAW` : l'encodeur gauche choisit `NOTE` ou `LEVEL` (ligne surlignée), le droit
+en change la valeur, son clic ouvre le sous-menu d'entrée de D-036 (`SET` / `ADD` / `MUL`, `SCALE`, `SHIFT`,
+`MIN` / `MAX`). **Aucune entrée au démarrage** : un son de test reste propre tant qu'on ne lui en donne pas. La
+fréquence jouée passe sur la ligne de titre, ce qui libère la droite des lignes pour le nom de l'entrée (`+CV1`) ;
+la place de l'ascenseur est tracée à gauche, vide (une seule page), pour la même mise en page que les applets qui
+défilent. Les fonctions de hauteur communes (`frequency_from`, `SET_NOTE`, l'affichage en hertz et la position sur
+C1–C8) vivent maintenant dans `apps/tone.rs`, que `SUPERSAW` reprend. Le chemin audio est inchangé.

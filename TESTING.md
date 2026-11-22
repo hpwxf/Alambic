@@ -750,7 +750,10 @@ longer touches the bus. `cargo xtask flash`, then:
 4. Settings: `SETUP` → `SAVE` still saves (toast), the outputs drop to 0 V
    during it and come back.
 5. `TONE`, by ear then with a tuner on the sine (A): every note from C1 to
-   C8 sounds at its own pitch, C5 and above included.
+   C8 sounds at its own pitch, C5 and above included. Inputs unplugged, the
+   sine is clean (no input at start). Give `NOTE` `CV1` (right encoder's
+   click, `INPUT` to `CV1`): a volt raises the pitch an octave, the title
+   row's hertz double.
 
 Record the values; with `oled-spi-8mhz`, repeat 1 and 2 (`frame` longer).
 
