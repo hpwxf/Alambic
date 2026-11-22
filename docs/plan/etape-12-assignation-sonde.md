@@ -38,17 +38,17 @@ n'est pas fusionnée et n'apporte rien ici). Travail et commits dans `../Alambic
 
 `crates/oc-core/src/modulation/` :
 * `slot_of(specs: &[ParamSpec], index) -> Option<usize>` : rang parmi les `assignable`.
-* `Assign::checked(self) -> Self` (ou `Result<_, Refused>`) : bornes de `turn` appliquées à une valeur venue
+* `Assign::check(self) -> Result<Self, Refused>` : bornes de `turn` appliquées à une valeur venue
   d'ailleurs (`SCALE` ±200 %, `SHIFT` / `MIN` / `MAX` ±10 V, `min ≤ max`, arrondi aux pas) — une valeur
-  réglée de loin se comporte comme une tournée à la main (même règle que `ParamSpec::check`).
+  réglée de loin se comporte comme une tournée à la main (même règle que `ParamSpec::check` : refusée hors bornes, pas ramenée).
 * `Modulations<const N: usize>` (nom à confirmer, fichier `modulation/slots.rs`) : `assigns: [Assign; N]`,
   `editor: Option<AssignEditor>`, `cv`. Méthodes qui reprennent le code dupliqué : `update_cv`,
   `follow(slot, input, sweep) -> bool` (sous-menu ouvert ⇒ consommé), `open(slot)`, `observe(slot, elapsed)`,
   `reading(slot)`, `assign(slot)`, `line()`, `render(frame, slot, &Param)`, `as_slice()` /
   `as_mut_slice()`. Les dérivés serde (`Assign`, `Effect`, `CvChannel` si absent) pour le protocole.
 * Trait `App` (`apps/mod.rs`) : `fn assigns(&self) -> &[Assign] { &[] }`,
-  `fn assigns_mut(&mut self) -> &mut [Assign] { &mut [] }` ; puis, en méthodes par défaut sur ces deux-là,
-  `fn assign(&self, param) -> Option<Assign>` et
+  `fn assigns_mut(&mut self) -> &mut [Assign] { &mut [] }` ; puis, sur ces deux-là, en méthodes de `dyn App`
+  (une seule copie, pas une par table d'app), `fn assign(&self, param) -> Option<Assign>` et
   `fn set_assign(&mut self, param, Assign) -> Result<Assign, Refused>` (`NoSuch` si non assignable). Une app
   n'implémente que les deux accesseurs, plus `fn assign_sweep(&self, param) -> Option<(mV, mV)>` (la plage
   qui balaie le paramètre, pour `CENTER` côté hôte et la barre de la page).
@@ -56,7 +56,7 @@ n'est pas fusionnée et n'apporte rien ici). Travail et commits dans `../Alambic
   `assigning()`) gardés en délégation pour les tests existants. **Écrans de référence identiques**,
   `tests/modulation.rs` et `tests/params.rs` inchangés au comportement près.
 * Tests nouveaux (`crates/oc-core/tests/params.rs` ou `modulation.rs`) : pour chaque app de
-  `AppHost`, `assign(i).is_some() == specs[i].assignable` ; `set_assign` hors bornes ramené ; effet visible
+  `AppHost`, `assign(i).is_some() == specs[i].assignable` ; `set_assign` hors bornes refusé ; effet visible
   dans `observe` / `params()` via `testing::mock_engine` avec une CV.
 
 ### 12c — protocole et serveur (v8)

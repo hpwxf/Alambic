@@ -5,8 +5,10 @@
 use oc_core::apps::param::{Kind, ParamValue, Refused, write_summary};
 use oc_core::apps::ratchet::{RatchetApp, Setting};
 use oc_core::apps::supersaw::SupersawApp;
-use oc_core::apps::tone::ToneApp;
+use oc_core::apps::tone::{Setting as ToneSetting, ToneApp};
 use oc_core::apps::{App, AppHost, AppId, InputSnapshot};
+use oc_core::modulation::{Assign, Effect};
+use oc_core::platform::CvChannel;
 
 /// One tick's snapshot turning the left encoder by `left` and the right one
 /// by `right` detents.
@@ -218,4 +220,104 @@ fn ratchets_inactive_faces_follow_sync_and_gate() {
         ratchet.set(first, ParamValue::Number(250)),
         Ok(ParamValue::Number(250))
     );
+}
+
+#[test]
+fn every_assignable_parameter_and_only_those_has_an_input_and_a_sweep() {
+    let host = AppHost::new();
+    for id in AppId::ALL {
+        let app = host.get(id);
+        let specs = app.param_specs();
+        let assignable = specs.iter().filter(|spec| spec.assignable).count();
+        assert_eq!(app.assigns().len(), assignable, "{}", app.name());
+        for (index, spec) in specs.iter().enumerate() {
+            let label = format!("{} {}", app.name(), spec.name);
+            assert_eq!(app.assign(index).is_some(), spec.assignable, "{label}");
+            assert_eq!(
+                app.assign_sweep(index).is_some(),
+                spec.assignable,
+                "{label}"
+            );
+            if let Some(assign) = app.assign(index) {
+                assert_eq!(assign.check(), Ok(assign), "{label}: as the panel left it");
+            }
+        }
+        assert_eq!(app.assign(specs.len()), None, "{}", app.name());
+    }
+}
+
+#[test]
+fn an_input_set_through_the_model_is_the_one_the_panel_shows_and_plays() {
+    let mut tone = ToneApp::new();
+    let note = index_of(&tone, "NOTE");
+    let assign = Assign {
+        input: Some(CvChannel::Two),
+        effect: Effect::Add,
+        ..Assign::NONE
+    };
+    let app: &mut dyn App = &mut tone;
+    assert_eq!(app.set_assign(note, assign), Ok(assign));
+    assert_eq!(app.assign(note), Some(assign));
+    assert_eq!(*tone.assign(ToneSetting::Note), assign);
+
+    let mut input = turning(0, 0);
+    tone.update(&input);
+    let Some(ParamValue::Number(before)) = tone.observe(0) else {
+        panic!("TONE plays a pitch");
+    };
+    // A volt more on CV2 is an octave up.
+    input.cv[1] = 1_000;
+    tone.update(&input);
+    let Some(ParamValue::Number(after)) = tone.observe(0) else {
+        panic!("TONE plays a pitch");
+    };
+    assert!(
+        (after - 2 * before).abs() <= before / 100,
+        "{before} -> {after}"
+    );
+}
+
+#[test]
+fn an_input_the_submenu_could_not_set_is_refused_and_leaves_the_last() {
+    let mut ratchet = RatchetApp::new();
+    let ratchet: &mut dyn App = &mut ratchet;
+    let count = index_of(ratchet, "COUNT");
+    let before = ratchet.assign(count);
+    for refused in [
+        Assign {
+            scale_percent: 205,
+            ..Assign::NONE
+        },
+        Assign {
+            shift_mv: -10_001,
+            ..Assign::NONE
+        },
+        Assign {
+            min_mv: 1_000,
+            max_mv: 0,
+            ..Assign::NONE
+        },
+    ] {
+        assert_eq!(
+            ratchet.set_assign(count, refused),
+            Err(Refused::OutOfRange),
+            "{refused:?}"
+        );
+    }
+    assert_eq!(ratchet.assign(count), before);
+    let gate = index_of(ratchet, "GATE");
+    assert_eq!(
+        ratchet.set_assign(gate, Assign::NONE),
+        Err(Refused::NoSuch),
+        "GATE takes no input"
+    );
+}
+
+#[test]
+fn supersaws_note_takes_cv1_at_start_through_the_model() {
+    let supersaw = SupersawApp::new();
+    let supersaw: &dyn App = &supersaw;
+    let note = index_of(supersaw, "NOTE");
+    let assign = supersaw.assign(note).expect("NOTE takes an input");
+    assert_eq!(assign.input, Some(CvChannel::One));
 }

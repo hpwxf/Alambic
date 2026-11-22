@@ -81,7 +81,7 @@ assignable, par le trait `App` ; l'état du sous-menu, recopié dans `TONE`, `RA
 | Lot | Contenu | État |
 |---|---|---|
 | **12a** — ADR et plan | D-045, plan de l'étape | ✅ |
-| **12b** — cœur | état commun dans `modulation`, `Assign::checked`, trait `assigns` / `assign` / `set_assign` / `assign_sweep` ; trois apps branchées, écrans de référence identiques | à faire |
+| **12b** — cœur | `modulation::slots` : `Modulations<N>` (assignations, CV, sous-menu ouvert) et `slot_of` ; `Assign::check` ; trait `assigns` / `assigns_mut` / `assign_sweep`, `assign` / `set_assign` sur `dyn App` (une copie, pas une par table : `.text` +2 940 → +696 o) ; `TONE`, `RATCHET`, `SUPERSAW` branchées, écrans de référence identiques ; `tests/params.rs` ; `.rodata` +240 o | ✅ |
 | **12c** — protocole v8 | `GetAssign`, `SetAssign`, `Reply::Assign`, assignations dans `DescribeApp` | à faire |
 | **12d** — client et CLI | `oc-probe assign`, `CENTER` côté hôte sur `Stream` | à faire |
 | **12e** — page web | un sous-panneau CV commun sous chaque réglage assignable | à faire |

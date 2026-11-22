@@ -31,8 +31,10 @@ pas). L'index d'un paramètre suffit donc à nommer son assignation, sans table 
   (`NOTE CV`, `NOTE SCALE`…). Rien à changer au protocole, mais six paramètres de plus par réglage assignable, des
   noms inventés par app, et la page ne sait pas qu'ils forment un sous-panneau.
 * **B — au trait, emplacement par le rang parmi les `assignable`.** Le trait gagne `assigns()` / `assigns_mut()`
-  (la tranche des assignations de l'app) et, par défaut sur elles, `assign(param)` / `set_assign(param, assign)` ;
-  `assign_sweep(param)` donne la plage qui balaie le paramètre. L'état et l'aiguillage du sous-menu sortent dans un
+  (la tranche des assignations de l'app) et `assign_sweep(param)`, la plage qui balaie le paramètre ;
+  `assign(param)` / `set_assign(param, assign)` s'en déduisent, une fois pour toutes, en méthodes de `dyn App` :
+  en méthodes par défaut du trait, chaque app en aurait une copie dans sa table (≈ 1,9 Kio de `.text` pour sept
+  apps, mesuré en 12b). L'état et l'aiguillage du sous-menu sortent dans un
   type commun de `modulation`. Le protocole gagne `GetAssign` / `SetAssign` et une réponse `Assign`.
 * **C — un registre de modulations dans le moteur**, hors des apps, que le moteur appliquerait avant `update`.
   C'est la forme d'un routage interne à venir, mais l'effet d'une CV sur une valeur (`MUL` sur un compte, `SET` sur
@@ -41,7 +43,7 @@ pas). L'index d'un paramètre suffit donc à nommer son assignation, sans table 
 ## 3. Ce que l'assistant a proposé
 
 B. L'app reste propriétaire de ses assignations et de ce qu'elles font à ses valeurs ; le trait n'en voit qu'une
-tranche et une plage. Une valeur venue de la sonde passe les mêmes bornes que le panneau (`Assign::checked`, comme
+tranche et une plage. Une valeur venue de la sonde passe les mêmes bornes que le panneau (`Assign::check`, comme
 `ParamSpec::check`). `CENTER`, qui a besoin des lectures vues, se fait côté hôte : la sonde lit les CV dans `Stream`
 et appelle la même fonction `Assign::center` que le module, avec la plage `assign_sweep` ; le module n'a pas à garder
 de fenêtre de lectures hors du sous-menu. `DescribeApp` envoie l'assignation de chaque paramètre assignable après son

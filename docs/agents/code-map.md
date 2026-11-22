@@ -34,7 +34,7 @@ rationale behind each crate is in the journal entry cited.
 | The supersaw bank, the applet's own | `crates/oc-core/src/apps/supersaw/bank.rs` (parameters, Szabo's curves, the preparation in integers, the `SupersawBank` generator), `bank/float.rs` (the bank in `f32`, integer phases, journal/D-039) |
 | The generators this image composes (`Sound`, `Params`, `Setup`, `Voice`) | `crates/oc-core/src/apps/sound.rs` (journal/D-044) |
 | The `Generator` trait, the voice, `Setup`, the waveforms, levels and tones (`Basic`) | `crates/oc-core/src/audio/mod.rs`, `audio/wave.rs`, `audio/basic.rs` (journal/D-033, D-040, D-044) |
-| A parameter modulated by a CV input, and its submenu | `crates/oc-core/src/modulation/mod.rs`, `modulation/editor.rs` (journal/D-035, D-036) |
+| A parameter modulated by a CV input, and its submenu | `crates/oc-core/src/modulation/mod.rs`, `modulation/editor.rs` (journal/D-035, D-036); an applet's inputs and open submenu, a parameter's slot: `modulation/slots.rs` (`Modulations`, `slot_of`); reached by the probe through `App::assigns` and `assign` / `set_assign` on `dyn App` (journal/D-045) |
 | The app menu (`up`+`down`) | `crates/oc-core/src/menu.rs` |
 | Button debouncing and the `up`+`down` chord | `crates/oc-core/src/buttons.rs` |
 | The system settings screen (`SETUP`, boot gestures) | `crates/oc-core/src/system.rs` (routing in `engine.rs`) |

@@ -50,7 +50,8 @@ use crate::fmt::TextBuf;
 use crate::framebuffer::{FrameBuffer, ROW_HEIGHT, WIDTH_I32};
 use crate::gfx::controls::scroll_bar;
 use crate::gfx::{self, Ink, Point};
-use crate::modulation::editor::{AssignEditor, Param};
+use crate::modulation::editor::Param;
+use crate::modulation::slots::Modulations;
 use crate::modulation::{Assign, AssignLine};
 use crate::platform::{Button, CV_CHANNELS, MilliVolts};
 use crate::text::fonts::FONT_5X8;
@@ -323,16 +324,14 @@ pub struct RatchetApp {
     tempo: Tempo,
     /// The state of the generator that rolls each repeat's chance.
     seed: u32,
-    /// The input of each setting that takes one (see `Setting::input_slot`).
-    assigns: [Assign; 4],
+    /// The input of each setting that takes one (see `Setting::input_slot`),
+    /// and the submenu.
+    inputs: Modulations<4>,
     selected: usize,
-    /// The selected setting's input submenu, `None` while it is closed.
-    assigning: Option<AssignEditor>,
     gate: bool,
     running: Option<Running>,
     pulse_a_micros: u32,
     pulse_b_micros: u32,
-    cv: [MilliVolts; CV_CHANNELS],
     outputs: [MilliVolts; CV_CHANNELS],
 }
 
@@ -346,15 +345,13 @@ impl RatchetApp {
             first_unit: FirstUnit::Millis,
             division: DEFAULT_DIVISION,
             tempo: Tempo::new(),
-            assigns: [Assign::NONE; 4],
+            inputs: Modulations::new([Assign::NONE; 4]),
             seed: 0x2545_F491,
             selected: 0,
-            assigning: None,
             gate: false,
             running: None,
             pulse_a_micros: 0,
             pulse_b_micros: 0,
-            cv: [0; CV_CHANNELS],
             outputs: [0; CV_CHANNELS],
         }
     }
@@ -395,7 +392,7 @@ impl RatchetApp {
     /// The input `setting` takes, `None` for one that takes none.
     #[must_use]
     pub fn assign(&self, setting: Setting) -> Option<&Assign> {
-        setting.input_slot().map(|slot| &self.assigns[slot])
+        setting.input_slot().map(|slot| self.inputs.assign(slot))
     }
 
     /// The page of settings on screen, from 0: the selected setting's.
@@ -408,18 +405,15 @@ impl RatchetApp {
     /// while it is closed.
     #[must_use]
     pub const fn assigning(&self) -> Option<AssignLine> {
-        match &self.assigning {
-            Some(editor) => Some(editor.line()),
-            None => None,
-        }
+        self.inputs.line()
     }
 
     /// The lowest and highest reading of the submenu's input lately (see
-    /// [`AssignEditor::range`]), `None` while it is closed or before the
+    /// [`Modulations::seen`]), `None` while it is closed or before the
     /// first.
     #[must_use]
     pub fn observed(&self) -> Option<(MilliVolts, MilliVolts)> {
-        self.assigning.as_ref().and_then(AssignEditor::range)
+        self.inputs.seen()
     }
 
     /// Repeats sent by the burst under way, `None` when none runs.
@@ -434,8 +428,7 @@ impl RatchetApp {
         let elapsed = input.elapsed_micros;
         self.pulse_a_micros = self.pulse_a_micros.saturating_sub(elapsed);
         self.pulse_b_micros = self.pulse_b_micros.saturating_sub(elapsed);
-        self.cv = input.cv;
-        self.observe(elapsed);
+        self.inputs.read(&input.cv, elapsed);
 
         let gate = input.triggers[0];
         let rising = gate && !self.gate;
@@ -492,8 +485,9 @@ impl RatchetApp {
     /// `burst` with each setting's input applied as it reads.
     fn with_inputs(&self, mut burst: Burst) -> Burst {
         let reading = |setting: Setting| {
-            self.assign(setting)
-                .and_then(|assign| assign.reading(&self.cv))
+            setting
+                .input_slot()
+                .and_then(|slot| self.inputs.reading(slot))
         };
         if let Some((millivolts, effect)) = reading(Setting::Count) {
             burst.count = count_from(burst.count, millivolts, effect);
@@ -557,36 +551,25 @@ impl RatchetApp {
     }
 
     fn follow_panel(&mut self, input: &InputSnapshot) {
-        let selected = self.selected();
-        if let (Some(editor), Some(slot), Some(sweep)) = (
-            &mut self.assigning,
-            selected.input_slot(),
-            sweep(selected, self.settings.model),
-        ) {
-            if !editor.follow(&mut self.assigns[slot], input, sweep) {
-                self.assigning = None;
-            }
+        if self
+            .inputs
+            .follow(input, sweep(self.selected(), self.settings.model))
+        {
             return;
         }
         let picks = i32::from(input.controls.delta(0));
         if picks != 0 {
             self.selected = wrapped(self.selected, Setting::ALL.len(), picks);
         }
-        if input.buttons.pressed(Button::RightEncoder) && self.selected().input_slot().is_some() {
-            self.assigning = Some(AssignEditor::new());
+        if let (true, Some(slot)) = (
+            input.buttons.pressed(Button::RightEncoder),
+            self.selected().input_slot(),
+        ) {
+            self.inputs.open(slot);
         }
         let turns = i32::from(input.controls.delta(1));
         if turns != 0 {
             self.change(self.selected(), turns);
-        }
-    }
-
-    /// Adds the reading of the submenu's input to its range seen, `elapsed`
-    /// after the last.
-    fn observe(&mut self, elapsed: u32) {
-        let slot = self.selected().input_slot();
-        if let (Some(editor), Some(slot)) = (&mut self.assigning, slot) {
-            editor.observe(&self.assigns[slot], &self.cv, elapsed);
         }
     }
 
@@ -681,8 +664,8 @@ impl RatchetApp {
     pub fn render(&self, frame: &mut FrameBuffer, _context: &TickContext) {
         frame.clear();
         self.render_main(frame);
-        if let (Some(editor), Some(assign)) = (&self.assigning, self.assign(self.selected())) {
-            self.render_submenu(frame, editor, assign);
+        if self.inputs.is_open() {
+            self.render_submenu(frame);
         }
     }
 
@@ -791,7 +774,7 @@ impl RatchetApp {
     /// The selected setting's input submenu over the main screen: the
     /// setting, the value a burst would take now and where both sit in its
     /// range (journal/D-036).
-    fn render_submenu(&self, frame: &mut FrameBuffer, editor: &AssignEditor, assign: &Assign) {
+    fn render_submenu(&self, frame: &mut FrameBuffer) {
         let setting = self.selected();
         let latched = self.latched();
         let mut now = TextBuf::<16>::new();
@@ -805,7 +788,7 @@ impl RatchetApp {
             panel_permille: position(setting, &self.synced()),
             now_permille: position(setting, &latched),
         };
-        editor.render(frame, assign, &self.cv, &param);
+        self.inputs.render(frame, &param);
     }
 
     /// The value of `setting` in `settings`, as the screen shows it; the
@@ -1062,6 +1045,25 @@ impl App for RatchetApp {
         Some(ParamValue::Number(
             i32::try_from(number).unwrap_or(i32::MAX),
         ))
+    }
+
+    fn assigns(&self) -> &[Assign] {
+        self.inputs.as_slice()
+    }
+
+    fn assigns_mut(&mut self) -> &mut [Assign] {
+        self.inputs.as_mut_slice()
+    }
+
+    fn assign_sweep(&self, index: usize) -> Option<(MilliVolts, MilliVolts)> {
+        let setting = match index {
+            0 => Setting::Count,
+            2 => Setting::Time,
+            4 => Setting::Shape,
+            5 => Setting::Chance,
+            _ => return None,
+        };
+        sweep(setting, self.settings.model)
     }
 
     fn actions(&self) -> &'static [&'static str] {
