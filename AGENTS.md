@@ -56,6 +56,13 @@ cargo test --all-features
 cargo xtask build && cargo xtask size
 ```
 
+* **`[skip ci]` is for documentation-only commits**, and never at the head
+  of a push to a pull request's branch: GitHub skips the whole push, every
+  code commit it carries included, when the head commit's message holds the
+  marker anywhere, its body too. Order the documentation commit before the
+  code, or end the push on a commit that runs CI; never quote the marker in
+  a message ("the skip marker").
+
 ## Commands
 
 ```sh
