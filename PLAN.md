@@ -28,6 +28,7 @@ ne recharge que ce dont elle a besoin (journal/D-001).
 | `docs/plan/etape-3c-cadence.md` | plan du lot 3c (D-023 option C+) |
 | `docs/plan/etape-3-plan-a-isr-16khz.md` | plan A de D-023 (ISR 16 666 Hz), proposé par Junie, non adopté ; bandeau des points caducs |
 | `docs/plan/avancement/etape-*.md` | journal d'une étape terminée : fait, mesuré, corrigé |
+| `docs/plan/avancement/budget-memoire.md` | hors étape : dépasser l'ITCM, partage des bancs repris en main, niveaux d'optimisation mesurés (code froid en `s`), écran noir en `z` |
 | `.junie/plans/oc-rust-firmware-foundation.md` | plan détaillé de l'étape 0 (fondation), rédigé par l'assistant Junie, terminé |
 | `docs/supersaw/` | étude : supersaw, repliement, PolyBLEP, architecture audio et partage du bus SPI (base de D-023) |
 | `AGENTS.md` | règles et pièges du dépôt (anglais), seule source de vérité des agents ; route vers ses annexes |
