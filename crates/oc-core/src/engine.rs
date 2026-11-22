@@ -103,6 +103,9 @@ pub struct Engine<A, O, D, C, K, S> {
     settings: Settings,
     apps: AppHost,
     splash: SplashScreen,
+    /// Short commit hash, `-dirty` if the tree differed, empty until a
+    /// backend sets it: drawn by the splash and the settings screens.
+    build_id: &'static str,
     menu: Menu,
     system: SystemScreen,
     wizard: CalibrationWizard,
@@ -169,6 +172,7 @@ where
             settings: Settings::DEFAULT,
             apps: AppHost::new(),
             splash: SplashScreen::new(),
+            build_id: "",
             menu: Menu::new(),
             system: SystemScreen::new(),
             wizard: CalibrationWizard::new(),
@@ -294,9 +298,7 @@ where
             let mark = self.clock.fine_count();
             match self.screen {
                 Screen::Menu => self.menu.render(self.display.frame_mut()),
-                Screen::System => self
-                    .system
-                    .render(self.display.frame_mut(), self.splash.build_id()),
+                Screen::System => self.system.render(self.display.frame_mut(), self.build_id),
                 Screen::Calibration => self.wizard.render(self.display.frame_mut()),
                 Screen::App | Screen::Splash => {
                     self.apps.render(self.display.frame_mut(), &context);
@@ -360,7 +362,7 @@ where
         self.replace_params(Params::REST);
 
         let mark = self.clock.fine_count();
-        self.splash.render(self.display.frame_mut());
+        self.splash.render(self.display.frame_mut(), self.build_id);
         self.record_since(Stage::Render, mark);
         // Whole, on every tick: the splash keeps the outputs at rest, so its
         // long ticks hold nothing back.
@@ -490,7 +492,13 @@ where
     /// its build script computed (journal/D-025); it survives
     /// [`Self::reset`].
     pub const fn set_build_id(&mut self, build_id: &'static str) {
-        self.splash.set_build_id(build_id);
+        self.build_id = build_id;
+    }
+
+    /// The build identifier set by the backend, empty if none.
+    #[must_use]
+    pub const fn build_id(&self) -> &'static str {
+        self.build_id
     }
 
     /// Skips straight past the boot splash screen, as if it had already run
@@ -979,6 +987,15 @@ mod tests {
             [0; CV_CHANNELS],
             "a reset engine boots again before resuming normal execution"
         );
+    }
+
+    #[test]
+    fn the_build_id_survives_a_reset() {
+        let mut engine = mock_engine_at_boot(0);
+        assert_eq!(engine.build_id(), "");
+        engine.set_build_id("a1b2c3d-dirty");
+        engine.reset();
+        assert_eq!(engine.build_id(), "a1b2c3d-dirty");
     }
 
     #[test]

@@ -49,31 +49,13 @@ const PERIMETER_PIXELS: u32 = (2 * WIDTH_I32 + 2 * HEIGHT_I32 - 4) as u32;
 #[derive(Debug, Clone, Copy, Default)]
 pub struct SplashScreen {
     elapsed_micros: u32,
-    build_id: &'static str,
 }
 
 impl SplashScreen {
     /// A freshly started animation, at its very first frame.
     #[must_use]
     pub const fn new() -> Self {
-        Self {
-            elapsed_micros: 0,
-            build_id: "",
-        }
-    }
-
-    /// Sets the build identifier drawn under the banner (short commit hash,
-    /// `-dirty` if the tree differed). Empty, the default, draws nothing:
-    /// the backends compute it (journal/D-025), the core only shows it, so
-    /// its tests never depend on the commit being built.
-    pub const fn set_build_id(&mut self, build_id: &'static str) {
-        self.build_id = build_id;
-    }
-
-    /// The build identifier drawn under the banner, empty if none.
-    #[must_use]
-    pub const fn build_id(&self) -> &'static str {
-        self.build_id
+        Self { elapsed_micros: 0 }
     }
 
     /// Restarts the animation from its first frame.
@@ -98,9 +80,13 @@ impl SplashScreen {
         self.elapsed_micros >= DURATION_MICROS
     }
 
-    /// Draws the current animation frame: the banner centred on screen, and
-    /// however much of the border has traced so far.
-    pub fn render(&self, frame: &mut FrameBuffer) {
+    /// Draws the current animation frame: the banner centred on screen,
+    /// `build_id` under it (short commit hash, `-dirty` if the tree
+    /// differed), and however much of the border has traced so far. An empty
+    /// identifier draws nothing: the backends compute it (journal/D-025), the
+    /// core only shows it, so its tests never depend on the commit being
+    /// built.
+    pub fn render(&self, frame: &mut FrameBuffer, build_id: &str) {
         frame.clear();
 
         let centred = TextStyle::lit(&FONT_5X8)
@@ -108,7 +94,7 @@ impl SplashScreen {
             .with_baseline(Baseline::Middle);
         // With a build identifier, the two lines straddle the centre; without
         // one, the banner sits on it as before.
-        let banner_y = if self.build_id.is_empty() {
+        let banner_y = if build_id.is_empty() {
             HEIGHT_I32 / 2
         } else {
             HEIGHT_I32 / 2 - BUILD_ID_GAP / 2
@@ -119,10 +105,10 @@ impl SplashScreen {
             Point::new(WIDTH_I32 / 2, banner_y),
             centred,
         );
-        if !self.build_id.is_empty() {
+        if !build_id.is_empty() {
             text::draw(
                 frame,
-                self.build_id,
+                build_id,
                 Point::new(WIDTH_I32 / 2, banner_y + BUILD_ID_GAP),
                 centred,
             );
@@ -245,12 +231,12 @@ mod tests {
     fn rendering_draws_the_banner_and_the_border() {
         let mut frame = FrameBuffer::new();
         let mut splash = SplashScreen::new();
-        splash.render(&mut frame);
+        splash.render(&mut frame, "");
         let banner_only = frame.lit_pixels();
         assert!(banner_only > 0, "the banner must be visible immediately");
 
         splash.finish();
-        splash.render(&mut frame);
+        splash.render(&mut frame, "");
         assert!(
             frame.lit_pixels() > banner_only,
             "a fully traced border must light more pixels than the banner alone"
@@ -263,7 +249,7 @@ mod tests {
             let mut splash = SplashScreen::new();
             splash.advance(elapsed);
             let mut frame = FrameBuffer::new();
-            splash.render(&mut frame);
+            splash.render(&mut frame, "");
             frame
         };
         assert_eq!(
@@ -274,27 +260,12 @@ mod tests {
     }
 
     #[test]
-    fn the_build_id_adds_a_line_and_survives_a_reset() {
+    fn the_build_id_adds_a_line() {
         let mut without = FrameBuffer::new();
         let mut with = FrameBuffer::new();
-        let mut splash = SplashScreen::new();
-        splash.render(&mut without);
-        splash.set_build_id("a1b2c3d-dirty");
-        splash.render(&mut with);
+        let splash = SplashScreen::new();
+        splash.render(&mut without, "");
+        splash.render(&mut with, "a1b2c3d-dirty");
         assert_ne!(without, with, "the identifier must be drawn");
-
-        splash.reset();
-        assert_eq!(splash.build_id(), "a1b2c3d-dirty");
-    }
-
-    #[test]
-    fn an_empty_build_id_draws_exactly_the_plain_banner() {
-        let mut plain = FrameBuffer::new();
-        let mut empty = FrameBuffer::new();
-        SplashScreen::new().render(&mut plain);
-        let mut splash = SplashScreen::new();
-        splash.set_build_id("");
-        splash.render(&mut empty);
-        assert_eq!(plain, empty);
     }
 }
