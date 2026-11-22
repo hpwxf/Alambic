@@ -15,10 +15,12 @@ it already, this file only points to it.
 * **`oc-firmware` is excluded from `default-members`**: a bare
   `cargo build|test|clippy` never touches ARM code. Build the firmware through
   `cargo xtask build|size|hex` or `cargo fw`.
-* **No `memory.x`, on purpose.** `teensy4-bsp`'s `rt` feature drives
+* **No `memory.x`, on purpose.** `crates/oc-firmware/build.rs` drives
   `imxrt-rt::RuntimeBuilder`, which generates `t4link.x` (memory regions and
   the i.MX RT boot sections) into `OUT_DIR`; `.cargo/config.toml` links with
   `-Tt4link.x`. A hand-written `memory.x` would conflict with it.
+  `teensy4-bsp` is used without its `rt` feature, so the `FlexRAM` bank split
+  is `FLEXRAM_BANKS` in that `build.rs` (journal/D-038).
 * **No `flip-link`**: it needs a `MEMORY { RAM }` region. `imxrt-rt` already
   puts `.stack` at the bottom of DTCM, so an overflow faults; `cargo xtask
   size` checks it, and estimates how deep the stack gets (`stack-depth`,

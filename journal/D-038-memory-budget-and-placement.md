@@ -6,7 +6,7 @@
 | **Date** | 2026-11-18 |
 | **Auteur** | Pascal Havé |
 | **Statut** | adoptée, révisée |
-| **Commits** | `0438059` (ADR seul, aucun code) ; révisions : profondeur de la pile estimée par `cargo xtask size`, moteur hors de la pile, `main` coupé en `boot` et `run` ; seuil de l'ITCM dans `xtask size` |
+| **Commits** | `0438059` (ADR seul, aucun code) ; révisions : profondeur de la pile estimée par `cargo xtask size`, moteur hors de la pile, `main` coupé en `boot` et `run` ; seuil de l'ITCM dans `xtask size`, runtime configuré par `oc-firmware` |
 | **Relations** | précise D-004 (script de lien généré par `imxrt-rt`, disposition vérifiée par `cargo xtask size`) ; DMA et anneau du DAC (D-033) ; tampons de mesure à venir (capture du signal par la sonde, D-029) ; firmware de test par feature (`settings-stress`, D-028) ; applets résidents (D-021) |
 
 ## 1. Contexte
@@ -247,3 +247,30 @@ supposer. Les budgets d'ITCM et de DTCM en découlent ; ils suivront un repartag
 bancs alloués ; un contrôle `dtcm-budget` fait de même pour la fin des sections de la DTCM. Un ELF sans
 `__flexram_config` est refusé : on ne vérifierait plus rien de sûr. Les constantes `ITCM_USABLE` et `DTCM_USABLE`
 d'`oc-image` disparaissent, l'outil web n'en faisait pas usage.
+
+## Révision (2026-11-22) — le runtime configuré par `oc-firmware`, hors de la feature `rt` du BSP
+
+§2 notait que B, C et D demandent de couper la feature `rt` de `teensy4-bsp` et d'écrire le `build.rs` de
+`oc-firmware` avec `imxrt-rt::RuntimeBuilder`. L'ITCM perd ≈ 21 Kio en quatre jours (32 Kio libres le 2026-11-22) :
+B viendra bientôt, et l'utilisateur veut que ce jour-là le repartage ne coûte qu'une constante. C'est fait d'avance,
+sans changer la disposition.
+
+* **Ce que `rt` apportait** : la dépendance `imxrt-rt` (code de démarrage, en-têtes de boot, `#[entry]`,
+  `#[interrupt]`), la feature `rt` d'`imxrt-ral` (la table des vecteurs propres à la puce), la réexportation
+  `teensy4_bsp::rt`, et le `build.rs` du BSP, seul à fixer le partage 6 / 10. Rien d'autre dans le BSP n'en dépend.
+* **Décidé** : `teensy4-bsp` sans `rt` ; `oc-firmware` dépend d'`imxrt-rt` (`device`, à l'exécution et au build) et
+  d'`imxrt-ral` (pour sa seule feature `rt`) ; son `build.rs` reprend la configuration du BSP, le partage en constante
+  (`FLEXRAM_BANKS`), le nom `t4link.x` et les surcharges `TEENSY4_STACK_SIZE` / `TEENSY4_HEAP_SIZE` gardés, pour ne
+  toucher ni `.cargo/config.toml` ni les habitudes. `bsp::rt::entry` devient `imxrt_rt::entry`, et
+  `teensy4_bsp::rt::interrupt` `imxrt_rt::interrupt`.
+* **Vérifié** : le `t4link.x` généré est identique, octet pour octet, à celui du BSP ; `.text` aussi (`0x28020`) ;
+  `cargo xtask size` lit le même `__flexram_config` (`0xfffaaaaa`).
+* **Écarté pour l'instant** : attendre une surcharge en amont. `imxrt-rt` 0.1.8 n'en a pas pour le partage des bancs
+  (il en a pour la pile et le tas) ; une méthode `flexram_banks_env_override` dans `imxrt-rt` et son usage par
+  `teensy4-bsp` (`TEENSY4_FLEXRAM_BANKS`) serviraient d'autres cartes, et une issue sera proposée en amont. Si elle
+  aboutit dans une version publiée, revenir à `rt` avec la variable dans le `[env]` de `.cargo/config.toml` se
+  discutera alors ; d'ici là, rien n'en dépend.
+
+Ce qui ferait changer d'avis : une version de `teensy4-bsp` dont le `build.rs` changerait la disposition par défaut
+ne nous toucherait plus, et c'est voulu ; mais une évolution d'`imxrt-rt` qui changerait le script généré se verrait
+dans la liste de contrôle de `cargo xtask size`, comme avant.

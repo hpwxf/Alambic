@@ -4,9 +4,11 @@
 
 There is **no `memory.x` in this crate, on purpose.**
 
-`teensy4-bsp` is built with the `rt` feature, and its build script drives
-`imxrt-rt::RuntimeBuilder`, which generates a complete linker script named
-`t4link.x` into `OUT_DIR`. That script defines the memory regions *and* the
+This crate's `build.rs` drives `imxrt-rt::RuntimeBuilder`, which generates a
+complete linker script named `t4link.x` into `OUT_DIR`. `teensy4-bsp` is used
+*without* its `rt` feature, whose build script would fix the bank split
+below; the configuration is the BSP's, copied, so the split is ours to change
+(`FLEXRAM_BANKS` in `build.rs`, journal/D-038). That script defines the memory regions *and* the
 i.MX RT boot sections (FlexSPI Configuration Block, Image Vector Table, boot
 data). Adding a hand-written `memory.x` would either be ignored or silently
 conflict with the generated regions, so the layout is documented here instead
@@ -23,11 +25,11 @@ rustflags = ["-C", "link-arg=-Tt4link.x"]
 
 Board-level figures (flash, RAM totals, CPU) match the
 [PJRC Teensy technical specifications](https://www.pjrc.com/teensy/techspecs.html).
-FlexRAM bank split and section placement below come from `teensy4-bsp` /
-`imxrt-rt`, not from that page alone.
+FlexRAM bank split and section placement below come from `build.rs`
+(the defaults of `teensy4-bsp`, kept) and `imxrt-rt`, not from that page alone.
 
-FlexRAM on the i.MX RT1062 is 512 KiB of configurable banks. The BSP splits it
-as 6 banks ITCM / 10 banks DTCM / 0 banks OCRAM, and uses the dedicated 512 KiB
+FlexRAM on the i.MX RT1062 is 512 KiB of configurable banks. `build.rs` splits
+it as 6 banks ITCM / 10 banks DTCM / 0 banks OCRAM, and uses the dedicated 512 KiB
 OCRAM for the heap and uninitialised data.
 
 | Section         | Address       | Memory | Size    | Contents                                     |

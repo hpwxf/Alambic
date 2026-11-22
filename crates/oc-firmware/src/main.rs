@@ -382,7 +382,7 @@ struct Running {
 /// Wires the module, then runs the loop: [`boot`] and [`run`] one after
 /// the other, so that the start-up's frame is gone before the loop's
 /// (journal/D-038); what the loop keeps stays here, written by `boot`.
-#[bsp::rt::entry]
+#[imxrt_rt::entry]
 fn main() -> ! {
     let mut running = boot();
     run(&mut running)
