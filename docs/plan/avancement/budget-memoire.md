@@ -103,6 +103,32 @@ change d'alignement sur 8 octets (lecture des instructions par 64 bits sur le Co
 prouvée : un effet de placement que tout changement de taille du code peut produire, dans un sens ou dans l'autre.
 Minimum et maximum sont inchangés ; 1 % de la période.
 
+### Code froid en `s` sous bruit, sur le module
+
+Le pire cas du protocole de l'étape 11, après #16 et #17 : `scripts/profile-supersaw.sh 10`, CV1 sur `NOTE` et CV2 sur
+`DETUNE` (assignés par la sonde, effet `ADD`), bruit branché sur les deux, `MIX` 50 %, `STEREO ON`. Trois relevés de
+10 s par cas et par image, la même séance : `master` (`a782775`, O3 partout) puis cette branche (`f6d0202`). Les
+trois relevés d'un cas diffèrent de 0,01 µs au plus, sauf `tick` (0,16 µs). Moyennes en µs, (min – max) :
+
+| | O3, `SHAPE` 25 % | code froid en `s`, `SHAPE` 25 % | O3, `SHAPE` 0 | code froid en `s`, `SHAPE` 0 |
+|---|---|---|---|---|
+| `audio` | 3,89 (3,26 – 5,04) | 4,07 (3,15 – 4,90) | 3,77 (2,98 – 4,88) | 4,03 (2,87 – 4,89) |
+| `voice` | 0,98 (– 1,09) | 0,98 (– 1,07) | 0,69 (– 0,79) | 0,69 (– 0,77) |
+| `voice_params` | 0,36 | 0,34 | 0,36 | 0,34 |
+| `update` | 2,19 | 2,17 | 2,19 | 2,17 |
+| `publish` | 5,04 | 5,04 | 5,02 | 5,02 |
+| `tick` (max) | 15,34 – 15,50 (111) | 15,27 – 15,28 (111) | 15,20 – 15,21 (110) | 15,13 – 15,14 (110) |
+| `render` | 99,98 | 100,0 | 99,68 | 99,80 |
+
+Sonde en flux pendant 10 s (`cargo probe stats --fresh 10`) : `usb` 4,26 µs (1,71 – 6,67) en O3,
+4,42 µs (1,79 – 6,65) avec le code froid en `s` ; gigue de la boucle contre 1 000 µs sous 16 µs dans les deux cas
+(8 à 16 µs : 14,3 % des ticks en O3, 11,8 % en `s`).
+
+Le bruit ne change rien à la conclusion sans CV : seul `audio` bouge en moyenne (+0,18 µs à `SHAPE` 25 %, +0,26 µs
+à 0), avec un `voice` identique et un maximum un peu plus bas (4,90 contre 5,04 µs, 24 % de la période de 21 µs).
+Même signature que l'effet de placement ci-dessus : le code de l'interruption n'est pas dans les crates passées en `s`.
+`usb`, seul chemin compilé en `s` qui tourne ici, prend 0,16 µs de plus par passage, sur 1 000.
+
 ### Code froid en `s` et pile
 
 Sur `master` après #16 (profondeur de la pile dans `xtask size`, moteur en `static`, `main` coupé en `boot` / `run`)
@@ -139,6 +165,7 @@ le framebuffer est juste (`cargo probe screen`) et que tous les morceaux d'écra
 
 ## Réserves
 
-* `s` / `z` mesurés sans CV seulement ; les cas sous bruit (`NOTE`, `DETUNE`) non faits.
+* Tout le firmware en `s` ou en `z` mesuré sans CV seulement ; ces images ne sont pas retenues. Le code froid en `s`,
+  retenu, est mesuré aussi sous bruit.
 * L'effet de placement sur `audio` est une explication probable, non prouvée.
 * La sonde échoue parfois au premier appel juste après un démarrage (une reprise suffit) ; non analysé.
