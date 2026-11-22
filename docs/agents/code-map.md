@@ -50,6 +50,7 @@ rationale behind each crate is in the journal entry cited.
 | The pinout (the only file allowed to name a pin) | `crates/oc-firmware/src/board.rs` (rule test: `xtask/tests/pin_rule.rs`) |
 | The audio path and its mailboxes | `crates/oc-firmware/src/audio.rs`; DMA, ring, handlers: `audio_irq.rs` |
 | The two USB serial ports and the log | `crates/oc-firmware/src/usb.rs`, `usb_log.rs` |
+| The OLED's blocking initialisation bus, whose `flush` waits for the last bit | `crates/oc-firmware/src/framed_spi.rs` |
 | The Teensy's settings flash (boot ROM calls) | `crates/oc-firmware/src/flash_store.rs` |
 | The OLED's frame in chunks, the DAC's words, FIFO words | `crates/oc-drivers/src/ssd130x.rs` (`FrameStream`), `dac8565.rs`, `fifo.rs` |
 | The probe protocol and the module's side of it | `crates/oc-protocol/src/lib.rs`, `server.rs` |

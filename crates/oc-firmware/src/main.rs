@@ -58,6 +58,7 @@ mod clock;
 mod cv_in;
 mod delay;
 mod flash_store;
+mod framed_spi;
 mod reboot;
 #[cfg(feature = "settings-stress")]
 mod stress;
@@ -90,6 +91,7 @@ use crate::clock::SystemClock;
 use crate::cv_in::CvInputs;
 use crate::delay::CycleDelay;
 use crate::flash_store::SettingsFlash;
+use crate::framed_spi::FramedSpi;
 use crate::usb::Usb;
 
 /// How long to spin-poll USB after bringing the CDC backend up, so a host that
@@ -218,18 +220,18 @@ fn boot() -> Running {
     // chip selects: the DAC's is the controller's PCS0, the OLED's a GPIO.
     // The OLED is initialised over a blocking handle first; then the audio
     // interrupt takes the bus over (journal/D-033).
-    let bus = RefCell::new(bsp_board::lpspi(
+    let bus = RefCell::new(FramedSpi::new(bsp_board::lpspi(
         lpspi4,
         pins.spi.with_clock(pins.led_sck),
         board::OLED_SPI_HZ,
-    ));
+    )));
     log::info!("spi ok");
     usb.poll();
 
     let dac_lines = pins.dac.claim(&mut gpio2);
     let oled_lines = pins.oled.claim(&mut gpio2);
     let mut display = Ssd130x::new(
-        SharedBus::with_select(&bus, board::select_oled),
+        SharedBus::with_select(&bus, |bus| board::select_oled(bus.inner_mut())),
         oled_lines.cs,
         oled_lines.dc,
         oled_lines.reset,
@@ -255,7 +257,7 @@ fn boot() -> Running {
     // ---- audio interrupt: the bus, the DAC and the screen from here on ----
     // The reset line stays held here, high, for good.
     let (_, oled_cs, oled_dc, _oled_reset) = display.release();
-    let mut spi = bus.into_inner();
+    let mut spi = bus.into_inner().into_inner();
     let clocks = board::bus_clocks(&mut spi);
     let dac_dma = dma[board::AUDIO_DMA_CHANNEL]
         .take()
@@ -382,7 +384,7 @@ struct Running {
 /// Wires the module, then runs the loop: [`boot`] and [`run`] one after
 /// the other, so that the start-up's frame is gone before the loop's
 /// (journal/D-038); what the loop keeps stays here, written by `boot`.
-#[bsp::rt::entry]
+#[imxrt_rt::entry]
 fn main() -> ! {
     let mut running = boot();
     run(&mut running)

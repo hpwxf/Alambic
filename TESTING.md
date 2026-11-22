@@ -324,7 +324,11 @@ invariant is broken. The checks include, among others:
 * `.stack` at DTCM base `0x2000_0000`, entirely in DTCM, and **strictly below**
   `.vector_table` with no overlap (the anti-overflow property that replaces
   `flip-link` — see `crates/oc-firmware/MEMORY.md`);
-* `.text` inside ITCM; `.data`/`.bss` in DTCM above the vector table;
+* the `FlexRAM` bank split read from the image (`__flexram_config`), from
+  which the ITCM and DTCM budgets below come;
+* `.text` inside the ITCM banks, with a **warning** under 16 KiB free
+  (journal/D-038: time to give ITCM more banks); `.data`/`.bss` in DTCM above
+  the vector table, and every DTCM section within the DTCM banks;
 * `.rodata`/`.heap` in OCRAM when present.
 
 The pure parser/checklist logic lives in `xtask::size_check` and is covered by

@@ -6,7 +6,7 @@
 | **Date** | 2026-11-18 |
 | **Auteur** | Pascal Havé |
 | **Statut** | adoptée, révisée |
-| **Commits** | ce commit (ADR seul, aucun code) ; révision : profondeur de la pile estimée par `cargo xtask size`, moteur hors de la pile, `main` coupé en `boot` et `run` |
+| **Commits** | `0438059` (ADR seul, aucun code) ; révisions : profondeur de la pile estimée par `cargo xtask size`, moteur hors de la pile, `main` coupé en `boot` et `run` ; seuil de l'ITCM dans `xtask size`, runtime configuré par `oc-firmware`, code froid en `s` |
 | **Relations** | précise D-004 (script de lien généré par `imxrt-rt`, disposition vérifiée par `cargo xtask size`) ; DMA et anneau du DAC (D-033) ; tampons de mesure à venir (capture du signal par la sonde, D-029) ; firmware de test par feature (`settings-stress`, D-028) ; applets résidents (D-021) |
 
 ## 1. Contexte
@@ -50,10 +50,14 @@ loge environ cinq applets de cette taille.
 
 **La comparaison avec Phazerville.** `o_C-phazerville-v2.0.2_T40-92740448e5.hex` fait 1,4 Mo, mais un fichier Intel HEX
 est du texte (deux caractères par octet, plus l'en-tête de chaque ligne) : ≈ 2,8 fois l'image binaire. Notre
-`dist/oc-firmware.hex` fait 523 Ko pour ≈ 185 Kio d'image, ce qui vérifie le rapport ; Phazerville représente donc
-≈ 500 Kio d'image en flash, code et données confondus. Le chiffre ne se compare pas à l'ITCM : la FlexRAM entière fait
-512 Kio, et Teensyduino, qui place le code en ITCM par défaut, laisse en flash ce qui est marqué `FLASHMEM`.
-Phazerville exécute donc une bonne part de son code depuis la flash (non vérifié dans ses sources).
+`dist/oc-firmware.hex` fait 523 Ko pour ≈ 185 Kio d'image, ce qui vérifie le rapport. Décodée (en-têtes de boot et
+valeurs que charge `ResetHandler`), l'image de Phazerville fait **468 Kio**, et la plus grande part de son code
+s'exécute **en ITCM** : ≈ 284 Kio y sont copiés au démarrage, et seuls ≈ 84 Kio restent en flash (démarrage, fonctions
+`FLASHMEM`, données `PROGMEM`, descripteurs USB). Le partage des bancs le permet : le script de lien de Teensyduino
+(`teensy4/imxrt1062.ld`) déclare ITCM et DTCM de 512 Kio chacune et calcule à l'édition de liens le nombre de bancs
+d'ITCM d'après la taille du code (`_itcm_block_count`, arrondi aux 32 Kio), la DTCM prenant le reste. L'image écrit
+`0xAAABFFFF` dans `GPR17` : 9 bancs d'ITCM (288 Kio), 7 de DTCM (224 Kio), `.rodata` et `.data` (≈ 88 Kio) en DTCM.
+Teensyduino fait donc automatiquement ce que l'option **B** ci-dessous fait à la main.
 
 ## 2. Options envisagées
 
@@ -226,3 +230,67 @@ l'ordre de grandeur des écarts dus au code produit. `update` est deux fois plus
 identiques : plus de ticks prennent le chemin court. La cause n'est pas établie (le code d'`oc-core` est le même dans
 les deux images ; reste ce que l'optimiseur fait de la boucle autour).
 
+
+## Révision (2026-11-22) — le seuil de l'ITCM surveillé par `cargo xtask size`
+
+Le seuil de §5 (moins de 16 Kio d'ITCM libres) n'était relevé par aucun outil : `text-itcm` restait `pass` jusqu'au
+dernier octet, et les budgets affichés (192 et 320 Kio) étaient des constantes d'`oc-image` copiées du choix du BSP.
+Un essai (2026-11-22, `.text` rempli par une `static` placée dans `.text.itcm_fill`) a montré que le dépassement
+lui-même n'est pas un danger : à l'octet près, l'éditeur de liens refuse l'image
+(`section '.text' will not fit in region 'ITCM': overflowed by 4 bytes`), et une ITCM remplie exactement passe tous
+les contrôles. Ce qui manquait, c'était le préavis.
+
+Décidé : `cargo xtask size` lit le partage réellement appliqué dans l'ELF, le symbole absolu `__flexram_config` que
+le script de `imxrt-rt` définit et que son code de démarrage écrit dans `GPR17` (deux bits par banc), au lieu de le
+supposer. Les budgets d'ITCM et de DTCM en découlent ; ils suivront un repartage sans qu'on touche à l'outil.
+`text-itcm` passe à `warn` sous 16 Kio libres, avec le renvoi à cette entrée, et à `FAIL` si `.text` dépasse les
+bancs alloués ; un contrôle `dtcm-budget` fait de même pour la fin des sections de la DTCM. Un ELF sans
+`__flexram_config` est refusé : on ne vérifierait plus rien de sûr. Les constantes `ITCM_USABLE` et `DTCM_USABLE`
+d'`oc-image` disparaissent, l'outil web n'en faisait pas usage.
+
+## Révision (2026-11-22) — le runtime configuré par `oc-firmware`, hors de la feature `rt` du BSP
+
+§2 notait que B, C et D demandent de couper la feature `rt` de `teensy4-bsp` et d'écrire le `build.rs` de
+`oc-firmware` avec `imxrt-rt::RuntimeBuilder`. L'ITCM perd ≈ 21 Kio en quatre jours (32 Kio libres le 2026-11-22) :
+B viendra bientôt, et l'utilisateur veut que ce jour-là le repartage ne coûte qu'une constante. C'est fait d'avance,
+sans changer la disposition.
+
+* **Ce que `rt` apportait** : la dépendance `imxrt-rt` (code de démarrage, en-têtes de boot, `#[entry]`,
+  `#[interrupt]`), la feature `rt` d'`imxrt-ral` (la table des vecteurs propres à la puce), la réexportation
+  `teensy4_bsp::rt`, et le `build.rs` du BSP, seul à fixer le partage 6 / 10. Rien d'autre dans le BSP n'en dépend.
+* **Décidé** : `teensy4-bsp` sans `rt` ; `oc-firmware` dépend d'`imxrt-rt` (`device`, à l'exécution et au build) et
+  d'`imxrt-ral` (pour sa seule feature `rt`) ; son `build.rs` reprend la configuration du BSP, le partage en constante
+  (`FLEXRAM_BANKS`), le nom `t4link.x` et les surcharges `TEENSY4_STACK_SIZE` / `TEENSY4_HEAP_SIZE` gardés, pour ne
+  toucher ni `.cargo/config.toml` ni les habitudes. `bsp::rt::entry` devient `imxrt_rt::entry`, et
+  `teensy4_bsp::rt::interrupt` `imxrt_rt::interrupt`.
+* **Vérifié** : le `t4link.x` généré est identique, octet pour octet, à celui du BSP ; `.text` aussi (`0x28020`) ;
+  `cargo xtask size` lit le même `__flexram_config` (`0xfffaaaaa`).
+* **Écarté pour l'instant** : attendre une surcharge en amont. `imxrt-rt` 0.1.8 n'en a pas pour le partage des bancs
+  (il en a pour la pile et le tas) ; une méthode `flexram_banks_env_override` dans `imxrt-rt` et son usage par
+  `teensy4-bsp` (`TEENSY4_FLEXRAM_BANKS`) serviraient d'autres cartes, et une issue sera proposée en amont. Si elle
+  aboutit dans une version publiée, revenir à `rt` avec la variable dans le `[env]` de `.cargo/config.toml` se
+  discutera alors ; d'ici là, rien n'en dépend.
+
+Ce qui ferait changer d'avis : une version de `teensy4-bsp` dont le `build.rs` changerait la disposition par défaut
+ne nous toucherait plus, et c'est voulu ; mais une évolution d'`imxrt-rt` qui changerait le script généré se verrait
+dans la liste de contrôle de `cargo xtask size`, comme avant.
+
+## Révision (2026-11-22) — le code froid compilé en `s`
+
+Mesuré le même jour sur le module (`SUPERSAW`, sans CV) : tout le firmware en `opt-level = "s"` gagne 49 Kio d'ITCM
+mais double `voice` (0,98 → 2,05 µs) ; en `z`, il révélait un défaut de `Lpspi::flush` (écran noir, corrigé
+par `FramedSpi`). La quasi-totalité de l'écart vient d'`oc-core` et d'`oc-firmware`, où le DSP côtoie l'interface ;
+`#[optimize(size)]` n'étant pas stable, la granularité est le crate.
+
+Décidé : en `s`, par `[profile.release.package.<crate>]`, les crates que seule la boucle à 1 kHz appelle — pile USB
+(`usb-device`, `usbd-serial`, `imxrt-usbd`), protocole de la sonde (`postcard`, `cobs`, `serde`, `oc-protocol`,
+`heapless`), réglages (`sequential-storage`, `embassy-futures`, `futures-util`), `log`, `teensy4-panic`. `s` plutôt
+que `z`, dont l'outliner est le chemin le moins éprouvé. Avec LTO fat, une fonction garde le niveau du crate qui la
+définit (vérifié par la bissection de l'écran noir). Gain : `.text` −5,4 Kio (37,5 Kio libres) ; `usb` inchangé,
+`voice` identique ; `audio` 3,86 → 4,10 µs en moyenne, minimum et maximum inchangés, alors que le code de
+l'interruption est identique, octet pour octet : un effet de placement (les fonctions qu'elle appelle ont glissé), que
+tout changement de taille du code peut produire.
+
+Écarté pour l'instant : séparer le DSP d'`oc-core` dans un crate gardé en O3 pour passer le reste en `s`
+(≈ 45 Kio de plus), qui toucherait D-044 et l'interruption d'`oc-firmware` ; l'option **B** (repartage des bancs)
+donne plus, sans coût de temps, et reste la suite quand `xtask size` avertira.

@@ -1,6 +1,6 @@
 # Linker configuration for the Teensy 4.0 (i.MX RT1062).
 #
-# `t4link.x` is *generated* at build time by `teensy4-bsp`'s build script
+# `t4link.x` is *generated* at build time by `crates/oc-firmware/build.rs`
 # through `imxrt-rt::RuntimeBuilder`. It owns the whole memory map (FlexSPI
 # flash, ITCM/DTCM FlexRAM split, OCRAM) and the i.MX RT boot sections
 # (FlexSPI Configuration Block, Image Vector Table, boot data). See

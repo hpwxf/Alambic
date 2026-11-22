@@ -28,8 +28,7 @@ use std::collections::BTreeMap;
 use std::fmt::{Display, Formatter};
 
 use crate::validate::{
-    DTCM, DTCM_USABLE, FLEXSPI, FLEXSPI_BASE, ITCM, ITCM_USABLE, OCRAM, OCRAM_CAPACITY,
-    TEENSY40_FLASH_CAPACITY,
+    DTCM, FLEXSPI, FLEXSPI_BASE, ITCM, OCRAM, OCRAM_CAPACITY, TEENSY40_FLASH_CAPACITY,
 };
 
 /// Sections that must appear in a linked Teensy 4.0 image from `imxrt-rt`.
@@ -48,12 +47,25 @@ const DISPLAY_SECTIONS: [&str; 9] = [
     ".heap",
 ];
 
+/// Absolute symbol in which the `imxrt-rt` linker script records the `FlexRAM`
+/// bank split; its reset handler writes the same value to `IOMUXC_GPR_GPR17`.
+pub const FLEXRAM_CONFIG_SYMBOL: &str = "__flexram_config";
+
+/// Size of one `FlexRAM` bank on the i.MX RT1062.
+const FLEXRAM_BANK_SIZE: u64 = 32 * 1024;
+
+/// Number of `FlexRAM` banks on the i.MX RT1062 (512 KiB in all).
+const FLEXRAM_BANK_COUNT: u32 = 16;
+
+/// Free ITCM under which `text-itcm` warns: the point at which journal/D-038
+/// gives ITCM more banks, early enough not to be stopped by an applet.
+const ITCM_WARN_FREE: u64 = 16 * 1024;
+
 /// Default stack reservation produced by `teensy4-bsp` / `imxrt-rt` (16 KiB).
 ///
-/// Soft expected size for the checklist warn path. Hard upper bound is the
-/// remaining DTCM on the Teensy 4.0 BSP split: **≤ 320 KiB** total DTCM
-/// (exclusive end `0x2008_0000`), shared with `.vector_table`/`.data`/`.bss`.
-/// Override via `TEENSY4_STACK_SIZE`.
+/// Soft expected size for the checklist warn path. The hard upper bound is the
+/// DTCM the bank split gives ([`FlexRamSplit::dtcm_bytes`]), shared with
+/// `.vector_table`/`.data`/`.bss`. Override via `TEENSY4_STACK_SIZE`.
 const DEFAULT_STACK_SIZE: u64 = 16 * 1024;
 
 /// Default `.boot` reservation (FCB + IVT + boot data), 8 KiB.
@@ -66,9 +78,85 @@ const DEFAULT_BOOT_SIZE: u64 = 8 * 1024;
 /// Minimum useful vector-table payload: initial SP + reset handler.
 ///
 /// Lower bound only (8 bytes). No separate size ceiling is enforced here; the
-/// table must still fit in DTCM (**≤ 320 KiB** usable on Teensy 4.0, exclusive
-/// end `0x2008_0000`). `imxrt-rt` typically emits on the order of 1 KiB.
+/// table must still fit in the DTCM of the bank split (`dtcm-budget`).
+/// `imxrt-rt` typically emits on the order of 1 KiB.
 const MIN_VECTOR_TABLE_SIZE: u64 = 8;
+
+/// The `FlexRAM` bank split an image applies at reset, decoded from
+/// [`FLEXRAM_CONFIG_SYMBOL`].
+///
+/// Read from the image rather than assumed, so the budgets follow whatever
+/// split the build chose (the BSP's default or a reshared one, journal/D-038).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct FlexRamSplit {
+    /// The raw `GPR17` value: two bits per bank, bank 0 in the lowest bits.
+    pub config: u32,
+    /// Banks given to ITCM (`0b11`).
+    pub itcm: u32,
+    /// Banks given to DTCM (`0b10`).
+    pub dtcm: u32,
+    /// Banks given to OCRAM (`0b01`).
+    pub ocram: u32,
+}
+
+impl FlexRamSplit {
+    /// Decodes a `GPR17` value; unused banks (`0b00`) count for nothing.
+    #[must_use]
+    pub const fn from_config(config: u32) -> Self {
+        let mut split = Self {
+            config,
+            itcm: 0,
+            dtcm: 0,
+            ocram: 0,
+        };
+        let mut bank = 0;
+        while bank < FLEXRAM_BANK_COUNT {
+            match (config >> (2 * bank)) & 0b11 {
+                0b11 => split.itcm += 1,
+                0b10 => split.dtcm += 1,
+                0b01 => split.ocram += 1,
+                _ => {}
+            }
+            bank += 1;
+        }
+        split
+    }
+
+    /// ITCM backed by the split: the hard budget for `.text`.
+    #[must_use]
+    pub const fn itcm_bytes(&self) -> u64 {
+        self.itcm as u64 * FLEXRAM_BANK_SIZE
+    }
+
+    /// DTCM backed by the split, shared by the stack, vectors, `.data` and `.bss`.
+    #[must_use]
+    pub const fn dtcm_bytes(&self) -> u64 {
+        self.dtcm as u64 * FLEXRAM_BANK_SIZE
+    }
+}
+
+/// Finds [`FLEXRAM_CONFIG_SYMBOL`] in `llvm-nm` output (`value type name`).
+///
+/// # Errors
+///
+/// Returns an actionable message when the symbol is missing or unreadable:
+/// without it the budgets would be guesses, so the caller should stop.
+pub fn parse_flexram_config(nm_output: &str) -> Result<u32, String> {
+    for line in nm_output.lines() {
+        let fields: Vec<&str> = line.split_whitespace().collect();
+        let [value, _kind, name] = fields.as_slice() else {
+            continue;
+        };
+        if *name == FLEXRAM_CONFIG_SYMBOL {
+            return u32::from_str_radix(value, 16)
+                .map_err(|_| format!("cannot read {FLEXRAM_CONFIG_SYMBOL} = {value}"));
+        }
+    }
+    Err(format!(
+        "{FLEXRAM_CONFIG_SYMBOL} not found in the ELF symbols; \
+         was it linked with the imxrt-rt script?"
+    ))
+}
 
 /// One ELF section row extracted from `SysV` `llvm-size` output.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -230,21 +318,25 @@ pub fn parse_sysv(output: &str) -> Result<Vec<Section>, String> {
     Ok(sections)
 }
 
-/// Runs every layout check that can be decided from section names/addresses.
+/// Runs every layout check that can be decided from section names/addresses
+/// and the image's `FlexRAM` bank split.
 ///
 /// All checks run to completion so the operator sees the full checklist in one
 /// pass (same reporting style as [`crate::validate::validate_image`]).
 #[must_use]
-pub fn check_layout(sections: &[Section]) -> LayoutReport {
+pub fn check_layout(sections: &[Section], flexram: &FlexRamSplit) -> LayoutReport {
     let by_name = index_sections(sections);
+    let dtcm_budget = format_bytes_kib(flexram.dtcm_bytes());
     let mut items = Vec::new();
 
+    check_flexram(flexram, &mut items);
     check_required_sections(&by_name, &mut items);
     check_boot(&by_name, &mut items);
-    check_stack_and_vector_table(&by_name, &mut items);
-    check_text(&by_name, &mut items);
-    check_optional_dtcm(&by_name, ".data", &mut items);
-    check_optional_dtcm(&by_name, ".bss", &mut items);
+    check_stack_and_vector_table(&by_name, &dtcm_budget, &mut items);
+    check_text(&by_name, flexram, &mut items);
+    check_optional_dtcm(&by_name, ".data", &dtcm_budget, &mut items);
+    check_optional_dtcm(&by_name, ".bss", &dtcm_budget, &mut items);
+    check_dtcm_budget(&by_name, flexram, &mut items);
     check_data_follows_vector_table(&by_name, &mut items);
     check_optional_ocram(&by_name, ".rodata", &mut items);
     check_optional_ocram(&by_name, ".heap", &mut items);
@@ -422,19 +514,51 @@ fn check_boot(by_name: &BTreeMap<&str, &Section>, items: &mut Vec<CheckItem>) {
     }
 }
 
-fn check_stack_and_vector_table(by_name: &BTreeMap<&str, &Section>, items: &mut Vec<CheckItem>) {
+/// Reports the bank split the budgets below come from.
+fn check_flexram(flexram: &FlexRamSplit, items: &mut Vec<CheckItem>) {
+    let banks = flexram.itcm + flexram.dtcm + flexram.ocram;
+    let detail = format!(
+        "{FLEXRAM_CONFIG_SYMBOL} {:#010x}: ITCM {} × 32 KiB = {}, DTCM {} = {}, OCRAM {}",
+        flexram.config,
+        flexram.itcm,
+        format_bytes_kib(flexram.itcm_bytes()),
+        flexram.dtcm,
+        format_bytes_kib(flexram.dtcm_bytes()),
+        flexram.ocram,
+    );
+    let status = if banks == FLEXRAM_BANK_COUNT {
+        CheckStatus::Pass
+    } else {
+        CheckStatus::Warn
+    };
+    items.push(CheckItem {
+        id: "flexram-banks",
+        status,
+        detail: if status == CheckStatus::Pass {
+            detail
+        } else {
+            format!("{detail}; {banks} of {FLEXRAM_BANK_COUNT} banks in use")
+        },
+    });
+}
+
+fn check_stack_and_vector_table(
+    by_name: &BTreeMap<&str, &Section>,
+    dtcm_budget: &str,
+    items: &mut Vec<CheckItem>,
+) {
     let stack = by_name.get(".stack").copied();
     let vector_table = by_name.get(".vector_table").copied();
-    check_stack(stack, items);
-    check_vector_table(vector_table, items);
+    check_stack(stack, dtcm_budget, items);
+    check_vector_table(vector_table, dtcm_budget, items);
     check_stack_below_vector_table(stack, vector_table, items);
 }
 
 /// `.stack` must start at the DTCM base and lie entirely inside DTCM.
 ///
-/// Teensy 4.0 DTCM upper bound: exclusive end **`0x2008_0000`** (512 KiB
-/// aperture; **320 KiB** backed by the BSP `FlexRAM` split).
-fn check_stack(stack: Option<&Section>, items: &mut Vec<CheckItem>) {
+/// The aperture ends at **`0x2008_0000`**; how much of it is backed is the
+/// bank split's (`dtcm-budget`).
+fn check_stack(stack: Option<&Section>, dtcm_budget: &str, items: &mut Vec<CheckItem>) {
     let Some(stack) = stack else {
         items.push(CheckItem {
             id: "stack-dtcm-base",
@@ -446,7 +570,6 @@ fn check_stack(stack: Option<&Section>, items: &mut Vec<CheckItem>) {
     };
 
     let dtcm = format_region(DTCM);
-    let dtcm_budget = format_bytes_kib(DTCM_USABLE);
     if stack.addr == u64::from(DTCM.start) {
         items.push(CheckItem {
             id: "stack-dtcm-base",
@@ -523,10 +646,11 @@ fn check_stack(stack: Option<&Section>, items: &mut Vec<CheckItem>) {
 }
 
 /// `.vector_table` must reside in DTCM and hold at least SP + reset.
-///
-/// Teensy 4.0 DTCM upper bound: exclusive end **`0x2008_0000`** (**≤ 320 KiB**
-/// usable with the BSP bank split).
-fn check_vector_table(vector_table: Option<&Section>, items: &mut Vec<CheckItem>) {
+fn check_vector_table(
+    vector_table: Option<&Section>,
+    dtcm_budget: &str,
+    items: &mut Vec<CheckItem>,
+) {
     let Some(vt) = vector_table else {
         items.push(CheckItem {
             id: "vector-table-dtcm",
@@ -537,7 +661,6 @@ fn check_vector_table(vector_table: Option<&Section>, items: &mut Vec<CheckItem>
     };
 
     let dtcm = format_region(DTCM);
-    let dtcm_budget = format_bytes_kib(DTCM_USABLE);
     if region_contains(DTCM, vt.addr, vt.size.max(1)) {
         items.push(CheckItem {
             id: "vector-table-dtcm",
@@ -633,11 +756,16 @@ fn check_stack_below_vector_table(
     }
 }
 
-/// `.text` must be non-empty and lie entirely inside ITCM.
+/// `.text` must be non-empty and lie inside the ITCM the bank split backs.
 ///
-/// Teensy 4.0 ITCM upper bound: exclusive end **`0x0008_0000`** (512 KiB
-/// aperture; **192 KiB** backed by the BSP `FlexRAM` split for code).
-fn check_text(by_name: &BTreeMap<&str, &Section>, items: &mut Vec<CheckItem>) {
+/// The linker already refuses an image whose code overflows the ITCM region,
+/// so the `FAIL` row is a backstop; the `warn` row is the point: it says when
+/// less than [`ITCM_WARN_FREE`] is left, before an applet no longer fits.
+fn check_text(
+    by_name: &BTreeMap<&str, &Section>,
+    flexram: &FlexRamSplit,
+    items: &mut Vec<CheckItem>,
+) {
     let Some(text) = by_name.get(".text").copied() else {
         items.push(CheckItem {
             id: "text-itcm",
@@ -648,7 +776,7 @@ fn check_text(by_name: &BTreeMap<&str, &Section>, items: &mut Vec<CheckItem>) {
     };
 
     let itcm = format_region(ITCM);
-    let itcm_budget = format_bytes_kib(ITCM_USABLE);
+    let itcm_budget = format_bytes_kib(flexram.itcm_bytes());
     if text.size == 0 {
         items.push(CheckItem {
             id: "text-itcm",
@@ -659,14 +787,28 @@ fn check_text(by_name: &BTreeMap<&str, &Section>, items: &mut Vec<CheckItem>) {
     }
 
     let text_end = text.addr.saturating_add(text.size);
-    if region_contains(ITCM, text.addr, text.size) {
+    let backed_end = u64::from(ITCM.start) + flexram.itcm_bytes();
+    if region_contains(ITCM, text.addr, text.size) && text_end <= backed_end {
+        let free = backed_end - text_end;
+        let (status, advice) = if free < ITCM_WARN_FREE {
+            (
+                CheckStatus::Warn,
+                format!(
+                    "; under {}: give ITCM more FlexRAM banks (journal/D-038)",
+                    format_bytes_kib(ITCM_WARN_FREE)
+                ),
+            )
+        } else {
+            (CheckStatus::Pass, String::new())
+        };
         items.push(CheckItem {
             id: "text-itcm",
-            status: CheckStatus::Pass,
+            status,
             detail: format!(
-                ".text @ {}, size {} / ≤ {itcm_budget} usable (ITCM {itcm})",
+                ".text @ {}, size {} / ≤ {itcm_budget} usable (ITCM {itcm}), {} free{advice}",
                 format_hex(text.addr),
                 format_hex(text.size),
+                format_bytes(free),
             ),
         });
     } else {
@@ -684,11 +826,12 @@ fn check_text(by_name: &BTreeMap<&str, &Section>, items: &mut Vec<CheckItem>) {
 
 /// Optional DTCM residents (`.data`, `.bss`) must not escape DTCM.
 ///
-/// Teensy 4.0 DTCM upper bound: exclusive end **`0x2008_0000`** (**≤ 320 KiB**
-/// usable with the BSP bank split, shared with stack and vector table).
+/// The aperture ends at **`0x2008_0000`**; the backed part, shared with stack
+/// and vector table, is checked as a whole by `dtcm-budget`.
 fn check_optional_dtcm(
     by_name: &BTreeMap<&str, &Section>,
     name: &'static str,
+    dtcm_budget: &str,
     items: &mut Vec<CheckItem>,
 ) {
     let id = match name {
@@ -698,7 +841,6 @@ fn check_optional_dtcm(
     };
 
     let dtcm = format_region(DTCM);
-    let dtcm_budget = format_bytes_kib(DTCM_USABLE);
     let Some(section) = by_name.get(name).copied() else {
         items.push(CheckItem {
             id,
@@ -734,6 +876,42 @@ fn check_optional_dtcm(
             ),
         });
     }
+}
+
+/// Everything placed in DTCM must end within the banks the split gives it.
+///
+/// Matters once banks move from DTCM to ITCM (journal/D-038, option B): the
+/// stack, vectors, `.data` and `.bss` then share less.
+fn check_dtcm_budget(
+    by_name: &BTreeMap<&str, &Section>,
+    flexram: &FlexRamSplit,
+    items: &mut Vec<CheckItem>,
+) {
+    let base = u64::from(DTCM.start);
+    let end = [".stack", ".vector_table", ".data", ".bss"]
+        .iter()
+        .filter_map(|name| by_name.get(name).copied())
+        .filter(|section| in_range(DTCM, section.addr))
+        .map(|section| section.addr.saturating_add(section.size))
+        .max()
+        .unwrap_or(base);
+    let used = end - base;
+    let budget = flexram.dtcm_bytes();
+    let detail = format!(
+        "DTCM sections end at {}: {} used of {}",
+        format_hex(end),
+        format_bytes(used),
+        format_bytes_kib(budget),
+    );
+    items.push(CheckItem {
+        id: "dtcm-budget",
+        status: if used <= budget {
+            CheckStatus::Pass
+        } else {
+            CheckStatus::Fail
+        },
+        detail,
+    });
 }
 
 fn check_data_follows_vector_table(by_name: &BTreeMap<&str, &Section>, items: &mut Vec<CheckItem>) {
@@ -840,8 +1018,8 @@ fn check_optional_ocram(
 /// True when `[addr, addr + size)` lies inside `region` (exclusive end = max).
 ///
 /// Callers pass the Teensy 4.0 windows from [`crate::validate`]: ITCM/DTCM end
-/// at `0x…8_0000` (512 KiB aperture each), OCRAM at `0x2028_0000` (512 KiB),
-/// with tighter usable `FlexRAM` budgets noted on those constants.
+/// at `0x…8_0000` (512 KiB aperture each), OCRAM at `0x2028_0000` (512 KiB);
+/// the backed parts of ITCM and DTCM come from [`FlexRamSplit`].
 fn region_contains(region: std::ops::Range<u32>, addr: u64, size: u64) -> bool {
     let Some(end) = addr.checked_add(size) else {
         return false;
@@ -880,6 +1058,14 @@ fn format_region(region: std::ops::Range<u32>) -> String {
     )
 }
 
+/// Human-readable measured size: bytes, with KiB to one decimal alongside.
+fn format_bytes(bytes: u64) -> String {
+    // Display only: a size in this crate stays far below f64's exact range.
+    #[allow(clippy::cast_precision_loss)]
+    let kib = bytes as f64 / 1024.0;
+    format!("{bytes} bytes ({kib:.1} KiB)")
+}
+
 /// Human-readable size for Teensy budgets (always whole KiB in this crate).
 fn format_bytes_kib(bytes: u64) -> String {
     if bytes.is_multiple_of(1024) {
@@ -892,6 +1078,95 @@ fn format_bytes_kib(bytes: u64) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The split `teensy4-bsp` 0.6 applies: banks 0–9 DTCM, 10–15 ITCM.
+    const BSP_SPLIT: FlexRamSplit = FlexRamSplit::from_config(0xFFFA_AAAA);
+
+    /// A layout whose `.text` is `text_size` bytes, the rest as in the BSP's.
+    fn layout_with_text(text_size: u64) -> Vec<Section> {
+        let output = format!(
+            "\
+section size addr
+.boot 0x2000 0x60000000
+.stack 0x4000 0x20000000
+.vector_table 0x2b8 0x20004000
+.text {text_size:#x} 0
+.data 0x188 0x200042b8
+.bss 0x4 0x20004440
+"
+        );
+        parse_sysv(&output).unwrap()
+    }
+
+    fn item<'a>(report: &'a LayoutReport, id: &str) -> &'a CheckItem {
+        report.items.iter().find(|i| i.id == id).unwrap()
+    }
+
+    #[test]
+    fn decodes_the_bsp_and_teensyduino_splits() {
+        assert_eq!(
+            (BSP_SPLIT.itcm, BSP_SPLIT.dtcm, BSP_SPLIT.ocram),
+            (6, 10, 0)
+        );
+        assert_eq!(BSP_SPLIT.itcm_bytes(), 192 * 1024);
+        assert_eq!(BSP_SPLIT.dtcm_bytes(), 320 * 1024);
+        // Phazerville v2.0.2 for the Teensy 4.0, as Teensyduino computed it.
+        let teensyduino = FlexRamSplit::from_config(0xAAAB_FFFF);
+        assert_eq!((teensyduino.itcm, teensyduino.dtcm), (9, 7));
+    }
+
+    #[test]
+    fn finds_the_flexram_symbol_in_nm_output() {
+        let nm = "000121b6 T FLEXRAM\nfffaaaaa A __flexram_config\n200042b8 D __sdata\n";
+        assert_eq!(parse_flexram_config(nm), Ok(0xFFFA_AAAA));
+        let err = parse_flexram_config("200042b8 D __sdata\n").unwrap_err();
+        assert!(err.contains(FLEXRAM_CONFIG_SYMBOL), "{err}");
+    }
+
+    #[test]
+    fn text_warns_under_the_itcm_threshold() {
+        let roomy = check_layout(&layout_with_text(0x2_8020), &BSP_SPLIT);
+        assert_eq!(item(&roomy, "text-itcm").status, CheckStatus::Pass);
+
+        let tight = 192 * 1024 - ITCM_WARN_FREE + 4;
+        let report = check_layout(&layout_with_text(tight), &BSP_SPLIT);
+        let text = item(&report, "text-itcm");
+        assert_eq!(text.status, CheckStatus::Warn);
+        assert!(text.detail.contains("D-038"), "{}", text.detail);
+        assert!(!report.failed());
+    }
+
+    #[test]
+    fn text_fails_past_the_itcm_banks_and_follows_the_split() {
+        let full = 192 * 1024;
+        let exact = check_layout(&layout_with_text(full), &BSP_SPLIT);
+        assert_eq!(item(&exact, "text-itcm").status, CheckStatus::Warn);
+
+        let over = check_layout(&layout_with_text(full + 4), &BSP_SPLIT);
+        assert_eq!(item(&over, "text-itcm").status, CheckStatus::Fail);
+
+        // The same code fits with two more ITCM banks (8 / 8).
+        let reshared = FlexRamSplit::from_config(0xFFFF_AAAA);
+        let report = check_layout(&layout_with_text(full + 4), &reshared);
+        assert_eq!(item(&report, "text-itcm").status, CheckStatus::Pass);
+        assert!(!report.failed());
+    }
+
+    #[test]
+    fn dtcm_budget_follows_the_split() {
+        let sections = layout_with_text(0x100);
+        let ok = check_layout(&sections, &BSP_SPLIT);
+        assert_eq!(item(&ok, "dtcm-budget").status, CheckStatus::Pass);
+
+        // Fifteen ITCM banks leave 32 KiB of DTCM; place `.bss` past it.
+        let mut sections = sections;
+        let bss = sections.iter_mut().find(|s| s.name == ".bss").unwrap();
+        bss.addr = 0x2000_8000;
+        bss.size = 0x10;
+        let squeezed = FlexRamSplit::from_config(0xFFFF_FFFE);
+        let report = check_layout(&sections, &squeezed);
+        assert_eq!(item(&report, "dtcm-budget").status, CheckStatus::Fail);
+    }
 
     const REALISTIC_SYSV_HEX: &str = "\
 target/thumbv7em-none-eabihf/release/oc-firmware  :
@@ -950,7 +1225,7 @@ section size addr
     #[test]
     fn realistic_layout_passes() {
         let sections = parse_sysv(REALISTIC_SYSV_HEX).unwrap();
-        let report = check_layout(&sections);
+        let report = check_layout(&sections, &BSP_SPLIT);
         assert!(
             !report.failed(),
             "failures: {:?}",
@@ -977,7 +1252,7 @@ section size addr
 .vector_table 0x2b8 0x20004000
 .text 0x100 0
 ";
-        let report = check_layout(&parse_sysv(output).unwrap());
+        let report = check_layout(&parse_sysv(output).unwrap(), &BSP_SPLIT);
         assert!(report.failed());
         let item = report
             .items
@@ -995,7 +1270,7 @@ section size addr
 .stack 0x4000 0x20000000
 .text 0x100 0
 ";
-        let report = check_layout(&parse_sysv(output).unwrap());
+        let report = check_layout(&parse_sysv(output).unwrap(), &BSP_SPLIT);
         assert!(report.failed());
         assert!(
             report
@@ -1018,7 +1293,7 @@ section size addr
     #[test]
     fn checklist_surfaces_teensy40_limits() {
         let sections = parse_sysv(REALISTIC_SYSV_HEX).unwrap();
-        let report = check_layout(&sections);
+        let report = check_layout(&sections, &BSP_SPLIT);
         let text = format_checklist(&report);
 
         // Address windows (exclusive ends).
@@ -1040,7 +1315,7 @@ section size addr
     #[test]
     fn checklist_is_columnar() {
         let sections = parse_sysv(REALISTIC_SYSV_HEX).unwrap();
-        let report = check_layout(&sections);
+        let report = check_layout(&sections, &BSP_SPLIT);
         let text = format_checklist(&report);
         let mut lines = text.lines();
 

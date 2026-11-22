@@ -47,7 +47,8 @@ pub(crate) fn report_size(elf: &Path) -> Result<()> {
     );
     println!();
 
-    let mut report = size_check::check_layout(&sections);
+    let flexram = flexram_split(elf)?;
+    let mut report = size_check::check_layout(&sections, &flexram);
     let stack = stack_estimate(elf)?;
     if let Some(stack_size) = sections
         .iter()
@@ -110,6 +111,23 @@ fn objdump(elf: &Path, args: &[&str]) -> Result<String> {
         );
     }
     String::from_utf8(output.stdout).context("llvm-objdump wrote non-UTF-8 output")
+}
+
+/// Reads the `FlexRAM` bank split the image applies at reset from its symbols.
+fn flexram_split(elf: &Path) -> Result<size_check::FlexRamSplit> {
+    let output = Command::new(tool("llvm-nm")?)
+        .arg("--defined-only")
+        .arg(elf)
+        .output()
+        .with_context(|| format!("cannot run llvm-nm on {}", elf.display()))?;
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        bail!("llvm-nm failed with {}: {}", output.status, stderr.trim());
+    }
+    let stdout = String::from_utf8(output.stdout).context("llvm-nm wrote non-UTF-8 output")?;
+    let config =
+        size_check::parse_flexram_config(&stdout).map_err(|message| anyhow::anyhow!(message))?;
+    Ok(size_check::FlexRamSplit::from_config(config))
 }
 
 /// Converts `elf` into an Intel HEX image at `destination`.

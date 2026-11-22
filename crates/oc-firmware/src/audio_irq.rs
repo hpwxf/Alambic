@@ -13,10 +13,10 @@
 use core::cell::UnsafeCell;
 
 use cortex_m::peripheral::NVIC;
+use imxrt_rt::interrupt;
 use teensy4_bsp::hal::dma::channel::{Channel, Configuration};
 use teensy4_bsp::interrupt;
 use teensy4_bsp::ral;
-use teensy4_bsp::rt::interrupt;
 
 /// The DMAMUX channel enable bit (`CHCFG[ENBL]`, bit 31), which the RAL's
 /// field list for this chip leaves out.

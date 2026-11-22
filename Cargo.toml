@@ -117,6 +117,38 @@ lto = "fat"
 opt-level = 3
 overflow-checks = true
 
+# Cold code at "s": the USB stack, the probe's protocol and the settings
+# store run from the 1 kHz loop, never in the audio interrupt, and take
+# about 5 KiB less ITCM this way (journal/D-038). "s" rather than "z": the
+# latter's outliner is the least exercised path (it exposed the early LPSPI
+# flush). With fat LTO, a function keeps the level of the crate defining it.
+[profile.release.package.usb-device]
+opt-level = "s"
+[profile.release.package.usbd-serial]
+opt-level = "s"
+[profile.release.package.imxrt-usbd]
+opt-level = "s"
+[profile.release.package.postcard]
+opt-level = "s"
+[profile.release.package.oc-protocol]
+opt-level = "s"
+[profile.release.package.sequential-storage]
+opt-level = "s"
+[profile.release.package.cobs]
+opt-level = "s"
+[profile.release.package.serde]
+opt-level = "s"
+[profile.release.package.heapless]
+opt-level = "s"
+[profile.release.package.embassy-futures]
+opt-level = "s"
+[profile.release.package.futures-util]
+opt-level = "s"
+[profile.release.package.log]
+opt-level = "s"
+[profile.release.package.teensy4-panic]
+opt-level = "s"
+
 [profile.dev]
 opt-level = 1
 
