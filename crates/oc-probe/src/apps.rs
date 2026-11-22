@@ -326,7 +326,10 @@ pub fn moved(before: &AppDescription, after: &AppDescription, except: u8) -> Vec
         .collect()
 }
 
-/// One applet's parameters, observables and actions, a line each.
+/// One applet's parameters, observables and actions, a line each: the
+/// index, the name, the value, the CV input of a parameter that takes one
+/// (journal/D-045), then the range. The input's column has the width of the
+/// longest, so that inputs read down one column whatever the ranges.
 #[must_use]
 pub fn description_text(app: &AppEntry, description: &AppDescription) -> String {
     let mut out = String::new();
@@ -344,6 +347,12 @@ pub fn description_text(app: &AppEntry, description: &AppDescription) -> String 
         .map(|spec| shown_name(spec).len())
         .max()
         .unwrap_or(0);
+    let input_width = description
+        .params
+        .iter()
+        .map(|spec| input_column(spec).chars().count())
+        .max()
+        .unwrap_or(0);
     for (title, list) in [
         ("parameters", &description.params),
         ("observables", &description.observables),
@@ -356,25 +365,38 @@ pub fn description_text(app: &AppEntry, description: &AppDescription) -> String 
             let value = spec
                 .value
                 .map_or_else(|| "--".to_owned(), |value| value_text(spec, value));
-            let input = match (spec.assignable, &spec.input) {
-                (true, Some(input)) => format!("  CV {}", input_text(&input.assign)),
-                (true, None) => "  (CV)".to_owned(),
-                (false, _) => String::new(),
-            };
-            let _ = writeln!(
-                out,
-                "  {:>2} {:<width$}  {value:<12} {}{input}{}",
+            let mut line = format!(
+                "  {:>2} {:<width$}  {value:<12}",
                 spec.index,
-                shown_name(spec),
+                shown_name(spec)
+            );
+            if input_width > 0 {
+                let _ = write!(line, " {:<input_width$} ", input_column(spec));
+            }
+            let _ = write!(
+                line,
+                " {}{}",
                 range_text(spec),
                 if spec.active { "" } else { "  (inactive)" }
             );
+            let _ = writeln!(out, "{}", line.trim_end());
         }
     }
     if !description.actions.is_empty() {
         let _ = writeln!(out, "actions: {}", description.actions.join(", "));
     }
     out
+}
+
+/// What the input column shows of `spec`: `CV` and the input as the
+/// submenu writes it, `CV ?` for an input not described, nothing for a
+/// parameter or an observable that takes none.
+fn input_column(spec: &SpecEntry) -> String {
+    match (spec.assignable, &spec.input) {
+        (true, Some(input)) => format!("CV {}", input_text(&input.assign)),
+        (true, None) => "CV ?".to_owned(),
+        (false, _) => String::new(),
+    }
 }
 
 /// An entry's label, with its name after it when they differ
@@ -575,5 +597,62 @@ mod tests {
         };
         assert!(centered(&unplugged, &samples).is_err());
         assert!(centered(&input, &[]).is_err());
+    }
+
+    #[test]
+    fn inputs_and_ranges_each_read_down_one_column() {
+        use oc_protocol::Assign;
+
+        use super::description_text;
+        use crate::client::{AppEntry, InputEntry};
+
+        let mut long = spec(
+            "LONG",
+            ParamKind::Choice { count: 2 },
+            &["A-LONG-NAME", "B"],
+        );
+        long.index = 0;
+        let mut cv = spec("CV", number(0, Unit::None), &[]);
+        cv.index = 1;
+        cv.assignable = true;
+        cv.input = Some(InputEntry {
+            assign: Assign::NONE,
+            sweep: None,
+        });
+        let mut set = cv.clone();
+        set.index = 2;
+        set.input = Some(InputEntry {
+            assign: Assign {
+                input: Some(oc_core::platform::CvChannel::Two),
+                ..Assign::NONE
+            },
+            sweep: None,
+        });
+        let description = AppDescription {
+            params: vec![long, cv, set],
+            ..AppDescription::default()
+        };
+        let app = AppEntry {
+            index: 0,
+            name: "TEST".to_owned(),
+            running: false,
+        };
+        let text = description_text(&app, &description);
+        let rows: Vec<&str> = text.lines().skip(2).collect();
+        let column = |row: &str, needle: &str| {
+            row.find(needle)
+                .unwrap_or_else(|| panic!("{needle} in {row}"))
+        };
+        assert_eq!(
+            column(rows[1], "CV --"),
+            column(rows[2], "CV CV2"),
+            "{text}"
+        );
+        assert_eq!(
+            column(rows[0], "A-LONG-NAME"),
+            column(rows[1], "-100"),
+            "{text}"
+        );
+        assert!(!rows[0].contains("CV"), "LONG takes no input: {text}");
     }
 }
