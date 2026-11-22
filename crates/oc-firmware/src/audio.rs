@@ -45,6 +45,7 @@ use teensy4_bsp::hal::pit::{self, Pit};
 use teensy4_bsp::ral::lpspi::TCR;
 
 use oc_core::apps::sound::{Params, Setup, Voice};
+use oc_core::audio::Follower;
 use oc_core::calibration::CvOutputCalibration;
 use oc_core::framebuffer::{FrameBuffer, LEN};
 use oc_core::platform::{AnalogOut, CV_CHANNELS, CvChannel, Display};
@@ -345,9 +346,9 @@ pub(crate) fn stop() {
 /// 1.5 µs a tick. Owned by the loop, the only writer of the mailbox.
 #[derive(Debug)]
 pub(crate) struct Publisher {
-    /// [`oc_core::Engine::params_revision`] of the parameters last prepared;
-    /// `None` when the mailbox holds something else (the outputs at rest).
-    revision: Option<u32>,
+    /// The parameters last prepared, by their revision; forgotten when the
+    /// mailbox holds something else (the outputs at rest).
+    follower: Follower,
     calibration: Option<[CvOutputCalibration; CV_CHANNELS]>,
 }
 
@@ -355,7 +356,7 @@ impl Publisher {
     /// Nothing handed yet: the first [`Self::publish`] copies everything.
     pub(crate) const fn new() -> Self {
         Self {
-            revision: None,
+            follower: Follower::new(),
             calibration: None,
         }
     }
@@ -370,14 +371,12 @@ impl Publisher {
         params: &Params,
         calibration: &[CvOutputCalibration; CV_CHANNELS],
     ) {
-        let new_params = self.revision != Some(revision);
+        let setup = self.follower.setup(revision, params, board::AUDIO_RATE_HZ);
         let new_calibration = self.calibration.as_ref() != Some(calibration);
-        if !new_params && !new_calibration {
+        if setup.is_none() && !new_calibration {
             return;
         }
-        let setup = new_params.then(|| Setup::new(params, board::AUDIO_RATE_HZ));
         hand_over(setup.as_ref(), calibration);
-        self.revision = Some(revision);
         self.calibration = Some(*calibration);
     }
 
@@ -388,7 +387,7 @@ impl Publisher {
     /// parameters back.
     pub(crate) fn rest_outputs(&mut self, calibration: &[CvOutputCalibration; CV_CHANNELS]) {
         hand_over(Some(&Setup::rest(board::AUDIO_RATE_HZ)), calibration);
-        self.revision = None;
+        self.follower.forget();
         self.calibration = Some(*calibration);
         let running = critical_section::with(|cs| STATE.borrow_ref(cs).is_some());
         if !running {

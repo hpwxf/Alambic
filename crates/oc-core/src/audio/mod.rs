@@ -226,6 +226,46 @@ impl<G: Generator> Voice<G> {
     }
 }
 
+/// Follows the parameters a publisher numbers
+/// ([`Engine::params_revision`](crate::engine::Engine::params_revision)):
+/// what tells a backend's voice that they changed, by a few bytes rather
+/// than a whole [`Params`] every tick or every sample (journal/D-040).
+#[derive(Debug, Clone, Copy, Default)]
+pub struct Follower {
+    /// The revision last followed, if any.
+    revision: Option<u32>,
+}
+
+impl Follower {
+    /// A follower that has followed nothing: its first
+    /// [`Self::setup`] prepares one.
+    #[must_use]
+    pub const fn new() -> Self {
+        Self { revision: None }
+    }
+
+    /// What `params` decide at `rate_hz`, if `revision` is not the one last
+    /// followed; nothing otherwise.
+    pub fn setup<G: Generator>(
+        &mut self,
+        revision: u32,
+        params: &Params<G>,
+        rate_hz: u32,
+    ) -> Option<Setup<G>> {
+        if self.revision == Some(revision) {
+            return None;
+        }
+        self.revision = Some(revision);
+        Some(Setup::new(params, rate_hz))
+    }
+
+    /// Forgets the revision followed, so the next [`Self::setup`] prepares
+    /// one whatever its revision.
+    pub const fn forget(&mut self) {
+        self.revision = None;
+    }
+}
+
 /// The phase a sample advances for `frequency` at `rate_hz`, held below half
 /// a turn: at or above half the rate, a tone would alias to another pitch.
 #[must_use]
@@ -255,7 +295,7 @@ pub(crate) fn scale(value: i32, amplitude: MilliVolts) -> MilliVolts {
 mod tests {
     use super::basic::{Basic, BasicParams, Channel, Tone};
     use super::wave::Waveform;
-    use super::{Params, Setup, Voice, phase_step};
+    use super::{Follower, Params, Setup, Voice, phase_step};
 
     type BasicVoice = Voice<Basic>;
 
@@ -321,6 +361,17 @@ mod tests {
                 assert_eq!(set.next_sample(), applied.next_sample());
             }
         }
+    }
+
+    #[test]
+    fn a_follower_prepares_once_per_revision() {
+        let params = with(0, tone(Waveform::Sine, 440_000, 1_000));
+        let mut follower = Follower::new();
+        assert!(follower.setup(7, &params, 1_000).is_some(), "the first one");
+        assert!(follower.setup(7, &params, 1_000).is_none(), "same revision");
+        assert!(follower.setup(8, &params, 1_000).is_some(), "moved on");
+        follower.forget();
+        assert!(follower.setup(8, &params, 1_000).is_some(), "forgotten");
     }
 
     #[test]
