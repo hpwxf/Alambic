@@ -33,7 +33,7 @@ use crate::apps::{App, AppId, InputSnapshot, TickContext};
 use crate::audio::MilliHertz;
 use crate::fmt::{TextBuf, write_volts};
 use crate::framebuffer::{FrameBuffer, ROW_HEIGHT, WIDTH_I32};
-use crate::gfx::controls::scroll_bar;
+use crate::gfx::controls::{LIST_LEFT, SCROLL_WIDTH, row_highlight, scroll_bar};
 use crate::gfx::plots::Area;
 use crate::gfx::{self, Ink, Point};
 use crate::modulation::editor::Param;
@@ -263,12 +263,6 @@ const PAGE_ROWS: usize = 5;
 
 /// Pages of settings.
 const PAGES: usize = Setting::ALL.len().div_ceil(PAGE_ROWS);
-
-/// Width of the scroll bar left of the settings, which shows the page.
-const SCROLL_WIDTH: i32 = 3;
-
-/// Left edge of the settings' rows, right of the scroll bar and a gap.
-const ROW_LEFT: i32 = SCROLL_WIDTH + 1;
 
 /// Left column of the waveform beside `SHAPE`, between its label and its
 /// value.
@@ -551,7 +545,7 @@ impl SupersawApp {
         let shown = &Setting::ALL[first..(first + PAGE_ROWS).min(Setting::ALL.len())];
         for (row, &setting) in (1..).zip(shown) {
             let top = row * ROW_HEIGHT;
-            text::draw(frame, setting.label(), Point::new(ROW_LEFT + 1, top), lit);
+            text::draw(frame, setting.label(), Point::new(LIST_LEFT + 1, top), lit);
             let assign = self.assign(setting);
             // A setting that follows its input has no use for the panel's
             // value: its input stands in its place.
@@ -568,14 +562,7 @@ impl SupersawApp {
                 self.draw_shape(frame, top);
             }
             if setting == self.selected() {
-                gfx::fill_rect(
-                    frame,
-                    ROW_LEFT,
-                    top,
-                    WIDTH_I32 - ROW_LEFT,
-                    ROW_HEIGHT,
-                    Ink::Invert,
-                );
+                row_highlight(frame, top, ROW_HEIGHT, Ink::Invert);
             }
         }
         self.draw_spread(frame);

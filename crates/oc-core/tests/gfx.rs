@@ -13,7 +13,8 @@ use embedded_graphics::primitives::{PrimitiveStyle, Rectangle};
 use oc_core::framebuffer::{FrameBuffer, HEIGHT_I32, WIDTH_I32};
 use oc_core::gfx::Point;
 use oc_core::gfx::controls::{
-    bipolar_hbar, hbar, header, knob, scroll_bar, selector, value_box, vbar,
+    LIST_LEFT, bipolar_hbar, hbar, header, knob, row_highlight, scroll_bar, scroll_window,
+    selector, value_box, vbar,
 };
 use oc_core::gfx::patterns::{dots, euclid_ring, keyboard, steps};
 use oc_core::gfx::plots::{Area, histogram, min_max, needle_scale, trace};
@@ -153,6 +154,44 @@ fn a_scroll_bar_holds_a_page_beyond_the_last() {
     let (mut beyond, mut last) = (FrameBuffer::new(), FrameBuffer::new());
     scroll_bar(&mut beyond, 0, 0, 3, 30, 5, 3);
     scroll_bar(&mut last, 0, 0, 3, 30, 2, 3);
+    assert_eq!(beyond, last);
+}
+
+#[test]
+fn a_row_highlight_runs_from_the_list_edge_to_the_right_edge() {
+    let mut frame = FrameBuffer::new();
+    row_highlight(&mut frame, 8, 8, Ink::Lit);
+    assert_eq!(lit_box(&frame), Some((LIST_LEFT, 8, WIDTH_I32 - 1, 15)));
+    assert!(
+        (0..LIST_LEFT).all(|x| !frame.pixel(x, 8)),
+        "the scroll bar's place stays clear"
+    );
+}
+
+#[test]
+fn a_scroll_window_sizes_its_thumb_by_the_share_shown() {
+    // Seven of nine items, on a 36-pixel track: a 28-pixel thumb, which
+    // slides 4 pixels per item.
+    for first in 0..3 {
+        let mut frame = FrameBuffer::new();
+        scroll_window(&mut frame, 0, 0, 3, 36, first, 7, 9);
+        let top = 4 * i32::try_from(first).unwrap();
+        assert!(
+            (top..top + 28).all(|y| frame.pixel(0, y)),
+            "the thumb at {first}"
+        );
+        assert!(
+            (0..36).filter(|&y| frame.pixel(0, y)).count() == 28,
+            "nothing else off the track at {first}"
+        );
+    }
+}
+
+#[test]
+fn a_scroll_window_holds_a_window_past_the_end() {
+    let (mut beyond, mut last) = (FrameBuffer::new(), FrameBuffer::new());
+    scroll_window(&mut beyond, 0, 0, 3, 36, 8, 7, 9);
+    scroll_window(&mut last, 0, 0, 3, 36, 2, 7, 9);
     assert_eq!(beyond, last);
 }
 

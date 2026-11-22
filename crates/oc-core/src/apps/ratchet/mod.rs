@@ -48,7 +48,7 @@ use crate::apps::{App, AppId, InputSnapshot, TickContext};
 use crate::fixed::{self, ONE};
 use crate::fmt::TextBuf;
 use crate::framebuffer::{FrameBuffer, ROW_HEIGHT, WIDTH_I32};
-use crate::gfx::controls::scroll_bar;
+use crate::gfx::controls::{LIST_LEFT, SCROLL_WIDTH, row_highlight, scroll_bar};
 use crate::gfx::{self, Ink, Point};
 use crate::modulation::editor::Param;
 use crate::modulation::slots::Modulations;
@@ -69,12 +69,6 @@ const PAGE_ROWS: usize = 4;
 
 /// Pages of settings.
 const PAGES: usize = Setting::ALL.len().div_ceil(PAGE_ROWS);
-
-/// Width of the scroll bar left of the settings, which shows the page.
-const SCROLL_WIDTH: i32 = 3;
-
-/// Left edge of the settings' rows, right of the scroll bar and a gap.
-const ROW_LEFT: i32 = SCROLL_WIDTH + 1;
 
 /// Top of the burst's timeline, under its playhead; it runs to the bottom
 /// of the screen.
@@ -698,14 +692,7 @@ impl RatchetApp {
             let top = row * ROW_HEIGHT;
             let highlighted = setting == self.selected();
             if highlighted {
-                gfx::fill_rect(
-                    frame,
-                    ROW_LEFT,
-                    top,
-                    WIDTH_I32 - ROW_LEFT,
-                    ROW_HEIGHT,
-                    Ink::Lit,
-                );
+                row_highlight(frame, top, ROW_HEIGHT, Ink::Lit);
             }
             let style = if highlighted {
                 TextStyle::dark(&FONT_5X8)
@@ -715,7 +702,7 @@ impl RatchetApp {
             text::draw(
                 frame,
                 self.label(setting),
-                Point::new(ROW_LEFT + 2, top),
+                Point::new(LIST_LEFT + 2, top),
                 style,
             );
             // A setting that follows its input has no use for the panel's

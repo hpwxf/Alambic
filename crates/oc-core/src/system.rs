@@ -16,7 +16,8 @@
 //! whatever their reversal setting, so that a wrong setting cannot make the
 //! very screen that fixes it unusable.
 
-use crate::gfx::{self, Ink, Point};
+use crate::gfx::controls::{LIST_LEFT, SCROLL_WIDTH, row_highlight, scroll_window};
+use crate::gfx::{Ink, Point};
 
 use crate::apps::AppId;
 use crate::buttons::ButtonEvents;
@@ -40,7 +41,7 @@ const TITLE: &str = "SETUP";
 const VALUE_COLUMN: i32 = 62;
 
 /// Horizontal padding of a line, so text does not touch the highlight edge.
-const TEXT_INSET: i32 = 2;
+const TEXT_INSET: i32 = LIST_LEFT + 2;
 
 /// Room for the build label: `v`, the version, a space and the identifier
 /// (a short hash, `-dirty` included, fits with room to spare).
@@ -106,6 +107,22 @@ impl Line {
         self as usize
     }
 }
+
+/// Every label ends left of the value column, with a blank column at least:
+/// a longer label is a compile error rather than one running into its value.
+#[allow(clippy::cast_possible_truncation, clippy::cast_possible_wrap)]
+// A label is a handful of ASCII characters, so its length fits an `i32`.
+const _: () = {
+    let mut index = 0;
+    while index < Line::ALL.len() {
+        let chars = Line::ALL[index].label().len() as i32;
+        assert!(
+            TEXT_INSET + chars * FONT_5X8.advance() < VALUE_COLUMN,
+            "a setting's label runs into its value"
+        );
+        index += 1;
+    }
+};
 
 /// What the settings screen decided on this tick.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -313,13 +330,23 @@ impl SystemScreen {
         );
 
         let first = self.first_visible();
+        let rows = i32::try_from(VISIBLE_LINES).unwrap_or(1);
+        scroll_window(
+            frame,
+            0,
+            ROW_HEIGHT,
+            SCROLL_WIDTH,
+            rows * ROW_HEIGHT,
+            first,
+            VISIBLE_LINES,
+            Line::ALL.len(),
+        );
         for (slot, &line) in Line::ALL.iter().skip(first).take(VISIBLE_LINES).enumerate() {
             let row = 1 + i32::try_from(slot).unwrap_or(0);
             let top = row * ROW_HEIGHT;
             let highlighted = line.index() == self.cursor;
             if highlighted {
-                let at: Point = Point::new(0, top);
-                gfx::fill_rect(frame, at.x, at.y, WIDTH_I32, ROW_HEIGHT, Ink::Lit);
+                row_highlight(frame, top, ROW_HEIGHT, Ink::Lit);
             }
             let style = if highlighted {
                 TextStyle::dark(&FONT_5X8)
@@ -338,12 +365,12 @@ impl SystemScreen {
 mod tests {
     use super::{
         BUILD_LABEL_CAPACITY, CONTRAST_STEP, Line, MAX_COLUMN_SHIFT, SystemOutcome, SystemScreen,
-        TITLE,
+        TITLE, VISIBLE_LINES,
     };
     use crate::apps::AppId;
     use crate::buttons::{ButtonEvents, ButtonReader};
     use crate::fmt::TextBuf;
-    use crate::framebuffer::{FrameBuffer, WIDTH_I32};
+    use crate::framebuffer::{FrameBuffer, HEIGHT_I32, ROW_HEIGHT, WIDTH_I32};
     use crate::platform::{BUTTONS, Button, ControlEvents, ENCODERS};
     use crate::settings::{DisplaySettings, Settings};
     use crate::text::fonts::FONT_5X8;
@@ -500,6 +527,40 @@ mod tests {
         assert!(
             FONT_5X8.width_of(TITLE) + gap + FONT_5X8.width_of(label.as_str()) <= WIDTH_I32,
             "{TITLE} and {label:?} overlap"
+        );
+    }
+
+    #[test]
+    fn the_scroll_bar_shows_the_visible_window() {
+        // Under the title, column 0 is off the dotted track: only the thumb
+        // lights it.
+        let thumb = |line: Line| {
+            let mut frame = FrameBuffer::new();
+            opened_at(line).render(&mut frame, "");
+            let lit = |y: &i32| frame.pixel(0, *y);
+            let first = (ROW_HEIGHT..HEIGHT_I32).find(lit).unwrap();
+            let end = (first..HEIGHT_I32).find(|y| !lit(y)).unwrap_or(HEIGHT_I32);
+            assert!(!(end..HEIGHT_I32).any(|y| lit(&y)), "one solid thumb");
+            (first, end)
+        };
+        let track = (
+            ROW_HEIGHT,
+            ROW_HEIGHT + ROW_HEIGHT * i32::try_from(VISIBLE_LINES).unwrap(),
+        );
+        let length = (track.1 - track.0) * i32::try_from(VISIBLE_LINES).unwrap()
+            / i32::try_from(Line::ALL.len()).unwrap();
+
+        let top = thumb(Line::StartupApp);
+        assert_eq!(
+            top,
+            (track.0, track.0 + length),
+            "the share shown, from the top"
+        );
+        let bottom = thumb(Line::Exit);
+        assert_eq!(bottom.1, track.1, "the last window reaches the bottom");
+        assert!(
+            (bottom.1 - bottom.0 - length).abs() <= 1,
+            "the thumb keeps its length as the window slides"
         );
     }
 
