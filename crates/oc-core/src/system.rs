@@ -33,11 +33,18 @@ pub const CONTRAST_STEP: u8 = 16;
 /// Largest picture shift, in columns, either way.
 pub const MAX_COLUMN_SHIFT: i8 = 8;
 
+/// Title, at the left of the top row.
+const TITLE: &str = "SETUP";
+
 /// Column where values start, so labels and values form two columns.
 const VALUE_COLUMN: i32 = 62;
 
 /// Horizontal padding of a line, so text does not touch the highlight edge.
 const TEXT_INSET: i32 = 2;
+
+/// Room for the build label: `v`, the version, a space and the identifier
+/// (a short hash, `-dirty` included, fits with room to spare).
+const BUILD_LABEL_CAPACITY: usize = 32;
 
 /// Screen rows available for lines, below the title.
 const VISIBLE_LINES: usize = (ROWS - 1) as usize;
@@ -263,6 +270,18 @@ impl SystemScreen {
         };
     }
 
+    /// What the title shows at its right: `v<version> <build id>`, or
+    /// nothing without an identifier, so that the tests and the golden
+    /// screens, which set none, depend neither on the version nor on the
+    /// commit (journal/D-025).
+    fn build_label(build_id: &str, out: &mut TextBuf<BUILD_LABEL_CAPACITY>) {
+        use core::fmt::Write as _;
+
+        if !build_id.is_empty() {
+            let _ = write!(out, "v{} {build_id}", env!("CARGO_PKG_VERSION"));
+        }
+    }
+
     /// First line shown, so that the highlight stays on screen.
     fn first_visible(&self) -> usize {
         let last_start = Line::ALL.len().saturating_sub(VISIBLE_LINES);
@@ -271,18 +290,27 @@ impl SystemScreen {
             .min(last_start)
     }
 
-    /// Draws the title and the visible lines, the highlight in inverse video.
-    pub fn render(&self, frame: &mut FrameBuffer) {
+    /// Draws the title and the visible lines, the highlight in inverse video;
+    /// `build_id` is the one the backend set on the engine (short commit
+    /// hash, `-dirty` if the tree differed), shown with the version at the
+    /// right of the title.
+    pub fn render(&self, frame: &mut FrameBuffer, build_id: &str) {
         frame.clear();
-        text::draw(frame, "SETUP", Point::zero(), TextStyle::lit(&FONT_5X8));
-        if self.safe_mode {
-            text::draw(
-                frame,
-                "SAFE MODE",
-                Point::new(WIDTH_I32 - 1, 0),
-                TextStyle::lit(&FONT_5X8).aligned(Alignment::Right),
-            );
-        }
+        text::draw(frame, TITLE, Point::zero(), TextStyle::lit(&FONT_5X8));
+        // Safe mode matters more than the build, and both cannot fit.
+        let mut build = TextBuf::<BUILD_LABEL_CAPACITY>::new();
+        let right = if self.safe_mode {
+            "SAFE MODE"
+        } else {
+            Self::build_label(build_id, &mut build);
+            build.as_str()
+        };
+        text::draw(
+            frame,
+            right,
+            Point::new(WIDTH_I32 - 1, 0),
+            TextStyle::lit(&FONT_5X8).aligned(Alignment::Right),
+        );
 
         let first = self.first_visible();
         for (slot, &line) in Line::ALL.iter().skip(first).take(VISIBLE_LINES).enumerate() {
@@ -308,12 +336,17 @@ impl SystemScreen {
 
 #[cfg(test)]
 mod tests {
-    use super::{CONTRAST_STEP, Line, MAX_COLUMN_SHIFT, SystemOutcome, SystemScreen};
+    use super::{
+        BUILD_LABEL_CAPACITY, CONTRAST_STEP, Line, MAX_COLUMN_SHIFT, SystemOutcome, SystemScreen,
+        TITLE,
+    };
     use crate::apps::AppId;
     use crate::buttons::{ButtonEvents, ButtonReader};
-    use crate::framebuffer::FrameBuffer;
+    use crate::fmt::TextBuf;
+    use crate::framebuffer::{FrameBuffer, WIDTH_I32};
     use crate::platform::{BUTTONS, Button, ControlEvents, ENCODERS};
     use crate::settings::{DisplaySettings, Settings};
+    use crate::text::fonts::FONT_5X8;
 
     /// Button events with `button` firing on this tick (see the same helper
     /// in `menu`).
@@ -438,6 +471,38 @@ mod tests {
         assert_eq!(screen.original(), &stored);
     }
 
+    fn build_label(build_id: &str) -> TextBuf<BUILD_LABEL_CAPACITY> {
+        let mut label = TextBuf::new();
+        SystemScreen::build_label(build_id, &mut label);
+        label
+    }
+
+    #[test]
+    fn the_title_shows_the_version_and_the_build_only_with_an_identifier() {
+        assert_eq!(build_label("").as_str(), "", "tests see no version");
+        assert_eq!(
+            build_label("a1b2c3d-dirty").as_str(),
+            concat!("v", env!("CARGO_PKG_VERSION"), " a1b2c3d-dirty")
+        );
+
+        let screen = opened_at(Line::StartupApp);
+        let (mut without, mut with) = (FrameBuffer::new(), FrameBuffer::new());
+        screen.render(&mut without, "");
+        screen.render(&mut with, "a1b2c3d");
+        assert!(with.lit_pixels() > without.lit_pixels());
+    }
+
+    #[test]
+    fn the_longest_build_label_fits_beside_the_title() {
+        let label = build_label("a1b2c3d-dirty");
+        assert!(!label.is_full());
+        let gap = 1;
+        assert!(
+            FONT_5X8.width_of(TITLE) + gap + FONT_5X8.width_of(label.as_str()) <= WIDTH_I32,
+            "{TITLE} and {label:?} overlap"
+        );
+    }
+
     #[test]
     fn the_highlight_always_stays_on_screen() {
         for line in Line::ALL {
@@ -448,7 +513,7 @@ mod tests {
                 "{line:?}"
             );
             let mut frame = FrameBuffer::new();
-            screen.render(&mut frame);
+            screen.render(&mut frame, "");
             assert!(frame.lit_pixels() > 0);
         }
     }

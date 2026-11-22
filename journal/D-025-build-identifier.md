@@ -6,7 +6,7 @@
 | **Date** | 2026-11-16 |
 | **Auteur** | Pascal Havé |
 | **Statut** | adoptée, révisée |
-| **Commits** | `b2565ff` (ADR), `e8d5f85` (implémentation), `0a684ce` (correctif `ls-files`), révision : passage à vergen-gix |
+| **Commits** | `b2565ff` (ADR), `e8d5f85` (implémentation), `0a684ce` (correctif `ls-files`), révisions : passage à vergen-gix, titre de `SETUP` |
 | **Relations** | révise D-003 (un crate de plus) ; sert D-016 (savoir quelle image tourne) |
 
 ## 1. Contexte
@@ -94,3 +94,20 @@ Prix accepté : une modification de documentation non indexée ne passe en `-dir
 145 crates de plus à compiler (une fois par profil). Gagné : plus de dépendance au binaire `git` (vérifié : build avec
 un `PATH` sans `git`, identifiant correct), et la lecture du dépôt (worktrees, sous-modules, packs) confiée à
 gitoxide plutôt qu'à du code maison.
+
+## Révision (2026-11-22) — version et identifiant dans le titre de `SETUP`
+
+L'utilisateur veut lire la version et le hash court dans la barre de titre de l'écran des réglages système, pas
+seulement au démarrage. Décidé : l'identifiant n'est plus porté par `SplashScreen` mais par `Engine`, une seule fois
+(posé par `Engine::set_build_id`, conservé par `Engine::reset`) ; ni `SplashScreen` ni `SystemScreen` n'en gardent
+de copie, l'engine le leur passe à chaque rendu (`render(frame, build_id)`). Écartés : une constante globale lue par
+`env!` dans un crate dont dépend `oc-core` (option **A** : le commit entrerait dans les écrans de référence, qui
+demandent une valeur fixe), et une résolution à l'édition de liens (`extern "Rust"` déclaré par un crate dédié,
+défini par une macro dans chaque binaire), qui garde le cœur sans `unsafe` mais impose une définition dans chacun des
+quelque quarante binaires liant `oc-core`, tests et doctests compris (essai conservé sur la branche
+`experiment/link-time-build-id`). Le titre montre `SETUP` à gauche et, aligné à droite,
+`v<version> <identifiant>`. Sans identifiant (tests, écrans de référence, build hors dépôt git), rien à droite : les
+tests ne dépendent toujours ni du commit, ni de la version, et un build hors dépôt garde la version sur l'écran de
+démarrage. Une constante de compilation dans `oc-core` est écartée pour les raisons de l'option **A**. En mode sans échec, `SAFE MODE` prend la place à droite (les deux ne tiennent pas). Police
+5×8 (5 px par caractère) : `SETUP` et `v0.6.0 a1b2c3d-dirty` tiennent sur 128 px ; un test le vérifie avec la version
+courante, pour qu'une version plus longue ne fasse pas chevaucher le titre sans qu'on le voie.
