@@ -20,6 +20,7 @@ ne recharge que ce dont elle a besoin (journal/D-001).
 | `docs/plan/etape-6-ratchet.md` | plan de l'étape 6 : applet Ratchet (D-032) |
 | `docs/plan/etape-7-chemin-audio.md` | plan de l'étape 7 : chemin audio, DAC à 48 kHz (D-033) |
 | `docs/plan/etape-8-supersaw.md` | plan de l'étape 8 : applet Supersaw, premier oscillateur (D-037) |
+| `docs/plan/etape-12-assignation-sonde.md` | plan de l'étape 12 : assignation des CV par le trait `App` et la sonde, sous-panneau commun (D-045) |
 | `docs/hardware.md` | le matériel du module : principes, ce que disent les fiches, ce module et ses mesures ; glossaire |
 | `docs/plan/rapport-etape-7-chemin-audio.md` | rapport détaillé de l'étape 7 : essais, échecs, analyses et correctifs, du DAC à 1 kHz au DAC en DMA |
 | `docs/plan/panique-persistante.md` | préparé, non décidé : garder le message d'une panique à travers un redémarrage (D-018) |
@@ -70,6 +71,20 @@ par l'USB à travers la même interface. L'écran et la navigation restent propr
 | **10c** — module | relevé du 2026-11-21 (`SUPERSAW` `F32`, `NOTE` et `DETUNE` sous bruit, `STEREO`), `8e475a4` contre `b5c444a` : `voice` 1,66 → 1,68 µs (max 1,84 → 1,75), `audio` 4,23 → 4,22 µs, `voice_params` 0,47 µs, `update` 15,10 → 14,87 µs, `render` 53,9 µs, `tick` 26,6 µs ; gigue et trame identiques ; D-043 adoptée | ✅ |
 | **10d** — sonde | protocole v4 : `ListApps`, `DescribeApp`, `GetParam`, `SetParam`, `Observe`, `Act`, `SelectApp` ; serveur par le trait (`Engine::app_mut`, `select_app`) ; `oc-probe` : client, module `apps` (noms, valeurs en texte par `write_number`), CLI `apps`, `app`, `get`, `set`, `act`, `select` ; `oc-web` reçoit les réponses ; TESTING 9.1b étape 6 ; `.text` +5 908 o, `.rodata` +980 o (lot entier : `.text` +9,2 Kio, 163 Kio d'ITCM sur 192) ; révision de D-043. Reste : les observables dans `Stream` | ✅ |
 | **10e** — page web | panneau *Apps* : liste, choix, *Run on the module*, réglages avec leur valeur, leur plage et la marque CV, édition par champ ou liste, actions en boutons, lecture des observables ; `oc-web` : `AppList`, `AppView`, `Editor`, les messages gardent ce qu'ils portent ; lecture et écriture des valeurs par `oc_probe::apps` (`edit_text` ajouté), la description bâtie par `AppDescription::add_spec` / `add_choice_name`, les mêmes que la CLI ; tests contre le vrai serveur ; TESTING 9.1c. Reste : l'essai dans Chrome sur le module | ✅ |
+
+### Étape 12 — assignation des CV par la sonde (en cours)
+
+Demandée le 2026-11-22 (D-045, proposée) : la sonde lit et règle l'assignation des CV de chaque paramètre
+assignable, par le trait `App` ; l'état du sous-menu, recopié dans `TONE`, `RATCHET` et `SUPERSAW`, sort dans
+`oc_core::modulation`. Plan : [etape-12-assignation-sonde.md](docs/plan/etape-12-assignation-sonde.md).
+
+| Lot | Contenu | État |
+|---|---|---|
+| **12a** — ADR et plan | D-045, plan de l'étape | ✅ |
+| **12b** — cœur | état commun dans `modulation`, `Assign::checked`, trait `assigns` / `assign` / `set_assign` / `assign_sweep` ; trois apps branchées, écrans de référence identiques | à faire |
+| **12c** — protocole v8 | `GetAssign`, `SetAssign`, `Reply::Assign`, assignations dans `DescribeApp` | à faire |
+| **12d** — client et CLI | `oc-probe assign`, `CENTER` côté hôte sur `Stream` | à faire |
+| **12e** — page web | un sous-panneau CV commun sous chaque réglage assignable | à faire |
 
 ### Étape 6 — premier applet musical : Ratchet (en cours)
 
