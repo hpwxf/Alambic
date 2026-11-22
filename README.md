@@ -56,7 +56,7 @@ the chord is unreachable with a mouse, so right-click the module and choose
 | `DIAGNOSTIC` | the I/O diagnostic screen the module boots into          |
 | `SCOPE`      | a scrolling view of `CV1`, buffered to all four outputs  |
 | `RATCHET`    | bursts of triggers on B after each rising edge on `TR1` (below) |
-| `TONE`       | a test tone at one pitch on the four outputs, a sine on A, a triangle on B, a sawtooth on C and a square on D (the last two alias, as a test tone may); left encoder, the note from C1 to C8 (A4 = 440 Hz at start); right encoder, the peak level, 0 to 3 V around 0 V; `CV1` adds to the note at one volt per octave. The module plays it at 47 619 Hz, the DAC written by DMA (journal/D-033), VCV Rack at its own sample rate |
+| `TONE`       | a test tone at one pitch on the four outputs, a sine on A, a triangle on B, a sawtooth on C and a square on D (the last two alias, as a test tone may); the left encoder picks `NOTE` (C1 to C8, A4 = 440 Hz at start) or `LEVEL` (the peak level, 0 to 3 V around 0 V), the right one changes it, its click opens the setting's input submenu as in `SUPERSAW`; no input at start, so the tone stays clean; the pitch played is in the title row. The module plays it at 47 619 Hz, the DAC written by DMA (journal/D-033), VCV Rack at its own sample rate |
 | `SUPERSAW`   | seven detuned band-limited sawtooths around one pitch (below) |
 | `GFX DEMO`   | the graphics primitives on five pages (fonts, knobs, curves, sequencer, meters); left encoder turns the pages, right encoder the value, `up`/`down` the focused knob; outputs A–D carry the simulated LFO, gate, knob and needle |
 

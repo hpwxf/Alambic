@@ -2,10 +2,14 @@
 //! different waveform on each, to hear the audio path and tune against.
 //!
 //! A carries a sine, B a triangle, C a sawtooth, D a square, all at the same
-//! pitch. The left encoder sets the note, C1 to C8 (A4 = 440 Hz at start);
-//! the right one the peak level, 0 to 3 V around 0 V (the outputs go down to
-//! −3 V); `CV1` adds to the note at one volt per octave. The sawtooth and the
-//! square are not band-limited and alias: that is expected of a test tone.
+//! pitch. As in `RATCHET` and `SUPERSAW`, the left encoder picks a setting
+//! and the right one changes it: `NOTE`, C1 to C8 (A4 = 440 Hz at start),
+//! and `LEVEL`, the peak level, 0 to 3 V around 0 V (the outputs go down to
+//! −3 V). The right encoder's click opens the setting's input submenu
+//! (journal/D-036, [`Assign`]). Neither takes an input at start: an
+//! unplugged input reads a few millivolts of noise on the module, and a test
+//! tone must stay clean until one is chosen. The sawtooth and the square are
+//! not band-limited and alias: that is expected of a test tone.
 
 use core::fmt::Write as _;
 
@@ -18,8 +22,11 @@ use crate::audio::wave::{ONE, Waveform};
 use crate::fixed;
 use crate::fmt::{TextBuf, write_volts};
 use crate::framebuffer::{FrameBuffer, ROW_HEIGHT, WIDTH_I32};
+use crate::gfx::controls::scroll_track;
 use crate::gfx::{self, Ink, Point};
-use crate::platform::{CV_CHANNELS, MilliVolts};
+use crate::modulation::editor::{AssignEditor, Param};
+use crate::modulation::{Assign, AssignLine, Effect, multiplied};
+use crate::platform::{Button, CV_CHANNELS, MilliVolts};
 use crate::text::fonts::FONT_5X8;
 use crate::text::{self, Alignment, TextStyle};
 
@@ -44,9 +51,26 @@ pub const DEFAULT_AMPLITUDE_MV: MilliVolts = 1_000;
 /// What one detent of the right encoder changes the level by.
 pub const AMPLITUDE_STEP_MV: MilliVolts = 100;
 
-/// The pitch range, whatever `CV1` adds: below a hertz is not a tone, and
+/// The pitch range, whatever an input adds: below a hertz is not a tone, and
 /// above 20 kHz not audible.
 pub const FREQUENCY_RANGE: (MilliHertz, MilliHertz) = (1_000, 20_000_000);
+
+/// The note an input that sets the note gives at 0 V, C4: −3 V reach C1 and
+/// +4 V C8.
+pub const SET_NOTE: u8 = 60;
+
+/// The signal that sweeps the note from C1 to C8 when it follows its input,
+/// at one volt per octave, [`SET_NOTE`] at 0 V.
+#[allow(clippy::cast_lossless)]
+// `From` is not `const`.
+pub const NOTE_SWEEP: (MilliVolts, MilliVolts) = (
+    (LOWEST_NOTE as MilliVolts - SET_NOTE as MilliVolts) * 1_000 / 12,
+    (HIGHEST_NOTE as MilliVolts - SET_NOTE as MilliVolts) * 1_000 / 12,
+);
+
+/// The signal that sweeps the level from 0 to 3 V when it follows its
+/// input: 0 to 5 V.
+pub const LEVEL_SWEEP: (MilliVolts, MilliVolts) = (0, 5_000);
 
 /// The waveform of each output, A to D.
 const WAVES: [Waveform; CV_CHANNELS] = Waveform::ALL;
@@ -65,8 +89,22 @@ const WAVE_TOP: i32 = 50;
 /// Half the height of a waveform drawing.
 const WAVE_HALF: i32 = 6;
 
-/// What `TONE` is set by (journal/D-043): the note and the peak level, in
-/// millivolts, read as volts.
+/// Right edge of a setting's value, left of the input's name, as in
+/// `SUPERSAW`.
+const VALUE_RIGHT: i32 = 98;
+
+/// Rows under the title the scroll bar's place spans, above the waveforms'
+/// labels.
+const SETTING_ROWS: i32 = 4;
+
+/// Width of the scroll bar's place left of the settings.
+const SCROLL_WIDTH: i32 = 3;
+
+/// Left edge of the settings' rows, right of the scroll bar and a gap.
+const ROW_LEFT: i32 = SCROLL_WIDTH + 1;
+
+/// What `TONE` is set by (journal/D-043), one per [`Setting`]: the note and
+/// the peak level, in millivolts, read as volts.
 #[allow(clippy::cast_possible_wrap)]
 // MIDI numbers.
 pub const PARAM_SPECS: [ParamSpec; 2] = [
@@ -76,70 +114,150 @@ pub const PARAM_SPECS: [ParamSpec; 2] = [
         1,
         0,
         Unit::Note,
-    ),
+    )
+    .assignable(),
     ParamSpec::number(
         "LEVEL",
         (0, MAX_AMPLITUDE_MV),
         AMPLITUDE_STEP_MV,
         3,
         Unit::Volts,
-    ),
+    )
+    .assignable(),
 ];
 
-/// What it plays once `CV1` moved the note: the frequency, in millihertz.
-pub const OBSERVABLES: [ParamSpec; 1] = [ParamSpec::number(
-    "FREQ",
-    (0, 20_000_000),
-    1,
-    3,
-    Unit::Hertz,
-)];
+/// What it plays once its inputs moved its settings: the frequency, in
+/// millihertz, and the level.
+pub const OBSERVABLES: [ParamSpec; 2] = [
+    ParamSpec::number("FREQ", (0, 20_000_000), 1, 3, Unit::Hertz),
+    ParamSpec::number("LEVEL NOW", (0, MAX_AMPLITUDE_MV), 1, 3, Unit::Volts),
+];
+
+/// One setting of the applet, in the order of the screen.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Setting {
+    /// The note, C1 to C8.
+    Note,
+    /// The peak level.
+    Level,
+}
+
+impl Setting {
+    /// Every setting, top to bottom; each keeps its input at its index.
+    pub const ALL: [Self; 2] = [Self::Note, Self::Level];
+
+    /// The label on screen.
+    #[must_use]
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Note => "NOTE",
+            Self::Level => "LEVEL",
+        }
+    }
+
+    /// The range of the signal that sweeps this setting over all its values
+    /// when it follows its input (journal/D-036).
+    #[must_use]
+    pub const fn sweep(self) -> (MilliVolts, MilliVolts) {
+        match self {
+            Self::Note => NOTE_SWEEP,
+            Self::Level => LEVEL_SWEEP,
+        }
+    }
+
+    const fn index(self) -> usize {
+        self as usize
+    }
+}
 
 /// One test tone, four waveforms.
 #[derive(Debug, Clone)]
 pub struct ToneApp {
+    selected: usize,
     note: u8,
     amplitude: MilliVolts,
-    pitch_cv: MilliVolts,
-    frequency: MilliHertz,
+    /// The input of each setting, by its index in [`Setting::ALL`].
+    assigns: [Assign; 2],
+    /// The selected setting's input submenu, `None` while it is closed.
+    assigning: Option<AssignEditor>,
+    /// The last inputs.
+    cv: [MilliVolts; CV_CHANNELS],
 }
 
 impl ToneApp {
-    /// A4 at 1 V peak.
+    /// A4 at 1 V peak, no input.
     #[must_use]
-    pub fn new() -> Self {
+    pub const fn new() -> Self {
         Self {
+            selected: 0,
             note: REFERENCE_NOTE,
             amplitude: DEFAULT_AMPLITUDE_MV,
-            pitch_cv: 0,
-            frequency: frequency(REFERENCE_NOTE, 0),
+            assigns: [Assign::NONE; 2],
+            assigning: None,
+            cv: [0; CV_CHANNELS],
         }
     }
 
     /// Consumes one snapshot and returns what the outputs carry.
     pub fn update(&mut self, input: &InputSnapshot) -> Params {
-        let note = i32::from(self.note) + i32::from(input.controls.delta(0));
-        let note = note.clamp(i32::from(LOWEST_NOTE), i32::from(HIGHEST_NOTE));
-        self.note = u8::try_from(note).unwrap_or(REFERENCE_NOTE);
-        self.amplitude = (self.amplitude + i32::from(input.controls.delta(1)) * AMPLITUDE_STEP_MV)
-            .clamp(0, MAX_AMPLITUDE_MV);
-        self.pitch_cv = input.cv[0];
-        self.frequency = frequency(self.note, self.pitch_cv);
+        self.follow_panel(input);
+        self.cv = input.cv;
+        if let Some(editor) = &mut self.assigning {
+            editor.observe(&self.assigns[self.selected], &self.cv, input.elapsed_micros);
+        }
         self.params()
+    }
+
+    /// The submenu follows the panel while it is open; otherwise the left
+    /// encoder picks a setting, the right one changes it, and its click
+    /// opens the setting's submenu.
+    fn follow_panel(&mut self, input: &InputSnapshot) {
+        let selected = self.selected();
+        if let Some(editor) = &mut self.assigning {
+            if !editor.follow(&mut self.assigns[self.selected], input, selected.sweep()) {
+                self.assigning = None;
+            }
+            return;
+        }
+        let pick = i32::try_from(self.selected).unwrap_or(0) + i32::from(input.controls.delta(0));
+        let last = i32::try_from(Setting::ALL.len() - 1).unwrap_or(0);
+        self.selected = usize::try_from(pick.clamp(0, last)).unwrap_or(0);
+        if input.buttons.pressed(Button::RightEncoder) {
+            self.assigning = Some(AssignEditor::new());
+        }
+        let turn = i32::from(input.controls.delta(1));
+        match self.selected() {
+            Setting::Note => {
+                let note = (i32::from(self.note) + turn)
+                    .clamp(i32::from(LOWEST_NOTE), i32::from(HIGHEST_NOTE));
+                self.note = u8::try_from(note).unwrap_or(REFERENCE_NOTE);
+            }
+            Setting::Level => {
+                self.amplitude =
+                    (self.amplitude + turn * AMPLITUDE_STEP_MV).clamp(0, MAX_AMPLITUDE_MV);
+            }
+        }
     }
 
     /// What the outputs carry: the tone in each waveform.
     #[must_use]
     pub fn params(&self) -> Params {
+        let (frequency, amplitude) = (self.frequency(), self.played_amplitude());
         let mut sound = BasicParams::REST;
         for (channel, wave) in sound.channels.iter_mut().zip(WAVES) {
             *channel = Channel::Tone(Tone {
                 wave,
-                frequency: self.frequency,
-                amplitude: self.amplitude,
+                frequency,
+                amplitude,
             });
         }
         Params::basic(sound)
+    }
+
+    /// The setting the right encoder changes.
+    #[must_use]
+    pub const fn selected(&self) -> Setting {
+        Setting::ALL[self.selected]
     }
 
     /// The note set on the panel, as a MIDI number.
@@ -148,52 +266,97 @@ impl ToneApp {
         self.note
     }
 
-    /// The peak level.
+    /// The peak level set on the panel.
     #[must_use]
     pub const fn amplitude(&self) -> MilliVolts {
         self.amplitude
     }
 
-    /// The pitch played: the note plus `CV1`.
+    /// The input `setting` takes.
     #[must_use]
-    pub const fn frequency(&self) -> MilliHertz {
-        self.frequency
+    pub const fn assign(&self, setting: Setting) -> &Assign {
+        &self.assigns[setting.index()]
     }
 
-    /// Draws the note, the pitch, the level, `CV1` and each output's waveform.
+    /// The field picked in the selected setting's input submenu, `None`
+    /// while it is closed.
+    #[must_use]
+    pub const fn assigning(&self) -> Option<AssignLine> {
+        match &self.assigning {
+            Some(editor) => Some(editor.line()),
+            None => None,
+        }
+    }
+
+    /// The shaped signal of `setting`'s input and its effect, `None` without
+    /// an input.
+    fn reading(&self, setting: Setting) -> Option<(MilliVolts, Effect)> {
+        self.assign(setting).reading(&self.cv)
+    }
+
+    /// The pitch played: the note and its input.
+    #[must_use]
+    pub fn frequency(&self) -> MilliHertz {
+        self.reading(Setting::Note)
+            .map_or(frequency(self.note, 0), |(millivolts, effect)| {
+                frequency_from(self.note, millivolts, effect)
+            })
+    }
+
+    /// The peak level played: the panel's and its input.
+    #[must_use]
+    pub fn played_amplitude(&self) -> MilliVolts {
+        self.reading(Setting::Level)
+            .map_or(self.amplitude, |(millivolts, effect)| {
+                level_from(self.amplitude, millivolts, effect)
+            })
+    }
+
+    /// Draws the pitch played in the title row, the settings and their
+    /// inputs, the one being changed, and each output's waveform; the
+    /// selected setting's input submenu over them while it is open.
     pub fn render(&self, frame: &mut FrameBuffer, _context: &TickContext) {
         frame.clear();
         let lit = TextStyle::lit(&FONT_5X8);
         let right = lit.aligned(Alignment::Right);
         let last = WIDTH_I32 - 1;
         text::draw(frame, "TONE", Point::zero(), lit);
+        let hertz = write_hertz(self.frequency());
+        text::draw(frame, hertz.as_str(), Point::new(last, 0), right);
 
-        let mut line = TextBuf::<16>::new();
-        let _ = write!(line, "NOTE {}", note_name(self.note).as_str());
-        text::draw(frame, line.as_str(), Point::new(0, ROW_HEIGHT), lit);
-        let mut line = TextBuf::<16>::new();
-        let hertz = self.frequency.saturating_add(5) / 10;
-        let _ = write!(line, "{}.{:02} Hz", hertz / 100, hertz % 100);
-        text::draw(frame, line.as_str(), Point::new(last, ROW_HEIGHT), right);
-
-        text::draw(frame, "LEVEL", Point::new(0, 2 * ROW_HEIGHT), lit);
-        let mut line = TextBuf::<16>::new();
-        let _ = write_volts(&mut line, self.amplitude, 1);
-        let _ = write!(line, " V");
-        // The level is a peak, never negative: no sign.
-        let shown = line.as_str().trim_start_matches('+');
-        text::draw(frame, shown, Point::new(last, 2 * ROW_HEIGHT), right);
-
-        text::draw(frame, "CV1", Point::new(0, 3 * ROW_HEIGHT), lit);
-        let mut line = TextBuf::<16>::new();
-        let _ = write_volts(&mut line, self.pitch_cv, 3);
-        let _ = write!(line, " V");
-        text::draw(
+        // One page: the scroll bar's place, empty, lines the settings up
+        // with those of the applets that scroll.
+        scroll_track(
             frame,
-            line.as_str(),
-            Point::new(last, 3 * ROW_HEIGHT),
-            right,
+            0,
+            ROW_HEIGHT,
+            SCROLL_WIDTH,
+            SETTING_ROWS * ROW_HEIGHT,
         );
+        for (row, setting) in (1..).zip(Setting::ALL) {
+            let top = row * ROW_HEIGHT;
+            text::draw(frame, setting.label(), Point::new(ROW_LEFT + 1, top), lit);
+            let assign = self.assign(setting);
+            // A setting that follows its input has no use for the panel's
+            // value: its input stands in its place.
+            if !assign.sets() {
+                let value = self.value_text(setting);
+                text::draw(frame, value.as_str(), Point::new(VALUE_RIGHT, top), right);
+            }
+            let mut name = TextBuf::<8>::new();
+            assign.write(&mut name);
+            text::draw(frame, name.as_str(), Point::new(last - 1, top), right);
+            if setting == self.selected() {
+                gfx::fill_rect(
+                    frame,
+                    ROW_LEFT,
+                    top,
+                    WIDTH_I32 - ROW_LEFT,
+                    ROW_HEIGHT,
+                    Ink::Invert,
+                );
+            }
+        }
 
         for (column, (output, wave)) in (0..).zip(["A", "B", "C", "D"].into_iter().zip(WAVES)) {
             let left = column * WAVE_COLUMN;
@@ -206,6 +369,52 @@ impl ToneApp {
                 lit,
             );
             draw_wave(frame, wave, left + 2, WAVE_COLUMN - 5);
+        }
+        if let Some(editor) = &self.assigning {
+            self.render_submenu(frame, editor);
+        }
+    }
+
+    /// The selected setting's input submenu over the main screen: the
+    /// setting, the value played now and where both sit in its course
+    /// (journal/D-036).
+    fn render_submenu(&self, frame: &mut FrameBuffer, editor: &AssignEditor) {
+        let setting = self.selected();
+        let (now, panel, played) = match setting {
+            Setting::Note => (
+                write_hertz(self.frequency()),
+                pitch_permille(frequency(self.note, 0)),
+                pitch_permille(self.frequency()),
+            ),
+            Setting::Level => {
+                let played = self.played_amplitude();
+                (
+                    level_text(played),
+                    self.amplitude * 1_000 / MAX_AMPLITUDE_MV,
+                    played * 1_000 / MAX_AMPLITUDE_MV,
+                )
+            }
+        };
+        let param = Param {
+            name: setting.label(),
+            now: now.as_str(),
+            zero_permille: 0,
+            panel_permille: panel,
+            now_permille: played,
+        };
+        editor.render(frame, self.assign(setting), &self.cv, &param);
+    }
+
+    /// The value of `setting` on screen, as the panel sets it: what its input
+    /// makes of it shows in the title row and the submenu, as in `SUPERSAW`.
+    fn value_text(&self, setting: Setting) -> TextBuf<16> {
+        match setting {
+            Setting::Note => {
+                let mut line = TextBuf::<16>::new();
+                let _ = write!(line, "{}", note_name(self.note).as_str());
+                line
+            }
+            Setting::Level => level_text(self.amplitude),
         }
     }
 }
@@ -220,22 +429,19 @@ impl App for ToneApp {
     }
 
     fn get(&self, index: usize) -> Option<ParamValue> {
-        match index {
-            0 => Some(ParamValue::Number(i32::from(self.note))),
-            1 => Some(ParamValue::Number(self.amplitude)),
-            _ => None,
+        match Setting::ALL.get(index)? {
+            Setting::Note => Some(ParamValue::Number(i32::from(self.note))),
+            Setting::Level => Some(ParamValue::Number(self.amplitude)),
         }
     }
 
     fn set(&mut self, index: usize, value: ParamValue) -> Result<ParamValue, Refused> {
         let spec = PARAM_SPECS.get(index).ok_or(Refused::NoSuch)?;
-        match (index, spec.check(value)?) {
-            (0, ParamValue::Number(note)) => {
+        match (Setting::ALL[index], spec.check(value)?) {
+            (Setting::Note, ParamValue::Number(note)) => {
                 self.note = u8::try_from(note).unwrap_or(REFERENCE_NOTE);
-                // The tone follows at once, as the panel's next tick would.
-                self.frequency = frequency(self.note, self.pitch_cv);
             }
-            (1, ParamValue::Number(level)) => self.amplitude = level,
+            (Setting::Level, ParamValue::Number(level)) => self.amplitude = level,
             _ => {}
         }
         self.get(index).ok_or(Refused::NoSuch)
@@ -246,7 +452,12 @@ impl App for ToneApp {
     }
 
     fn observe(&self, index: usize) -> Option<ParamValue> {
-        (index == 0).then(|| ParamValue::Number(i32::try_from(self.frequency).unwrap_or(i32::MAX)))
+        let number = match index {
+            0 => i32::try_from(self.frequency()).unwrap_or(i32::MAX),
+            1 => self.played_amplitude(),
+            _ => return None,
+        };
+        Some(ParamValue::Number(number))
     }
 
     fn update(&mut self, input: &InputSnapshot) -> Params {
@@ -307,15 +518,77 @@ pub fn note_name(note: u8) -> TextBuf<4> {
     name
 }
 
+/// The pitch an input makes of `note`: added at one volt per octave, set at
+/// one volt per octave from [`SET_NOTE`], or the frequency multiplied (5 V
+/// leaving it, 10 V an octave up).
+#[must_use]
+pub fn frequency_from(note: u8, millivolts: MilliVolts, effect: Effect) -> MilliHertz {
+    match effect {
+        Effect::Add => frequency(note, millivolts),
+        Effect::Set => frequency(SET_NOTE, millivolts),
+        Effect::Mul => {
+            let product = multiplied(i64::from(frequency(note, 0)), millivolts);
+            let (low, high) = FREQUENCY_RANGE;
+            MilliHertz::try_from(product.clamp(i64::from(low), i64::from(high))).unwrap_or(low)
+        }
+    }
+}
+
+/// The peak level an input makes of `level`: 0 to 3 V over
+/// [`LEVEL_SWEEP`] when it is followed, added at that rate, or multiplied,
+/// a VCA under an envelope.
+#[must_use]
+pub fn level_from(level: MilliVolts, millivolts: MilliVolts, effect: Effect) -> MilliVolts {
+    let full = i64::from(MAX_AMPLITUDE_MV);
+    let followed = i64::from(millivolts) * full / i64::from(LEVEL_SWEEP.1);
+    let moved = match effect {
+        Effect::Set => followed,
+        Effect::Add => i64::from(level) + followed,
+        Effect::Mul => multiplied(i64::from(level), millivolts),
+    };
+    MilliVolts::try_from(moved.clamp(0, full)).unwrap_or(0)
+}
+
+/// `110.00 Hz`.
+pub(crate) fn write_hertz(frequency: MilliHertz) -> TextBuf<16> {
+    let mut line = TextBuf::<16>::new();
+    let hertz = frequency.saturating_add(5) / 10;
+    let _ = write!(line, "{}.{:02} Hz", hertz / 100, hertz % 100);
+    line
+}
+
+/// Where `frequency` sits from C1 to C8, in thousandths, an octave a
+/// seventh of the course.
+pub(crate) fn pitch_permille(frequency: MilliHertz) -> i32 {
+    let lowest = i64::from(self::frequency(LOWEST_NOTE, 0));
+    let octaves = fixed::log2(i64::from(frequency) * i64::from(fixed::ONE) / lowest).unwrap_or(0);
+    let span = i64::from(HIGHEST_NOTE - LOWEST_NOTE) / 12;
+    i32::try_from(octaves * 1_000 / (span * i64::from(fixed::ONE))).unwrap_or(0)
+}
+
+/// A peak level as volts with one decimal, `1.5 V`: never negative, so
+/// without a sign.
+fn level_text(level: MilliVolts) -> TextBuf<16> {
+    let mut line = TextBuf::<16>::new();
+    let _ = write_volts(&mut line, level, 1);
+    let _ = write!(line, " V");
+    let mut shown = TextBuf::<16>::new();
+    let _ = write!(shown, "{}", line.as_str().trim_start_matches('+'));
+    shown
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
         AMPLITUDE_STEP_MV, DEFAULT_AMPLITUDE_MV, HIGHEST_NOTE, LOWEST_NOTE, MAX_AMPLITUDE_MV,
-        ToneApp, frequency, note_name,
+        NOTE_SWEEP, ROW_LEFT, SET_NOTE, Setting, ToneApp, frequency, frequency_from, level_from,
+        note_name,
     };
-    use crate::apps::InputSnapshot;
+    use crate::apps::{InputSnapshot, TickContext};
     use crate::audio::basic::{Channel, Tone};
     use crate::audio::wave::Waveform;
+    use crate::framebuffer::{FrameBuffer, ROW_HEIGHT};
+    use crate::modulation::Effect;
 
     fn turn(left: i8, right: i8) -> InputSnapshot {
         let mut input = InputSnapshot::default();
@@ -358,37 +631,70 @@ mod tests {
     }
 
     #[test]
-    fn the_encoders_set_the_note_and_the_level_within_bounds() {
+    fn the_left_encoder_picks_and_the_right_one_changes_within_bounds() {
         let mut tone = ToneApp::new();
-        tone.update(&turn(3, 2));
-        assert_eq!(tone.note(), 72);
+        tone.update(&turn(0, 3));
+        assert_eq!((tone.selected(), tone.note()), (Setting::Note, 72));
+        tone.update(&turn(1, 2));
+        assert_eq!(tone.selected(), Setting::Level);
+        assert_eq!(tone.note(), 72, "the note stays once LEVEL is picked");
         assert_eq!(
             tone.amplitude(),
             DEFAULT_AMPLITUDE_MV + 2 * AMPLITUDE_STEP_MV
         );
-        for _ in 0..20 {
-            tone.update(&turn(-100, 100));
-        }
-        assert_eq!(tone.note(), LOWEST_NOTE);
+        tone.update(&turn(5, 100));
+        assert_eq!(tone.selected(), Setting::Level, "no page past LEVEL");
         assert_eq!(tone.amplitude(), MAX_AMPLITUDE_MV);
-        for _ in 0..20 {
-            tone.update(&turn(100, -100));
-        }
-        assert_eq!(tone.note(), HIGHEST_NOTE);
+        tone.update(&turn(0, -100));
         assert_eq!(tone.amplitude(), 0);
+        tone.update(&turn(-5, -100));
+        assert_eq!(tone.note(), LOWEST_NOTE);
+        tone.update(&turn(0, 100));
+        assert_eq!(tone.note(), HIGHEST_NOTE);
     }
 
     #[test]
-    fn cv1_transposes_at_one_volt_per_octave() {
+    fn no_input_moves_the_tone_at_start() {
+        // An unplugged input reads a few millivolts of noise on the module:
+        // a test tone must not wobble with it.
         let mut tone = ToneApp::new();
-        let mut input = InputSnapshot::default();
-        input.cv[0] = 500;
+        let input = InputSnapshot {
+            cv: [7, -12, 500, 2_000],
+            ..InputSnapshot::default()
+        };
         tone.update(&input);
-        // Half an octave above 440 Hz: 622.25 Hz.
-        assert!(
-            tone.frequency().abs_diff(622_254) <= 30,
-            "{}",
-            tone.frequency()
-        );
+        assert_eq!(tone.frequency(), 440_000);
+        assert_eq!(tone.played_amplitude(), DEFAULT_AMPLITUDE_MV);
+        for setting in Setting::ALL {
+            assert_eq!(tone.assign(setting).input, None);
+        }
+    }
+
+    #[test]
+    fn the_inputs_follow_add_or_multiply() {
+        assert_eq!(frequency_from(69, 1_000, Effect::Add), 880_000);
+        assert_eq!(frequency_from(69, 0, Effect::Set), frequency(SET_NOTE, 0));
+        assert_eq!(frequency_from(69, 10_000, Effect::Mul), 880_000);
+        assert_eq!(NOTE_SWEEP, (-3_000, 4_000), "C1 to C8");
+        assert_eq!(level_from(0, 5_000, Effect::Set), MAX_AMPLITUDE_MV);
+        assert_eq!(level_from(1_000, 1_000, Effect::Add), 1_600);
+        assert_eq!(level_from(1_000, -1_000, Effect::Mul), 0);
+    }
+
+    #[test]
+    fn the_selected_row_is_highlighted() {
+        let lit_in_row = |tone: &ToneApp, row: i32| {
+            let mut frame = FrameBuffer::new();
+            tone.render(&mut frame, &TickContext::default());
+            (ROW_LEFT..ROW_LEFT + 4)
+                .filter(|&x| frame.pixel(x, row * ROW_HEIGHT))
+                .count()
+        };
+        let mut tone = ToneApp::new();
+        assert_eq!(lit_in_row(&tone, 1), 4, "NOTE in inverse video");
+        assert_eq!(lit_in_row(&tone, 2), 0);
+        tone.update(&turn(1, 0));
+        assert_eq!(lit_in_row(&tone, 1), 0);
+        assert_eq!(lit_in_row(&tone, 2), 4, "LEVEL in inverse video");
     }
 }

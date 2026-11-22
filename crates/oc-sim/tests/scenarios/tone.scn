@@ -1,9 +1,11 @@
 # oc-sim scenario v1
 # The TONE applet (journal/D-033): open the app menu, move the highlight down
-# four times to TONE, launch it, then raise the note by three semitones (C5)
-# and the level by five steps (1.5 V). CV1 adds half a volt: half an octave
-# above C5, 739.99 Hz. The snapshot shows the four waveforms, one per output.
-ticks 300
+# four times to TONE, launch it, then raise the note by three semitones (C5),
+# pick LEVEL and raise it by five steps (1.5 V), go back to NOTE and give it
+# CV1 through its submenu (ADD). CV1 adds half a volt: half an octave above
+# C5, 739.99 Hz in the title row. The snapshot shows NOTE highlighted with
+# +CV1, LEVEL, the empty scroll bar's place, the four waveforms.
+ticks 340
 20  button up down
 60  button down down
 70  button up up
@@ -18,6 +20,13 @@ ticks 300
 160 button down up
 180 button left down
 186 button left up
-200 encoder 1 +3
-210 encoder 2 +5
-220 cv 1 500
+200 encoder 2 +3
+210 encoder 1 +1
+220 encoder 2 +5
+230 encoder 1 -1
+240 button right down
+246 button right up
+260 encoder 2 +1
+270 button right down
+276 button right up
+290 cv 1 500

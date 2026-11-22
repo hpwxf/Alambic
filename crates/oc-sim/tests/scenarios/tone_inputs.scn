@@ -1,0 +1,27 @@
+# oc-sim scenario v1
+# TONE's input submenu (journal/D-036): as tone.scn up to the launch, then
+# pick LEVEL, open its submenu and give it CV2 (ADD), left open, CV2 at one
+# volt. The snapshot shows the frame over the main screen: LEVEL and the
+# 1.6 V played in its top edge; CV2 in a lit box, the scale and the shift;
+# MIN, MAX, EFFECT ADD, CENTER; the CV bar, 1 V as a band from 0 V; the VAL
+# bar, the panel's 1 V a tick and 1.6 V a block.
+ticks 300
+20  button up down
+60  button down down
+70  button up up
+70  button down up
+90  button down down
+100 button down up
+110 button down down
+120 button down up
+130 button down down
+140 button down up
+150 button down down
+160 button down up
+180 button left down
+186 button left up
+200 encoder 1 +1
+210 button right down
+216 button right up
+230 encoder 2 +2
+250 cv 2 1000
