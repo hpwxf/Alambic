@@ -50,10 +50,14 @@ loge environ cinq applets de cette taille.
 
 **La comparaison avec Phazerville.** `o_C-phazerville-v2.0.2_T40-92740448e5.hex` fait 1,4 Mo, mais un fichier Intel HEX
 est du texte (deux caractères par octet, plus l'en-tête de chaque ligne) : ≈ 2,8 fois l'image binaire. Notre
-`dist/oc-firmware.hex` fait 523 Ko pour ≈ 185 Kio d'image, ce qui vérifie le rapport ; Phazerville représente donc
-≈ 500 Kio d'image en flash, code et données confondus. Le chiffre ne se compare pas à l'ITCM : la FlexRAM entière fait
-512 Kio, et Teensyduino, qui place le code en ITCM par défaut, laisse en flash ce qui est marqué `FLASHMEM`.
-Phazerville exécute donc une bonne part de son code depuis la flash (non vérifié dans ses sources).
+`dist/oc-firmware.hex` fait 523 Ko pour ≈ 185 Kio d'image, ce qui vérifie le rapport. Décodée (en-têtes de boot et
+valeurs que charge `ResetHandler`), l'image de Phazerville fait **468 Kio**, et la plus grande part de son code
+s'exécute **en ITCM** : ≈ 284 Kio y sont copiés au démarrage, et seuls ≈ 84 Kio restent en flash (démarrage, fonctions
+`FLASHMEM`, données `PROGMEM`, descripteurs USB). Le partage des bancs le permet : le script de lien de Teensyduino
+(`teensy4/imxrt1062.ld`) déclare ITCM et DTCM de 512 Kio chacune et calcule à l'édition de liens le nombre de bancs
+d'ITCM d'après la taille du code (`_itcm_block_count`, arrondi aux 32 Kio), la DTCM prenant le reste. L'image écrit
+`0xAAABFFFF` dans `GPR17` : 9 bancs d'ITCM (288 Kio), 7 de DTCM (224 Kio), `.rodata` et `.data` (≈ 88 Kio) en DTCM.
+Teensyduino fait donc automatiquement ce que l'option **B** ci-dessous fait à la main.
 
 ## 2. Options envisagées
 
