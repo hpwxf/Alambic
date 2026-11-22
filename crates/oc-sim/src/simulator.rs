@@ -12,14 +12,16 @@ use std::io;
 use std::path::{Path, PathBuf};
 
 use oc_core::TickReport;
+use oc_core::apps::sound::Player;
 use oc_core::apps::{App, AppId};
 use oc_core::debounce::DEFAULT_STABLE_SAMPLES;
+use oc_core::engine::TICK_RATE_HZ;
 use oc_core::framebuffer::FrameBuffer;
 use oc_core::platform::{
     BUTTONS, Button, CV_CHANNELS, CvChannel, MilliVolts, TRIGGER_CHANNELS, TriggerChannel,
 };
 use oc_core::settings::{LoadOutcome, SettingsStore};
-use oc_core::testing::{MEMORY_FLASH_BYTES, MemoryFlash, MockEngine, mock_engine_at_boot};
+use oc_core::testing::{BareMockEngine, MEMORY_FLASH_BYTES, MemoryFlash, bare_mock_engine_at_boot};
 use oc_core::toast::SaveOutcome;
 
 use crate::clock::TICK_MICROS;
@@ -48,7 +50,10 @@ const TICK_COST_MICROS: u64 = 120;
 /// A module running entirely in memory.
 #[derive(Debug)]
 pub struct Simulator {
-    engine: MockEngine,
+    engine: BareMockEngine,
+    /// Plays the engine's outputs once a tick: the simulator makes no sound,
+    /// so the levels it shows need no more (journal/D-040).
+    player: Player,
     tick: u64,
     button_hold: [u32; BUTTONS],
     trigger_hold: [u32; TRIGGER_CHANNELS],
@@ -77,7 +82,8 @@ impl Simulator {
     #[must_use]
     pub fn new() -> Self {
         Self {
-            engine: mock_engine_at_boot(TICK_COST_MICROS),
+            engine: bare_mock_engine_at_boot(TICK_COST_MICROS),
+            player: Player::new(TICK_RATE_HZ),
             tick: 0,
             button_hold: [0; BUTTONS],
             trigger_hold: [0; TRIGGER_CHANNELS],
@@ -224,6 +230,7 @@ impl Simulator {
 
         if matches!(event, Event::Reset) {
             self.engine.reset();
+            self.player = Player::new(TICK_RATE_HZ);
             // A power cycle leaves no momentary press half-completed.
             self.button_hold = [0; BUTTONS];
             self.trigger_hold = [0; TRIGGER_CHANNELS];
@@ -275,10 +282,14 @@ impl Simulator {
         self.trigger_hold[channel.index()] = PRESS_TICKS;
     }
 
-    /// Runs one tick.
+    /// Runs one tick, then plays one sample of the outputs it published.
     pub fn step(&mut self) -> TickReport {
         self.engine.clock().advance(TICK_MICROS);
         let report = self.engine.tick();
+        let levels = self
+            .player
+            .play(self.engine.params_revision(), self.engine.params());
+        self.engine.write_outputs(&levels);
         if self.engine.take_save_request() {
             let saved = self.save_settings();
             let path = self

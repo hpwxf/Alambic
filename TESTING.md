@@ -488,8 +488,8 @@ With the module running and the USB cable on the Teensy (journal/D-029):
 1. `cargo probe info` prints the port it found and `oc-firmware X.Y.Z (build)`,
    the same as the splash screen.
 2. `cargo probe stats --fresh 5` prints, after five seconds, one row per stage
-   (the loop's `tick`, `acquire`, `update`, `outputs`, `render`, `present`,
-   `page`, `sample`, `usb`; the audio interrupt's `audio`, `voice`,
+   (the loop's `tick`, `acquire`, `update`, `render`, `present`,
+   `page`, `sample`, `publish`, `usb`; the audio interrupt's `audio`, `voice`,
    `voice_params`, `audio_period`, `frame`) and the period, then the jitter
    histogram. The module's display takes a frame at once: one `page` per
    frame drawn.
@@ -707,8 +707,8 @@ The DAC's chip select is the SPI controller's own (PCS0) and the DAC runs at
    four outputs, and `cargo probe out` at −3, 0 and +5 V with a multimeter.
    A shift or a jump means the DAC took bytes meant for the OLED.
 3. Open `SCOPE` (it copies `CV1` to all four outputs) with an LFO on `CV1`,
-   then `cargo probe stats`: the `outputs` stage writes four words at
-   22 MHz; record this module's value.
+   then `cargo probe stats`: the `audio` stage waits for the DAC's burst
+   of four words at 22 MHz; record this module's value.
 
 Keep the default if all three pass; otherwise note which failed and keep
 `oled-spi-8mhz`.
@@ -783,30 +783,28 @@ and WAVs to listen to (journal/D-037).
 
 Results on the TLM module: `docs/plan/avancement/etape-8.md`.
 
-### 9.3g — Supersaw in integers and in `f32` (journal/D-039, lot 9b)
+### 9.3g — Supersaw's cost on the module (journal/D-039)
 
-`SUPERSAW`, `CALC` on the second page (the left encoder past `LEVEL`), A
-into a mixer or headphones amp:
+`SUPERSAW`, A into a mixer or headphones amp:
 
-1. `cargo probe stats` just after a restart, in three cases, each with
-   `CALC INT` then `CALC F32`: **A**, A2, `DETUNE` 0 %, `NOTE` without an
-   input (its `INPUT` at `NONE`); **B**, C8, `DETUNE` 100 %, `NOTE` without
-   an input (the worst case per sample: the `PolyBLEP` correction runs on
-   about 2 f / fs of the samples of each voice); **C**, as B with a fast LFO
-   or noise into `CV1` on `NOTE` (`ADD`), so the parameters change every
-   tick. Read `voice` (one sample: what D-039 decides on, case B) and
-   `voice_params` (taking new parameters, case C), not `audio`: the
-   interrupt spins until the DAC's burst echoes, so `audio` measures the
-   burst and hides the computation. `voice_params` is only the copy of a
-   voice prepared by the loop (journal/D-040): well under a microsecond,
-   with no peak of `audio` in case C.
-2. By ear, switching `CALC` while a note plays, from C1 to C8: no audible
-   difference, a click at most on the switch.
-3. Before the module, `cargo run -p oc-core --example aliasing --release`
-   with and without `SUPERSAW_CALC=f32`: the same folding to a few tenths
-   of a decibel.
+1. `scripts/profile-supersaw.sh` (or `cargo probe stats`) just after a
+   restart, in three cases: **A**, A2, `DETUNE` 0 %, `NOTE` without an input
+   (its `INPUT` at `NONE`); **B**, C8, `DETUNE` 100 %, `NOTE` without an
+   input (the worst case per sample: the `PolyBLEP` correction runs on about
+   2 f / fs of the samples of each voice); **C**, as B with a fast LFO or
+   noise into `CV1` on `NOTE` (`ADD`), so the parameters change every tick.
+   Read `voice` (one sample) and `voice_params` (taking new parameters,
+   case C), not `audio`: the interrupt spins until the DAC's burst echoes,
+   so `audio` measures the burst and hides the computation; and `publish`
+   for the preparation (journal/D-040). Compare a page of
+   the applet with the same page: `render` depends on it.
+2. By ear, from C1 to C8, `SHAPE` and `WIDTH` across their course: no
+   zipper noise on a moving CV, no pitch drift at low notes.
+3. Before the module, `cargo run -p oc-core --example aliasing --release`:
+   the folding, and the difference from an ideal supersaw at every note.
 
-Results on the TLM module: lot 9b of `PLAN.md` (step 9, in progress).
+Results on the TLM module: journal/D-039 (revisions of 2026-11-21),
+`docs/plan/avancement/etape-9.md`.
 
 ### 9.3h — Output noise floor against the millivolt (journal/D-041)
 

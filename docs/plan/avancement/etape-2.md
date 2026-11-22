@@ -7,7 +7,7 @@ Reconstruit le 2026-11-16 depuis `git log`.
 | Commit | Contenu |
 |---|---|
 | `83be36f`, `c8b3039` | étude `docs/supersaw/` (repliement, PolyBLEP, architecture audio, partage du bus SPI ; essai Squares-and-Circles sur le module) |
-| `baf70c7` | écrans dorés du simulateur régénérés |
+| `baf70c7` | écrans de référence du simulateur régénérés |
 | `d97db13` | compteurs d'appuis par bouton, bascule AZERTY / QWERTY, haut + bas = remise à zéro de l'offset |
 | `a839a03` | menu d'applets par accord, `AppHost`, `ButtonReader`, `ScopeApp` (D-021) ; entrée de menu contextuel Rack |
 | `2a38b84` | `CLAUDE.md` |
@@ -27,4 +27,4 @@ Reconstruit le 2026-11-16 depuis `git log`.
 ## Constaté le 2026-11-16
 
 * `cargo test --all-features` (commande de la CI) : 5 scénarios sur 9 échouent, la feature `octant` changeant les
-  glyphes comparés aux écrans dorés en braille. Sans features : ≈ 290 tests, tous verts (D-013).
+  glyphes comparés aux écrans de référence en braille. Sans features : ≈ 290 tests, tous verts (D-013).

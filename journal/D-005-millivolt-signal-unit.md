@@ -57,3 +57,10 @@ restent en millivolts `i32`, et le banc rend des millivolts arrondis. La raison 
 tolérance » ne vaut qu'en partie : les opérations de base `f32` sont déterministes (IEEE 754, sans contraction en
 FMA), donc simulateur, Rack et module rendent les mêmes échantillons ; seules les comparaisons au banc entier se font
 avec une tolérance. La décision de fond (garder l'entier ou passer au `f32` pour le DSP) attend la mesure de D-039.
+
+## Révision du 2026-11-21 — le DSP en `f32` (D-039 adoptée)
+
+D-039 est tranchée pour le `f32` : le banc du Supersaw est en `f32` seulement, et les blocs DSP à venir s'écriront de
+même. La frontière ne bouge pas : `Params`, le contrôle, les conversions et la calibration restent en millivolts
+`i32`, un bloc rend des millivolts arrondis, et ce qui s'accumule (les phases) reste entier. Le reste de cette entrée
+est inchangé.

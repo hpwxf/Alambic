@@ -5,7 +5,7 @@
 | **Identifiant** | D-040 |
 | **Date** | 2026-11-19 |
 | **Auteur** | Pascal Havé |
-| **Statut** | adoptée |
+| **Statut** | adoptée, révisée |
 | **Commits** | ce commit (ADR et code) |
 | **Relations** | révise D-033 (partage du travail entre la boucle et l'interruption : la voix y était préparée à chaque changement de paramètres) ; mesurée par D-029 (étapes `voice`, `voice_params`, D-039) ; le banc du Supersaw de D-037 et D-039 en est le premier bénéficiaire |
 
@@ -29,7 +29,7 @@ il ne dépend que des paramètres, qui changent au plus une fois par tick.
 * **A — préparer dans la boucle.** Une fonction pure, `Setup::new(&Params, rate)`, calcule tout ce qui dépend des
   paramètres (pas, inverses, gains, normaliseurs, coefficients des deux bancs) ; `Voice::apply(&Setup)` ne fait que
   copier en gardant les phases et l'état des filtres. La boucle calcule le `Setup` hors section critique quand les
-  paramètres changent et le dépose dans la boîte aux lettres ; l'interruption l'applique. Coût : une boîte aux lettres
+  paramètres changent et le dépose dans `MAILBOX` ; l'interruption l'applique. Coût : une `MAILBOX`
   plus grande (≈ 300 octets copiés sous section critique à chaque changement, côté boucle), la même latence (la
   période suivante).
 * **B — garder la préparation dans l'interruption et la rendre moins chère** : inverses en `f32` ou en 32 bits,
@@ -42,7 +42,7 @@ il ne dépend que des paramètres, qui changent au plus une fois par tick.
 
 **A**, à la suite de la lecture des relevés (D-039, lot 9b). `Voice::set_params` reste, défini comme
 `apply(&Setup::new(params, rate))`, pour la voix du moteur à 1 kHz, le simulateur et Rack : le comportement y est le
-même par construction, et les écrans dorés ne bougent pas. Le `Setup` est `Copy`, sans allocation, et sa construction
+même par construction, et les écrans de référence ne bougent pas. Le `Setup` est `Copy`, sans allocation, et sa construction
 ne touche pas à l'état de la voix ; le calculer hors section critique évite d'y bloquer l'interruption.
 
 ## 4. Ce que nous avons décidé, et pourquoi
@@ -59,3 +59,50 @@ que copier un `Setup` et rendre des échantillons ; `voice_params` mesure cette 
   applets à plusieurs bancs) : même remède.
 * Un paramètre qui doit changer plus vite qu'une fois par tick (modulation audio) : il entrerait alors dans le calcul
   par échantillon, pas dans le `Setup`.
+
+## Révision du 2026-11-21 — une révision plutôt qu'une comparaison
+
+`audio::publish` comparait à chaque tick, sous section critique, les `Params` (80 octets) et la calibration des
+sorties à ceux de `MAILBOX` : 1,55 µs par tick sur le module, que les paramètres changent ou non (D-044, étape
+`publish`). Le moteur numérote désormais ses paramètres (`Engine::params_revision`, qui avance quand `params` change) ;
+le firmware garde dans `audio::Publisher`, côté boucle, la révision et la calibration publiées, et ne prend la
+section critique que quand l'une des deux a changé. `rest_outputs` oublie la révision, pour que la publication
+suivante rende les paramètres. Mesuré : un tick inchangé coûte 1,02 µs à `publish` au lieu de 1,46 à 1,56. Le reste
+de cette entrée est inchangé.
+
+## Révision du 2026-11-22 — le moteur ne rend aucune voix, chaque backend joue la sienne
+
+Le moteur rendait chaque tick un échantillon de sa propre voix, à 1 kHz, pour les sorties qu'il écrit lui-même : un
+héritage des sorties de CV d'avant le chemin audio. Sur le module, ces sorties sont muettes (`MutedOutputs`) et
+l'interruption rend les mêmes paramètres à 47 619 Hz ; dans Rack, la voix de `oc_engine_audio`, à la fréquence de
+Rack, écrase aussitôt la sortie du moteur. Sous une CV qui bouge, la boucle préparait donc deux `Setup` par tick
+(≈ 4,7 µs chacun en `f32`), le premier pour des échantillons que personne ne joue. Un `Setup` dépend de la fréquence
+d'échantillonnage : celui du moteur ne peut pas servir à l'interruption. Seul le simulateur jouait vraiment la voix
+du moteur.
+
+Un premier essai coupait la voix du moteur sur le module par un mode (`play_elsewhere`) : un choix propre à un backend,
+caché dans le moteur. Décidé avec l'utilisateur à la place : **le moteur ne rend plus aucune voix**. `Engine::tick`
+publie `params()` et sa révision ; ce que portent les sorties est une entrée du tick, comme les CV lues, que le moteur
+rapporte à `TickReport::cv_out` et à l'écran (`TickContext::cv_out`, `DIAGNOSTIC`). Chaque backend joue la voix à sa
+cadence :
+
+* **`oc_core::audio::Follower`** suit les paramètres par leur révision et ne rend un `Setup`, à la fréquence qu'on lui
+  donne, que quand elle a bougé : le seul code qui décide de préparer, partagé par tous les backends ;
+* **`oc_core::audio::Player`** (une `Voice` et son `Follower`) rend des millivolts à la cadence du backend, sans rien
+  écrire. Le simulateur le joue une fois par tick, après `Engine::tick` (un pour un : il ne produit pas de son), et
+  écrit l'échantillon par `Engine::write_outputs`, qui le convertit par la calibration du moteur (D-027) et le retient
+  pour le tick suivant ; les tests font de même par `testing::MockEngine`. Rack le joue à chaque `process()` et, lisant
+  des millivolts, n'écrit pas de codes : il rapporte l'échantillon par `Engine::set_played` ;
+* **le firmware** garde son partage (`MAILBOX`) : `audio::Publisher` prépare par un `Follower` à 47 619 Hz,
+  l'interruption joue et dépose les millivolts de son dernier échantillon, la boucle les donne au moteur avant chaque
+  tick (`Engine::set_played`) ; ses sorties muettes ne sont plus écrites.
+
+La règle « `Engine::tick` est l'unique point d'entrée » tient : le comportement reste dans le moteur, et la `Voice`
+que chaque backend appelle est le code d'`oc-core`, testé une fois. Pas de fil d'exécution pour le simulateur : il
+reste déterministe parce qu'il joue au rythme de ses ticks ; un vrai son (par exemple `cpal`) serait un backend en
+plus, qui lirait les `Params` publiés comme l'interruption.
+
+Conséquences : ce que le moteur voit des sorties (l'écran, `TickReport::cv_out`) a un tick de retard ; ce que les jacks
+portent (`Simulator::cv_out`, Rack) ne change pas ; sur le module, `cv_out` montre les échantillons de
+l'interruption au lieu de ceux d'une voix à 1 kHz. L'étape `outputs` du profil mesure `Engine::write_outputs` et
+disparaît du module et de Rack. Mesures : `docs/plan/avancement/etape-11.md`.

@@ -43,8 +43,8 @@ use self::burst::{
 };
 use self::tempo::Tempo;
 use crate::apps::param::{ParamSpec, ParamValue, Refused, Unit};
+use crate::apps::sound::Params;
 use crate::apps::{App, AppId, InputSnapshot, TickContext};
-use crate::audio::Params;
 use crate::fixed::{self, ONE};
 use crate::fmt::TextBuf;
 use crate::framebuffer::{FrameBuffer, ROW_HEIGHT, WIDTH_I32};

@@ -1,141 +1,143 @@
-//! The signal side of the outputs: what an applet asks of each output, and
-//! the voice that turns it into one sample at a time (journal/D-033).
+//! The signal side of the outputs: how what an applet asks of them becomes
+//! one sample at a time (journal/D-033, D-044).
 //!
 //! An applet's control part runs in [`Engine::tick`](crate::engine::Engine::tick)
-//! and publishes [`Params`] once a tick: for each output, a level held or a
-//! [`Tone`]. A [`Voice`] renders them at its own rate, keeping the phase of
-//! each output across changes so a new note or level does not click. The
-//! engine runs one voice at the tick rate; a backend with an audio context
-//! runs its own at that context's rate, from [`Engine::params`](crate::engine::Engine::params).
+//! and publishes, once a tick, the parameters of a [`Generator`]: something
+//! that renders one sample of every output from a prepared [`Setup`]. A
+//! [`Voice`] renders them at its own rate, keeping the generator's state
+//! (phases, filters) across changes so a new note or level does not click.
+//! The engine renders none: every backend plays [`Engine::params`] at its
+//! own rate, through a [`Player`] or, on the module, its audio interrupt's
+//! voice, and a [`Follower`] tells either when they changed (journal/D-040).
 //!
-//! Everything the parameters decide (phase steps, the supersaw's
-//! coefficients) is computed once per change by [`Setup::new`], which
-//! touches no voice: a backend can run it in its control context and hand
-//! the audio context a [`Setup`] that [`Voice::apply`] only copies
+//! [`Engine::params`]: crate::engine::Engine::params
+//!
+//! This module holds the mechanism only, and names no applet: the trait,
+//! the voice, [`Params`] with the outputs a probe holds over the sound, and
+//! the generic blocks ([`wave`], [`basic`]'s levels and tones, [`phase_step`]).
+//! Which generators an image has is decided where it composes its applets
+//! ([`crate::apps::sound`]).
+//!
+//! Everything the parameters decide (phase steps, a bank's coefficients) is
+//! computed once per change by [`Generator::setup`], through [`Setup::new`],
+//! which touches no voice: a backend can run it in its control context and
+//! hand the audio context a [`Setup`] that [`Voice::apply`] only copies
 //! (journal/D-040).
 
-pub mod supersaw;
+pub mod basic;
 pub mod wave;
 
-use self::supersaw::{Bank, Part, Supersaw};
-use self::wave::{ONE, Waveform};
+use core::fmt::Debug;
+
+use self::wave::ONE;
 use crate::calibration::{CV_OUT_MAX_MV, CV_OUT_MIN_MV};
 use crate::platform::{CV_CHANNELS, MilliVolts};
 
 /// A frequency in thousandths of a hertz.
 pub type MilliHertz = u32;
 
-/// A periodic signal on one output, centred on 0 V.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct Tone {
-    /// Its shape.
-    pub wave: Waveform,
-    /// Its frequency; a voice holds it below half its rate.
-    pub frequency: MilliHertz,
-    /// Its peak level: the signal swings from minus this to plus this.
-    pub amplitude: MilliVolts,
-}
+/// What renders one sample of every output (journal/D-044). An applet
+/// publishes its [`Generator::Params`]; the loop turns them into a
+/// [`Generator::Setup`] once per change; the audio context applies it to the
+/// [`Generator::State`] it keeps and asks for samples.
+///
+/// A generator renders the four outputs at once: a bank of oscillators feeds
+/// several of them, so the unit is not one output. It is named by a marker
+/// type (a unit struct), hence the supertraits, which the derives of
+/// [`Params`], [`Setup`] and [`Voice`] ask of it.
+pub trait Generator: Copy + PartialEq + Debug {
+    /// What an applet publishes, once a tick.
+    type Params: Copy + PartialEq + Debug;
+    /// What the parameters decide at a rate, computed outside the audio
+    /// context: every division, every root.
+    type Setup: Copy + Debug;
+    /// What runs in the audio context: phases, filters, the coefficients
+    /// copied from the setup.
+    type State: Clone + Debug;
 
-/// What one output carries.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum Channel {
-    /// A level, held until the next parameters.
-    Level(MilliVolts),
-    /// A tone.
-    Tone(Tone),
-    /// A part of the supersaw of [`Params::supersaw`] (journal/D-037).
-    Supersaw(Part),
-}
-
-/// What every output carries, as an applet publishes it once a tick.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct Params {
-    /// One per output, A to D.
-    pub channels: [Channel; CV_CHANNELS],
-    /// The supersaw the [`Channel::Supersaw`] outputs share; ignored when
-    /// none reads it.
-    pub supersaw: Supersaw,
-}
-
-impl Params {
     /// Every output at rest.
-    pub const REST: Self = Self::levels([0; CV_CHANNELS]);
+    const REST: Self::Params;
+    /// [`Self::REST`]'s setup, whatever the rate.
+    const REST_SETUP: Self::Setup;
 
-    /// Each output held at its level.
-    #[must_use]
-    pub const fn levels(levels: [MilliVolts; CV_CHANNELS]) -> Self {
-        let mut channels = [Channel::Level(0); CV_CHANNELS];
-        let mut index = 0;
-        while index < CV_CHANNELS {
-            channels[index] = Channel::Level(levels[index]);
-            index += 1;
-        }
-        Self {
-            channels,
-            supersaw: Supersaw::OFF,
-        }
-    }
+    /// What `params` decide at `rate_hz` (at least one).
+    fn setup(params: &Self::Params, rate_hz: u32) -> Self::Setup;
 
-    /// Holds output `index` at `level`, whatever it carried.
-    pub const fn hold(&mut self, index: usize, level: MilliVolts) {
-        self.channels[index] = Channel::Level(level);
-    }
+    /// A fresh state, at rest.
+    fn start() -> Self::State;
+
+    /// Plays what `setup` prepared from the next sample on, keeping the
+    /// phases and the filters: copies only, no division.
+    fn apply(state: &mut Self::State, setup: &Self::Setup);
+
+    /// One sample of every output, then advances.
+    fn next(state: &mut Self::State) -> [MilliVolts; CV_CHANNELS];
 }
 
-impl From<[MilliVolts; CV_CHANNELS]> for Params {
-    fn from(levels: [MilliVolts; CV_CHANNELS]) -> Self {
-        Self::levels(levels)
+/// What every output carries: a generator's parameters, and the outputs a
+/// host probe holds at a level over them (journal/D-029).
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Params<G: Generator> {
+    /// What the generator plays.
+    pub sound: G::Params,
+    /// A level per output that overrides the sound, `None` to let it through.
+    pub held: [Option<MilliVolts>; CV_CHANNELS],
+}
+
+impl<G: Generator> Params<G> {
+    /// Every output at rest.
+    pub const REST: Self = Self::new(G::REST);
+
+    /// `sound` on every output, none held.
+    #[must_use]
+    pub const fn new(sound: G::Params) -> Self {
+        Self {
+            sound,
+            held: [None; CV_CHANNELS],
+        }
+    }
+
+    /// Holds output `index` at `level`, whatever the sound plays there.
+    pub const fn hold(&mut self, index: usize, level: MilliVolts) {
+        self.held[index] = Some(level);
     }
 }
 
 /// Everything [`Params`] decide at a rate, computed once when they change
-/// (journal/D-040): each tone's phase step and the supersaw's
-/// [`supersaw::Setup`]. Building it touches no voice, so a backend may do it
+/// (journal/D-040). Building it touches no voice, so a backend may do it
 /// outside its audio context.
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub struct Setup {
+#[derive(Debug, Clone, Copy)]
+pub struct Setup<G: Generator> {
     rate_hz: u32,
-    params: Params,
-    steps: [u32; CV_CHANNELS],
-    bank_used: bool,
-    bank: supersaw::Setup,
+    params: Params<G>,
+    sound: G::Setup,
 }
 
-impl Setup {
+impl<G: Generator> Setup<G> {
     /// Every output at rest at `rate_hz` (at least one).
     #[must_use]
     pub const fn rest(rate_hz: u32) -> Self {
         Self {
             rate_hz: if rate_hz == 0 { 1 } else { rate_hz },
             params: Params::REST,
-            steps: [0; CV_CHANNELS],
-            bank_used: false,
-            bank: supersaw::Setup::OFF,
+            sound: G::REST_SETUP,
         }
     }
 
     /// What `params` decide at `rate_hz` (at least one).
     #[must_use]
-    pub fn new(params: &Params, rate_hz: u32) -> Self {
+    pub fn new(params: &Params<G>, rate_hz: u32) -> Self {
         let rate_hz = rate_hz.max(1);
         Self {
             rate_hz,
             params: *params,
-            steps: params.channels.map(|channel| match channel {
-                Channel::Level(_) | Channel::Supersaw(_) => 0,
-                Channel::Tone(tone) => phase_step(tone.frequency, rate_hz),
-            }),
-            bank_used: params
-                .channels
-                .iter()
-                .any(|channel| matches!(channel, Channel::Supersaw(_))),
-            bank: supersaw::Setup::new(&params.supersaw, rate_hz),
+            sound: G::setup(&params.sound, rate_hz),
         }
     }
 
     /// The parameters it was built from.
     #[must_use]
-    pub const fn params(&self) -> &Params {
+    pub const fn params(&self) -> &Params<G> {
         &self.params
     }
 
@@ -148,34 +150,30 @@ impl Setup {
 
 /// Renders [`Params`] at a fixed rate, one sample of every output a call.
 ///
-/// The per-sample work is a phase addition and a waveform lookup per tone,
-/// and the supersaw bank when an output reads it; the phase steps are
-/// computed when the parameters or the rate change, by [`Setup::new`].
+/// The per-sample work is the generator's, then a level for each held
+/// output; everything the parameters decide is prepared by [`Setup::new`].
 #[derive(Debug, Clone)]
-pub struct Voice {
+pub struct Voice<G: Generator> {
     rate_hz: u32,
-    params: Params,
-    /// Phase added per sample, per output; zero for a level.
-    steps: [u32; CV_CHANNELS],
-    phases: [u32; CV_CHANNELS],
-    /// The supersaw every [`Channel::Supersaw`] output reads.
-    bank: Bank,
-    /// Whether an output reads the bank: otherwise it is not run.
-    bank_used: bool,
+    params: Params<G>,
+    state: G::State,
+    /// Whether any output is held: decided when the parameters change, so
+    /// that a sample with none held pays nothing for the overlay.
+    any_held: bool,
 }
 
-impl Voice {
+impl<G: Generator> Voice<G> {
     /// A voice at `rate_hz` samples a second (at least one), every output at
     /// rest.
     #[must_use]
-    pub const fn new(rate_hz: u32) -> Self {
+    pub fn new(rate_hz: u32) -> Self {
+        let mut state = G::start();
+        G::apply(&mut state, &G::REST_SETUP);
         Self {
-            rate_hz: if rate_hz == 0 { 1 } else { rate_hz },
+            rate_hz: rate_hz.max(1),
             params: Params::REST,
-            steps: [0; CV_CHANNELS],
-            phases: [0; CV_CHANNELS],
-            bank: Bank::new(),
-            bank_used: false,
+            state,
+            any_held: false,
         }
     }
 
@@ -192,13 +190,13 @@ impl Voice {
 
     /// The parameters it renders.
     #[must_use]
-    pub const fn params(&self) -> &Params {
+    pub const fn params(&self) -> &Params<G> {
         &self.params
     }
 
     /// Renders `params` from the next sample on. A tone keeps its phase, so a
     /// new frequency or shape continues the wave where it was.
-    pub fn set_params(&mut self, params: &Params) {
+    pub fn set_params(&mut self, params: &Params<G>) {
         if self.params != *params {
             self.apply(&Setup::new(params, self.rate_hz));
         }
@@ -207,34 +205,106 @@ impl Voice {
     /// Renders what `setup` prepared, at its rate, from the next sample on,
     /// keeping the phases as [`Self::set_params`] does: copies only, no
     /// division (journal/D-040).
-    pub fn apply(&mut self, setup: &Setup) {
+    pub fn apply(&mut self, setup: &Setup<G>) {
         self.rate_hz = setup.rate_hz;
         self.params = setup.params;
-        self.steps = setup.steps;
-        self.bank_used = setup.bank_used;
-        self.bank.apply(&setup.bank);
+        self.any_held = setup.params.held.iter().any(Option::is_some);
+        G::apply(&mut self.state, &setup.sound);
     }
 
-    /// One sample of every output, then advances the phases.
+    /// One sample of every output, then advances; a held output gives its
+    /// level instead of the sound's.
+    #[inline]
     pub fn next_sample(&mut self) -> [MilliVolts; CV_CHANNELS] {
-        let frame = if self.bank_used {
-            self.bank.next_frame()
-        } else {
-            supersaw::Frame::default()
-        };
-        let mut out = [0; CV_CHANNELS];
-        for (index, channel) in self.params.channels.iter().enumerate() {
-            out[index] = match *channel {
-                Channel::Level(level) => level,
-                Channel::Tone(tone) => {
-                    let value = tone.wave.at(self.phases[index]);
-                    self.phases[index] = self.phases[index].wrapping_add(self.steps[index]);
-                    scale(value, tone.amplitude)
+        let mut out = G::next(&mut self.state);
+        if self.any_held {
+            for (sample, held) in out.iter_mut().zip(self.params.held) {
+                if let Some(level) = held {
+                    *sample = level;
                 }
-                Channel::Supersaw(part) => frame.part(part),
-            };
+            }
         }
         out
+    }
+}
+
+/// Follows the parameters a publisher numbers
+/// ([`Engine::params_revision`](crate::engine::Engine::params_revision)):
+/// what tells a backend's voice that they changed, by a few bytes rather
+/// than a whole [`Params`] every tick or every sample (journal/D-040).
+#[derive(Debug, Clone, Copy, Default)]
+pub struct Follower {
+    /// The revision last followed, if any.
+    revision: Option<u32>,
+}
+
+impl Follower {
+    /// A follower that has followed nothing: its first
+    /// [`Self::setup`] prepares one.
+    #[must_use]
+    pub const fn new() -> Self {
+        Self { revision: None }
+    }
+
+    /// What `params` decide at `rate_hz`, if `revision` is not the one last
+    /// followed; nothing otherwise.
+    pub fn setup<G: Generator>(
+        &mut self,
+        revision: u32,
+        params: &Params<G>,
+        rate_hz: u32,
+    ) -> Option<Setup<G>> {
+        if self.revision == Some(revision) {
+            return None;
+        }
+        self.revision = Some(revision);
+        Some(Setup::new(params, rate_hz))
+    }
+
+    /// Forgets the revision followed, so the next [`Self::setup`] prepares
+    /// one whatever its revision.
+    pub const fn forget(&mut self) {
+        self.revision = None;
+    }
+}
+
+/// A voice that follows the parameters a publisher numbers: what a backend
+/// plays the engine's outputs with, at its own rate (journal/D-040).
+#[derive(Debug, Clone)]
+pub struct Player<G: Generator> {
+    voice: Voice<G>,
+    follower: Follower,
+}
+
+impl<G: Generator> Player<G> {
+    /// A player at `rate_hz` samples a second (at least one), every output
+    /// at rest until its first [`Self::play`].
+    #[must_use]
+    pub fn new(rate_hz: u32) -> Self {
+        Self {
+            voice: Voice::new(rate_hz),
+            follower: Follower::new(),
+        }
+    }
+
+    /// Samples a second.
+    #[must_use]
+    pub const fn rate_hz(&self) -> u32 {
+        self.voice.rate_hz()
+    }
+
+    /// Changes the rate, keeping the phases; the frequencies stay as they are.
+    pub fn set_rate(&mut self, rate_hz: u32) {
+        self.voice.set_rate(rate_hz);
+    }
+
+    /// One sample of every output of `params`, then advances; the voice is
+    /// prepared again only when `revision` moved on.
+    pub fn play(&mut self, revision: u32, params: &Params<G>) -> [MilliVolts; CV_CHANNELS] {
+        if let Some(setup) = self.follower.setup(revision, params, self.voice.rate_hz()) {
+            self.voice.apply(&setup);
+        }
+        self.voice.next_sample()
     }
 }
 
@@ -243,14 +313,19 @@ impl Voice {
 #[must_use]
 pub fn phase_step(frequency: MilliHertz, rate_hz: u32) -> u32 {
     let turn = 1u64 << 32;
-    let step = (u64::from(frequency) << 32) / (u64::from(rate_hz.max(1)) * 1_000);
+    // Divided in 32 bits whenever the rate in millihertz fits (journal/D-040).
+    let numerator = u64::from(frequency) << 32;
+    let step = match rate_hz.max(1).checked_mul(1_000) {
+        Some(millihertz) => crate::fixed::div_wide(numerator, millihertz),
+        None => numerator / (u64::from(rate_hz) * 1_000),
+    };
     // One step short of half a turn: the highest pitch that is still itself.
     u32::try_from(step.min(turn / 2 - 1)).unwrap_or(u32::MAX)
 }
 
 /// `value`, `ONE` being the peak, as a level of peak `amplitude`, rounded
 /// and held within what the outputs can produce.
-fn scale(value: i32, amplitude: MilliVolts) -> MilliVolts {
+pub(crate) fn scale(value: i32, amplitude: MilliVolts) -> MilliVolts {
     let level = (i64::from(value) * i64::from(amplitude) + i64::from(ONE / 2)) >> 15;
     #[allow(clippy::cast_possible_truncation)]
     // Clamped to the output range, a few volts.
@@ -260,9 +335,11 @@ fn scale(value: i32, amplitude: MilliVolts) -> MilliVolts {
 
 #[cfg(test)]
 mod tests {
-    use super::supersaw::{Arithmetic, FULL, Part, Supersaw};
+    use super::basic::{Basic, BasicParams, Channel, Tone};
     use super::wave::Waveform;
-    use super::{Channel, Params, Setup, Tone, Voice, phase_step};
+    use super::{Follower, Params, Player, Setup, Voice, phase_step};
+
+    type BasicVoice = Voice<Basic>;
 
     fn tone(wave: Waveform, frequency: u32, amplitude: i32) -> Channel {
         Channel::Tone(Tone {
@@ -272,12 +349,10 @@ mod tests {
         })
     }
 
-    #[test]
-    fn levels_are_held_as_they_are() {
-        let mut voice = Voice::new(48_000);
-        voice.set_params(&Params::levels([1, -2, 3, 4_000]));
-        assert_eq!(voice.next_sample(), [1, -2, 3, 4_000]);
-        assert_eq!(voice.next_sample(), [1, -2, 3, 4_000]);
+    fn with(index: usize, channel: Channel) -> Params<Basic> {
+        let mut sound = BasicParams::REST;
+        sound.channels[index] = channel;
+        Params::new(sound)
     }
 
     #[test]
@@ -292,38 +367,9 @@ mod tests {
     }
 
     #[test]
-    fn a_square_alternates_at_its_frequency() {
-        // 1 kHz at 4 kHz: two samples up, two down.
-        let mut voice = Voice::new(4_000);
-        let mut params = Params::REST;
-        params.channels[3] = tone(Waveform::Square, 1_000_000, 2_000);
-        voice.set_params(&params);
-        let samples: [i32; 8] = core::array::from_fn(|_| voice.next_sample()[3]);
-        assert_eq!(
-            samples,
-            [2_000, 2_000, -2_000, -2_000, 2_000, 2_000, -2_000, -2_000]
-        );
-    }
-
-    #[test]
-    fn a_new_frequency_keeps_the_phase() {
-        let mut voice = Voice::new(4_000);
-        let mut params = Params::REST;
-        params.channels[0] = tone(Waveform::Sine, 1_000_000, 1_000);
-        voice.set_params(&params);
-        assert_eq!(voice.next_sample()[0], 0);
-        // A quarter turn on: the top of the sine, whatever the new pitch.
-        params.channels[0] = tone(Waveform::Sine, 500_000, 1_000);
-        voice.set_params(&params);
-        assert_eq!(voice.next_sample()[0], 1_000);
-    }
-
-    #[test]
     fn a_new_rate_keeps_the_pitch() {
-        let mut voice = Voice::new(4_000);
-        let mut params = Params::REST;
-        params.channels[1] = tone(Waveform::Saw, 1_000_000, 1_000);
-        voice.set_params(&params);
+        let mut voice = BasicVoice::new(4_000);
+        voice.set_params(&with(1, tone(Waveform::Saw, 1_000_000, 1_000)));
         voice.set_rate(8_000);
         assert_eq!(voice.rate_hz(), 8_000);
         let samples: [i32; 9] = core::array::from_fn(|_| voice.next_sample()[1]);
@@ -335,56 +381,22 @@ mod tests {
     }
 
     #[test]
-    fn levels_beyond_the_outputs_are_held_at_their_edge() {
-        let mut voice = Voice::new(4_000);
-        let mut params = Params::REST;
-        params.channels[2] = tone(Waveform::Square, 1_000_000, 50_000);
-        voice.set_params(&params);
-        let first = voice.next_sample()[2];
-        assert_eq!(first, crate::calibration::CV_OUT_MAX_MV);
-    }
-
-    #[test]
-    fn holding_replaces_a_tone() {
-        let mut params = Params::REST;
-        params.channels[0] = tone(Waveform::Sine, 440_000, 1_000);
+    fn holding_overrides_the_sound_on_that_output_only() {
+        let mut voice = BasicVoice::new(4_000);
+        let mut params = with(0, tone(Waveform::Square, 1_000_000, 2_000));
+        params.sound.channels[1] = Channel::Level(-7);
         params.hold(0, 250);
-        assert_eq!(params.channels[0], Channel::Level(250));
-        assert_eq!(Params::from([7; 4]), Params::levels([7; 4]));
-    }
-
-    /// A tone on A, the supersaw on B to D, played by `arithmetic`.
-    fn mixed(frequency: u32, arithmetic: Arithmetic) -> Params {
-        let mut params = Params::REST;
-        params.channels = [
-            tone(Waveform::Sine, frequency, 1_000),
-            Channel::Supersaw(Part::Left),
-            Channel::Supersaw(Part::Right),
-            Channel::Supersaw(Part::Sub),
-        ];
-        params.supersaw = Supersaw {
-            frequency,
-            detune: FULL,
-            mix: FULL / 2,
-            shape: 0,
-            width: super::supersaw::SQUARE_WIDTH,
-            amplitude: 1_000,
-            arithmetic,
-        };
-        params
+        voice.set_params(&params);
+        assert_eq!(voice.next_sample()[..2], [250, -7]);
     }
 
     #[test]
     fn a_setup_applied_plays_what_set_params_plays() {
         // Prepared elsewhere and applied, or set: the same samples, across
-        // changes of pitch and of bank (journal/D-040).
-        let (mut set, mut applied) = (Voice::new(47_619), Voice::new(47_619));
-        for params in [
-            mixed(110_000, Arithmetic::Fixed),
-            mixed(4_186_000, Arithmetic::Fixed),
-            mixed(4_186_000, Arithmetic::Float),
-            mixed(220_000, Arithmetic::Fixed),
-        ] {
+        // changes of pitch (journal/D-040).
+        let (mut set, mut applied) = (BasicVoice::new(47_619), BasicVoice::new(47_619));
+        for frequency in [110_000, 4_186_000, 220_000] {
+            let params = with(0, tone(Waveform::Sine, frequency, 1_000));
             set.set_params(&params);
             applied.apply(&Setup::new(&params, 47_619));
             for _ in 0..500 {
@@ -394,14 +406,38 @@ mod tests {
     }
 
     #[test]
+    fn a_follower_prepares_once_per_revision() {
+        let params = with(0, tone(Waveform::Sine, 440_000, 1_000));
+        let mut follower = Follower::new();
+        assert!(follower.setup(7, &params, 1_000).is_some(), "the first one");
+        assert!(follower.setup(7, &params, 1_000).is_none(), "same revision");
+        assert!(follower.setup(8, &params, 1_000).is_some(), "moved on");
+        follower.forget();
+        assert!(follower.setup(8, &params, 1_000).is_some(), "forgotten");
+    }
+
+    #[test]
+    fn a_player_plays_what_a_voice_given_the_params_plays() {
+        let mut player = Player::<Basic>::new(47_619);
+        let mut voice = BasicVoice::new(47_619);
+        for (revision, frequency) in [(1, 110_000), (2, 4_186_000), (3, 220_000)] {
+            let params = with(0, tone(Waveform::Sine, frequency, 1_000));
+            voice.set_params(&params);
+            for _ in 0..500 {
+                assert_eq!(player.play(revision, &params), voice.next_sample());
+            }
+        }
+    }
+
+    #[test]
     fn a_setup_brings_its_rate_and_parameters() {
-        let params = mixed(440_000, Arithmetic::Fixed);
+        let params = with(0, tone(Waveform::Sine, 440_000, 1_000));
         let setup = Setup::new(&params, 8_000);
         assert_eq!((setup.rate_hz(), setup.params()), (8_000, &params));
-        let mut voice = Voice::new(4_000);
+        let mut voice = BasicVoice::new(4_000);
         voice.apply(&setup);
         assert_eq!((voice.rate_hz(), voice.params()), (8_000, &params));
-        assert_eq!(Setup::rest(0).rate_hz(), 1);
-        assert_eq!(Setup::rest(48_000).params(), &Params::REST);
+        assert_eq!(Setup::<Basic>::rest(0).rate_hz(), 1);
+        assert_eq!(Setup::<Basic>::rest(48_000).params(), &Params::REST);
     }
 }

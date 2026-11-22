@@ -10,9 +10,11 @@
 use core::fmt::Write as _;
 
 use crate::apps::param::{ParamSpec, ParamValue, Refused, Unit};
+use crate::apps::sound::Params;
 use crate::apps::{App, AppId, InputSnapshot, TickContext};
+use crate::audio::MilliHertz;
+use crate::audio::basic::{BasicParams, Channel, Tone};
 use crate::audio::wave::{ONE, Waveform};
-use crate::audio::{Channel, MilliHertz, Params, Tone};
 use crate::fixed;
 use crate::fmt::{TextBuf, write_volts};
 use crate::framebuffer::{FrameBuffer, ROW_HEIGHT, WIDTH_I32};
@@ -129,15 +131,15 @@ impl ToneApp {
     /// What the outputs carry: the tone in each waveform.
     #[must_use]
     pub fn params(&self) -> Params {
-        let mut params = Params::REST;
-        for (channel, wave) in params.channels.iter_mut().zip(WAVES) {
+        let mut sound = BasicParams::REST;
+        for (channel, wave) in sound.channels.iter_mut().zip(WAVES) {
             *channel = Channel::Tone(Tone {
                 wave,
                 frequency: self.frequency,
                 amplitude: self.amplitude,
             });
         }
-        params
+        Params::basic(sound)
     }
 
     /// The note set on the panel, as a MIDI number.
@@ -312,8 +314,8 @@ mod tests {
         ToneApp, frequency, note_name,
     };
     use crate::apps::InputSnapshot;
+    use crate::audio::basic::{Channel, Tone};
     use crate::audio::wave::Waveform;
-    use crate::audio::{Channel, Tone};
 
     fn turn(left: i8, right: i8) -> InputSnapshot {
         let mut input = InputSnapshot::default();
@@ -342,7 +344,8 @@ mod tests {
     fn each_output_carries_its_waveform_at_the_same_pitch() {
         let mut tone = ToneApp::new();
         let params = tone.update(&InputSnapshot::default());
-        for (channel, wave) in params.channels.into_iter().zip(Waveform::ALL) {
+        let channels = params.as_basic().unwrap().channels;
+        for (channel, wave) in channels.into_iter().zip(Waveform::ALL) {
             assert_eq!(
                 channel,
                 Channel::Tone(Tone {

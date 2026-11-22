@@ -1,33 +1,35 @@
 //! The `SUPERSAW` applet (journal/D-037): seven detuned band-limited
-//! sawtooths around one pitch, the bank of [`crate::audio::supersaw`].
+//! sawtooths around one pitch, the applet's own bank ([`bank`], journal/D-044).
 //!
 //! A and B carry all seven voices, or the left and right halves with
 //! `STEREO ON`; C a sawtooth an octave below; D rests at 0 V. The left
 //! encoder picks a setting, the right one changes it. `SHAPE` blends each
 //! voice from a sawtooth into a pulse, `WIDTH` sets that pulse's width, a
-//! square at 50 % (journal/D-037, revisions of 2026-11-19). `CALC` picks the
-//! bank's arithmetic, integers or `f32`, to compare the two on the module
-//! (journal/D-039). The settings an input can move are on the first page,
-//! `STEREO` and `CALC` on the second, a scroll bar left of them showing
-//! which.
+//! square at 50 % (journal/D-037, revisions of 2026-11-19). The bank
+//! computes in `f32` (journal/D-039). The waveform's settings are on the
+//! first page, `LEVEL` and `STEREO` on the second, a scroll bar left of
+//! them showing which.
 //!
-//! Every setting but `STEREO` and `CALC` can take an input, chosen in the submenu the
+//! Every setting but `STEREO` can take an input, chosen in the submenu the
 //! right encoder's click opens (journal/D-036, [`Assign`]): it sets the
 //! setting, adds to the panel's value or multiplies it. `NOTE` takes `CV1`
 //! at start, added at one volt per octave; the others take none, so that an
 //! unplugged input, which reads a few millivolts of noise on the module,
 //! moves nothing (journal/D-037, revision of 2026-11-18).
 
+pub mod bank;
+
 use core::fmt::Write as _;
 
-use crate::apps::param::{ParamSpec, ParamValue, Refused, Unit};
-use crate::apps::tone::{self, HIGHEST_NOTE, LOWEST_NOTE, note_name};
-use crate::apps::{App, AppId, InputSnapshot, TickContext};
-use crate::audio::supersaw::{
-    Arithmetic, FULL, NARROWEST_WIDTH, OFFSETS, Part, SQUARE_WIDTH, Supersaw, detune_curve,
+use self::bank::{
+    FULL, NARROWEST_WIDTH, OFFSETS, Part, SQUARE_WIDTH, Supersaw, SupersawParams, detune_curve,
     voice_gains,
 };
-use crate::audio::{Channel, MilliHertz, Params};
+use crate::apps::param::{ParamSpec, ParamValue, Refused, Unit};
+use crate::apps::sound::Params;
+use crate::apps::tone::{self, HIGHEST_NOTE, LOWEST_NOTE, note_name};
+use crate::apps::{App, AppId, InputSnapshot, TickContext};
+use crate::audio::MilliHertz;
 use crate::fixed::{self, ONE};
 use crate::fmt::{TextBuf, write_volts};
 use crate::framebuffer::{FrameBuffer, ROW_HEIGHT, WIDTH_I32};
@@ -71,7 +73,7 @@ pub const SET_NOTE: u8 = 60;
 /// one decimal; the level in millivolts, read as volts.
 #[allow(clippy::cast_possible_wrap)]
 // Every bound here is in the thousands at most.
-pub const PARAM_SPECS: [ParamSpec; 8] = [
+pub const PARAM_SPECS: [ParamSpec; 7] = [
     ParamSpec::number(
         "NOTE",
         (LOWEST_NOTE as i32, HIGHEST_NOTE as i32),
@@ -93,7 +95,6 @@ pub const PARAM_SPECS: [ParamSpec; 8] = [
     .assignable(),
     ParamSpec::number("LEVEL", (0, MAX_LEVEL_MV), LEVEL_STEP_MV, 3, Unit::Volts).assignable(),
     ParamSpec::toggle("STEREO"),
-    ParamSpec::choice("CALC", &["INT", "F32"]),
 ];
 
 /// An amount from 0 to 100 %, in thousandths, that takes an input.
@@ -138,13 +139,11 @@ pub enum Setting {
     Level,
     /// A and B as one mono output twice, or left and right.
     Stereo,
-    /// The bank in integers or in `f32` (journal/D-039).
-    Calc,
 }
 
 impl Setting {
     /// Every setting, top to bottom.
-    pub const ALL: [Self; 8] = [
+    pub const ALL: [Self; 7] = [
         Self::Note,
         Self::Detune,
         Self::Mix,
@@ -152,7 +151,6 @@ impl Setting {
         Self::Width,
         Self::Level,
         Self::Stereo,
-        Self::Calc,
     ];
 
     /// The label on screen.
@@ -166,12 +164,11 @@ impl Setting {
             Self::Width => "WIDTH",
             Self::Level => "LEVEL",
             Self::Stereo => "STEREO",
-            Self::Calc => "CALC",
         }
     }
 
-    /// Where this setting's input is kept, `None` for `STEREO` and `CALC`,
-    /// which take none.
+    /// Where this setting's input is kept, `None` for `STEREO`, which takes
+    /// none.
     const fn input_slot(self) -> Option<usize> {
         match self {
             Self::Note => Some(0),
@@ -180,15 +177,14 @@ impl Setting {
             Self::Level => Some(3),
             Self::Shape => Some(4),
             Self::Width => Some(5),
-            Self::Stereo | Self::Calc => None,
+            Self::Stereo => None,
         }
     }
 }
 
 /// The range of the signal that sweeps `setting` over all its values when
 /// it follows its input (journal/D-036), from the signal that gives its
-/// least value to the one that gives its most; `None` for `STEREO` and
-/// `CALC`.
+/// least value to the one that gives its most; `None` for `STEREO`.
 /// [`crate::modulation::usable_range`] derives from it the ranges of the
 /// other effects.
 #[must_use]
@@ -202,7 +198,7 @@ pub const fn sweep(setting: Setting) -> Option<(MilliVolts, MilliVolts)> {
         Setting::Detune | Setting::Mix | Setting::Shape | Setting::Width | Setting::Level => {
             Some((0, COURSE_MV))
         }
-        Setting::Stereo | Setting::Calc => None,
+        Setting::Stereo => None,
     }
 }
 
@@ -283,8 +279,8 @@ const DEFAULT_ASSIGNS: [Assign; 6] = [
 /// Right edge of a setting's value, left of the input's name.
 const VALUE_RIGHT: i32 = 98;
 
-/// Settings shown per page: the waveform's on the first, `LEVEL`, `STEREO`
-/// and `CALC` on the second.
+/// Settings shown per page: the waveform's on the first, `LEVEL` and
+/// `STEREO` on the second.
 const PAGE_ROWS: usize = 5;
 
 /// Pages of settings.
@@ -323,7 +319,6 @@ pub struct SupersawApp {
     width: u16,
     level: MilliVolts,
     stereo: bool,
-    arithmetic: Arithmetic,
     /// The input of each setting that takes one (see `Setting::input_slot`).
     assigns: [Assign; 6],
     /// The selected setting's input submenu, `None` while it is closed.
@@ -333,8 +328,7 @@ pub struct SupersawApp {
 }
 
 impl SupersawApp {
-    /// A2, half detuned, half mixed, 1 V, mono, in integers; `CV1` on the
-    /// note.
+    /// A2, half detuned, half mixed, 1 V, mono; `CV1` on the note.
     #[must_use]
     pub const fn new() -> Self {
         Self {
@@ -346,7 +340,6 @@ impl SupersawApp {
             width: SQUARE_WIDTH,
             level: DEFAULT_LEVEL_MV,
             stereo: false,
-            arithmetic: Arithmetic::Fixed,
             assigns: DEFAULT_ASSIGNS,
             assigning: None,
             cv: [0; CV_CHANNELS],
@@ -410,37 +403,29 @@ impl SupersawApp {
             }
             // Any detent flips it.
             Setting::Stereo => self.stereo = !self.stereo,
-            Setting::Calc => {
-                self.arithmetic = match self.arithmetic {
-                    Arithmetic::Fixed => Arithmetic::Float,
-                    Arithmetic::Float => Arithmetic::Fixed,
-                };
-            }
         }
     }
 
     /// What the outputs carry.
     #[must_use]
     pub fn params(&self) -> Params {
-        let mut params = Params::REST;
         let (a, b) = if self.stereo {
             (Part::Left, Part::Right)
         } else {
             (Part::Mono, Part::Mono)
         };
-        params.channels[0] = Channel::Supersaw(a);
-        params.channels[1] = Channel::Supersaw(b);
-        params.channels[2] = Channel::Supersaw(Part::Sub);
-        params.supersaw = Supersaw {
-            frequency: self.frequency(),
-            detune: self.played_detune(),
-            mix: self.played_mix(),
-            shape: self.played_shape(),
-            width: self.played_width(),
-            amplitude: self.played_level(),
-            arithmetic: self.arithmetic,
-        };
-        params
+        Params::supersaw(SupersawParams {
+            bank: Supersaw {
+                frequency: self.frequency(),
+                detune: self.played_detune(),
+                mix: self.played_mix(),
+                shape: self.played_shape(),
+                width: self.played_width(),
+                amplitude: self.played_level(),
+            },
+            // D rests at 0 V.
+            parts: [Some(a), Some(b), Some(Part::Sub), None],
+        })
     }
 
     /// The setting the right encoder changes.
@@ -492,13 +477,7 @@ impl SupersawApp {
         self.stereo
     }
 
-    /// The bank's arithmetic.
-    #[must_use]
-    pub const fn arithmetic(&self) -> Arithmetic {
-        self.arithmetic
-    }
-
-    /// The input `setting` takes, `None` for `STEREO` and `CALC`.
+    /// The input `setting` takes, `None` for `STEREO`.
     #[must_use]
     pub fn assign(&self, setting: Setting) -> Option<&Assign> {
         setting.input_slot().map(|slot| &self.assigns[slot])
@@ -669,7 +648,7 @@ impl SupersawApp {
                 write_percent(&mut now, played);
                 (width_permille(self.width), width_permille(played))
             }
-            Setting::Level | Setting::Stereo | Setting::Calc => {
+            Setting::Level | Setting::Stereo => {
                 let played = self.played_level();
                 let _ = write_volts(&mut now, played, 1);
                 let _ = write!(now, " V");
@@ -711,13 +690,6 @@ impl SupersawApp {
             }
             Setting::Stereo => {
                 let _ = write!(line, "{}", if self.stereo { "ON" } else { "OFF" });
-            }
-            Setting::Calc => {
-                let name = match self.arithmetic {
-                    Arithmetic::Fixed => "INT",
-                    Arithmetic::Float => "F32",
-                };
-                let _ = write!(line, "{name}");
             }
         }
         // Only the level has a sign, and a peak is never negative: drop it.
@@ -805,10 +777,6 @@ impl App for SupersawApp {
             Setting::Width => ParamValue::Number(i32::from(self.width)),
             Setting::Level => ParamValue::Number(self.level),
             Setting::Stereo => ParamValue::Toggle(self.stereo),
-            Setting::Calc => ParamValue::Choice(match self.arithmetic {
-                Arithmetic::Fixed => 0,
-                Arithmetic::Float => 1,
-            }),
         };
         Some(value)
     }
@@ -827,13 +795,6 @@ impl App for SupersawApp {
             (Setting::Width, ParamValue::Number(number)) => self.width = amount(number),
             (Setting::Level, ParamValue::Number(level)) => self.level = level,
             (Setting::Stereo, ParamValue::Toggle(on)) => self.stereo = on,
-            (Setting::Calc, ParamValue::Choice(calc)) => {
-                self.arithmetic = if calc == 0 {
-                    Arithmetic::Fixed
-                } else {
-                    Arithmetic::Float
-                };
-            }
             _ => {}
         }
         self.get(index).ok_or(Refused::NoSuch)
@@ -907,6 +868,7 @@ fn write_percent<const N: usize>(line: &mut TextBuf<N>, amount: u16) {
 
 #[cfg(test)]
 mod tests {
+    use super::bank::{FULL, NARROWEST_WIDTH, Part, SQUARE_WIDTH};
     use super::{
         AMOUNT_STEP, DEFAULT_AMOUNT, DEFAULT_LEVEL_MV, DEFAULT_NOTE, HIGHEST_NOTE, LOWEST_NOTE,
         MAX_LEVEL_MV, SET_NOTE, SHAPE_ICON_LEFT, SHAPE_ICON_PERIOD, Setting, SupersawApp,
@@ -914,8 +876,6 @@ mod tests {
     };
     use crate::apps::TickContext;
     use crate::apps::{InputSnapshot, tone};
-    use crate::audio::Channel;
-    use crate::audio::supersaw::{Arithmetic, FULL, NARROWEST_WIDTH, Part, SQUARE_WIDTH};
     use crate::framebuffer::{FrameBuffer, ROW_HEIGHT, WIDTH_I32};
     use crate::modulation::Effect;
 
@@ -930,15 +890,10 @@ mod tests {
         let mut app = SupersawApp::new();
         let params = app.update(&InputSnapshot::default());
         assert_eq!(app.note(), DEFAULT_NOTE);
-        assert_eq!(params.supersaw.frequency, 110_000);
+        assert_eq!(params.as_supersaw().unwrap().bank.frequency, 110_000);
         assert_eq!(
-            params.channels,
-            [
-                Channel::Supersaw(Part::Mono),
-                Channel::Supersaw(Part::Mono),
-                Channel::Supersaw(Part::Sub),
-                Channel::Level(0),
-            ]
+            params.as_supersaw().unwrap().parts,
+            [Some(Part::Mono), Some(Part::Mono), Some(Part::Sub), None]
         );
     }
 
@@ -952,14 +907,14 @@ mod tests {
         assert_eq!(app.selected(), Setting::Stereo);
         let params = app.update(&InputSnapshot::default());
         assert!(app.stereo());
-        assert_eq!(params.channels[0], Channel::Supersaw(Part::Left));
-        assert_eq!(params.channels[1], Channel::Supersaw(Part::Right));
+        assert_eq!(params.as_supersaw().unwrap().parts[0], Some(Part::Left));
+        assert_eq!(params.as_supersaw().unwrap().parts[1], Some(Part::Right));
         app.update(&turn(-10, 0));
         assert_eq!(app.selected(), Setting::Note);
     }
 
     #[test]
-    fn the_waveform_is_on_the_first_page_level_stereo_and_calc_on_the_second() {
+    fn the_waveform_is_on_the_first_page_level_and_stereo_on_the_second() {
         let mut app = SupersawApp::new();
         assert_eq!(app.page(), 0);
         let expected = [
@@ -969,7 +924,6 @@ mod tests {
             (Setting::Width, 0),
             (Setting::Level, 1),
             (Setting::Stereo, 1),
-            (Setting::Calc, 1),
         ];
         for (setting, page) in expected {
             app.update(&turn(1, 0));
@@ -980,7 +934,7 @@ mod tests {
     #[test]
     fn width_starts_square_and_stays_within_its_course() {
         let mut app = SupersawApp::new();
-        assert_eq!(app.params().supersaw.width, SQUARE_WIDTH);
+        assert_eq!(app.params().as_supersaw().unwrap().bank.width, SQUARE_WIDTH);
         app.update(&turn(4, -20));
         assert_eq!(app.selected(), Setting::Width);
         assert_eq!(app.width(), 300, "a percent a detent");
@@ -1023,29 +977,16 @@ mod tests {
     #[test]
     fn shape_starts_as_a_sawtooth_and_takes_an_input() {
         let mut app = SupersawApp::new();
-        assert_eq!(app.params().supersaw.shape, 0);
+        assert_eq!(app.params().as_supersaw().unwrap().bank.shape, 0);
         app.update(&turn(3, 25));
         assert_eq!(app.selected(), Setting::Shape);
         assert_eq!(app.shape(), 25 * AMOUNT_STEP);
-        assert_eq!(app.params().supersaw.shape, 250);
+        assert_eq!(app.params().as_supersaw().unwrap().bank.shape, 250);
         assert_eq!(sweep(Setting::Shape), Some((0, 5_000)));
         assert!(app.assign(Setting::Shape).is_some());
         // Beyond the square, it stays a square.
         app.update(&turn(0, 100));
         assert_eq!(app.shape(), FULL);
-    }
-
-    #[test]
-    fn calc_switches_the_bank_and_takes_no_input() {
-        let mut app = SupersawApp::new();
-        assert_eq!(app.params().supersaw.arithmetic, Arithmetic::Fixed);
-        app.update(&turn(10, 1));
-        assert_eq!(app.selected(), Setting::Calc);
-        assert_eq!(app.params().supersaw.arithmetic, Arithmetic::Float);
-        assert!(app.assign(Setting::Calc).is_none());
-        assert_eq!(sweep(Setting::Calc), None);
-        app.update(&turn(0, -1));
-        assert_eq!(app.arithmetic(), Arithmetic::Fixed);
     }
 
     #[test]
@@ -1056,10 +997,17 @@ mod tests {
             ..InputSnapshot::default()
         };
         let params = app.update(&input);
-        assert_eq!(params.supersaw.frequency, 220_000, "one volt, one octave");
-        assert_eq!(params.supersaw.detune, DEFAULT_AMOUNT);
-        assert_eq!(params.supersaw.mix, DEFAULT_AMOUNT);
-        assert_eq!(params.supersaw.amplitude, DEFAULT_LEVEL_MV);
+        assert_eq!(
+            params.as_supersaw().unwrap().bank.frequency,
+            220_000,
+            "one volt, one octave"
+        );
+        assert_eq!(params.as_supersaw().unwrap().bank.detune, DEFAULT_AMOUNT);
+        assert_eq!(params.as_supersaw().unwrap().bank.mix, DEFAULT_AMOUNT);
+        assert_eq!(
+            params.as_supersaw().unwrap().bank.amplitude,
+            DEFAULT_LEVEL_MV
+        );
         assert!(app.assign(Setting::Stereo).is_none());
     }
 

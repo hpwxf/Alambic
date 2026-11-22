@@ -86,7 +86,7 @@ lisent et produisent les mêmes codes. C'est plus fidèle à D-002 et retire tou
 
 Conséquences mesurées : les entrées du simulateur et de Rack sont quantifiées à 12 bits (≈ 2,44 mV : 1,000 V se lit
 1,001 V), la plage d'entrée devient −3,333 V…+6,665 V (au lieu de ±5 V), et le 0 V de sortie sur le module passe du
-code 43 690 au code 40 984 (≈ 0,4 V d'écart à demande égale, jusqu'à la calibration). Deux écrans dorés régénérés
+code 43 690 au code 40 984 (≈ 0,4 V d'écart à demande égale, jusqu'à la calibration). Deux écrans de référence régénérés
 (`cv_passthrough`, `app_menu`), diff expliqué par ces deux effets seuls.
 
 ## Révision (2026-11-16, lot 4d) — l'assistant tel qu'implémenté

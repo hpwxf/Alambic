@@ -28,7 +28,8 @@ fn run(engine: &mut MockEngine, ticks: u32, gate: impl Fn(u32) -> bool) -> (Vec<
     for tick in 0..ticks {
         engine.parts_mut().2.set(TriggerChannel::One, gate(tick));
         engine.clock().advance(1_000);
-        let outputs = engine.tick().cv_out;
+        engine.tick();
+        let outputs = engine.outputs();
         let (a, b) = (outputs[0] == TRIGGER_MV, outputs[1] == TRIGGER_MV);
         if a && !a_was {
             a_edges.push(tick);
@@ -140,7 +141,8 @@ fn a_trigger_lasts_five_milliseconds() {
     engine.parts_mut().2.set(TriggerChannel::One, true);
     for _ in 0..20 {
         engine.clock().advance(1_000);
-        if engine.tick().cv_out[0] == TRIGGER_MV {
+        engine.tick();
+        if engine.outputs()[0] == TRIGGER_MV {
             high += 1;
         }
     }

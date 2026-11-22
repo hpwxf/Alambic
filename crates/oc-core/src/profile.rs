@@ -3,12 +3,14 @@
 //!
 //! The engine times its own stages ([`Stage::Tick`] down to
 //! [`Stage::Page`]) and the period between two ticks; a backend adds what
-//! happens outside the engine ([`Stage::Sample`], [`Stage::Usb`], and the
-//! audio interrupt's [`Stage::Audio`], [`Stage::Voice`],
-//! [`Stage::VoiceParams`], [`Stage::AudioPeriod`], [`Stage::Frame`]) through [`crate::Engine::profile_mut`], one duration at
-//! a time or a whole [`Stat`] gathered elsewhere ([`Profile::merge`]). On the module the fine counter is the
-//! core's cycle counter, so a stage costs a few cycles to time and is known
-//! to 1.7 ns; a clock without a fine counter leaves the profile empty.
+//! happens outside the engine ([`Stage::Sample`], [`Stage::Publish`],
+//! [`Stage::Usb`], and the audio interrupt's [`Stage::Audio`],
+//! [`Stage::Voice`], [`Stage::VoiceParams`], [`Stage::AudioPeriod`],
+//! [`Stage::Frame`]) through [`crate::Engine::profile_mut`], one duration at
+//! a time or a whole [`Stat`] gathered elsewhere ([`Profile::merge`]). On the
+//! module the fine counter is the core's cycle counter, so a stage costs a
+//! few cycles to time and is known to 1.7 ns; a clock without a fine counter
+//! leaves the profile empty.
 //!
 //! Durations are kept in fine counts and converted on the way out
 //! ([`Profile::nanos`]), so recording stays a subtraction and a few
@@ -25,7 +27,8 @@ pub enum Stage {
     Acquire,
     /// The applet, the wizard or the menu deciding the outputs.
     Update,
-    /// Converting and writing the outputs.
+    /// Converting and writing the outputs ([`crate::Engine::write_outputs`]);
+    /// absent on the module and in Rack, which play them themselves.
     Outputs,
     /// Drawing the frame, on the ticks that redraw.
     Render,
@@ -36,6 +39,9 @@ pub enum Stage {
     Page,
     /// Sampling the inputs before the tick (backend).
     Sample,
+    /// Handing what the outputs carry to the audio interrupt after the
+    /// tick, preparing it when it changed (backend, journal/D-040).
+    Publish,
     /// Serving USB (backend).
     Usb,
     /// One run of the audio interrupt: a sample to the DAC and a piece of
@@ -58,7 +64,7 @@ pub enum Stage {
 
 impl Stage {
     /// Every stage, in report order.
-    pub const ALL: [Self; 14] = [
+    pub const ALL: [Self; 15] = [
         Self::Tick,
         Self::Acquire,
         Self::Update,
@@ -67,6 +73,7 @@ impl Stage {
         Self::Present,
         Self::Page,
         Self::Sample,
+        Self::Publish,
         Self::Usb,
         Self::Audio,
         Self::Voice,
@@ -96,6 +103,7 @@ impl Stage {
             Self::Present => "present",
             Self::Page => "page",
             Self::Sample => "sample",
+            Self::Publish => "publish",
             Self::Usb => "usb",
             Self::Audio => "audio",
             Self::Voice => "voice",

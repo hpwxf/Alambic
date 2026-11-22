@@ -98,8 +98,8 @@ fn setup_rests_the_outputs_and_the_chord_leaves_without_keeping_edits() {
         "the draft is in force while the screen is open"
     );
 
-    let report = engine.tick();
-    assert_eq!(report.cv_out, [0; CV_CHANNELS], "the applet is paused");
+    engine.tick();
+    assert_eq!(engine.outputs(), [0; CV_CHANNELS], "the applet is paused");
 
     chord(&mut engine);
     assert!(!engine.system_is_open());
@@ -368,16 +368,18 @@ fn a_reported_save_shows_a_message_that_goes_away() {
 fn a_forced_output_overrides_the_applet_until_released() {
     let mut engine = mock_engine(0);
     run_ticks(&mut engine, 2);
-    let free = engine.tick().cv_out;
+    engine.tick();
+    let free = engine.outputs();
 
     engine.force_output(CvChannel::Two, Some(2_500));
-    let report = engine.tick();
-    assert_eq!(report.cv_out[1], 2_500);
+    engine.tick();
+    assert_eq!(engine.outputs()[1], 2_500);
     assert_eq!(engine.parts_mut().1.committed[1], 2_500);
-    assert_eq!(report.cv_out[0], free[0], "other outputs untouched");
+    assert_eq!(engine.outputs()[0], free[0], "other outputs untouched");
 
     engine.force_output(CvChannel::Two, None);
-    assert_eq!(engine.tick().cv_out, free);
+    engine.tick();
+    assert_eq!(engine.outputs(), free);
 }
 
 #[test]
@@ -394,8 +396,11 @@ fn the_wizard_ignores_forced_outputs() {
     boot_holding(&mut engine, &[Button::LeftEncoder]);
     assert!(engine.calibration_is_open());
     engine.force_output(CvChannel::One, Some(4_000));
-    let report = engine.tick();
-    assert_eq!(report.cv_out, [engine.wizard().output_level(); CV_CHANNELS]);
+    engine.tick();
+    assert_eq!(
+        engine.outputs(),
+        [engine.wizard().output_level(); CV_CHANNELS]
+    );
 }
 
 #[test]
@@ -405,7 +410,10 @@ fn the_screen_shows_a_forced_output_as_the_jack_carries_it() {
     let mut free = mock_engine(0);
     let mut forced = mock_engine(0);
     forced.force_output(CvChannel::One, Some(1_000));
+    // The screen shows what the outputs played on the tick before
+    // (journal/D-040): two ticks, the level then its picture.
     for engine in [&mut free, &mut forced] {
+        engine.tick();
         engine.tick();
     }
     let free_frame = free.parts_mut().4.frame_mut().clone();
@@ -415,6 +423,7 @@ fn the_screen_shows_a_forced_output_as_the_jack_carries_it() {
     // Released, the two screens agree again.
     forced.force_output(CvChannel::One, None);
     for engine in [&mut free, &mut forced] {
+        engine.tick();
         engine.tick();
     }
     assert_eq!(

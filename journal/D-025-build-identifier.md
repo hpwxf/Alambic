@@ -16,15 +16,15 @@ deux versions, tous les builds affichent la même chose, et le plugin Rack a dé
 que rien ne le montre (`9ccebca`). L'utilisateur veut, sous la version, le hash court du commit et `-dirty` si
 l'arbre de travail diffère de ce commit, sur les trois backends.
 
-Contraintes : `oc-core` est `no_std` et doit rester déterministe (ses tests et les écrans dorés ne peuvent pas
+Contraintes : `oc-core` est `no_std` et doit rester déterministe (ses tests et les écrans de référence ne peuvent pas
 dépendre du commit courant) ; le firmware est croisé, le simulateur et le plugin sont hôtes ; un build hors dépôt
 git (archive) doit rester possible.
 
 ## 2. Options envisagées
 
 **A** — Un `build.rs` dans `oc-core` qui pose la valeur via `env!`. Une seule source, mais tout changement de
-l'identifiant recompile le cœur et toute sa descendance, et la valeur entre dans les écrans dorés et les tests :
-un écran doré changerait à chaque commit.
+l'identifiant recompile le cœur et toute sa descendance, et la valeur entre dans les écrans de référence et les tests :
+un écran de référence changerait à chaque commit.
 
 **B** — Un `build.rs` dans chacun des trois crates terminaux (`oc-firmware`, `oc-sim`, `oc-vcv-ffi`), qui passent la
 chaîne au cœur au démarrage (`Engine::set_build_id`). Le cœur ne fait que l'afficher ; par défaut elle est vide,
@@ -51,9 +51,9 @@ trois crates terminaux.
   modifier un source sans l'indexer passe bien en `-dirty`. Les artefacts non suivis (`target/`, `build/` du plugin)
   n'en font pas partie, donc pas de reconstruction en boucle.
 * `oc-core` reste sans `build.rs` : `SplashScreen` porte un `build_id: &'static str`, `Engine::set_build_id` le
-  pose, une chaîne vide n'affiche rien. Les écrans dorés et les tests du cœur ne voient jamais le commit.
+  pose, une chaîne vide n'affiche rien. Les écrans de référence et les tests du cœur ne voient jamais le commit.
 * Chaque backend le pose au démarrage : `main.rs` du firmware (et dans son journal USB), la TUI et `replay` du
-  simulateur, `oc_engine_new` pour Rack. La bibliothèque `Simulator::new` ne le pose pas : les scénarios dorés
+  simulateur, `oc_engine_new` pour Rack. La bibliothèque `Simulator::new` ne le pose pas : les scénarios de référence
   restent indépendants du commit.
 
 ## 5. Ce qui nous ferait changer d'avis

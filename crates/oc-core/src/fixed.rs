@@ -6,6 +6,10 @@
 //! linearly in a 65-entry table over one octave; the error stays within a few
 //! units of the last place (checked against `f64` in `tests/fixed.rs`), far
 //! below what a millisecond interval or a millivolt can show.
+//!
+//! [`div_wide`] divides 64 bits by 32 exactly at the cost of 32-bit
+//! divisions, for the preparations that run whenever a CV moves
+//! (journal/D-040).
 
 /// One, in 16.16.
 pub const ONE: i32 = 1 << 16;
@@ -70,6 +74,62 @@ pub fn exp2(y: i64) -> i64 {
         -48..=-1 => mantissa >> -whole,
         _ => 0,
     }
+}
+
+/// `numerator / divisor`, exactly as the `u64` division; panics on a zero
+/// `divisor` as it does.
+///
+/// The Cortex-M7 divides 32 bits in hardware, 64 bits in a library routine
+/// that costs some hundred cycles. When the quotient fits in 32 bits
+/// (`numerator`'s high word below `divisor`), two 16-bit digits of it come
+/// from 32-bit divisions by the normalised divisor's high half, each
+/// corrected at most twice (Knuth's algorithm D, as *Hacker's Delight*'s
+/// `divlu`); only the products are wide, which the core does in one
+/// instruction. Otherwise it falls back to the `u64` division.
+#[must_use]
+pub fn div_wide(numerator: u64, divisor: u32) -> u64 {
+    #[allow(clippy::cast_possible_truncation)]
+    // The two halves of a 64-bit word.
+    let (high, low) = ((numerator >> 32) as u32, numerator as u32);
+    if high >= divisor {
+        return numerator / u64::from(divisor);
+    }
+    // Normalised: the divisor's top bit set, the numerator shifted alike;
+    // `high < divisor` keeps the shifted high word within 32 bits.
+    let shift = divisor.leading_zeros();
+    let divisor = divisor << shift;
+    let top = if shift == 0 {
+        high
+    } else {
+        (high << shift) | (low >> (32 - shift))
+    };
+    let low = low << shift;
+    let first = quotient_digit(top, low >> 16, divisor);
+    #[allow(clippy::cast_possible_truncation)]
+    // What remains is below the divisor, so within 32 bits.
+    let rest = ((u64::from(top) << 16 | u64::from(low >> 16))
+        - u64::from(first) * u64::from(divisor)) as u32;
+    let second = quotient_digit(rest, low & 0xFFFF, divisor);
+    u64::from(first << 16 | second)
+}
+
+/// The 16-bit digit `((top << 16) + next) / divisor`, `top` below the
+/// normalised `divisor` and `next` a 16-bit digit: estimated from the
+/// divisor's high half, at most two too large, and corrected.
+fn quotient_digit(top: u32, next: u32, divisor: u32) -> u32 {
+    let (high, low) = (divisor >> 16, divisor & 0xFFFF);
+    let mut digit = top / high;
+    let mut rest = top - digit * high;
+    while digit > 0xFFFF
+        || u64::from(digit) * u64::from(low) > (u64::from(rest) << 16 | u64::from(next))
+    {
+        digit -= 1;
+        rest += high;
+        if rest > 0xFFFF {
+            break;
+        }
+    }
+    digit
 }
 
 #[cfg(test)]

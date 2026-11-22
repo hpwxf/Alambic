@@ -20,16 +20,17 @@
 //! ([`diagnostic`], [`scope`], [`gfx_demo`], [`ratchet`], [`tone`],
 //! [`supersaw`]).
 //!
-//! An applet's `update` returns what the outputs carry as
-//! [`Params`]: the CV applets hold levels, `TONE`
-//! asks for tones and `SUPERSAW` for parts of a supersaw bank that a
-//! [`Voice`](crate::audio::Voice) renders (journal/D-033, D-037).
+//! An applet's `update` returns what the outputs carry as [`Params`]: the
+//! CV applets hold levels, `TONE` asks for tones and `SUPERSAW` for parts of
+//! its bank, each through the generator of its kind that [`sound`] composes
+//! and a [`Voice`](sound::Voice) renders (journal/D-033, D-044).
 
 pub mod diagnostic;
 pub mod gfx_demo;
 pub mod param;
 pub mod ratchet;
 pub mod scope;
+pub mod sound;
 pub mod supersaw;
 pub mod tone;
 
@@ -42,9 +43,9 @@ use crate::apps::gfx_demo::GfxDemoApp;
 use crate::apps::param::{ParamSpec, ParamValue, Refused};
 use crate::apps::ratchet::RatchetApp;
 use crate::apps::scope::ScopeApp;
+use crate::apps::sound::Params;
 use crate::apps::supersaw::SupersawApp;
 use crate::apps::tone::ToneApp;
-use crate::audio::Params;
 use crate::buttons::ButtonEvents;
 use crate::framebuffer::FrameBuffer;
 use crate::platform::{
@@ -376,7 +377,8 @@ mod tests {
     use super::diagnostic::DiagnosticApp;
     use super::scope::ScopeApp;
     use super::{AppHost, AppId};
-    use crate::audio::{Channel, Params};
+    use crate::apps::sound::Params;
+    use crate::audio::basic::Channel;
     use crate::platform::{CV_CHANNELS, MilliVolts};
 
     fn snapshot(cv1: MilliVolts, cv2: MilliVolts) -> InputSnapshot {
@@ -431,7 +433,7 @@ mod tests {
         let mut host = AppHost::new();
         let diagnostic = host.update(&snapshot(1_000, 2_000));
         assert_eq!(
-            diagnostic.channels[1],
+            diagnostic.as_basic().unwrap().channels[1],
             Channel::Level(2_000),
             "the diagnostic applet mirrors channel by channel"
         );

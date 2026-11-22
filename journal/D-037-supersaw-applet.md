@@ -224,7 +224,7 @@ Avec `CALC` (D-039), six réglages ne tenaient plus à côté de l'éventail des
 Demande de l'utilisateur : les réglages sans entrée assignable (`STEREO`, `CALC`) passent en page 2, avec un ascenseur
 comme dans `RATCHET`. Quatre réglages par page (`NOTE`, `DETUNE`, `MIX`, `LEVEL` ; puis `STEREO`, `CALC`), la page
 suit le réglage choisi par l'encodeur gauche, l'ascenseur est `gfx::controls::scroll_bar` (sorti de `RATCHET` pour
-l'occasion, D-030) ; l'éventail retrouve ses deux rangées. Scénario doré `supersaw_page2`.
+l'occasion, D-030) ; l'éventail retrouve ses deux rangées. Scénario de référence `supersaw_page2`.
 
 ## Révision du 2026-11-19 — `SHAPE` : de la scie au carré
 
@@ -272,3 +272,16 @@ course. En dessous de 5 %, une impulsion a si peu de puissance que garder son vo
   B7 et C8 : une impulsion étroite porte beaucoup d'aigu. L'exemple mesure désormais la marge à 250 mV : à 1 V, un cas
   qui écrête déjà lisait la borne comme crête et rendait 1,00 V.
 
+## Révision du 2026-11-21 — le banc dans l'app (D-044)
+
+Le banc n'est plus dans `oc_core::audio::supersaw` : il vit dans l'app, `apps/supersaw/bank/` (`fixed.rs`,
+`float.rs`), derrière le générateur `SupersawBank`. Les parts `Mono` / `Left` / `Right` / `Sub` et leur affectation
+aux sorties A à D sont des paramètres de ce générateur (`SupersawParams`). Échantillons identiques au bit près ; le
+reste de cette entrée est inchangé.
+
+## Révision du 2026-11-21 — le banc en `f32` (D-039)
+
+Le banc entier de cette entrée (§ 3 : sept scies PolyBLEP en entier) est retiré : le Supersaw tourne sur son banc
+`f32`, aux phases entières, moins cher et aussi précis sur le module (D-039, décision du 2026-11-21). Voix, courbes de
+Szabo, parts, passe-haut, `SHAPE` et `WIDTH` sont inchangés ; le réglage `CALC` disparaît. Le reste de cette entrée est
+inchangé.
