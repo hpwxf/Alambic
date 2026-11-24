@@ -195,12 +195,18 @@ impl DiagnosticApp {
                 continue;
             }
             self.press_counts[button.index()] = self.press_counts[button.index()].saturating_add(1);
-            match button {
-                Button::Up => self.mode = self.mode.next(),
-                Button::Down => self.mode = self.mode.previous(),
-                Button::LeftEncoder => self.reset_counts(),
-                Button::RightEncoder => self.offset_mv = 0,
+            if button == Button::RightEncoder {
+                self.offset_mv = 0;
             }
+        }
+        // `up` and `down` are the panel's (journal/D-046), counted above
+        // all the same: the left switch cycles the mode on a tap and zeroes
+        // the counters on a long press.
+        if buttons.tapped(Button::LeftEncoder) {
+            self.mode = self.mode.next();
+        }
+        if buttons.long_pressed(Button::LeftEncoder) {
+            self.reset_counts();
         }
     }
 

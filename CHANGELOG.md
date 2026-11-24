@@ -58,6 +58,15 @@ Architectural decisions behind each change are in `journal/` (French).
 
 ### Changed
 
+- **`up` and `down` belong to the panel** (journal/D-046): a short press
+  moves to the applet on the left or right, a long press (one second) is
+  kept for the routing page to come. The applets moved what they did with
+  them: `RATCHET` fires a burst by hand on the left encoder's click,
+  `DIAGNOSTIC` cycles its output mode on a tap of the left encoder and
+  resets its counters when it is held one second, `GFX DEMO` moves to the
+  next knob on the left click, and a CV input submenu closes on the right
+  click only. The click that launches an applet from the menu no longer
+  reaches it.
 - **Picking another applet starts it afresh** (journal/D-046): an applet is
   no longer kept, with its settings, while another runs. This makes room
   for several applets at once, each on its own outputs; until the menu can

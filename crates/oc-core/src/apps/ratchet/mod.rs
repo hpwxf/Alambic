@@ -432,7 +432,9 @@ impl RatchetApp {
             self.tempo.edge();
         }
         self.advance(elapsed, gate);
-        if rising || input.buttons.pressed(Button::Up) {
+        // By hand: the left switch, `up` and `down` being the panel's
+        // (journal/D-046).
+        if rising || input.buttons.pressed(Button::LeftEncoder) {
             self.start();
         }
 

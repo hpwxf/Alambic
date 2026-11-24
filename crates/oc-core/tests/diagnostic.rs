@@ -15,6 +15,7 @@ use embedded_graphics::text::{Baseline, Text};
 
 use oc_core::apps::diagnostic::DiagnosticApp;
 use oc_core::apps::diagnostic::{OFFSET_STEP_MV, OutputMode};
+use oc_core::buttons::LONG_PRESS_TICKS;
 use oc_core::calibration::{CV_OUT_MAX_MV, CV_OUT_MIN_MV};
 use oc_core::framebuffer::ROW_HEIGHT;
 use oc_core::framebuffer::{FrameBuffer, WIDTH};
@@ -24,6 +25,9 @@ use oc_core::testing::{MockEngine, adc_reading, mock_engine};
 
 /// Runs `count` ticks, advancing the virtual clock by one millisecond each
 /// time, as the 1 kHz firmware loop does.
+/// Ticks a button is held for its long press.
+const LONG_PRESS: usize = LONG_PRESS_TICKS as usize;
+
 fn run_ticks(engine: &mut MockEngine, count: usize) {
     for _ in 0..count {
         engine.clock().advance(1_000);
@@ -213,6 +217,14 @@ fn pressing_the_left_encoder_resets_the_trigger_counters() {
         controls.hold(Button::LeftEncoder, true);
     }
     run_ticks(&mut engine, 5);
+    assert_eq!(
+        engine
+            .app::<DiagnosticApp>()
+            .trigger_count(TriggerChannel::Two),
+        3,
+        "a long press: a tap would cycle the mode (journal/D-046)"
+    );
+    run_ticks(&mut engine, LONG_PRESS);
 
     assert_eq!(
         engine
@@ -353,7 +365,7 @@ fn pressing_both_encoders_at_once_fires_both_actions_in_the_same_tick() {
         controls.hold(Button::LeftEncoder, true);
         controls.hold(Button::RightEncoder, true);
     }
-    run_ticks(&mut engine, 5);
+    run_ticks(&mut engine, LONG_PRESS + 5);
 
     assert_eq!(
         engine
@@ -403,17 +415,24 @@ fn turning_the_left_encoder_selects_a_channel_and_wraps_around() {
 }
 
 #[test]
-fn the_up_and_down_buttons_cycle_the_output_mode() {
+fn a_left_tap_cycles_the_output_mode() {
     let mut engine = mock_engine(0);
     assert_eq!(engine.app::<DiagnosticApp>().mode(), OutputMode::Offset);
 
     for expected in [OutputMode::Ramp, OutputMode::Zero, OutputMode::Offset] {
-        tap(&mut engine, Button::Up);
+        tap(&mut engine, Button::LeftEncoder);
         assert_eq!(engine.app::<DiagnosticApp>().mode(), expected);
     }
 
+    // `up` and `down` are the panel's (journal/D-046): still counted, they
+    // leave the mode alone.
+    tap(&mut engine, Button::Up);
     tap(&mut engine, Button::Down);
-    assert_eq!(engine.app::<DiagnosticApp>().mode(), OutputMode::Zero);
+    assert_eq!(engine.app::<DiagnosticApp>().mode(), OutputMode::Offset);
+    assert_eq!(
+        engine.app::<DiagnosticApp>().button_press_count(Button::Up),
+        1
+    );
 }
 
 #[test]
@@ -424,7 +443,8 @@ fn zero_mode_pins_every_output_regardless_of_the_inputs() {
         analog_in.patch(CvChannel::Two, 4_000);
         controls.turn(1, 10);
     }
-    tap(&mut engine, Button::Down);
+    tap(&mut engine, Button::LeftEncoder);
+    tap(&mut engine, Button::LeftEncoder);
 
     assert_eq!(engine.app::<DiagnosticApp>().mode(), OutputMode::Zero);
     assert_eq!(engine.app::<DiagnosticApp>().outputs(), &[0; 4]);
@@ -433,7 +453,7 @@ fn zero_mode_pins_every_output_regardless_of_the_inputs() {
 #[test]
 fn the_ramp_sweeps_the_whole_output_range_and_stays_in_bounds() {
     let mut engine = mock_engine(0);
-    tap(&mut engine, Button::Up);
+    tap(&mut engine, Button::LeftEncoder);
     assert_eq!(engine.app::<DiagnosticApp>().mode(), OutputMode::Ramp);
 
     let mut lowest = CV_OUT_MAX_MV;
@@ -462,7 +482,7 @@ fn the_ramp_sweeps_the_whole_output_range_and_stays_in_bounds() {
 #[test]
 fn the_four_ramp_channels_are_a_quarter_period_apart() {
     let mut engine = mock_engine(0);
-    tap(&mut engine, Button::Up);
+    tap(&mut engine, Button::LeftEncoder);
 
     engine.clock().advance(1_000);
     engine.tick();

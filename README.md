@@ -42,8 +42,12 @@ for the hardware.
 
 ## Apps and the app menu
 
-The module runs one app at a time and picks between them from the front panel.
-**Holding `up` and `down` together** opens the app menu; `up`/`down` or the left
+The module runs up to two apps at once, each on its own outputs (journal/D-046),
+one of them on the screen and the panel at a time; for now the menu runs one.
+A short press of `up` or `down` moves to the app on the left or right; their
+long press (one second) is kept for the routing page to come. Apps no longer
+use `up` and `down` themselves. **Holding `up` and `down` together** opens the
+app menu; `up`/`down` or the left
 encoder move the highlight, either encoder press launches the highlighted app,
 and holding both again closes the menu without changing anything. The running
 app keeps tracking its inputs and driving its outputs while the menu is up, so
@@ -58,7 +62,7 @@ the chord is unreachable with a mouse, so right-click the module and choose
 | `RATCHET`    | bursts of triggers on B after each rising edge on `TR1` (below) |
 | `TONE`       | a test tone at one pitch on the four outputs, a sine on A, a triangle on B, a sawtooth on C and a square on D (the last two alias, as a test tone may); the left encoder picks `NOTE` (C1 to C8, A4 = 440 Hz at start) or `LEVEL` (the peak level, 0 to 3 V around 0 V), the right one changes it, its click opens the setting's input submenu as in `SUPERSAW`; no input at start, so the tone stays clean; the pitch played is in the title row. The module plays it at 47 619 Hz, the DAC written by DMA (journal/D-033), VCV Rack at its own sample rate |
 | `SUPERSAW`   | seven detuned band-limited sawtooths around one pitch (below) |
-| `GFX DEMO`   | the graphics primitives on five pages (fonts, knobs, curves, sequencer, meters); left encoder turns the pages, right encoder the value, `up`/`down` the focused knob; outputs A–D carry the simulated LFO, gate, knob and needle |
+| `GFX DEMO`   | the graphics primitives on five pages (fonts, knobs, curves, sequencer, meters); left encoder turns the pages, its click moves to the next knob, right encoder the value; outputs A–D carry the simulated LFO, gate, knob and needle |
 
 Because holding both buttons is a deliberate gesture, `up` and `down` fire
 their own action on **release**, and not at all when the chord formed while they
@@ -69,7 +73,7 @@ the chord is even detectable.
 
 Each rising edge on `TR1` is copied to A and starts a burst of triggers on B
 (journal/D-032). The left encoder picks a setting, the right one changes it,
-`up` fires a burst by hand.
+the left encoder's click fires a burst by hand.
 
 * `COUNT`, the repeats in a burst, 1 to 32; one more detent gives `GATE`:
   repeats for as long as `TR1` stays high.
@@ -121,7 +125,7 @@ it, `=CVn` in place of the value), `ADD` (`+CVn`) or `MUL` (multiplies it,
 5 V leaving it unchanged, `*CVn`). A bar shows the input's signal (live, and
 the range seen), another the setting it moves; `CENTER` sets the scale and
 shift that carry the range seen onto the setting's usable range. The right
-encoder's click or `down` closes it.
+encoder's click closes it.
 
 ## System settings
 
@@ -184,10 +188,11 @@ validated from the front panel alone.
 | Control              | Effect                                     |
 |----------------------|--------------------------------------------|
 | left encoder, turn   | select the channel driven by the offset    |
-| left encoder, press  | reset the trigger counters                 |
+| left encoder, tap    | next output mode                           |
+| left encoder, hold 1 s | reset the trigger counters               |
 | right encoder, turn  | change the offset by 100 mV per detent     |
 | right encoder, press | set the offset back to 0 V                 |
-| up / down            | next / previous output mode, on release     |
+| up / down            | counted only: they move between apps       |
 | up + down together   | open the app menu                          |
 
 Output modes:
@@ -361,7 +366,7 @@ cargo probe apps               # the applets, the running one marked
 cargo probe app ratchet        # its parameters and values, observables, actions
 cargo probe set ratchet prob 50  # as the panel would, within its bounds
 cargo probe get supersaw freq  # a parameter or what it plays now
-cargo probe act ratchet burst  # an action, here a burst as `up` starts one
+cargo probe act ratchet burst  # an action, here a burst as the left click starts one
 cargo probe select tone        # hand it the outputs and the screen
 cargo probe assign supersaw detune input=cv2 effect=add  # a parameter's CV input, field by field
 cargo probe assign supersaw detune --center 5  # fit it to what CV2 carries, as CENTER does

@@ -260,7 +260,14 @@ where
         if !self.owns_outputs() {
             self.reverse_encoders(&mut snapshot);
         }
+        let menu_was_up = self.screen == Screen::Menu;
         self.route_panel(&snapshot, wired);
+        // The click that closed the menu launched the applet, or opened the
+        // settings: it is not also theirs, nor is its release a tap.
+        if menu_was_up && self.screen != Screen::Menu {
+            snapshot.silence_controls();
+            self.buttons.swallow();
+        }
 
         // The applet keeps running while the menu is up: time advances, the
         // inputs still reach it and its outputs stay live. Only the panel
@@ -583,7 +590,19 @@ where
             }
             Screen::System => self.route_system(&snapshot.buttons, wired),
             Screen::Calibration => self.route_wizard(&snapshot.buttons, wired),
-            Screen::App | Screen::Splash => {}
+            // A short `up` or `down` moves the focus to the applet left or
+            // right, without wrapping (journal/D-046); the long press is
+            // the routing page's, to come.
+            Screen::App => {
+                let focus = self.apps.focus();
+                if snapshot.buttons.pressed(Button::Up) {
+                    self.apps.set_focus(focus.saturating_sub(1));
+                }
+                if snapshot.buttons.pressed(Button::Down) {
+                    self.apps.set_focus(focus + 1);
+                }
+            }
+            Screen::Splash => {}
         }
     }
 

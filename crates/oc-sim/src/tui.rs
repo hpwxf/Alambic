@@ -838,24 +838,24 @@ mod tests {
     }
 
     #[test]
-    fn a_presses_the_left_encoder_and_resets_trigger_counters_on_either_layout() {
+    fn a_taps_the_left_encoder_on_either_layout() {
+        use oc_core::apps::diagnostic::OutputMode;
+
         let mut tui = Tui::new();
         tui.simulator.skip_splash();
-        press_and_settle(&mut tui, 'w');
-        assert_eq!(
-            tui.simulator
-                .app::<DiagnosticApp>()
-                .trigger_count(TriggerChannel::One),
-            1
-        );
-
         press_and_settle(&mut tui, 'a');
         assert_eq!(
-            tui.simulator
-                .app::<DiagnosticApp>()
-                .trigger_count(TriggerChannel::One),
-            0,
-            "a presses the left encoder on both layouts, which resets the trigger counters"
+            tui.simulator.app::<DiagnosticApp>().mode(),
+            OutputMode::Ramp,
+            "a taps the left encoder, which cycles DIAGNOSTIC's mode (journal/D-046)"
+        );
+
+        tui.on_key(key('l'));
+        press_and_settle(&mut tui, 'a');
+        assert_eq!(
+            tui.simulator.app::<DiagnosticApp>().mode(),
+            OutputMode::Zero,
+            "and under QWERTY too"
         );
     }
 

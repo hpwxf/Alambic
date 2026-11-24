@@ -170,13 +170,13 @@ fn the_encoders_select_a_channel_and_dial_an_offset() {
 }
 
 #[test]
-fn the_up_button_walks_through_the_output_modes() {
+fn a_left_tap_walks_through_the_output_modes() {
     let mut simulator = replay("mode_cycle");
 
     assert_eq!(
         simulator.app::<DiagnosticApp>().mode(),
         OutputMode::Zero,
-        "two presses from OFFS land on ZERO"
+        "two taps from OFFS land on ZERO"
     );
     assert_eq!(
         simulator.cv_out(),

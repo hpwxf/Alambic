@@ -6,7 +6,7 @@
 //!
 //! Panel: the left encoder picks a field, the right one turns it; the right
 //! encoder's click closes the submenu, or applies `CENTER` when that is
-//! picked; `down` closes it. Opening it is the applet's (`RATCHET`: the
+//! picked (`down` is the panel's, journal/D-046). Opening it is the applet's (`RATCHET`: the
 //! right encoder's click on a setting).
 
 use super::{Assign, AssignLine, Window, usable_range};
@@ -121,7 +121,9 @@ impl AssignEditor {
             }
             return true;
         }
-        if click || input.buttons.pressed(Button::Down) {
+        // Closed by the right switch alone: `down` is the panel's
+        // (journal/D-046).
+        if click {
             return false;
         }
         let len = i32::try_from(AssignLine::ALL.len()).unwrap_or(1);

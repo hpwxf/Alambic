@@ -5,7 +5,8 @@
 
 use oc_core::apps::AppId;
 use oc_core::apps::ratchet::TRIGGER_MV;
-use oc_core::platform::CvChannel;
+use oc_core::buttons::LONG_PRESS_TICKS;
+use oc_core::platform::{Button, CvChannel};
 use oc_core::testing::{MockEngine, adc_reading, mock_engine};
 
 /// One tick of a millisecond.
@@ -83,4 +84,32 @@ fn the_same_applet_twice_keeps_two_sets_of_settings() {
     tick(&mut engine);
     let read = |position: usize| -> Option<_> { engine.apps().at(position)?.get(shape) };
     assert_eq!((read(0), read(1)), (Some(value), Some(other)));
+}
+
+/// Holds `button` for `ticks`, then lets it go for a few more.
+fn hold(engine: &mut MockEngine, button: Button, ticks: usize) {
+    engine.parts_mut().3.hold(button, true);
+    for _ in 0..ticks {
+        tick(engine);
+    }
+    engine.parts_mut().3.hold(button, false);
+    for _ in 0..10 {
+        tick(engine);
+    }
+}
+
+#[test]
+fn up_and_down_move_the_focus_without_wrapping() {
+    let mut engine = ratchet_and_scope();
+    assert_eq!(engine.apps().focus(), 1);
+    hold(&mut engine, Button::Up, 10);
+    assert_eq!(engine.current_app(), AppId::Ratchet, "up: to the left");
+    hold(&mut engine, Button::Up, 10);
+    assert_eq!(engine.apps().focus(), 0, "the left end stays");
+    hold(&mut engine, Button::Down, 10);
+    hold(&mut engine, Button::Down, 10);
+    assert_eq!(engine.apps().focus(), 1, "down: to the right, then stays");
+    let long = usize::try_from(LONG_PRESS_TICKS).unwrap() + 10;
+    hold(&mut engine, Button::Up, long);
+    assert_eq!(engine.apps().focus(), 1, "a long press is not a move");
 }

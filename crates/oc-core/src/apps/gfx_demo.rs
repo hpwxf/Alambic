@@ -215,11 +215,10 @@ impl GfxDemoApp {
         let turns = i32::from(input.controls.delta(1));
         match self.page() {
             Page::Knobs | Page::Fonts => {
-                if input.buttons.pressed(Button::Down) {
+                // The left switch, `up` and `down` being the panel's
+                // (journal/D-046).
+                if input.buttons.pressed(Button::LeftEncoder) {
                     self.focus = (self.focus + 1) % self.knobs.len();
-                }
-                if input.buttons.pressed(Button::Up) {
-                    self.focus = (self.focus + self.knobs.len() - 1) % self.knobs.len();
                 }
                 let knob = &mut self.knobs[self.focus];
                 *knob = (*knob + turns * KNOB_STEP).clamp(0, KNOB_MAX);
@@ -607,7 +606,7 @@ mod tests {
                 app.update(&input);
             }
         };
-        press(Button::Down, &mut app);
+        press(Button::LeftEncoder, &mut app);
         app.update(&turn(0, -2));
         assert_eq!(app.knobs()[1], KNOB_START[1] - 50);
         press(Button::RightEncoder, &mut app);

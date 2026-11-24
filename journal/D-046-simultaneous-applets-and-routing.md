@@ -215,3 +215,16 @@ recopié dans chaque appelant ; ramenés par une boucle à un passage et `#[inli
 `app_mut`), `.rodata` −356 o ; pile ≈ 11 552 o (−248 o). Écrans de référence inchangés ; `tests/instances.rs` :
 `RATCHET` et `SCOPE` sur des prises distinctes, la rafale de `RATCHET` hors focus, une instance retirée (prises à
 0 V), deux `RATCHET` aux réglages indépendants.
+
+## Lot 13d, première partie (2026-11-24) — les gestes
+
+* `ButtonReader` compte la durée d'un appui : `ButtonEvents::long_pressed` (une fois, au seuil, bouton encore
+  enfoncé), `tapped` (relâché avant) ; `up` / `down` n'agissent au relâchement que pour un appui court.
+  `LONG_PRESS_TICKS = 1 000` (1 s).
+* Le moteur : appui court sur `up` → instance de gauche, `down` → de droite, sans boucler ; l'appui long est réservé
+  à la page de routage (lot 13e). Le clic qui ferme le menu n'atteint pas l'app (`ButtonReader::swallow`).
+* Les gestes des apps déplacés comme décidé (révision de D-021) ; tests et scénario `mode_cycle` repris ; écrans de
+  référence inchangés ; README et TESTING à jour.
+* Coût : `.text` +332 o contre 13c ; pile ≈ 11 584 o.
+
+Reste du lot : l'indicateur, le nom de chaque app à une place commune, le menu (ajouter, retirer, défilement).
