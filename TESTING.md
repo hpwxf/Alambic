@@ -570,6 +570,16 @@ same fields. Close the panel with its button: the screen keeps `+CV2`, and
 reopening it shows the same fields. Do the same on one of `RATCHET`'s and
 one of `TONE`'s settings: the same panel.
 
+`CENTER` in the panel: put an LFO on `CV2` (a few volts, under 1 Hz), set
+`DETUNE`'s `INPUT` to `CV2` and `EFFECT` to `SET`, leave `5` s and click
+`CENTER`. The button greys for five seconds, then the status reads
+`centered on … readings` and `SCALE` and `SHIFT` show new values, the same
+ones the module's own submenu shows; the `CV` bar of the submenu now spans
+the setting's range. `cargo probe assign supersaw detune --center 5` under
+the same LFO gives the same values within a step. Unpatch the LFO and click
+again: `error: CV2 moved … mV, less than the 100 mV CENTER needs`, and
+nothing changes. A stream started from the page stops after a `CENTER`.
+
 ### 9.2 — CV inputs
 
 For each of the four front-panel CV jacks in turn:

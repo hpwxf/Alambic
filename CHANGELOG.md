@@ -22,8 +22,10 @@ Architectural decisions behind each change are in `journal/` (French).
   scale and shift to what the input carries, as `CENTER` does. In the
   browser tool, each such setting has a button showing its input as the
   module's screen marks it (`+CV2`), which opens the same panel for every
-  setting of every app: the submenu's fields, each set at once. Probe
-  protocol 8.
+  setting of every app: the submenu's fields, each set at once, and a
+  `CENTER` button that reads the input from the stream for a few seconds
+  and fits it with the same function as `--center` and the module's
+  submenu. Probe protocol 8.
 - The simulator's status line now lists the running applet's parameters
   and what it plays, from the same model.
 - **An Apps panel in the browser tool**: the applets, the settings of the

@@ -8,10 +8,10 @@
 use oc_core::fmt::TextBuf;
 use oc_core::modulation::AssignLine;
 use oc_probe::apps::{
-    INPUT_FIELDS, edit_text, input_text, parse_input_field, parse_value, value_text,
+    INPUT_FIELDS, centered, edit_text, input_text, parse_input_field, parse_value, value_text,
 };
 use oc_probe::client::{AppDescription, AppEntry, InputEntry, SpecEntry};
-use oc_protocol::{Group, ParamKind, ParamValue, Request};
+use oc_protocol::{Group, ParamKind, ParamValue, Request, Sample};
 use wasm_bindgen::prelude::wasm_bindgen;
 
 use crate::{Message, MessageKind, frame};
@@ -373,6 +373,26 @@ impl AppView {
         }))
     }
 
+    /// The request that sets parameter `at`'s input to carry what it read
+    /// over `readings` onto the range the parameter uses, as the submenu's
+    /// `CENTER` and `cargo probe assign --center` do: the same
+    /// [`centered`], from the stream (journal/D-045).
+    ///
+    /// # Errors
+    ///
+    /// A parameter without an input, or readings `CENTER` cannot work from:
+    /// none, or a signal that hardly moves.
+    pub fn center_request(&self, at: usize, readings: &Readings) -> Result<Vec<u8>, String> {
+        let spec = param(&self.description, at).ok_or("no such parameter")?;
+        let input = spec.input.as_ref().ok_or("it takes no CV input")?;
+        let assign = centered(input, &readings.samples)?;
+        Ok(frame(&Request::SetAssign {
+            app: self.app,
+            param: spec.index,
+            assign,
+        }))
+    }
+
     /// Takes the input the module answered for parameter `at` and keeps
     /// it; its text, or an empty one if the message carried none.
     pub fn absorb_input(&mut self, at: usize, message: &Message) -> String {
@@ -490,6 +510,58 @@ impl AppView {
     }
 }
 
+/// What the stream carried while an input panel's `CENTER` listened: the
+/// samples over so many seconds of the module's clock, kept as
+/// `cargo probe assign --center` keeps them.
+#[wasm_bindgen]
+#[derive(Debug, Clone, Default)]
+pub struct Readings {
+    micros: u64,
+    samples: Vec<Sample>,
+}
+
+#[wasm_bindgen]
+impl Readings {
+    /// Nothing read yet, to listen for `seconds` of the module's clock.
+    #[wasm_bindgen(constructor)]
+    #[must_use]
+    pub fn new(seconds: u32) -> Self {
+        Self {
+            micros: u64::from(seconds) * 1_000_000,
+            samples: Vec::new(),
+        }
+    }
+
+    /// Takes one message of the stream; true once the samples span the
+    /// time asked for, measured on the module's clock as `cargo probe`
+    /// measures it. The sample that reaches the end is not kept.
+    pub fn absorb(&mut self, message: &Message) -> bool {
+        let Some(sample) = message.sample else {
+            return false;
+        };
+        if let Some(first) = self.samples.first()
+            && sample.micros.saturating_sub(first.micros) >= self.micros
+        {
+            return true;
+        }
+        self.samples.push(sample);
+        false
+    }
+
+    /// How many samples were kept.
+    #[wasm_bindgen(getter)]
+    #[must_use]
+    pub fn len(&self) -> usize {
+        self.samples.len()
+    }
+
+    /// Whether none was.
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.samples.is_empty()
+    }
+}
+
 fn param(description: &AppDescription, at: usize) -> Option<&SpecEntry> {
     description.params.get(at)
 }
@@ -542,7 +614,7 @@ mod tests {
     use oc_protocol::server::{Identity, Server};
     use oc_protocol::{Request, VERSION};
 
-    use super::{AppList, AppView, Editor};
+    use super::{AppList, AppView, Editor, Readings};
     use crate::{Message, ProbeReader, frame};
 
     /// A module end: the server over a mock engine, and the page's reader.
@@ -570,6 +642,21 @@ mod tests {
         /// What the page receives for `bytes`.
         fn send(&mut self, bytes: &[u8]) -> Vec<Message> {
             self.server.receive(bytes, &mut self.engine);
+            let queue = self.server.outgoing();
+            let waiting = queue.peek(usize::MAX).to_vec();
+            queue.consume(waiting.len());
+            self.reader.push(&waiting)
+        }
+
+        /// What the page receives over one tick of a millisecond, `CV2` at
+        /// `millivolts`: a sample when a stream asks for one.
+        fn tick(&mut self, millivolts: i32) -> Vec<Message> {
+            use oc_core::platform::CvChannel;
+
+            self.engine.parts_mut().0.patch(CvChannel::Two, millivolts);
+            self.engine.clock().advance(1_000);
+            let report = self.engine.tick();
+            self.server.after_tick(&report, &mut self.engine);
             let queue = self.server.outgoing();
             let waiting = queue.peek(usize::MAX).to_vec();
             queue.consume(waiting.len());
@@ -736,5 +823,58 @@ mod tests {
             "the module refuses it, not the page"
         );
         assert!(view.assign_request(1, "gain", "1").is_err());
+    }
+
+    #[test]
+    fn center_fits_an_input_as_the_command_line_does() {
+        use oc_core::apps::supersaw::{Setting, SupersawApp};
+        use oc_probe::apps::centered;
+
+        /// A second of the stream, `CV2` at `level(tick)`.
+        fn listen(module: &mut Module, level: impl Fn(i32) -> i32) -> Readings {
+            module.send(&frame(&Request::Stream { every_ticks: 1 }));
+            let mut readings = Readings::new(1);
+            let mut full = false;
+            for step in 0.. {
+                for message in module.tick(level(step)) {
+                    full |= readings.absorb(&message);
+                }
+                if full {
+                    break;
+                }
+            }
+            module.send(&frame(&Request::Stream { every_ticks: 0 }));
+            readings
+        }
+
+        let mut module = Module::new();
+        let mut view = AppView::new(u8::try_from(AppId::Supersaw.index()).unwrap());
+        for message in module.send(&view.describe_request()) {
+            if view.absorb(&message) {
+                break;
+            }
+        }
+        let detune = 1;
+        for (field, text) in [("input", "CV2"), ("effect", "SET")] {
+            let request = view.assign_request(detune, field, text).unwrap();
+            let [message] = module.send(&request).try_into().unwrap();
+            view.absorb_input(detune, &message);
+        }
+
+        // A triangle from 1 V to 3 V: the fit is the command line's.
+        let readings = listen(&mut module, |step| 1_000 + (step % 200 - 100).abs() * 20);
+        let before = view.description.params[detune].input.unwrap();
+        let fitted = centered(&before, &readings.samples).unwrap();
+        assert_ne!(fitted, before.assign);
+        let request = view.center_request(detune, &readings).unwrap();
+        let [message] = module.send(&request).try_into().unwrap();
+        view.absorb_input(detune, &message);
+        let applied = module.engine.app::<SupersawApp>().assign(Setting::Detune);
+        assert_eq!(applied, Some(&fitted));
+
+        // A still input is refused, as on the module.
+        let still = listen(&mut module, |_| 2_000);
+        let refused = view.center_request(detune, &still).unwrap_err();
+        assert!(refused.contains("moved 0 mV"), "{refused}");
     }
 }
