@@ -195,12 +195,9 @@ fn the_app_menu_switches_to_the_scope() {
         !simulator.menu_is_open(),
         "launching an app closes the menu"
     );
+    // SCOPE took DIAGNOSTIC's place (journal/D-046): that up and down fire
+    // nothing on the way into the menu is `tests/menu.rs`'s to check.
     assert_eq!(simulator.current_app(), AppId::Scope);
-    assert_eq!(
-        simulator.app::<DiagnosticApp>().mode(),
-        OutputMode::Offset,
-        "neither up nor down fired its own action on the way into the menu"
-    );
     assert_eq!(
         simulator.cv_out(),
         [adc_reading(1_500); 4],

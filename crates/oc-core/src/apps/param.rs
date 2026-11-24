@@ -260,6 +260,9 @@ pub enum Refused {
     WrongKind,
     /// A value outside the parameter's range or names.
     OutOfRange,
+    /// An output another port already reaches: outputs are never shared
+    /// (journal/D-046).
+    Taken,
 }
 
 /// Writes every active parameter of `app` under its label now, then every

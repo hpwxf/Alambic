@@ -10,7 +10,7 @@
 use oc_core::Engine;
 use oc_core::TickReport;
 use oc_core::apps::param::{Kind, ParamSpec, Refused};
-use oc_core::apps::{App, AppId};
+use oc_core::apps::{App, AppHost, AppId, Instance};
 use oc_core::platform::{
     AnalogIn, AnalogOut, CV_CHANNELS, Clock, Controls, CvChannel, DigitalIn, Display, MilliVolts,
     TriggerChannel,
@@ -254,29 +254,31 @@ impl Server {
             }
             Request::DescribeApp { app } => {
                 if let Some(id) = app_id(app) {
-                    self.describe(engine.apps().get(id));
+                    let mut fresh = None;
+                    self.describe(read_app(engine.apps(), id, &mut fresh));
                     return None;
                 }
                 Reply::Error(Error::NoSuchApp)
             }
             Request::GetParam { app, param } => match app_id(app) {
-                Some(id) => engine
-                    .apps()
-                    .get(id)
+                Some(id) => read_app(engine.apps(), id, &mut None)
                     .get(usize::from(param))
                     .map_or(Reply::Error(Error::Refused(Refused::NoSuch)), Reply::Value),
                 None => Reply::Error(Error::NoSuchApp),
             },
-            Request::SetParam { app, param, value } => match app_id(app) {
-                Some(id) => match engine.app_mut(id).set(usize::from(param), value) {
-                    Ok(applied) => Reply::Value(applied),
-                    Err(refused) => Reply::Error(Error::Refused(refused)),
-                },
-                None => Reply::Error(Error::NoSuchApp),
-            },
+            Request::SetParam { app, param, value } => {
+                match app_id(app).and_then(|id| engine.app_mut(id)) {
+                    Some(app) => match app.set(usize::from(param), value) {
+                        Ok(applied) => Reply::Value(applied),
+                        Err(refused) => Reply::Error(Error::Refused(refused)),
+                    },
+                    None => Reply::Error(Error::NoSuchApp),
+                }
+            }
             Request::Observe { app, index } => match app_id(app) {
                 Some(id) => {
-                    let app = engine.apps().get(id);
+                    let mut fresh = None;
+                    let app = read_app(engine.apps(), id, &mut fresh);
                     if usize::from(index) < app.observables().len() {
                         Reply::Observed(app.observe(usize::from(index)))
                     } else {
@@ -285,8 +287,8 @@ impl Server {
                 }
                 None => Reply::Error(Error::NoSuchApp),
             },
-            Request::Act { app, action } => match app_id(app) {
-                Some(id) => match engine.app_mut(id).act(usize::from(action)) {
+            Request::Act { app, action } => match app_id(app).and_then(|id| engine.app_mut(id)) {
+                Some(app) => match app.act(usize::from(action)) {
                     Ok(()) => Reply::Done,
                     Err(refused) => Reply::Error(Error::Refused(refused)),
                 },
@@ -300,19 +302,18 @@ impl Server {
                 None => Reply::Error(Error::NoSuchApp),
             },
             Request::GetAssign { app, param } => match app_id(app) {
-                Some(id) => input_reply(engine.apps().get(id), param),
+                Some(id) => input_reply(read_app(engine.apps(), id, &mut None), param),
                 None => Reply::Error(Error::NoSuchApp),
             },
-            Request::SetAssign { app, param, assign } => match app_id(app) {
-                Some(id) => {
-                    let app = engine.app_mut(id);
-                    match app.set_assign(usize::from(param), assign) {
+            Request::SetAssign { app, param, assign } => {
+                match app_id(app).and_then(|id| engine.app_mut(id)) {
+                    Some(app) => match app.set_assign(usize::from(param), assign) {
                         Ok(_) => input_reply(app, param),
                         Err(refused) => Reply::Error(Error::Refused(refused)),
-                    }
+                    },
+                    None => Reply::Error(Error::NoSuchApp),
                 }
-                None => Reply::Error(Error::NoSuchApp),
-            },
+            }
             _ => Reply::Error(Error::Unsupported),
         };
         Some(reply)
@@ -329,11 +330,13 @@ impl Server {
         S: Display,
     {
         for id in AppId::ALL {
-            let app = engine.apps().get(id);
+            let running = engine.apps().get(id).is_some();
+            let mut fresh = None;
+            let app = read_app(engine.apps(), id, &mut fresh);
             self.send(&Reply::App {
                 app: count(id.index()),
                 name: app.name(),
-                running: engine.current_app() == id,
+                running,
                 params: count(app.param_specs().len()),
                 observables: count(app.observables().len()),
                 actions: count(app.actions().len()),
@@ -475,6 +478,18 @@ fn input_reply(app: &dyn App, param: u8) -> Reply<'static> {
             sweep,
         },
         None => Reply::Error(Error::Refused(Refused::NoSuch)),
+    }
+}
+
+/// The first running applet of kind `id` or, while none runs, a fresh one
+/// put in `fresh`: what it would be once started. Writing takes a running
+/// one; the protocol names applets by kind until it names instances
+/// (journal/D-046, lot 13f). One reference, not a closure per request: a
+/// closure would be compiled once per branch.
+fn read_app<'a>(apps: &'a AppHost, id: AppId, fresh: &'a mut Option<Instance>) -> &'a dyn App {
+    match apps.get(id) {
+        Some(app) => app,
+        None => fresh.insert(Instance::new(id)).app(),
     }
 }
 

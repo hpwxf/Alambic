@@ -74,8 +74,8 @@ la sonde par instance. Étape 3 de la trajectoire de D-043.
 |---|---|---|
 | **13a** — ADR et plan | D-046 proposée, plan de l'étape | ✅ |
 | **13b** — sorties en ports | `audio` : `Route`, `Patch`, `Voices`, `Changes` (un `Setup` par emplacement changé), `Follower` par patch ; maintien de la sonde après le routage ; `App::output_ports` (`RATCHET` A, B ; `SUPERSAW` A, B, `SUB`) ; `MAX_INSTANCES = 2`, un emplacement servi ; sommes de `voice_samples` par le chemin entier et écrans inchangés ; `.text` +3 848 o, `.data` +440 o ; criterion : `tick` inchangé, aiguillage ≈ 9 ns par échantillon, second banc ≈ 10 ns | ✅ |
-| **13c** — instances | pool, focus, toutes mises à jour, carte d'entrées, menu (remplacer, ajouter, retirer) | |
-| **13d** — panneau | appui court (instance) / long (routage, 1 s), actions `up` / `down` des apps déplacées, indicateur de 4 pixels à gauche du nom (révision de D-021) | |
+| **13c** — instances | pool d'`Instance` (position et slot séparés), focus, toutes mises à jour, panneau et rendu au focus ; `select` neuve, `add`, `remove`, `set_route` (`Refused::Taken`) ; `App::set_routed` (`SUPERSAW` sans `SUB` routée nulle part) ; sonde par la première instance, lecture d'une app arrêtée sur une neuve ; `.text` +1 456 o, pile −248 o ; `tests/instances.rs`. Menu et carte d'entrées reportés (13d, 13e) | ✅ |
+| **13d** — panneau | appui court (instance) / long (routage, 1 s), actions `up` / `down` des apps déplacées, indicateur de 4 pixels à gauche du nom ; menu : ajouter, retirer, défilement (révision de D-021) | |
 | **13e** — page de routage | écran du moteur commun aux apps | |
 | **13f** — sonde | protocole 9 par instance, CLI, page | |
 | **13g** — module | deux `SUPERSAW`, `RATCHET` + `SUPERSAW` : profil, écoute, TESTING ; adoption de D-046 | |

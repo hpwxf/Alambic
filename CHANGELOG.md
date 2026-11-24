@@ -58,6 +58,13 @@ Architectural decisions behind each change are in `journal/` (French).
 
 ### Changed
 
+- **Picking another applet starts it afresh** (journal/D-046): an applet is
+  no longer kept, with its settings, while another runs. This makes room
+  for several applets at once, each on its own outputs; until the menu can
+  add them, one runs as before. The probe sets, acts on and assigns only an
+  applet that runs (`cargo probe select` it first); it still describes
+  any.
+
 - **`SUPERSAW` computes in `f32`** (journal/D-039): its bank, the same
   voices, curves and parts in single-precision floating point with integer
   phases, replaces the integer one after a trial of both on the module. A

@@ -188,3 +188,30 @@ Mesures :
 * Hôte (criterion) : `engine/tick_*` inchangés (+0,4 %, bruit) ; `voice/supersaw_routed_sample_to_codes` 36,6 ns
   contre 27,7 ns pour la voix seule : l'aiguillage des voies coûte ≈ 9 ns par échantillon ;
   `two_supersaws_routed_sample_to_codes` 46,8 ns, le second banc ≈ 10 ns. À mesurer sur le module (13g).
+
+## Lot 13c (2026-11-24) — les instances
+
+* **`AppHost`** : un pool de `MAX_INSTANCES` emplacements, chacun une `Instance` (enum des six apps) et sa route ;
+  un ordre de gauche à droite (la *position*) séparé de l'emplacement (le *slot*), qui ne bouge pas tant que
+  l'instance tourne : sa voix garde son état quand une autre s'ajoute ou part à côté. `select` remplace l'app au
+  focus par une neuve (idempotent pour la même), `add` en démarre une à droite du focus et lui donne le focus,
+  `remove` retire celle du focus (jamais la dernière), `set_focus`, `set_route` (`Refused::Taken` pour une sortie
+  déjà atteinte, nouvelle variante). Une nouvelle instance prend les sorties libres dans l'ordre ; avec une seule
+  app, la route est celle de ses ports, comme en 13b.
+* **Toutes les instances tournent à chaque tick**, la seule au focus reçoit le panneau et dessine ; `TickContext::cv_out`
+  donne à l'app ses voies telles qu'elles ont atteint les prises, 0 V pour une voie routée nulle part.
+* **`App::set_routed`** : l'app apprend quels ports atteignent une prise ; `SUPERSAW` ne prépare plus une partie
+  routée nulle part.
+* **La sonde, jusqu'au protocole 9** : une requête sur une app vise sa première instance ; une app qui ne tourne
+  pas se décrit et se lit sur une instance neuve (ses valeurs de départ), mais ne se règle pas (`NoSuchApp`) ;
+  `ListApps` la marque `running` si une instance tourne.
+* **Le menu reste celui d'une app** : ajouter et retirer passent au lot 13d, avec le défilement que le menu n'a pas
+  encore (il remplit l'écran).
+* **Écart à D-021 assumé** : choisir une autre app la démarre neuve ; tests de résidence réécrits
+  (`tests/menu.rs`, `apps/mod.rs`).
+
+Mesures : `.text` +1 456 o contre 13b (au premier jet +8,9 Kio : `free_route` déroulé, 2,5 Kio, et `Instance::new`
+recopié dans chaque appelant ; ramenés par une boucle à un passage et `#[inline(never)]` sur `Instance::new`, `app`,
+`app_mut`), `.rodata` −356 o ; pile ≈ 11 552 o (−248 o). Écrans de référence inchangés ; `tests/instances.rs` :
+`RATCHET` et `SCOPE` sur des prises distinctes, la rafale de `RATCHET` hors focus, une instance retirée (prises à
+0 V), deux `RATCHET` aux réglages indépendants.

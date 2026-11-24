@@ -169,8 +169,10 @@ fn an_applet_is_found_described_and_set_by_name() {
     assert_eq!(list.len(), oc_core::apps::AppId::ALL.len());
     assert!(list[0].running, "the diagnostic applet runs at start");
     let ratchet = apps::find_app(&list, "ratchet").unwrap().clone();
-
+    // Described before it runs, from a fresh one; set once it runs
+    // (journal/D-046).
     let description = client.describe(ratchet.index).unwrap();
+    client.select_app(ratchet.index).unwrap();
     let mode = apps::find_spec(&description.params, "mode").unwrap();
     assert_eq!(mode.choices, ["FIRST", "SPAN"]);
     let text = apps::description_text(&ratchet, &description);
@@ -204,6 +206,7 @@ fn an_input_is_described_and_set_by_its_fields() {
     let mut client = session();
     let list = client.apps().unwrap();
     let supersaw = apps::find_app(&list, "supersaw").unwrap().clone();
+    client.select_app(supersaw.index).unwrap();
     let description = client.describe(supersaw.index).unwrap();
     let detune = apps::find_spec(&description.params, "detune").unwrap();
     let input = detune.input.expect("DETUNE takes an input");

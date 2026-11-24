@@ -289,10 +289,18 @@ where
         let rendered = !sending && self.ticks_since_render >= self.render_interval;
         if rendered {
             self.ticks_since_render = 0;
+            // The applet sees its own lanes: what reached the jack each
+            // goes to, nothing for one that goes nowhere (journal/D-046).
+            let route = self.apps.route();
+            let cv_out = core::array::from_fn(|lane| {
+                route
+                    .output(lane)
+                    .map_or(0, |output| outputs[output.index()])
+            });
             let context = TickContext {
                 tick_count: self.tick_count,
                 duration_micros: self.last_duration_micros,
-                cv_out: outputs,
+                cv_out,
                 outputs_forced: self.screen != Screen::Calibration
                     && self.forced_outputs.iter().any(Option::is_some),
             };
@@ -331,17 +339,17 @@ where
     /// What the outputs carry from this tick on, from the screen in charge,
     /// then the levels a probe holds.
     fn update_params(&mut self, snapshot: &InputSnapshot) {
-        let (params, route) = match self.screen {
-            Screen::System => (Params::REST, Route::IDENTITY),
-            Screen::Calibration => (
+        let mut patch = match self.screen {
+            Screen::System => Patch::single(Params::REST, Route::IDENTITY),
+            Screen::Calibration => Patch::single(
                 Params::levels([self.wizard.output_level(); CV_CHANNELS]),
                 Route::IDENTITY,
             ),
-            Screen::App | Screen::Menu | Screen::Splash => {
-                (self.apps.update(snapshot), self.apps.route())
-            }
+            Screen::App | Screen::Menu | Screen::Splash => Patch {
+                parts: self.apps.update(snapshot),
+                held: [None; CV_CHANNELS],
+            },
         };
-        let mut patch = Patch::single(params, route);
         // The wizard measures the outputs it drives: a forced level would
         // calibrate against the wrong voltage.
         if self.screen != Screen::Calibration {
@@ -442,11 +450,12 @@ where
         self.forced_outputs[channel.index()] = level;
     }
 
-    /// What the running applet publishes for its lanes since the last tick
-    /// (journal/D-033, D-046). What the outputs carry is [`Self::patch`].
+    /// What the applet with the focus publishes for its lanes since the
+    /// last tick (journal/D-033, D-046). What the outputs carry is
+    /// [`Self::patch`].
     #[must_use]
     pub const fn params(&self) -> &Params {
-        &self.patch.parts[0].params
+        &self.patch.parts[self.apps.focused_slot()].params
     }
 
     /// What the outputs carry since the last tick: each slot's parameters
@@ -772,37 +781,42 @@ where
         &self.apps
     }
 
-    /// The applet of type `T`, running or not: its own state, for tests and
-    /// the host UIs (journal/D-043). The engine itself only ever runs an
-    /// applet through [`App`].
+    /// The first running applet of type `T`, left to right: its own state,
+    /// for tests and the host UIs (journal/D-043, D-046). The engine itself
+    /// only ever runs an applet through [`App`].
     ///
     /// # Panics
     ///
-    /// If this image composes no applet of type `T`, which is a mistake in
-    /// the caller, not a state the module can reach.
+    /// If no applet of type `T` runs, which is a mistake in the caller, not
+    /// a state the module can reach by itself.
     #[must_use]
     pub fn app<T: App>(&self) -> &T {
-        self.apps
-            .find::<T>()
-            .expect("every applet type is composed into AppHost")
+        self.apps.find::<T>().expect("an applet of that type runs")
     }
 
-    /// The applet currently driving the outputs.
+    /// The kind of applet with the focus.
     #[must_use]
-    pub const fn current_app(&self) -> AppId {
+    pub fn current_app(&self) -> AppId {
         self.apps.current()
     }
 
-    /// The applet filling slot `id`, to set its parameters or ask it for an
-    /// action as the panel would (journal/D-043): the host probe's way in.
-    pub fn app_mut(&mut self, id: AppId) -> &mut dyn App {
+    /// The first running applet of kind `id`, to set its parameters or ask
+    /// it for an action as the panel would (journal/D-043): the host
+    /// probe's way in; `None` while none runs.
+    pub fn app_mut(&mut self, id: AppId) -> Option<&mut dyn App> {
         self.apps.get_mut(id)
     }
 
-    /// Hands the outputs and the screen to `id`, as launching it from the app
-    /// menu does: an open menu closes on it. The system screen, the
-    /// calibration wizard and the boot splash stay up, and leave to it.
-    pub const fn select_app(&mut self, id: AppId) {
+    /// Every running applet, to add, remove, focus and route them as the
+    /// panel would (journal/D-046).
+    pub const fn apps_mut(&mut self) -> &mut AppHost {
+        &mut self.apps
+    }
+
+    /// Puts `id` in the place of the applet with the focus, as launching it
+    /// from the app menu does: an open menu closes on it. The system screen,
+    /// the calibration wizard and the boot splash stay up, and leave to it.
+    pub fn select_app(&mut self, id: AppId) {
         self.apps.select(id);
         if matches!(self.screen, Screen::Menu) {
             self.screen = Screen::App;

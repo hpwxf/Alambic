@@ -1,16 +1,15 @@
-//! The applets the module can run, and which one currently owns the outputs.
+//! The applets the module can run, the ones running, and which has the
+//! focus.
 //!
-//! Every applet is resident: [`AppHost`] holds one instance of each and a cursor
-//! saying which is running. Storing only the running one — an enum of applet
-//! variants — would throw away the other's state on every switch, so an offset
-//! dialled into the diagnostic applet would vanish the moment you glanced at
-//! another app and came back. A handful of bytes of static state buys that
-//! back, and keeps every per-applet accessor infallible.
-//!
-//! Only the running applet is updated. The 1 kHz budget therefore does not grow
-//! with the number of apps, at the cost of a frozen applet's
-//! [`SignalDetector`](crate::signal::SignalDetector) history being stale when it
-//! comes back — deliberate, and cheaper than the alternative.
+//! Up to [`MAX_INSTANCES`] applets run at once, the same kind more than once
+//! if need be, each in a slot of [`AppHost`] with the outputs its route
+//! gives it (journal/D-046). Every one is updated on every tick; only the
+//! one with the focus reads the panel and draws. A slot holds an
+//! [`Instance`], an enum of the applets this image composes, so a slot
+//! costs the size of the largest, a few hundred bytes. Putting another app
+//! in a slot starts it afresh: the residency of D-021, which kept every
+//! applet's state across a glance elsewhere, gave way to running several;
+//! saving the patch will bring a state back.
 //!
 //! This module also carries the contract every applet is written against —
 //! the [`App`] trait, [`InputSnapshot`] and [`TickContext`] — so that one
@@ -43,16 +42,16 @@ use crate::apps::gfx_demo::GfxDemoApp;
 use crate::apps::param::{ParamSpec, ParamValue, Refused};
 use crate::apps::ratchet::RatchetApp;
 use crate::apps::scope::ScopeApp;
-use crate::apps::sound::Params;
+use crate::apps::sound::{Params, Sound};
 use crate::apps::supersaw::SupersawApp;
 use crate::apps::tone::ToneApp;
-use crate::audio::Route;
+use crate::audio::{Route, Routed};
 use crate::buttons::ButtonEvents;
 use crate::framebuffer::FrameBuffer;
 use crate::modulation::Assign;
 use crate::modulation::slots::slot_of;
 use crate::platform::{
-    BUTTONS, CV_CHANNELS, ControlEvents, ENCODERS, MilliVolts, TRIGGER_CHANNELS,
+    BUTTONS, CV_CHANNELS, ControlEvents, CvChannel, ENCODERS, MilliVolts, TRIGGER_CHANNELS,
 };
 
 /// How many applets can run at once, each in a slot of its own that
@@ -126,8 +125,9 @@ pub struct TickContext {
     pub tick_count: u64,
     /// Duration of the previous tick, in microseconds.
     pub duration_micros: u32,
-    /// The levels actually written to the outputs on this tick: the
-    /// applet's own, unless something else holds an output.
+    /// The levels its lanes reached the outputs at on this tick, lane by
+    /// lane: its own, unless something else holds an output; 0 V for a lane
+    /// its route sends nowhere (journal/D-046).
     pub cv_out: [MilliVolts; CV_CHANNELS],
     /// Whether a host probe holds any output (journal/D-029), so the screen
     /// can say its levels are not the applet's.
@@ -166,6 +166,12 @@ pub trait App: Any {
     fn output_ports(&self) -> &'static [Port] {
         &PORTS_A_TO_D
     }
+
+    /// Which of its ports reach a jack now, told whenever its route
+    /// changes: an applet may stop preparing a lane nobody hears
+    /// (`SUPERSAW`'s `SUB`). Ignored by default; the lane then plays into
+    /// nothing (journal/D-046).
+    fn set_routed(&mut self, _routed: [bool; CV_CHANNELS]) {}
 
     /// The parameters it is set by, in a fixed order: an index into this
     /// list names one in [`get`](Self::get) and [`set`](Self::set)
@@ -353,100 +359,400 @@ impl AppId {
     }
 }
 
-/// Every applet, one instance each, plus the one currently running.
+/// One applet in a slot, of whichever kind this image composes: what the
+/// pool stores, the size of the largest (journal/D-046).
+// No heap to box the larger applets into: the size of the largest is the
+// cost of a slot, a few hundred bytes.
+#[allow(clippy::large_enum_variant)]
+#[derive(Debug, Clone)]
+pub enum Instance {
+    /// See [`AppId::Diagnostic`].
+    Diagnostic(DiagnosticApp),
+    /// See [`AppId::Scope`].
+    Scope(ScopeApp),
+    /// See [`AppId::Gfx`].
+    Gfx(GfxDemoApp),
+    /// See [`AppId::Ratchet`].
+    Ratchet(RatchetApp),
+    /// See [`AppId::Tone`].
+    Tone(ToneApp),
+    /// See [`AppId::Supersaw`].
+    Supersaw(SupersawApp),
+}
+
+impl Instance {
+    /// A fresh applet of kind `id`, as it starts.
+    // One copy for every caller: inlined, each would build all six applets.
+    #[inline(never)]
+    #[must_use]
+    pub fn new(id: AppId) -> Self {
+        match id {
+            AppId::Diagnostic => Self::Diagnostic(DiagnosticApp::new()),
+            AppId::Scope => Self::Scope(ScopeApp::new()),
+            AppId::Gfx => Self::Gfx(GfxDemoApp::new()),
+            AppId::Ratchet => Self::Ratchet(RatchetApp::new()),
+            AppId::Tone => Self::Tone(ToneApp::new()),
+            AppId::Supersaw => Self::Supersaw(SupersawApp::new()),
+        }
+    }
+
+    /// The applet, through the trait the engine runs it by.
+    // One copy: inlined in a loop over the slots, the six arms repeat.
+    #[inline(never)]
+    #[must_use]
+    pub fn app(&self) -> &dyn App {
+        match self {
+            Self::Diagnostic(app) => app,
+            Self::Scope(app) => app,
+            Self::Gfx(app) => app,
+            Self::Ratchet(app) => app,
+            Self::Tone(app) => app,
+            Self::Supersaw(app) => app,
+        }
+    }
+
+    /// The applet, to change it.
+    #[inline(never)]
+    pub fn app_mut(&mut self) -> &mut dyn App {
+        match self {
+            Self::Diagnostic(app) => app,
+            Self::Scope(app) => app,
+            Self::Gfx(app) => app,
+            Self::Ratchet(app) => app,
+            Self::Tone(app) => app,
+            Self::Supersaw(app) => app,
+        }
+    }
+}
+
+/// An instance and where its lanes go.
+#[derive(Debug, Clone)]
+struct Slot {
+    instance: Instance,
+    route: Route,
+}
+
+impl Slot {
+    /// `instance` along `route`, which it is told.
+    fn new(instance: Instance, route: Route) -> Self {
+        let mut slot = Self { instance, route };
+        slot.tell_route();
+        slot
+    }
+
+    /// Tells the applet which of its ports its route sends somewhere.
+    fn tell_route(&mut self) {
+        let route = self.route;
+        let routed = core::array::from_fn(|lane| route.output(lane).is_some());
+        self.instance.app_mut().set_routed(routed);
+    }
+}
+
+/// The applets running, one per slot, up to [`MAX_INSTANCES`], the same
+/// kind more than once if need be, and the one the panel and the screen
+/// belong to (journal/D-046).
+///
+/// Every instance runs on every tick and keeps its outputs; only the one
+/// with the focus reads the panel and draws. An instance's place on the
+/// panel, left to right, is its *position*; where it is stored, its
+/// *slot*, never moves while it runs, so its voice keeps its state when
+/// another is added or removed beside it.
 #[derive(Debug, Clone)]
 pub struct AppHost {
-    diagnostic: DiagnosticApp,
-    scope: ScopeApp,
-    gfx: GfxDemoApp,
-    ratchet: RatchetApp,
-    tone: ToneApp,
-    supersaw: SupersawApp,
-    current: AppId,
+    slots: [Option<Slot>; MAX_INSTANCES],
+    /// Slots in panel order; the first `count` are in use.
+    order: [usize; MAX_INSTANCES],
+    count: usize,
+    /// Position of the instance with the focus.
+    focus: usize,
 }
 
 impl AppHost {
-    /// Freshly started applets, with the diagnostic screen running.
+    const EMPTY: Option<Slot> = None;
+
+    /// The diagnostic applet alone, every output its own.
     #[must_use]
     pub fn new() -> Self {
-        Self {
-            diagnostic: DiagnosticApp::new(),
-            scope: ScopeApp::new(),
-            gfx: GfxDemoApp::new(),
-            ratchet: RatchetApp::new(),
-            tone: ToneApp::new(),
-            supersaw: SupersawApp::new(),
-            current: AppId::default(),
+        let mut host = Self {
+            slots: [Self::EMPTY; MAX_INSTANCES],
+            order: [0; MAX_INSTANCES],
+            count: 0,
+            focus: 0,
+        };
+        host.add(AppId::Diagnostic);
+        host
+    }
+
+    /// The kind of applet with the focus.
+    #[must_use]
+    pub fn current(&self) -> AppId {
+        self.focused().id()
+    }
+
+    /// How many instances run.
+    #[must_use]
+    pub const fn len(&self) -> usize {
+        self.count
+    }
+
+    /// Whether none runs, which never lasts: there is always one.
+    #[must_use]
+    pub const fn is_empty(&self) -> bool {
+        self.count == 0
+    }
+
+    /// The position, left to right, of the instance with the focus.
+    #[must_use]
+    pub const fn focus(&self) -> usize {
+        self.focus
+    }
+
+    /// Gives the panel and the screen to the instance at `position`;
+    /// `false`, and nothing changes, past the last.
+    pub const fn set_focus(&mut self, position: usize) -> bool {
+        if position < self.count {
+            self.focus = position;
+            true
+        } else {
+            false
         }
     }
 
-    /// The applet currently driving the outputs and the screen.
-    #[must_use]
-    pub const fn current(&self) -> AppId {
-        self.current
+    /// The slot of the instance at `position`.
+    const fn slot_at(&self, position: usize) -> Option<usize> {
+        if position < self.count {
+            Some(self.order[position])
+        } else {
+            None
+        }
     }
 
-    /// Hands the outputs and the screen to another applet.
+    /// The slot of the instance with the focus: where its lanes sit in the
+    /// patch.
+    #[must_use]
+    pub const fn focused_slot(&self) -> usize {
+        self.order[self.focus]
+    }
+
+    /// The instance at `position`, if any.
+    #[must_use]
+    pub fn at(&self, position: usize) -> Option<&dyn App> {
+        let slot = self.slot_at(position)?;
+        self.slots[slot].as_ref().map(|slot| slot.instance.app())
+    }
+
+    /// The instance at `position`, to change it.
+    pub fn at_mut(&mut self, position: usize) -> Option<&mut dyn App> {
+        let slot = self.slot_at(position)?;
+        self.slots[slot]
+            .as_mut()
+            .map(|slot| slot.instance.app_mut())
+    }
+
+    /// The route of the instance at `position`, if any.
+    #[must_use]
+    pub fn route_at(&self, position: usize) -> Option<Route> {
+        let slot = self.slot_at(position)?;
+        self.slots[slot].as_ref().map(|slot| slot.route)
+    }
+
+    /// The instance with the focus.
     ///
-    /// Idempotent, and it resets nothing: an applet picked up again is exactly
-    /// where it was left.
-    pub const fn select(&mut self, id: AppId) {
-        self.current = id;
-    }
-
-    /// The applet filling slot `id`.
+    /// # Panics
+    ///
+    /// Never: there is always one.
     #[must_use]
-    pub fn get(&self, id: AppId) -> &dyn App {
-        match id {
-            AppId::Diagnostic => &self.diagnostic,
-            AppId::Scope => &self.scope,
-            AppId::Gfx => &self.gfx,
-            AppId::Ratchet => &self.ratchet,
-            AppId::Tone => &self.tone,
-            AppId::Supersaw => &self.supersaw,
-        }
+    pub fn focused(&self) -> &dyn App {
+        self.at(self.focus)
+            .expect("an instance always has the focus")
     }
 
-    /// The applet filling slot `id`, to change it.
-    pub fn get_mut(&mut self, id: AppId) -> &mut dyn App {
-        match id {
-            AppId::Diagnostic => &mut self.diagnostic,
-            AppId::Scope => &mut self.scope,
-            AppId::Gfx => &mut self.gfx,
-            AppId::Ratchet => &mut self.ratchet,
-            AppId::Tone => &mut self.tone,
-            AppId::Supersaw => &mut self.supersaw,
-        }
+    /// The instance with the focus, to change it.
+    ///
+    /// # Panics
+    ///
+    /// Never: there is always one.
+    pub fn focused_mut(&mut self) -> &mut dyn App {
+        self.at_mut(self.focus)
+            .expect("an instance always has the focus")
     }
 
-    /// The applet of type `T`, running or not, if this image composes one.
+    /// Where the lanes of the instance with the focus go.
+    #[must_use]
+    pub fn route(&self) -> Route {
+        self.route_at(self.focus).unwrap_or(Route::OFF)
+    }
+
+    /// The first instance of kind `id`, left to right, if one runs.
+    #[must_use]
+    pub fn get(&self, id: AppId) -> Option<&dyn App> {
+        (0..self.count)
+            .filter_map(|position| self.at(position))
+            .find(|app| app.id() == id)
+    }
+
+    /// The first instance of kind `id`, to change it.
+    pub fn get_mut(&mut self, id: AppId) -> Option<&mut dyn App> {
+        let position = (0..self.count)
+            .find(|&position| self.at(position).is_some_and(|app| app.id() == id))?;
+        self.at_mut(position)
+    }
+
+    /// The first instance of type `T`, left to right, if one runs.
     ///
     /// For tests and the simulator, which look at an applet's own state; the
     /// engine never needs the concrete type.
     #[must_use]
     pub fn find<T: App>(&self) -> Option<&T> {
-        AppId::ALL.into_iter().find_map(|id| {
-            let app: &dyn Any = self.get(id);
+        (0..self.count).find_map(|position| {
+            let app: &dyn Any = self.at(position)?;
             app.downcast_ref::<T>()
         })
     }
 
-    /// Runs one tick of the current applet: what the outputs carry.
-    pub fn update(&mut self, input: &InputSnapshot) -> Params {
-        self.get_mut(self.current).update(input)
+    /// Puts a fresh applet of kind `id` in the place of the one with the
+    /// focus, unless it already is of that kind: idempotent. The new one
+    /// takes the outputs the old one held, port by port, then the free
+    /// ones.
+    pub fn select(&mut self, id: AppId) {
+        if self.current() == id {
+            return;
+        }
+        let slot = self.focused_slot();
+        self.slots[slot] = None;
+        let instance = Instance::new(id);
+        let route = self.free_route(instance.app().output_ports().len());
+        self.slots[slot] = Some(Slot::new(instance, route));
     }
 
-    /// Where the current applet's lanes go: each of its ports to the jack
-    /// of the same rank, the only route while one applet runs
-    /// (journal/D-046).
-    #[must_use]
-    pub fn route(&self) -> Route {
-        Route::first(self.get(self.current).output_ports().len())
+    /// Starts a fresh applet of kind `id` right of the one with the focus,
+    /// and gives it the focus: its position, or `None` when every slot is
+    /// taken. Its ports take the free outputs in order; one left without
+    /// goes nowhere until routed.
+    pub fn add(&mut self, id: AppId) -> Option<usize> {
+        let slot = self.slots.iter().position(Option::is_none)?;
+        let instance = Instance::new(id);
+        let route = self.free_route(instance.app().output_ports().len());
+        self.slots[slot] = Some(Slot::new(instance, route));
+        let position = if self.count == 0 { 0 } else { self.focus + 1 };
+        let mut at = self.count;
+        while at > position {
+            self.order[at] = self.order[at - 1];
+            at -= 1;
+        }
+        self.order[position] = slot;
+        self.count += 1;
+        self.focus = position;
+        Some(position)
     }
 
-    /// Draws the current applet's screen.
+    /// Stops the instance with the focus, freeing its outputs, and gives
+    /// the focus to its left neighbour (its right one at the left end);
+    /// `false`, and nothing changes, for the last instance.
+    pub fn remove(&mut self) -> bool {
+        if self.count <= 1 {
+            return false;
+        }
+        let slot = self.focused_slot();
+        self.slots[slot] = None;
+        for at in self.focus..self.count - 1 {
+            self.order[at] = self.order[at + 1];
+        }
+        self.count -= 1;
+        self.focus = self.focus.saturating_sub(1);
+        true
+    }
+
+    /// Sends port `port` of the instance at `position` to `output`, or
+    /// nowhere: the route it now has.
+    ///
+    /// # Errors
+    ///
+    /// [`Refused::NoSuch`] for no such instance or port,
+    /// [`Refused::Taken`] for an output another port already reaches, of
+    /// this instance or another: outputs are never shared.
+    pub fn set_route(
+        &mut self,
+        position: usize,
+        port: usize,
+        output: Option<CvChannel>,
+    ) -> Result<Route, Refused> {
+        let slot = self.slot_at(position).ok_or(Refused::NoSuch)?;
+        let ports = self.at(position).map_or(0, |app| app.output_ports().len());
+        if port >= ports {
+            return Err(Refused::NoSuch);
+        }
+        if let Some(output) = output
+            && self
+                .holder(output)
+                .is_some_and(|holder| holder != (slot, port))
+        {
+            return Err(Refused::Taken);
+        }
+        let held = self.slots[slot].as_mut().ok_or(Refused::NoSuch)?;
+        held.route.set(port, output);
+        held.tell_route();
+        Ok(held.route)
+    }
+
+    /// The slot and port that reach `output`, if any.
+    fn holder(&self, output: CvChannel) -> Option<(usize, usize)> {
+        for (slot, held) in self.slots.iter().enumerate() {
+            if let Some(held) = held {
+                for lane in 0..CV_CHANNELS {
+                    if held.route.output(lane) == Some(output) {
+                        return Some((slot, lane));
+                    }
+                }
+            }
+        }
+        None
+    }
+
+    /// A route for `ports` ports over the outputs no instance reaches, in
+    /// order: every port to the jack of its rank while one applet runs.
+    fn free_route(&self, ports: usize) -> Route {
+        let mut taken = [false; CV_CHANNELS];
+        for held in self.slots.iter().flatten() {
+            for lane in 0..CV_CHANNELS {
+                if let Some(output) = held.route.output(lane) {
+                    taken[output.index()] = true;
+                }
+            }
+        }
+        let mut route = Route::OFF;
+        let mut port = 0;
+        for output in CvChannel::ALL {
+            if port < ports && !taken[output.index()] {
+                route.set(port, Some(output));
+                port += 1;
+            }
+        }
+        route
+    }
+
+    /// Runs one tick of every instance: what each slot's lanes carry and
+    /// where they go. Only the one with the focus sees the panel.
+    pub fn update(&mut self, input: &InputSnapshot) -> [Routed<Sound>; MAX_INSTANCES] {
+        let mut quiet = *input;
+        quiet.silence_controls();
+        let focused = self.focused_slot();
+        let mut parts = [Routed::OFF; MAX_INSTANCES];
+        for (index, (slot, part)) in self.slots.iter_mut().zip(&mut parts).enumerate() {
+            if let Some(slot) = slot {
+                let input = if index == focused { input } else { &quiet };
+                *part = Routed {
+                    params: slot.instance.app_mut().update(input),
+                    route: slot.route,
+                };
+            }
+        }
+        parts
+    }
+
+    /// Draws the screen of the instance with the focus.
     pub fn render(&self, frame: &mut FrameBuffer, context: &TickContext) {
-        self.get(self.current).render(frame, context);
+        self.focused().render(frame, context);
     }
 }
 
@@ -458,13 +764,14 @@ impl Default for AppHost {
 
 #[cfg(test)]
 mod tests {
-    use super::InputSnapshot;
     use super::diagnostic::DiagnosticApp;
+    use super::param::Refused;
     use super::scope::ScopeApp;
-    use super::{AppHost, AppId};
+    use super::{App, AppHost, AppId, InputSnapshot, Instance};
     use crate::apps::sound::Params;
+    use crate::audio::Route;
     use crate::audio::basic::Channel;
-    use crate::platform::{CV_CHANNELS, MilliVolts};
+    use crate::platform::{CV_CHANNELS, CvChannel, MilliVolts};
 
     fn snapshot(cv1: MilliVolts, cv2: MilliVolts) -> InputSnapshot {
         let mut input = InputSnapshot {
@@ -498,25 +805,27 @@ mod tests {
     }
 
     #[test]
-    fn every_slot_holds_the_applet_that_names_it() {
-        let host = AppHost::new();
+    fn every_instance_is_the_applet_that_names_it() {
         for id in AppId::ALL {
-            assert_eq!(host.get(id).id(), id);
-            assert_eq!(host.get(id).name(), id.name());
+            let instance = Instance::new(id);
+            assert_eq!(instance.app().id(), id);
+            assert_eq!(instance.app().name(), id.name());
         }
-        assert!(host.find::<ScopeApp>().is_some());
     }
 
     #[test]
-    fn a_fresh_host_runs_the_diagnostic_applet() {
+    fn a_fresh_host_runs_the_diagnostic_applet_alone() {
         let host = AppHost::new();
         assert_eq!(host.current(), AppId::Diagnostic);
+        assert_eq!((host.len(), host.focus()), (1, 0));
+        assert_eq!(host.route(), Route::IDENTITY, "every output its own");
+        assert!(host.get(AppId::Scope).is_none(), "only what runs");
     }
 
     #[test]
     fn the_running_app_decides_what_the_outputs_carry() {
         let mut host = AppHost::new();
-        let diagnostic = host.update(&snapshot(1_000, 2_000));
+        let diagnostic = host.update(&snapshot(1_000, 2_000))[0].params;
         assert_eq!(
             diagnostic.as_basic().unwrap().channels[1],
             Channel::Level(2_000),
@@ -524,7 +833,7 @@ mod tests {
         );
 
         host.select(AppId::Scope);
-        let scope = host.update(&snapshot(1_000, 2_000));
+        let scope = host.update(&snapshot(1_000, 2_000))[0].params;
         assert_eq!(
             scope,
             Params::levels([1_000; CV_CHANNELS]),
@@ -533,40 +842,141 @@ mod tests {
     }
 
     #[test]
-    fn selecting_is_idempotent_and_resets_nothing() {
+    fn selecting_the_same_kind_keeps_it_another_starts_afresh() {
         let mut host = AppHost::new();
-        host.update(&snapshot(0, 4_000));
-        let before = *host.find::<DiagnosticApp>().unwrap().outputs();
-
-        host.select(AppId::Scope);
         host.select(AppId::Scope);
         host.update(&snapshot(1_000, 0));
-
+        host.select(AppId::Scope);
         assert_eq!(
-            *host.find::<DiagnosticApp>().unwrap().outputs(),
-            before,
-            "a frozen applet keeps the state it was left with"
+            host.find::<ScopeApp>().unwrap().level(),
+            1_000,
+            "idempotent"
         );
-        assert_eq!(host.current(), AppId::Scope);
+
+        host.select(AppId::Diagnostic);
+        host.select(AppId::Scope);
+        assert_eq!(
+            host.find::<ScopeApp>().unwrap().level(),
+            0,
+            "a new instance, not the one left (journal/D-046)"
+        );
+        assert!(host.find::<DiagnosticApp>().is_none());
     }
 
     #[test]
-    fn switching_away_and_back_preserves_the_other_app() {
+    fn a_new_instance_takes_the_free_outputs_and_the_focus() {
         let mut host = AppHost::new();
-        host.update(&snapshot(0, 3_000));
-        let mode = host.find::<DiagnosticApp>().unwrap().mode();
-        let selected = host.find::<DiagnosticApp>().unwrap().selected();
+        host.select(AppId::Ratchet);
+        assert_eq!(host.route(), Route::first(2), "A and B");
+        assert_eq!(host.add(AppId::Ratchet), Some(1));
+        assert_eq!((host.len(), host.focus()), (2, 1));
+        let mut second = Route::OFF;
+        second.set(0, Some(CvChannel::Three));
+        second.set(1, Some(CvChannel::Four));
+        assert_eq!(host.route(), second, "C and D");
+        assert_eq!(host.add(AppId::Tone), None, "every slot taken");
+    }
 
+    #[test]
+    fn every_instance_runs_and_only_the_focused_one_sees_the_panel() {
+        let mut host = AppHost::new();
         host.select(AppId::Scope);
-        host.update(&snapshot(500, 0));
-        host.select(AppId::Diagnostic);
-
-        assert_eq!(host.find::<DiagnosticApp>().unwrap().mode(), mode);
-        assert_eq!(host.find::<DiagnosticApp>().unwrap().selected(), selected);
+        host.add(AppId::Diagnostic);
+        let mut input = snapshot(1_500, 0);
+        input.controls.encoder_delta = [3, 0];
+        let parts = host.update(&input);
         assert_eq!(
-            host.find::<ScopeApp>().unwrap().level(),
-            500,
-            "the scope kept its own state too"
+            parts[0].params,
+            Params::levels([1_500; CV_CHANNELS]),
+            "the scope runs without the focus"
+        );
+        assert!(
+            parts[1].route.is_off(),
+            "the scope holds every output: none left for the second"
+        );
+        assert!(host.set_focus(0));
+        assert_eq!(host.current(), AppId::Scope);
+        assert!(!host.set_focus(2));
+    }
+
+    #[test]
+    fn an_output_is_never_shared() {
+        let mut host = AppHost::new();
+        host.select(AppId::Ratchet);
+        host.add(AppId::Ratchet);
+        assert_eq!(
+            host.set_route(1, 0, Some(CvChannel::One)),
+            Err(Refused::Taken),
+            "A belongs to the first"
+        );
+        assert_eq!(
+            host.set_route(1, 2, None),
+            Err(Refused::NoSuch),
+            "two ports"
+        );
+        assert!(host.set_route(0, 1, None).is_ok(), "the first frees B");
+        let route = host.set_route(1, 0, Some(CvChannel::Two)).unwrap();
+        assert_eq!(route.output(0), Some(CvChannel::Two));
+        assert_eq!(
+            host.set_route(1, 0, Some(CvChannel::Two)),
+            Ok(route),
+            "a port may keep its own output"
+        );
+    }
+
+    #[test]
+    fn removing_frees_the_outputs_and_moves_the_focus_left() {
+        let mut host = AppHost::new();
+        host.select(AppId::Ratchet);
+        assert!(!host.remove(), "the last instance stays");
+        host.add(AppId::Tone);
+        assert_eq!(host.route().output(0), Some(CvChannel::Three));
+        assert!(host.remove());
+        assert_eq!(
+            (host.len(), host.focus(), host.current()),
+            (1, 0, AppId::Ratchet)
+        );
+        host.add(AppId::Tone);
+        assert_eq!(
+            host.route().output(0),
+            Some(CvChannel::Three),
+            "C and D again: A and B stay RATCHET's"
+        );
+    }
+
+    #[test]
+    fn an_instance_keeps_its_slot_when_another_comes_left_of_it() {
+        let mut host = AppHost::new();
+        host.select(AppId::Ratchet);
+        host.add(AppId::Tone);
+        assert!(host.set_focus(0));
+        host.remove();
+        host.add(AppId::Scope);
+        // TONE stays in slot 1, where its voice is; SCOPE took slot 0.
+        assert_eq!(host.at(0).map(App::id), Some(AppId::Tone));
+        assert_eq!(host.at(1).map(App::id), Some(AppId::Scope));
+        assert_eq!(host.focused_slot(), 0);
+    }
+
+    #[test]
+    fn a_port_routed_nowhere_is_not_prepared() {
+        let mut host = AppHost::new();
+        host.select(AppId::Supersaw);
+        let parts = |host: &mut AppHost| {
+            host.update(&snapshot(0, 0))[0]
+                .params
+                .as_supersaw()
+                .unwrap()
+                .parts
+        };
+        assert!(parts(&mut host)[2].is_some(), "SUB on C");
+        host.set_route(0, 2, None).unwrap();
+        assert!(parts(&mut host)[2].is_none(), "SUB off: not prepared");
+        host.add(AppId::Ratchet);
+        assert_eq!(
+            (host.route().output(0), host.route().output(1)),
+            (Some(CvChannel::Three), Some(CvChannel::Four)),
+            "RATCHET takes the jacks SUPERSAW left"
         );
     }
 }

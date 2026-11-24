@@ -36,9 +36,8 @@ jusqu'au lot qui change le panneau (13d), et celui-là seulement là où les ges
 * `AppHost` devient un pool de `MAX_INSTANCES` emplacements (enum des apps de l'image), un focus ; `AppId` reste
   l'espèce et la clé persistée. Changer d'app dans un emplacement y met une instance neuve.
 * Toutes les instances mises à jour à chaque tick, le panneau à celle du focus, le rendu par elle seule.
-* Carte d'entrées par instance (identité par défaut) appliquée à son `InputSnapshot`.
-* Menu : remplacer l'app du focus, ajouter une instance à droite (sorties libres prises dans l'ordre), retirer
-  celle du focus. Démarrage : une instance de `startup_app`.
+* Démarrage : une instance de `startup_app`. La carte d'entrées passe en 13e (rien ne la règle avant la page de
+  routage), le menu en 13d.
 * Tests dans `oc-core` : deux `TONE` sur des sorties distinctes, recouvrement refusé, instance retirée (sorties à
   0 V), deux fois la même app aux réglages indépendants.
 
@@ -48,11 +47,16 @@ jusqu'au lot qui change le panneau (13d), et celui-là seulement là où les ges
   accord = menu (révision de D-021).
 * Les actions des apps sur `up` / `down` déplacées (D-046, § 3) ; `UPDATE_SCREENS` là où le geste change, diff
   relu.
+* Menu : remplacer l'app du focus, ajouter une instance à droite (sorties libres prises dans l'ordre), retirer
+  celle du focus ; le menu remplit l'écran, il lui faut le défilement.
 * Indicateur du moteur : 4 pixels verticaux à gauche du nom de l'applet, un par emplacement, caché avec une
   instance ; le nom de chaque app à une place commune (les apps qui le posent ailleurs s'alignent, écrans de
   référence régénérés et relus) ; marque du focus à essayer.
 
 ### 13e — page de routage
+
+* Carte d'entrées par instance (identité par défaut) appliquée à son `InputSnapshot` ; les assignations de CV
+  lisent alors les entrées de l'instance (D-046, § 5 : à confirmer).
 
 * Écran du moteur, commun : ports de sortie de l'instance au focus vers `A` à `D` ou `OFF` (sorties d'autres
   instances marquées et sautées), ports d'entrée vers `CV1` à `CV4` / `TR1` à `TR4`. Écran de référence nouveau,

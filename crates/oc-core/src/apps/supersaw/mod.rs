@@ -39,7 +39,7 @@ use crate::gfx::{self, Ink, Point};
 use crate::modulation::editor::Param;
 use crate::modulation::slots::Modulations;
 use crate::modulation::{Assign, AssignLine, Effect, multiplied};
-use crate::platform::{Button, CvChannel, MilliVolts};
+use crate::platform::{Button, CV_CHANNELS, CvChannel, MilliVolts};
 use crate::text::fonts::FONT_5X8;
 use crate::text::{self, Alignment, TextStyle};
 
@@ -291,6 +291,9 @@ pub struct SupersawApp {
     width: u16,
     level: MilliVolts,
     stereo: bool,
+    /// Whether each of A, B and `SUB` reaches a jack: a part nobody hears
+    /// is not prepared (journal/D-046).
+    routed: [bool; 3],
     /// The input of each setting that takes one (see `Setting::input_slot`),
     /// and the submenu.
     inputs: Modulations<6>,
@@ -309,6 +312,7 @@ impl SupersawApp {
             width: SQUARE_WIDTH,
             level: DEFAULT_LEVEL_MV,
             stereo: false,
+            routed: [true; 3],
             inputs: Modulations::new(DEFAULT_ASSIGNS),
         }
     }
@@ -383,8 +387,13 @@ impl SupersawApp {
                 width: self.played_width(),
                 amplitude: self.played_level(),
             },
-            // D rests at 0 V.
-            parts: [Some(a), Some(b), Some(Part::Sub), None],
+            // D rests at 0 V; a part routed nowhere is not prepared.
+            parts: [
+                self.routed[0].then_some(a),
+                self.routed[1].then_some(b),
+                self.routed[2].then_some(Part::Sub),
+                None,
+            ],
         })
     }
 
@@ -786,6 +795,10 @@ impl App for SupersawApp {
 
     fn output_ports(&self) -> &'static [Port] {
         &PORTS
+    }
+
+    fn set_routed(&mut self, routed: [bool; CV_CHANNELS]) {
+        self.routed = [routed[0], routed[1], routed[2]];
     }
 
     fn update(&mut self, input: &InputSnapshot) -> Params {

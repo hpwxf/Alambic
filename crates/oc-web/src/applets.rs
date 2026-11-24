@@ -639,6 +639,14 @@ mod tests {
             module
         }
 
+        /// A module running `app`: an applet is set only while it runs
+        /// (journal/D-046).
+        fn running(app: AppId) -> Self {
+            let mut module = Self::new();
+            module.engine.select_app(app);
+            module
+        }
+
         /// What the page receives for `bytes`.
         fn send(&mut self, bytes: &[u8]) -> Vec<Message> {
             self.server.receive(bytes, &mut self.engine);
@@ -678,7 +686,7 @@ mod tests {
 
     #[test]
     fn a_view_shows_edits_and_sets_as_the_command_line_does() {
-        let mut module = Module::new();
+        let mut module = Module::running(AppId::Ratchet);
         let ratchet = u8::try_from(AppId::Ratchet.index()).unwrap();
         let mut view = AppView::new(ratchet);
         for message in module.send(&view.describe_request()) {
@@ -770,7 +778,7 @@ mod tests {
         use oc_core::platform::CvChannel;
         use oc_protocol::Effect;
 
-        let mut module = Module::new();
+        let mut module = Module::running(AppId::Supersaw);
         let supersaw = u8::try_from(AppId::Supersaw.index()).unwrap();
         let mut view = AppView::new(supersaw);
         for message in module.send(&view.describe_request()) {
@@ -847,7 +855,7 @@ mod tests {
             readings
         }
 
-        let mut module = Module::new();
+        let mut module = Module::running(AppId::Supersaw);
         let mut view = AppView::new(u8::try_from(AppId::Supersaw.index()).unwrap());
         for message in module.send(&view.describe_request()) {
             if view.absorb(&message) {

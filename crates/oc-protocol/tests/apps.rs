@@ -1,8 +1,8 @@
 //! The applets reached through the probe (journal/D-043): listed,
 //! described, set and asked through the model the panel uses.
 
-use oc_core::apps::AppId;
 use oc_core::apps::ratchet::RatchetApp;
+use oc_core::apps::{AppId, Instance};
 use oc_core::testing::{MockEngine, mock_engine};
 use oc_protocol::server::{Identity, Server};
 use oc_protocol::{
@@ -27,6 +27,14 @@ fn opened() -> (Server, MockEngine) {
         &mut engine,
         &Request::Hello { protocol: VERSION },
     );
+    (server, engine)
+}
+
+/// A session open on a fresh engine running `RATCHET`: an applet is set
+/// only while it runs (journal/D-046).
+fn running_ratchet() -> (Server, MockEngine) {
+    let (server, mut engine) = opened();
+    engine.select_app(AppId::Ratchet);
     (server, engine)
 }
 
@@ -64,7 +72,8 @@ fn every_applet_is_listed_with_what_it_declares() {
     let mut frames = replies(&mut server, &mut engine, &Request::ListApps);
     assert_eq!(frames.len(), AppId::ALL.len() + 1);
     for (id, frame) in AppId::ALL.into_iter().zip(&mut frames) {
-        let app = engine.apps().get(id);
+        let fresh = Instance::new(id);
+        let app = fresh.app();
         assert_eq!(
             decode::<Reply<'_>>(frame),
             Ok(Reply::App {
@@ -152,7 +161,7 @@ fn an_applet_is_described_with_its_values_and_choice_names() {
 
 #[test]
 fn a_parameter_set_from_afar_is_the_applets() {
-    let (mut server, mut engine) = opened();
+    let (mut server, mut engine) = running_ratchet();
     let prob = 5;
     assert_eq!(
         ask(
@@ -195,7 +204,7 @@ fn a_parameter_set_from_afar_is_the_applets() {
 
 #[test]
 fn refusals_say_why() {
-    let (mut server, mut engine) = opened();
+    let (mut server, mut engine) = running_ratchet();
     assert_eq!(
         ask(&mut server, &mut engine, &Request::DescribeApp { app: 99 }),
         Reply::Error(Error::NoSuchApp)
@@ -275,7 +284,7 @@ fn an_action_and_a_selection_act_as_the_panel_does() {
 
 #[test]
 fn a_label_follows_the_setting_that_changes_it() {
-    let (mut server, mut engine) = opened();
+    let (mut server, mut engine) = running_ratchet();
     let label_of_first = |server: &mut Server, engine: &mut MockEngine| {
         let mut frames = replies(server, engine, &Request::DescribeApp { app: RATCHET });
         frames
@@ -318,7 +327,7 @@ fn an_input_is_read_and_set_from_afar_by_its_parameters_index() {
     use oc_core::platform::CvChannel;
     use oc_protocol::{Assign, Effect};
 
-    let (mut server, mut engine) = opened();
+    let (mut server, mut engine) = running_ratchet();
     let count = 0;
     let Reply::Assign {
         index,
