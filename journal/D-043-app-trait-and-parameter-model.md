@@ -6,7 +6,7 @@
 | **Date** | 2026-11-20 |
 | **Auteur** | Pascal Havé |
 | **Statut** | adoptée, révisée |
-| **Commits** | ce commit (ADR seule) ; implémentation au premier lot qui l'adoptera |
+| **Commits** | `8e475a4` (ADR) ; `f295b3f` (10a), `dc042fc` (10b), `b5c444a` (10d), `ff2c4e4` (10e) ; adoptée en `8b241ee` (10c) ; révisions `0ffeee3`, `69df592`, `f80ed9a` ; étape close le 2026-11-24 |
 | **Relations** | révisera D-021 (`AppHost` fermé, une instance de chaque app) et précisera D-002 (ce que le cœur sait des apps) ; laisse intacts D-033 et D-040 (l'interruption ne voit que `Setup` et `Voice`) ; la modulation de D-035 / D-036 et la persistance de D-028 deviennent des consommateurs du modèle ; la sonde de D-029 en est un consommateur prévu ; D-042 se rouvre quand plusieurs apps tourneront ensemble |
 
 ## 1. Contexte
