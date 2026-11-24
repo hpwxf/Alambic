@@ -21,6 +21,7 @@ ne recharge que ce dont elle a besoin (journal/D-001).
 | `docs/plan/etape-7-chemin-audio.md` | plan de l'étape 7 : chemin audio, DAC à 48 kHz (D-033) |
 | `docs/plan/etape-8-supersaw.md` | plan de l'étape 8 : applet Supersaw, premier oscillateur (D-037) |
 | `docs/plan/etape-12-assignation-sonde.md` | plan de l'étape 12 : assignation des CV par le trait `App` et la sonde, sous-panneau commun (D-045) |
+| `docs/plan/etape-13-applets-simultanees.md` | plan de l'étape 13 : plusieurs applets à la fois, ports routés (D-046) |
 | `docs/hardware.md` | le matériel du module : principes, ce que disent les fiches, ce module et ses mesures ; glossaire |
 | `docs/plan/rapport-etape-7-chemin-audio.md` | rapport détaillé de l'étape 7 : essais, échecs, analyses et correctifs, du DAC à 1 kHz au DAC en DMA |
 | `docs/plan/panique-persistante.md` | préparé, non décidé : garder le message d'une panique à travers un redémarrage (D-018) |
@@ -61,6 +62,23 @@ comportemental (`oc-core`, D-002). Les applets musicaux sont la suite.
 | **10** — apps modulaires : trait `App` et modèle de paramètres (2026-11-20 → 11-24) | ✅ trait `App` et registre (`&dyn App`, `find::<T>()`), accesseurs par app retirés ; modèle de paramètres, d'observables et d'actions (`ParamSpec`, `ParamValue`, `Refused`) pour les six apps ; protocole v4 à v6 (`ListApps`, `DescribeApp`, `GetParam`, `SetParam`, `Observe`, `Act`, `SelectApp`, libellé, faces inactives), CLI et panneau *Apps* de la page ; `.text` +9,2 Kio ; `voice` et `audio` inchangés sur le module ; page essayée dans Chrome sur le module (D-043). Réserves : observables hors `Stream`, pas d'`AppKey`, une seule app à la fois (étape 13) | [etape-10.md](docs/plan/avancement/etape-10.md) |
 | **11** — générateurs audio (2026-11-21) | ✅ trait `Generator`, `Params` / `Setup` / `Voice` génériques, générateurs `Basic` et `SupersawBank` composés dans `apps/sound.rs` ; le banc dans l'app `SUPERSAW`, `oc_core::audio` ne nomme plus d'applet ; maintien par la sonde en surcouche ; échantillons identiques au bit près ; sur le module `voice` 1,68 → 1,56 µs, `voice_params` 0,47 → 0,50 µs ; `.text` +1,4 Kio (D-044) ; le moteur ne rend plus de voix, chaque backend joue la sienne, un seul `Setup` par changement : `tick` 21,1 → 15,0 µs sous CV, voix de `SUPERSAW` écoutées sur le module (D-040). Réserves : composition à la main, un générateur à la fois, pas de bibliothèque DSP | [etape-11.md](docs/plan/avancement/etape-11.md) |
 | **12** — assignation des CV par la sonde (2026-11-22 → 11-24) | ✅ état du sous-menu commun (`modulation::slots::Modulations`), assignation au trait `App` (`assigns` / `assigns_mut` / `assign_sweep`, `assign` / `set_assign` sur `dyn App`) ; protocole 8 (`GetAssign`, `SetAssign`) ; `cargo probe assign`, `CENTER` côté hôte ; un seul sous-panneau CV dans la page, `CENTER` compris ; pile de `DescribeApp` ramenée sous `.stack` (14 628 o), surveillée par `cargo xtask size` ; écrans de référence identiques ; essayé sur le module (CLI et page) (D-045). Réserves : `CENTER` de la page pas essayé sur le module, assignations non sauvegardées | [etape-12.md](docs/plan/avancement/etape-12.md), [plan](docs/plan/etape-12-assignation-sonde.md) |
+
+### Étape 13 — plusieurs applets à la fois, ports routés vers les E/S physiques (en cours)
+
+Demandée le 2026-11-24 (D-046, proposée ; [plan](docs/plan/etape-13-applets-simultanees.md)) : deux instances
+d'abord, éventuellement de la même app, entrées partagées, sorties réparties sans recouvrement ou désactivées ; une
+seule à l'écran, `up` / `down` court pour changer d'instance, long pour sa page de routage, indicateur en haut ;
+la sonde par instance. Étape 3 de la trajectoire de D-043.
+
+| Lot | Contenu | État |
+|---|---|---|
+| **13a** — ADR et plan | D-046 proposée, plan de l'étape | ✅ |
+| **13b** — sorties en ports | `output_ports`, `Route`, une voix par instance, maintien de la sonde après le routage, `MAILBOX` à `[Setup; MAX_INSTANCES]` ; une instance : échantillons et écrans identiques | |
+| **13c** — instances | pool, focus, toutes mises à jour, carte d'entrées, menu (remplacer, ajouter, retirer) | |
+| **13d** — panneau | appui court (instance) / long (routage, 1 s), actions `up` / `down` des apps déplacées, indicateur de 4 pixels à gauche du nom (révision de D-021) | |
+| **13e** — page de routage | écran du moteur commun aux apps | |
+| **13f** — sonde | protocole 9 par instance, CLI, page | |
+| **13g** — module | deux `SUPERSAW`, `RATCHET` + `SUPERSAW` : profil, écoute, TESTING ; adoption de D-046 | |
 
 ## Décisions actées
 
@@ -103,5 +121,6 @@ Valeurs seules ; le raisonnement est dans `journal/`.
 | chemin audio | **47 619 Hz** (PERCLK / 21 ; 48 kHz impossible, quartz de GPT2 muet) ; le canal 0 du PIT déclenche le DMA qui écrit les quatre voies du DAC à chaque période (instant fixé par le matériel) ; `DAC_CS` en PCS0 matériel, DAC à 22 MHz (plafond 25 MHz en 3,3 V) ; l'interruption de fin de copie du DMA calcule l'échantillon et cède des tronçons à l'OLED, celle de LPSPI4 relève son CS ; voix séparée du contrôle, préparée dans la boucle (`Setup`), copiée par l'interruption ; générateurs (`Generator`) composés dans `apps/sound.rs`, aiguillage statique, `audio` ne nomme aucune applet ; applet `TONE` | D-033, D-040, D-044 |
 | rendu audio | un échantillon par période, calculé dans l'interruption de fin de copie du DMA, deux emplacements d'avance (≈ 60 µs) ; pas de blocs tant que `voice` reste loin de la moitié de la période ; `Voice::next_sample` seule API de `oc-core` | D-042 |
 | assignation des CV | une entrée par paramètre assignable, nommée par l'index du paramètre (son rang parmi les `assignable`) ; état du sous-menu commun (`modulation::slots::Modulations`) ; trait `assigns` / `assigns_mut` / `assign_sweep`, `assign` / `set_assign` sur `dyn App` ; sonde : `GetAssign`, `SetAssign` (protocole 8), CLI `cargo probe assign`, `CENTER` côté hôte (CLI et page, même `Assign::center`) ; un seul sous-panneau web | D-045 |
+| applets simultanées (proposée) | pool fixe de `MAX_INSTANCES` instances (deux essayées d'abord), `AppId` = espèce ; ports de sortie routés vers `A` à `D` sans recouvrement, ou désactivés ; carte d'entrées par instance ; une `Voice` et un `Setup` par instance ; focus au panneau (`up` / `down` court), page de routage (appui long), indicateur ; protocole 9 par instance | D-046 |
 | applet Supersaw | sept scies PolyBLEP en `f32` (phases entières), désaccord et mix de Szabo, passe-haut sur la fondamentale ; banc dans l'app (générateur `SupersawBank`) partagé par les sorties : A / B mono ou stéréo, C sub-octave ; entrées assignables par `oc_core::modulation` sauf `STEREO`, CV1 en V/oct sur `NOTE` au démarrage ; ×4 non nécessaire (repliement mesuré) ; forme de la scie au carré (`SHAPE`) ; scies descendantes, `LEVEL` à 3 V au plus | D-037, D-044 |
 | budget mémoire | disposition de `teensy4-bsp`, reprise dans le `build.rs` d'`oc-firmware` (sans la feature `rt`) : code en ITCM, bancs 6 / 10 (192 + 320 Kio) ; coût d'une applet par différence de `xtask size` ; budgets lus dans l'ELF (`__flexram_config`), alerte sous 16 Kio d'ITCM libres ; code froid (USB, sonde, réglages) en `opt-level = "s"` ; ITCM à court : bancs repartagés, puis code en flash ; tampon de mesure : feature de test, `.uninit` en OCRAM ; arena dans `oc-core` au premier grand usage d'applet ; tampons du DMA en DTCM ; profondeur de la pile estimée par `cargo xtask size` (`stack-depth` : `FAIL` au-delà de `.stack`, `warn` sous 2 Kio) | D-038 |
