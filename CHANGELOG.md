@@ -65,6 +65,15 @@ Architectural decisions behind each change are in `journal/` (French).
   time; `up` and `down` show one or the other, marked by a column of pixels
   left of the title. Every applet's title moved three pixels right to make
   room. The menu scrolls.
+- **Instances through the probe** (journal/D-046), probe protocol 9: a
+  module and a host tool must be updated together. `cargo probe add`,
+  `instances`, `route @N port=jack…`, `focus @N` and `remove @N` do what
+  the menu and the routing page do; every command that names an applet
+  takes `@N` for the instance at position N, a name still naming the first
+  instance of that applet (or a fresh one, to describe one that does not
+  run). `cargo probe app` lists the applet's ports. In the browser tool,
+  the Apps panel has a button per instance running (show it, ✕ to stop
+  it), *Add beside*, and the shown instance's routing as lists.
 - **A routing page per applet** (journal/D-046), opened and closed by a
   long press of `up` or `down`: each output port to a jack or `OFF`, never
   one another applet holds (`SUPERSAW`'s `SUB` turned off stops being

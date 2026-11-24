@@ -21,14 +21,16 @@ mod applets;
 use wasm_bindgen::prelude::wasm_bindgen;
 
 use applets::Applet;
-pub use applets::{AppList, AppView, Editor, Readings};
+pub use applets::{AppList, AppView, Editor, Instances, Readings};
 
 use oc_core::framebuffer::LEN;
 use oc_halfkay::Report;
 use oc_image::flash::{FlashImage, Format, firmware_image};
-use oc_probe::client::{AppEntry, InputEntry, ProbeError, SpecEntry};
+use oc_probe::client::{AppEntry, InputEntry, InstanceEntry, ProbeError, SpecEntry};
 use oc_probe::{apps, render};
-use oc_protocol::{Error, FrameReader, MAX_FRAME, Reply, Request, Sample, VERSION, decode, encode};
+use oc_protocol::{
+    Error, FrameReader, MAX_FRAME, Reply, Request, Sample, Target, VERSION, decode, encode,
+};
 
 /// The probe port's USB vendor identifier, for the Web Serial port filter.
 #[wasm_bindgen]
@@ -130,14 +132,19 @@ pub fn request_list_apps() -> Vec<u8> {
 #[wasm_bindgen]
 #[must_use]
 pub fn request_describe_app(app: u8) -> Vec<u8> {
-    frame(&Request::DescribeApp { app })
+    frame(&Request::DescribeApp {
+        app: Target::App(app),
+    })
 }
 
 /// Asks applet `app` for action `action`.
 #[wasm_bindgen]
 #[must_use]
 pub fn request_act(app: u8, action: u8) -> Vec<u8> {
-    frame(&Request::Act { app, action })
+    frame(&Request::Act {
+        app: Target::App(app),
+        action,
+    })
 }
 
 /// Hands the outputs and the screen to applet `app`.
@@ -334,6 +341,50 @@ impl Message {
                 format!("  {index} CV {}", apps::input_text(&assign)),
                 Applet::Input(index, InputEntry { assign, sweep }),
             ),
+            reply @ (Reply::Port { .. } | Reply::Instance { .. }) => Self::from_routing(&reply),
+        }
+    }
+
+    /// A port of a description, or an instance (journal/D-046).
+    fn from_routing(reply: &Reply<'_>) -> Self {
+        match *reply {
+            Reply::Port {
+                output,
+                index,
+                name,
+                trigger,
+            } => Self::applet(
+                format!(
+                    "{} {index} {name}{}",
+                    if output { "output" } else { "input" },
+                    if trigger { " (trigger)" } else { "" }
+                ),
+                Applet::Port {
+                    output,
+                    name: name.to_owned(),
+                    trigger,
+                },
+            ),
+            Reply::Instance {
+                position,
+                app,
+                focused,
+                outputs,
+                inputs,
+            } => Self::applet(
+                format!(
+                    "instance {position}: app {app}{}",
+                    if focused { " (focused)" } else { "" }
+                ),
+                Applet::Instance(InstanceEntry {
+                    position,
+                    app,
+                    focused,
+                    outputs,
+                    inputs,
+                }),
+            ),
+            _ => Self::with_text(MessageKind::Error, "not a routing reply".to_owned()),
         }
     }
 }

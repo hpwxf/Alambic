@@ -517,6 +517,15 @@ With the module running and the USB cable on the Teensy (journal/D-029):
    supersaw detune --center 5` sets the scale and shift that `CENTER` would,
    and the submenu opened on the panel shows the same fields;
    `cargo probe assign supersaw stereo` says it takes no CV input.
+   Instances (journal/D-046, protocol 9): with `SUPERSAW` running,
+   `cargo probe add ratchet` prints `* @1 RATCHET` and the module shows it,
+   its marks left of the title; `cargo probe instances` lists both, `@0`
+   on `A`, `B`, `SUB -> C`, `@1` on `A -> D`, `B -> OFF`, `CLOCK <- TR1`;
+   `cargo probe route @0 sub=off` frees C, `cargo probe route @1 b=c`
+   takes it, `cargo probe route @1 a=b` is refused (`Taken`);
+   `cargo probe set @1 prob 50` reaches the second app alone; `focus @0`
+   shows `SUPERSAW` again, `remove @1` stops `RATCHET` and C and D fall to
+   0 V.
 7. `cargo probe reboot`, then `cargo xtask flash`: the flash goes through with
    no PROGRAM press.
 

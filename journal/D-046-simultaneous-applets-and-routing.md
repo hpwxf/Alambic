@@ -256,3 +256,21 @@ recopié dans chaque appelant ; ramenés par une boucle à un passage et `#[inli
   `SUB` coupée et plus préparée ; deux `RATCHET`, la seconde cadencée par `TR2`) ; scénario et écran de référence
   `routing`.
 * Coût : `.text` +2 712 o, `.rodata` +272 o ; pile ≈ 11 648 o.
+
+## Lot 13f (2026-11-24) — la sonde, protocole 9
+
+* **Une cible au lieu d'un indice d'app** : `Target::App(n)` (la première instance du genre `n`, une neuve pour
+  décrire ou lire un genre qui ne tourne pas, jamais pour écrire) ou `Target::Instance(p)` (la position `p`), dans
+  `DescribeApp`, `GetParam`, `SetParam`, `Observe`, `Act`, `GetAssign`, `SetAssign`. `ListApps` et `SelectApp`
+  restent par genre (`SelectApp` remplace l'app au focus).
+* **Nouvelles requêtes** : `ListInstances`, `AddInstance`, `RemoveInstance`, `Focus`, `SetRoute`, `SetInput` ;
+  réponses `Reply::Instance` (position, app, focus, la prise de chaque port de sortie, celle de chaque port
+  d'entrée) et `Reply::Port` à la fin d'une description (le nom de chaque port, le genre d'une entrée).
+  `Refused::Taken` passe sur le fil.
+* **CLI** : `@N` partout où une app est nommée ; `instances`, `add`, `remove`, `focus`, `route @N port=jack…` ;
+  `app` imprime les ports. Lecture et écriture des prises dans `oc_probe::apps` (`parse_output`, `parse_jack`,
+  `find_port`, `routing_text`), testées sur l'hôte.
+* **Page** : `oc_web::Instances` et `AppView::of_instance` (testés contre le vrai serveur) ; un bouton par instance
+  (la montrer sur le module et dans la page, ✕ pour l'arrêter), *Add beside*, la table de routage de l'instance
+  affichée, des listes qui envoient à chaque changement. Pas encore essayée dans Chrome.
+* Coût : `.text` +3 256 o (≈ 24,4 Kio d'ITCM libres), pile inchangée (≈ 11 648 o).

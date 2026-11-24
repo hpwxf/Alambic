@@ -382,6 +382,11 @@ cargo probe act ratchet burst  # an action, here a burst as the left click start
 cargo probe select tone        # hand it the outputs and the screen
 cargo probe assign supersaw detune input=cv2 effect=add  # a parameter's CV input, field by field
 cargo probe assign supersaw detune --center 5  # fit it to what CV2 carries, as CENTER does
+cargo probe add ratchet        # start RATCHET beside the app shown, on the free outputs
+cargo probe instances          # the apps running, @0 @1..., where their ports go
+cargo probe route @0 sub=off   # its routing page from afar: sub=off, a=d, clock=tr2
+cargo probe set @1 prob 50     # @N names one instance; a name, the first of that app
+cargo probe focus @1           # show it on the screen; `remove @1` stops it
 ```
 
 `cargo probe` is an alias of `cargo run -q -p oc-probe --`. The tool finds the

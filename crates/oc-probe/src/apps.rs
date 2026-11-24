@@ -15,7 +15,7 @@ use oc_core::modulation::{AssignLine, CENTER_MIN_SPAN_MV, usable_range};
 use oc_core::platform::CvChannel;
 use oc_protocol::{Assign, Effect, ParamKind, ParamValue, Sample};
 
-use crate::client::{AppDescription, AppEntry, InputEntry, SpecEntry};
+use crate::client::{AppDescription, AppEntry, InputEntry, InstanceEntry, SpecEntry};
 use crate::measure;
 
 /// A name as the user may type it: case and anything but letters and
@@ -61,6 +61,104 @@ pub fn find_action(actions: &[String], query: &str) -> Option<u8> {
         .iter()
         .position(|name| folded(name) == query)
         .and_then(|index| u8::try_from(index).ok())
+}
+
+/// The instance position `query` names when it is written `@N`
+/// (journal/D-046); `None` for an applet's name or index.
+#[must_use]
+pub fn instance_position(query: &str) -> Option<u8> {
+    query.strip_prefix('@')?.parse().ok()
+}
+
+/// What a port of an instance is: an output, or an input.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PortRef {
+    /// Output port `n`.
+    Output(u8),
+    /// Input port `n`, reading a trigger when `trigger`.
+    Input(u8, bool),
+}
+
+/// The port `query` names in `description`: an output's name first, then an
+/// input's, case and punctuation ignored.
+#[must_use]
+pub fn find_port(description: &AppDescription, query: &str) -> Option<PortRef> {
+    let query = folded(query);
+    if let Some(index) = description
+        .outputs
+        .iter()
+        .position(|name| folded(name) == query)
+    {
+        return u8::try_from(index).ok().map(PortRef::Output);
+    }
+    let index = description
+        .inputs
+        .iter()
+        .position(|port| folded(&port.name) == query)?;
+    let trigger = description.inputs[index].trigger;
+    u8::try_from(index)
+        .ok()
+        .map(|index| PortRef::Input(index, trigger))
+}
+
+/// The output `text` names, `a` to `d`, or `None` for `off`.
+///
+/// # Errors
+///
+/// Anything else, said in words.
+pub fn parse_output(text: &str) -> Result<Option<u8>, String> {
+    match folded(text).as_str() {
+        "off" | "none" => Ok(None),
+        "a" => Ok(Some(0)),
+        "b" => Ok(Some(1)),
+        "c" => Ok(Some(2)),
+        "d" => Ok(Some(3)),
+        _ => Err(format!("{text}: an output is A, B, C, D or OFF")),
+    }
+}
+
+/// The jack `text` names among a port's kind: `cv1` to `cv4`, or `tr1` to
+/// `tr4` for a trigger, 0 for the first.
+///
+/// # Errors
+///
+/// A jack of the other kind, or none at all.
+pub fn parse_jack(text: &str, trigger: bool) -> Result<u8, String> {
+    let folded = folded(text);
+    let (prefix, other) = if trigger { ("tr", "cv") } else { ("cv", "tr") };
+    if folded.starts_with(other) {
+        return Err(format!("{text}: this input reads a {prefix} jack"));
+    }
+    folded
+        .strip_prefix(prefix)
+        .and_then(|number| number.parse::<u8>().ok())
+        .filter(|number| (1..=4).contains(number))
+        .map(|number| number - 1)
+        .ok_or_else(|| format!("{text}: a jack is {prefix}1 to {prefix}4"))
+}
+
+/// Where an instance's ports go, one per line: `SUB -> OFF`, `CLOCK <- TR2`.
+#[must_use]
+pub fn routing_text(description: &AppDescription, instance: &InstanceEntry) -> String {
+    const OUTPUTS: [&str; 4] = ["A", "B", "C", "D"];
+    let mut text = String::new();
+    for (index, name) in description.outputs.iter().enumerate() {
+        let jack = instance
+            .outputs
+            .get(index)
+            .copied()
+            .flatten()
+            .and_then(|jack| OUTPUTS.get(usize::from(jack)))
+            .copied()
+            .unwrap_or("OFF");
+        let _ = writeln!(text, "{name} -> {jack}");
+    }
+    for (index, port) in description.inputs.iter().enumerate() {
+        let jack = instance.inputs.get(index).copied().unwrap_or(0) + 1;
+        let kind = if port.trigger { "TR" } else { "CV" };
+        let _ = writeln!(text, "{} <- {kind}{jack}", port.name);
+    }
+    text
 }
 
 /// `value` as the module writes it: `-3.0 OCT`, `50.0%`, `SPAN`, `A4`, `ON`.
@@ -385,6 +483,17 @@ pub fn description_text(app: &AppEntry, description: &AppDescription) -> String 
     if !description.actions.is_empty() {
         let _ = writeln!(out, "actions: {}", description.actions.join(", "));
     }
+    if !description.outputs.is_empty() {
+        let _ = writeln!(out, "outputs: {}", description.outputs.join(", "));
+    }
+    if !description.inputs.is_empty() {
+        let names: Vec<_> = description
+            .inputs
+            .iter()
+            .map(|port| format!("{} ({})", port.name, if port.trigger { "TR" } else { "CV" }))
+            .collect();
+        let _ = writeln!(out, "inputs: {}", names.join(", "));
+    }
     out
 }
 
@@ -654,5 +763,49 @@ mod tests {
             "{text}"
         );
         assert!(!rows[0].contains("CV"), "LONG takes no input: {text}");
+    }
+
+    #[test]
+    fn ports_jacks_and_instances_read_from_text() {
+        use super::{
+            PortRef, find_port, instance_position, parse_jack, parse_output, routing_text,
+        };
+        use crate::client::{InputPortEntry, InstanceEntry};
+
+        assert_eq!(instance_position("@1"), Some(1));
+        assert_eq!(instance_position("1"), None, "an applet's index");
+        assert_eq!(parse_output("off"), Ok(None));
+        assert_eq!(parse_output("D"), Ok(Some(3)));
+        assert!(parse_output("e").is_err());
+        assert_eq!(parse_jack("tr2", true), Ok(1));
+        assert_eq!(parse_jack("CV4", false), Ok(3));
+        assert!(parse_jack("cv1", true).is_err(), "a trigger input");
+        assert!(parse_jack("tr5", true).is_err());
+
+        let description = AppDescription {
+            outputs: vec!["A".to_owned(), "B".to_owned()],
+            inputs: vec![InputPortEntry {
+                name: "CLOCK".to_owned(),
+                trigger: true,
+            }],
+            ..AppDescription::default()
+        };
+        assert_eq!(find_port(&description, "b"), Some(PortRef::Output(1)));
+        assert_eq!(
+            find_port(&description, "clock"),
+            Some(PortRef::Input(0, true))
+        );
+        assert_eq!(find_port(&description, "sub"), None);
+        let instance = InstanceEntry {
+            position: 1,
+            app: 3,
+            focused: true,
+            outputs: [Some(3), None, None, None],
+            inputs: [1, 0, 0, 0],
+        };
+        assert_eq!(
+            routing_text(&description, &instance),
+            "A -> D\nB -> OFF\nCLOCK <- TR2\n"
+        );
     }
 }

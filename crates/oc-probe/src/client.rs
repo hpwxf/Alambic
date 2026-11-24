@@ -13,7 +13,7 @@ use oc_core::framebuffer::LEN;
 use oc_core::platform::{CvChannel, MilliVolts};
 use oc_protocol::{
     Assign, Error, FrameReader, Group, MAX_FRAME, ParamKind, ParamValue, Profile, Reply, Request,
-    SCREEN_PAGES, Sample, VERSION, decode, encode,
+    SCREEN_PAGES, Sample, Target, VERSION, decode, encode,
 };
 
 /// What went wrong talking to the module.
@@ -117,6 +117,16 @@ pub struct InputEntry {
     pub sweep: Option<(MilliVolts, MilliVolts)>,
 }
 
+/// One input an applet reads by itself, which its routing plugs into a
+/// jack (journal/D-046).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct InputPortEntry {
+    /// Its name, as the routing page shows it.
+    pub name: String,
+    /// Whether it reads a trigger rather than a CV.
+    pub trigger: bool,
+}
+
 /// Everything an applet declares, with its values when described.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct AppDescription {
@@ -126,6 +136,25 @@ pub struct AppDescription {
     pub observables: Vec<SpecEntry>,
     /// What it can be asked to do, by index.
     pub actions: Vec<String>,
+    /// The outputs it writes, by name, in the order of its lanes.
+    pub outputs: Vec<String>,
+    /// The inputs it reads by itself.
+    pub inputs: Vec<InputPortEntry>,
+}
+
+/// One running instance (journal/D-046).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct InstanceEntry {
+    /// Its position on the panel, left to right.
+    pub position: u8,
+    /// Its applet's index.
+    pub app: u8,
+    /// Whether it has the screen and the panel.
+    pub focused: bool,
+    /// The output each output port goes to (0 for A), `None` for nowhere.
+    pub outputs: [Option<u8>; 4],
+    /// The jack each input port reads (0 for `CV1` or `TR1`).
+    pub inputs: [u8; 4],
 }
 
 impl AppDescription {
@@ -201,6 +230,12 @@ enum Answer {
     Value(ParamValue),
     Observed(Option<ParamValue>),
     Input(u8, InputEntry),
+    Port {
+        output: bool,
+        name: String,
+        trigger: bool,
+    },
+    Instance(InstanceEntry),
 }
 
 /// A session with one module.
@@ -356,13 +391,15 @@ impl<T: Read + Write> Client<T> {
         }
     }
 
-    /// What applet `app` declares, with its values now.
+    /// What applet `app` declares, with its values now: an applet's index
+    /// names its first instance (or a fresh one while none runs), a
+    /// [`Target::Instance`] one instance.
     ///
     /// # Errors
     ///
     /// As [`Self::hello`]; no applet at that index.
-    pub fn describe(&mut self, app: u8) -> Result<AppDescription> {
-        self.send(&Request::DescribeApp { app })?;
+    pub fn describe(&mut self, app: impl Into<Target>) -> Result<AppDescription> {
+        self.send(&Request::DescribeApp { app: app.into() })?;
         let mut description = AppDescription::default();
         loop {
             match self.next_answer()? {
@@ -374,6 +411,14 @@ impl<T: Read + Write> Client<T> {
                 Answer::Input(index, input) => description
                     .add_input(index, input)
                     .map_err(ProbeError::Unexpected)?,
+                Answer::Port {
+                    output: true, name, ..
+                } => description.outputs.push(name),
+                Answer::Port {
+                    output: false,
+                    name,
+                    trigger,
+                } => description.inputs.push(InputPortEntry { name, trigger }),
                 Answer::Done => return Ok(description),
                 _ => return Err(ProbeError::Unexpected("a description")),
             }
@@ -385,8 +430,11 @@ impl<T: Read + Write> Client<T> {
     /// # Errors
     ///
     /// As [`Self::describe`]; no such parameter.
-    pub fn get_param(&mut self, app: u8, param: u8) -> Result<ParamValue> {
-        match self.ask(&Request::GetParam { app, param })? {
+    pub fn get_param(&mut self, app: impl Into<Target>, param: u8) -> Result<ParamValue> {
+        match self.ask(&Request::GetParam {
+            app: app.into(),
+            param,
+        })? {
             Answer::Value(value) => Ok(value),
             _ => Err(ProbeError::Unexpected("a value")),
         }
@@ -398,8 +446,17 @@ impl<T: Read + Write> Client<T> {
     /// # Errors
     ///
     /// As [`Self::get_param`]; a value of another kind or out of range.
-    pub fn set_param(&mut self, app: u8, param: u8, value: ParamValue) -> Result<ParamValue> {
-        match self.ask(&Request::SetParam { app, param, value })? {
+    pub fn set_param(
+        &mut self,
+        app: impl Into<Target>,
+        param: u8,
+        value: ParamValue,
+    ) -> Result<ParamValue> {
+        match self.ask(&Request::SetParam {
+            app: app.into(),
+            param,
+            value,
+        })? {
             Answer::Value(value) => Ok(value),
             _ => Err(ProbeError::Unexpected("a value")),
         }
@@ -410,8 +467,11 @@ impl<T: Read + Write> Client<T> {
     /// # Errors
     ///
     /// As [`Self::get_param`].
-    pub fn observe(&mut self, app: u8, index: u8) -> Result<Option<ParamValue>> {
-        match self.ask(&Request::Observe { app, index })? {
+    pub fn observe(&mut self, app: impl Into<Target>, index: u8) -> Result<Option<ParamValue>> {
+        match self.ask(&Request::Observe {
+            app: app.into(),
+            index,
+        })? {
             Answer::Observed(value) => Ok(value),
             _ => Err(ProbeError::Unexpected("an observed value")),
         }
@@ -422,8 +482,11 @@ impl<T: Read + Write> Client<T> {
     /// # Errors
     ///
     /// As [`Self::get_param`].
-    pub fn act(&mut self, app: u8, action: u8) -> Result<()> {
-        self.done(&Request::Act { app, action })
+    pub fn act(&mut self, app: impl Into<Target>, action: u8) -> Result<()> {
+        self.done(&Request::Act {
+            app: app.into(),
+            action,
+        })
     }
 
     /// Hands the outputs and the screen to applet `app`.
@@ -440,8 +503,11 @@ impl<T: Read + Write> Client<T> {
     /// # Errors
     ///
     /// As [`Self::get_param`]; a parameter that takes none.
-    pub fn get_assign(&mut self, app: u8, param: u8) -> Result<InputEntry> {
-        match self.ask(&Request::GetAssign { app, param })? {
+    pub fn get_assign(&mut self, app: impl Into<Target>, param: u8) -> Result<InputEntry> {
+        match self.ask(&Request::GetAssign {
+            app: app.into(),
+            param,
+        })? {
             Answer::Input(_, input) => Ok(input),
             _ => Err(ProbeError::Unexpected("an input")),
         }
@@ -453,10 +519,104 @@ impl<T: Read + Write> Client<T> {
     /// # Errors
     ///
     /// As [`Self::get_assign`]; a value the submenu stops short of.
-    pub fn set_assign(&mut self, app: u8, param: u8, assign: Assign) -> Result<InputEntry> {
-        match self.ask(&Request::SetAssign { app, param, assign })? {
+    pub fn set_assign(
+        &mut self,
+        app: impl Into<Target>,
+        param: u8,
+        assign: Assign,
+    ) -> Result<InputEntry> {
+        match self.ask(&Request::SetAssign {
+            app: app.into(),
+            param,
+            assign,
+        })? {
             Answer::Input(_, input) => Ok(input),
             _ => Err(ProbeError::Unexpected("an input")),
+        }
+    }
+
+    /// Every running instance, left to right (journal/D-046).
+    ///
+    /// # Errors
+    ///
+    /// As [`Self::hello`].
+    pub fn instances(&mut self) -> Result<Vec<InstanceEntry>> {
+        self.send(&Request::ListInstances)?;
+        let mut instances = Vec::new();
+        loop {
+            match self.next_answer()? {
+                Answer::Instance(instance) => instances.push(instance),
+                Answer::Done => return Ok(instances),
+                _ => return Err(ProbeError::Unexpected("an instance")),
+            }
+        }
+    }
+
+    /// Starts applet `app` right of the one with the focus, as the menu's
+    /// `ADD APP` does: the new instance.
+    ///
+    /// # Errors
+    ///
+    /// As [`Self::hello`]; no slot free.
+    pub fn add_instance(&mut self, app: u8) -> Result<InstanceEntry> {
+        self.instance_answer(&Request::AddInstance { app })
+    }
+
+    /// Stops the instance at `instance`.
+    ///
+    /// # Errors
+    ///
+    /// As [`Self::hello`]; no such instance, or the last one.
+    pub fn remove_instance(&mut self, instance: u8) -> Result<()> {
+        self.done(&Request::RemoveInstance { instance })
+    }
+
+    /// Gives the screen and the panel to the instance at `instance`.
+    ///
+    /// # Errors
+    ///
+    /// As [`Self::hello`]; no such instance.
+    pub fn focus(&mut self, instance: u8) -> Result<()> {
+        self.done(&Request::Focus { instance })
+    }
+
+    /// Sends output port `port` of the instance at `instance` to `output`
+    /// (0 for A), or nowhere: the instance as it now is.
+    ///
+    /// # Errors
+    ///
+    /// As [`Self::hello`]; an output another port holds.
+    pub fn set_route(
+        &mut self,
+        instance: u8,
+        port: u8,
+        output: Option<u8>,
+    ) -> Result<InstanceEntry> {
+        self.instance_answer(&Request::SetRoute {
+            instance,
+            port,
+            output,
+        })
+    }
+
+    /// Plugs input port `port` of the instance at `instance` into jack
+    /// `jack` of its kind: the instance as it now is.
+    ///
+    /// # Errors
+    ///
+    /// As [`Self::hello`]; no such port or jack.
+    pub fn set_input(&mut self, instance: u8, port: u8, jack: u8) -> Result<InstanceEntry> {
+        self.instance_answer(&Request::SetInput {
+            instance,
+            port,
+            jack,
+        })
+    }
+
+    fn instance_answer(&mut self, request: &Request) -> Result<InstanceEntry> {
+        match self.ask(request)? {
+            Answer::Instance(instance) => Ok(instance),
+            _ => Err(ProbeError::Unexpected("an instance")),
         }
     }
 
@@ -561,6 +721,29 @@ impl<T: Read + Write> Client<T> {
                 assign,
                 sweep,
             } => Answer::Input(index, InputEntry { assign, sweep }),
+            Reply::Port {
+                output,
+                name,
+                trigger,
+                ..
+            } => Answer::Port {
+                output,
+                name: name.to_owned(),
+                trigger,
+            },
+            Reply::Instance {
+                position,
+                app,
+                focused,
+                outputs,
+                inputs,
+            } => Answer::Instance(InstanceEntry {
+                position,
+                app,
+                focused,
+                outputs,
+                inputs,
+            }),
         };
         Ok(Some(answer))
     }

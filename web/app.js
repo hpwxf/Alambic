@@ -297,7 +297,17 @@ let appView = null;
 /** Each parameter's row: its editor and its status cell. */
 let paramRows = [];
 
-/** Lists the applets in the chooser, the running one picked, and shows it. */
+/** Each applet's name, by its index. */
+let appNames = new Map();
+/** The instances running, or null before the first listing. */
+let instances = null;
+/** The position of the instance on show, or null for an app by its kind. */
+let shownInstance = null;
+
+/**
+ * Lists the applets in the chooser and the instances running, and shows the
+ * one on the module's screen (journal/D-046).
+ */
 async function listApps(probe) {
   const items = await probe.ask(oc.request_list_apps(), UNTIL_DONE, true);
   const list = new oc.AppList();
@@ -305,21 +315,80 @@ async function listApps(probe) {
   release(items);
   const chooser = $("apps-choice");
   chooser.replaceChildren();
+  appNames = new Map();
   for (let at = 0; at < list.len; at += 1) {
     const running = list.running(at);
-    const option = new Option(`${list.name(at)}${running ? " (running)" : ""}`, list.index(at));
-    chooser.add(option);
-    if (running) chooser.value = String(list.index(at));
+    appNames.set(list.index(at), list.name(at));
+    chooser.add(new Option(`${list.name(at)}${running ? " (running)" : ""}`, list.index(at)));
   }
   const count = list.len;
   list.free();
-  await showApp(probe, Number(chooser.value));
-  return `${count} apps`;
+  await listInstances(probe);
+  let focused = 0;
+  for (let at = 0; at < instances.len; at += 1) if (instances.focused(at)) focused = at;
+  chooser.value = String(instances.app(focused));
+  await showInstance(probe, focused);
+  return `${count} apps, ${instances.len} running`;
 }
 
-/** Describes applet `app` and draws its parameters, values and actions. */
+/** Lists the instances running and draws a button for each. */
+async function listInstances(probe) {
+  const items = await probe.ask(oc.Instances.list_request(), UNTIL_DONE, true);
+  const list = new oc.Instances();
+  for (const item of items) list.absorb(item.message);
+  release(items);
+  instances?.free();
+  instances = list;
+  drawInstances();
+}
+
+function drawInstances() {
+  const row = $("apps-instances");
+  row.replaceChildren();
+  for (let at = 0; at < instances.len; at += 1) {
+    const show = document.createElement("button");
+    show.className = "needs-probe";
+    const mark = instances.focused(at) ? " ◂" : "";
+    show.textContent = `@${at} ${appNames.get(instances.app(at)) ?? "?"}${mark}`;
+    show.addEventListener("click", (event) => request(
+      event.currentTarget, "apps-status", "showing…", async (probe) => {
+        await probe.ask(oc.Instances.focus_request(at));
+        await listInstances(probe);
+        await showInstance(probe, at);
+        return `@${at} shown`;
+      },
+    ));
+    row.append(show);
+    if (instances.len > 1) {
+      const remove = document.createElement("button");
+      remove.className = "needs-probe";
+      remove.textContent = "✕";
+      remove.title = `stop @${at}`;
+      remove.addEventListener("click", (event) => request(
+        event.currentTarget, "apps-status", "stopping…", async (probe) => {
+          await probe.ask(oc.Instances.remove_request(at));
+          return listApps(probe);
+        },
+      ));
+      row.append(remove);
+    }
+  }
+}
+
+/** Describes the instance at `position` and draws it, its routing too. */
+async function showInstance(probe, position) {
+  shownInstance = position;
+  await describe(probe, oc.AppView.of_instance(position, instances.app(position)));
+}
+
+/** Describes applet `app`, by its kind, and draws it. */
 async function showApp(probe, app) {
-  const view = new oc.AppView(app);
+  shownInstance = null;
+  await describe(probe, new oc.AppView(app));
+}
+
+/** Fills `view` and draws its parameters, values, actions and routing. */
+async function describe(probe, view) {
   const items = await probe.ask(view.describe_request(), UNTIL_DONE, true);
   for (const item of items) view.absorb(item.message);
   release(items);
@@ -328,6 +397,49 @@ async function showApp(probe, app) {
   drawParams();
   drawObservables();
   drawActions();
+  drawRouting();
+}
+
+const OUTPUT_JACKS = ["A", "B", "C", "D"];
+
+/** Where the shown instance's ports go, each a list to change it. */
+function drawRouting() {
+  const body = $("apps-routing");
+  body.replaceChildren();
+  if (shownInstance === null || !instances) return;
+  const at = shownInstance;
+  const line = (name, arrow, options, value, send) => {
+    const tr = document.createElement("tr");
+    tr.append(cell(name), cell(arrow));
+    const select = document.createElement("select");
+    select.className = "needs-probe";
+    options.forEach(([label, option]) => select.add(new Option(label, option)));
+    select.value = String(value);
+    select.addEventListener("change", () => run(async (probe) => {
+      try {
+        await probe.ask(send(Number(select.value)));
+      } catch (error) {
+        $("apps-status").textContent = `error: ${error.message}`;
+      }
+      await listInstances(probe);
+      drawRouting();
+    }));
+    const td = document.createElement("td");
+    td.append(select);
+    tr.append(td);
+    body.append(tr);
+  };
+  const outputs = [...OUTPUT_JACKS.map((jack, index) => [jack, index]), ["OFF", -1]];
+  for (let port = 0; port < appView.output_count; port += 1) {
+    line(appView.output_name(port), "→", outputs, instances.output(at, port),
+      (output) => oc.Instances.route_request(at, port, output));
+  }
+  for (let port = 0; port < appView.input_port_count; port += 1) {
+    const kind = appView.input_port_trigger(port) ? "TR" : "CV";
+    const jacks = [0, 1, 2, 3].map((jack) => [`${kind}${jack + 1}`, jack]);
+    line(appView.input_port_name(port), "←", jacks, instances.input(at, port),
+      (jack) => oc.Instances.input_request(at, port, jack));
+  }
 }
 
 const cell = (text, className) => {
@@ -884,6 +996,13 @@ async function main() {
   ));
   $("apps-choice").addEventListener("change", (event) => run(
     (probe) => showApp(probe, Number(event.target.value)),
+  ));
+  $("apps-add").addEventListener("click", (event) => request(
+    event.currentTarget, "apps-status", "adding…", async (probe) => {
+      if (!appView) return "list the apps first";
+      await probe.ask(oc.Instances.add_request(Number($("apps-choice").value)));
+      return listApps(probe);
+    },
   ));
   $("apps-select").addEventListener("click", (event) => request(
     event.currentTarget, "apps-status", "switching…", async (probe) => {
