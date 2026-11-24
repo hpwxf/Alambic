@@ -28,6 +28,7 @@
 use core::fmt::Write as _;
 
 use crate::gfx::Point;
+use crate::gfx::controls::TITLE_LEFT;
 
 use crate::apps::param::{ParamSpec, ParamValue, Refused, Unit};
 use crate::apps::sound::Params;
@@ -317,7 +318,9 @@ impl DiagnosticApp {
         let mut line = TextBuf::<26>::new();
 
         let mut draw = |line: &TextBuf<26>, row: i32| {
-            let top_left = Point::new(0, row * ROW_HEIGHT);
+            // The title row starts where every applet's does.
+            let left = if row == 0 { TITLE_LEFT } else { 0 };
+            let top_left = Point::new(left, row * ROW_HEIGHT);
             text::draw(frame, line.as_str(), top_left, TextStyle::lit(&FONT_5X8));
         };
 

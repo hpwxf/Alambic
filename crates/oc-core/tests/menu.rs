@@ -287,3 +287,37 @@ fn a_reset_leaves_the_menu_and_returns_to_the_diagnostic_applet() {
     assert!(!engine.menu_is_open());
     assert_eq!(engine.current_app(), AppId::Diagnostic);
 }
+
+#[test]
+fn the_menu_adds_an_applet_beside_and_removes_the_focused_one() {
+    let mut engine = mock_engine(0);
+    // ADD APP sits right after the apps: one up from SETUP, the last.
+    chord(&mut engine);
+    tap(&mut engine, Button::Up);
+    tap(&mut engine, Button::Up);
+    assert_eq!(engine.menu_selection(), MenuEntry::Add);
+    tap(&mut engine, Button::RightEncoder);
+    assert!(engine.menu_is_open(), "the apps to add, the menu still up");
+    tap(&mut engine, Button::Down);
+    tap(&mut engine, Button::LeftEncoder);
+    assert!(!engine.menu_is_open());
+    assert_eq!(engine.apps().len(), 2);
+    assert_eq!(
+        (engine.current_app(), engine.apps().focus()),
+        (AppId::Scope, 1),
+        "SCOPE, right of DIAGNOSTIC, with the focus"
+    );
+
+    // No slot left: no ADD APP, REMOVE APP just above SETUP. The menu
+    // opens on SCOPE: up to DIAGNOSTIC, then round to SETUP, then REMOVE.
+    chord(&mut engine);
+    tap(&mut engine, Button::Up);
+    tap(&mut engine, Button::Up);
+    tap(&mut engine, Button::Up);
+    assert_eq!(engine.menu_selection(), MenuEntry::Remove, "two of two run");
+    tap(&mut engine, Button::LeftEncoder);
+    assert_eq!(
+        (engine.apps().len(), engine.current_app()),
+        (1, AppId::Diagnostic)
+    );
+}

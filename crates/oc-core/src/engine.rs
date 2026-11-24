@@ -14,12 +14,13 @@
 //! (journal/D-023, option C+; `docs/agents/firmware.md`, "The screen").
 
 use crate::apps::sound::{Params, Patch};
-use crate::apps::{App, AppHost, AppId};
+use crate::apps::{App, AppHost, AppId, MAX_INSTANCES};
 use crate::apps::{InputSnapshot, TickContext};
 use crate::audio::Route;
 use crate::buttons::{ButtonEvents, ButtonReader};
 use crate::calibration::Calibration;
 use crate::framebuffer::FrameBuffer;
+use crate::gfx::controls::instance_marks;
 use crate::menu::{Menu, MenuEntry, MenuOutcome};
 use crate::platform::{
     AnalogIn, AnalogOut, Button, CV_CHANNELS, Clock, Controls, CvChannel, DigitalIn, Display,
@@ -317,7 +318,9 @@ where
                 Screen::System => self.system.render(self.display.frame_mut(), self.build_id),
                 Screen::Calibration => self.wizard.render(self.display.frame_mut()),
                 Screen::App | Screen::Splash => {
-                    self.apps.render(self.display.frame_mut(), &context);
+                    let frame = self.display.frame_mut();
+                    self.apps.render(frame, &context);
+                    instance_marks(frame, self.apps.len(), self.apps.focus());
                 }
             }
             self.record_since(Stage::Render, mark);
@@ -564,7 +567,9 @@ where
                     self.screen = Screen::App;
                 }
                 Screen::App | Screen::Splash => {
-                    self.menu.open(self.apps.current());
+                    let running = self.apps.len();
+                    self.menu
+                        .open(self.apps.current(), running < MAX_INSTANCES, running > 1);
                     self.screen = Screen::Menu;
                 }
             }
@@ -579,6 +584,14 @@ where
                 {
                     Some(MenuOutcome::Launch(chosen)) => {
                         self.apps.select(chosen);
+                        self.screen = Screen::App;
+                    }
+                    Some(MenuOutcome::Add(chosen)) => {
+                        self.apps.add(chosen);
+                        self.screen = Screen::App;
+                    }
+                    Some(MenuOutcome::Remove) => {
+                        self.apps.remove();
                         self.screen = Screen::App;
                     }
                     Some(MenuOutcome::OpenSetup) => {

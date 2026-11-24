@@ -113,3 +113,25 @@ fn up_and_down_move_the_focus_without_wrapping() {
     hold(&mut engine, Button::Up, long);
     assert_eq!(engine.apps().focus(), 1, "a long press is not a move");
 }
+
+#[test]
+fn the_screen_marks_the_instances_left_of_the_title() {
+    let mut engine = mock_engine(0);
+    engine.select_app(AppId::Ratchet);
+    for _ in 0..40 {
+        tick(&mut engine);
+    }
+    assert!(
+        !engine.frame().pixel(0, 0),
+        "one applet alone: no mark, the title's place is empty"
+    );
+    engine.apps_mut().add(AppId::Scope);
+    for _ in 0..40 {
+        tick(&mut engine);
+    }
+    let frame = engine.frame();
+    // SCOPE, second, has the focus: its mark two pixels wide.
+    assert!(frame.pixel(0, 0) && !frame.pixel(1, 0), "RATCHET");
+    assert!(frame.pixel(0, 2) && frame.pixel(1, 2), "SCOPE, focused");
+    assert!(!frame.pixel(0, 4), "two marks for two instances");
+}

@@ -8,7 +8,7 @@
 use super::Point;
 use super::trig::{TURN, polar};
 use super::{Ink, Ratio, circle, dotted_vline, fill_rect, hline, line, pixel, rect, vline};
-use crate::framebuffer::{FrameBuffer, WIDTH_I32};
+use crate::framebuffer::{FrameBuffer, ROW_HEIGHT, WIDTH_I32};
 use crate::text::{self, Baseline, TextStyle};
 
 /// Where a knob's pointer starts, at the bottom left (seven-thirty).
@@ -145,8 +145,29 @@ pub fn bipolar_hbar(
     }
 }
 
-/// The title bar: `title` at the top left, one dot per page at the right (the
-/// current one filled), a line under both. Returns the first free row.
+/// Where every applet's title starts on its top row: right of the column
+/// where the engine marks the instances running (journal/D-046).
+pub const TITLE_LEFT: i32 = 3;
+
+/// The instances running, one pixel each down the left column of the top
+/// row, the one with the focus two pixels wide: drawn over an applet's
+/// screen, left of its title ([`TITLE_LEFT`]), when more than one runs
+/// (journal/D-046).
+pub fn instance_marks(frame: &mut FrameBuffer, count: usize, focus: usize) {
+    if count < 2 {
+        return;
+    }
+    fill_rect(frame, 0, 0, TITLE_LEFT, ROW_HEIGHT, Ink::Dark);
+    for position in 0..count.min(4) {
+        let y = i32::try_from(position * 2).unwrap_or(0);
+        let width = if position == focus { 2 } else { 1 };
+        fill_rect(frame, 0, y, width, 1, Ink::Lit);
+    }
+}
+
+/// The title bar: `title` at the top left ([`TITLE_LEFT`]), one dot per page
+/// at the right (the current one filled), a line under both. Returns the
+/// first free row.
 pub fn header(
     frame: &mut FrameBuffer,
     title: &str,
@@ -154,7 +175,7 @@ pub fn header(
     pages: usize,
     style: TextStyle,
 ) -> i32 {
-    text::draw(frame, title, Point::zero(), style);
+    text::draw(frame, title, Point::new(TITLE_LEFT, 0), style);
     let height = style.font.height();
     let dot = 3;
     let mut x = WIDTH_I32 - 1 - dot / 2;

@@ -19,6 +19,7 @@ use oc_core::buttons::LONG_PRESS_TICKS;
 use oc_core::calibration::{CV_OUT_MAX_MV, CV_OUT_MIN_MV};
 use oc_core::framebuffer::ROW_HEIGHT;
 use oc_core::framebuffer::{FrameBuffer, WIDTH};
+use oc_core::gfx::controls::TITLE_LEFT;
 use oc_core::platform::{Button, CvChannel, TriggerChannel};
 use oc_core::presence::Presence;
 use oc_core::testing::{MockEngine, adc_reading, mock_engine};
@@ -53,13 +54,20 @@ fn tap(engine: &mut MockEngine, button: Button) {
     run_ticks(engine, 5);
 }
 
-/// Renders `text` top-aligned on `row` into an otherwise empty framebuffer.
+/// Renders `text` top-aligned on `row` into an otherwise empty framebuffer;
+/// the title row starts where every applet's title does (journal/D-046).
 fn reference_row(text: &str, row: i32) -> FrameBuffer {
     let mut frame = FrameBuffer::new();
     let style = MonoTextStyle::new(&FONT_5X8, BinaryColor::On);
-    Text::with_baseline(text, Point::new(0, row * ROW_HEIGHT), style, Baseline::Top)
-        .draw(&mut Reference(&mut frame))
-        .expect("drawing into a framebuffer is infallible");
+    let left = if row == 0 { TITLE_LEFT } else { 0 };
+    Text::with_baseline(
+        text,
+        Point::new(left, row * ROW_HEIGHT),
+        style,
+        Baseline::Top,
+    )
+    .draw(&mut Reference(&mut frame))
+    .expect("drawing into a framebuffer is infallible");
     frame
 }
 

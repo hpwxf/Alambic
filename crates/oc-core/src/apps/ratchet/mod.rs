@@ -48,7 +48,7 @@ use crate::apps::{App, AppId, InputSnapshot, Port, TickContext};
 use crate::fixed::{self, ONE};
 use crate::fmt::TextBuf;
 use crate::framebuffer::{FrameBuffer, ROW_HEIGHT, WIDTH_I32};
-use crate::gfx::controls::{LIST_LEFT, SCROLL_WIDTH, row_highlight, scroll_bar};
+use crate::gfx::controls::{LIST_LEFT, SCROLL_WIDTH, TITLE_LEFT, row_highlight, scroll_bar};
 use crate::gfx::{self, Ink, Point};
 use crate::modulation::editor::Param;
 use crate::modulation::slots::Modulations;
@@ -668,7 +668,7 @@ impl RatchetApp {
     /// The main screen: the title bar, the page of settings, the timeline.
     fn render_main(&self, frame: &mut FrameBuffer) {
         let lit = TextStyle::lit(&FONT_5X8);
-        text::draw(frame, "RATCHET", Point::zero(), lit);
+        text::draw(frame, "RATCHET", Point::new(TITLE_LEFT, 0), lit);
         let mut rate = TextBuf::<12>::new();
         let _ = match self.tempo.bpm() {
             Some(bpm) => write!(rate, "{bpm:>3} BPM"),

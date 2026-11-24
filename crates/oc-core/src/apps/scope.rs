@@ -15,6 +15,7 @@
 use core::fmt::Write as _;
 
 use crate::gfx::Point;
+use crate::gfx::controls::TITLE_LEFT;
 
 use crate::apps::param::{ParamSpec, ParamValue, Unit};
 use crate::apps::sound::Params;
@@ -146,7 +147,7 @@ impl ScopeApp {
         text::draw(
             frame,
             line.as_str(),
-            Point::zero(),
+            Point::new(TITLE_LEFT, 0),
             TextStyle::lit(&FONT_5X8),
         );
 

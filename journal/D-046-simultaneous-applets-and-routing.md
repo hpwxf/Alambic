@@ -227,4 +227,15 @@ recopié dans chaque appelant ; ramenés par une boucle à un passage et `#[inli
   référence inchangés ; README et TESTING à jour.
 * Coût : `.text` +332 o contre 13c ; pile ≈ 11 584 o.
 
-Reste du lot : l'indicateur, le nom de chaque app à une place commune, le menu (ajouter, retirer, défilement).
+## Lot 13d, seconde partie (2026-11-24) — le menu et l'indicateur
+
+* **Menu** : `ADD APP` (tant qu'un emplacement est libre) et `REMOVE APP` (tant que deux tournent) entre les apps et
+  `SETUP` ; `ADD APP` affiche de nouveau la liste des apps, titrée `ADD APP`, et celle choisie démarre à droite du
+  focus (`MenuOutcome::Add`) ; `REMOVE APP` arrête celle du focus. La liste défile (sept lignes visibles), comme
+  `SETUP`.
+* **Le titre à une place commune** : toutes les apps l'écrivent en `gfx::controls::TITLE_LEFT` (3 px) sur la ligne
+  du haut, `GFX DEMO` par son `header` ; écrans de référence régénérés, seule la ligne du titre bouge (diff relu).
+* **L'indicateur** (`gfx::controls::instance_marks`), dessiné par le moteur après l'app quand deux instances au
+  moins tournent : un pixel par instance dans la colonne x = 0, un pixel sur deux en descendant (jusqu'à quatre),
+  celui du focus large de deux pixels, sur un fond effacé ; caché avec une seule instance.
+* Coût : `.text` −20 o contre la première partie ; pile ≈ 11 600 o.

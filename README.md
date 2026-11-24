@@ -43,13 +43,20 @@ for the hardware.
 ## Apps and the app menu
 
 The module runs up to two apps at once, each on its own outputs (journal/D-046),
-one of them on the screen and the panel at a time; for now the menu runs one.
-A short press of `up` or `down` moves to the app on the left or right; their
-long press (one second) is kept for the routing page to come. Apps no longer
-use `up` and `down` themselves. **Holding `up` and `down` together** opens the
-app menu; `up`/`down` or the left
-encoder move the highlight, either encoder press launches the highlighted app,
-and holding both again closes the menu without changing anything. The running
+one of them on the screen and the panel at a time. A short press of `up` or
+`down` moves to the app on the left or right; their long press (one second) is
+kept for the routing page to come. Apps no longer use `up` and `down`
+themselves. While two run, a column of pixels left of the title marks them,
+the one shown two pixels wide.
+
+**Holding `up` and `down` together** opens the app menu; `up`/`down` or the
+left encoder move the highlight (the list scrolls), either encoder press
+launches the highlighted app in the place of the one shown, which starts
+afresh, and holding both again closes the menu without changing anything.
+`ADD APP`, while a place is free, lists the apps again: the one picked starts
+right of the one shown, on the outputs no app uses, in order (`RATCHET` beside
+`SUPERSAW` gets D), and takes the screen. `REMOVE APP`, while two run, stops
+the one shown and frees its outputs, which go to 0 V. The running
 app keeps tracking its inputs and driving its outputs while the menu is up, so
 opening it never interrupts a patch. In the simulator press `m`; in VCV Rack
 the chord is unreachable with a mouse, so right-click the module and choose
