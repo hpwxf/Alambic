@@ -411,6 +411,12 @@ impl Simulator {
         self.engine.menu_is_open()
     }
 
+    /// Whether the routing page currently owns the screen (journal/D-046).
+    #[must_use]
+    pub const fn routing_is_open(&self) -> bool {
+        self.engine.routing_is_open()
+    }
+
     /// The module's screen.
     pub fn frame(&mut self) -> &FrameBuffer {
         self.engine.frame()

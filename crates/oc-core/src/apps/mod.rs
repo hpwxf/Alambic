@@ -52,6 +52,7 @@ use crate::modulation::Assign;
 use crate::modulation::slots::slot_of;
 use crate::platform::{
     BUTTONS, CV_CHANNELS, ControlEvents, CvChannel, ENCODERS, MilliVolts, TRIGGER_CHANNELS,
+    TriggerChannel,
 };
 
 /// How many applets can run at once, each in a slot of its own that
@@ -75,6 +76,83 @@ pub const PORTS_A_TO_D: [Port; CV_CHANNELS] = [
     Port { name: "C" },
     Port { name: "D" },
 ];
+
+/// What kind of jack an input port reads.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum InputKind {
+    /// A CV input, `CV1` to `CV4`.
+    Cv,
+    /// A trigger input, `TR1` to `TR4`.
+    Trigger,
+}
+
+/// One input an applet reads by itself (not through a CV assignment): a
+/// lane of its [`InputSnapshot`], which its input map plugs into a jack of
+/// that kind (journal/D-046).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct InputPort {
+    /// The name its routing page shows.
+    pub name: &'static str,
+    /// The jacks it can read.
+    pub kind: InputKind,
+    /// The lane it reads: `cv[lane]` or `triggers[lane]`.
+    pub lane: usize,
+}
+
+/// Which jack each lane of an instance's [`InputSnapshot`] reads: every
+/// lane its own by default (journal/D-046).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct InputRoute {
+    cv: [CvChannel; CV_CHANNELS],
+    triggers: [TriggerChannel; TRIGGER_CHANNELS],
+}
+
+impl InputRoute {
+    /// Every lane reads the jack of its rank.
+    pub const IDENTITY: Self = Self {
+        cv: CvChannel::ALL,
+        triggers: TriggerChannel::ALL,
+    };
+
+    /// The jack lane `lane` of `kind` reads, as its index.
+    #[must_use]
+    pub fn jack(&self, kind: InputKind, lane: usize) -> Option<usize> {
+        match kind {
+            InputKind::Cv => self.cv.get(lane).map(|jack| jack.index()),
+            InputKind::Trigger => self.triggers.get(lane).map(|jack| jack.index()),
+        }
+    }
+
+    /// Plugs lane `lane` of `kind` into jack `jack`; `false`, and nothing
+    /// changes, for a lane or a jack past the last.
+    pub fn set(&mut self, kind: InputKind, lane: usize, jack: usize) -> bool {
+        match kind {
+            InputKind::Cv => match (self.cv.get_mut(lane), CvChannel::from_index(jack)) {
+                (Some(slot), Some(jack)) => *slot = jack,
+                _ => return false,
+            },
+            InputKind::Trigger => {
+                match (
+                    self.triggers.get_mut(lane),
+                    TriggerChannel::from_index(jack),
+                ) {
+                    (Some(slot), Some(jack)) => *slot = jack,
+                    _ => return false,
+                }
+            }
+        }
+        true
+    }
+
+    /// `input` as an instance with this map sees it.
+    #[must_use]
+    pub fn apply(&self, input: &InputSnapshot) -> InputSnapshot {
+        let mut seen = *input;
+        seen.cv = self.cv.map(|jack| input.cv[jack.index()]);
+        seen.triggers = self.triggers.map(|jack| input.triggers[jack.index()]);
+        seen
+    }
+}
 
 /// Everything the applet observes during one tick.
 #[derive(Debug, Clone, Copy)]
@@ -165,6 +243,13 @@ pub trait App: Any {
     /// never heard (journal/D-046). Every output by default.
     fn output_ports(&self) -> &'static [Port] {
         &PORTS_A_TO_D
+    }
+
+    /// The inputs it reads by itself, which its routing page can plug into
+    /// other jacks: none by default. An applet whose inputs go through CV
+    /// assignments declares none, for an assignment names the jack it reads.
+    fn input_ports(&self) -> &'static [InputPort] {
+        &[]
     }
 
     /// Which of its ports reach a jack now, told whenever its route
@@ -430,12 +515,17 @@ impl Instance {
 struct Slot {
     instance: Instance,
     route: Route,
+    inputs: InputRoute,
 }
 
 impl Slot {
-    /// `instance` along `route`, which it is told.
+    /// `instance` along `route`, which it is told, every input its own.
     fn new(instance: Instance, route: Route) -> Self {
-        let mut slot = Self { instance, route };
+        let mut slot = Self {
+            instance,
+            route,
+            inputs: InputRoute::IDENTITY,
+        };
         slot.tell_route();
         slot
     }
@@ -695,6 +785,40 @@ impl AppHost {
         Ok(held.route)
     }
 
+    /// The input map of the instance at `position`, if any.
+    #[must_use]
+    pub fn inputs_at(&self, position: usize) -> Option<InputRoute> {
+        let slot = self.slot_at(position)?;
+        self.slots[slot].as_ref().map(|slot| slot.inputs)
+    }
+
+    /// Plugs input port `port` of the instance at `position` into jack
+    /// `jack` of its kind: the map it now has. Inputs are shared: any
+    /// instance may read any jack.
+    ///
+    /// # Errors
+    ///
+    /// [`Refused::NoSuch`] for no such instance, port or jack.
+    pub fn set_input(
+        &mut self,
+        position: usize,
+        port: usize,
+        jack: usize,
+    ) -> Result<InputRoute, Refused> {
+        let slot = self.slot_at(position).ok_or(Refused::NoSuch)?;
+        let held = self.slots[slot].as_mut().ok_or(Refused::NoSuch)?;
+        let port = *held
+            .instance
+            .app()
+            .input_ports()
+            .get(port)
+            .ok_or(Refused::NoSuch)?;
+        if !held.inputs.set(port.kind, port.lane, jack) {
+            return Err(Refused::NoSuch);
+        }
+        Ok(held.inputs)
+    }
+
     /// The slot and port that reach `output`, if any.
     fn holder(&self, output: CvChannel) -> Option<(usize, usize)> {
         for (slot, held) in self.slots.iter().enumerate() {
@@ -741,8 +865,13 @@ impl AppHost {
         for (index, (slot, part)) in self.slots.iter_mut().zip(&mut parts).enumerate() {
             if let Some(slot) = slot {
                 let input = if index == focused { input } else { &quiet };
+                let input = if slot.inputs == InputRoute::IDENTITY {
+                    *input
+                } else {
+                    slot.inputs.apply(input)
+                };
                 *part = Routed {
-                    params: slot.instance.app_mut().update(input),
+                    params: slot.instance.app_mut().update(&input),
                     route: slot.route,
                 };
             }

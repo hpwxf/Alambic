@@ -19,7 +19,7 @@ use crate::gfx::controls::TITLE_LEFT;
 
 use crate::apps::param::{ParamSpec, ParamValue, Unit};
 use crate::apps::sound::Params;
-use crate::apps::{App, AppId, InputSnapshot, TickContext};
+use crate::apps::{App, AppId, InputKind, InputPort, InputSnapshot, TickContext};
 use crate::calibration::{CV_OUT_MAX_MV, CV_OUT_MIN_MV};
 use crate::fmt::{TextBuf, write_volts};
 use crate::framebuffer::{FrameBuffer, WIDTH};
@@ -163,7 +163,19 @@ impl ScopeApp {
     }
 }
 
+/// `CV1` is what it draws; its routing page may plug another CV in
+/// (journal/D-046).
+const INPUTS: [InputPort; 1] = [InputPort {
+    name: "IN",
+    kind: InputKind::Cv,
+    lane: 0,
+}];
+
 impl App for ScopeApp {
+    fn input_ports(&self) -> &'static [InputPort] {
+        &INPUTS
+    }
+
     fn id(&self) -> AppId {
         AppId::Scope
     }

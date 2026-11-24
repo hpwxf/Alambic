@@ -44,8 +44,13 @@ for the hardware.
 
 The module runs up to two apps at once, each on its own outputs (journal/D-046),
 one of them on the screen and the panel at a time. A short press of `up` or
-`down` moves to the app on the left or right; their long press (one second) is
-kept for the routing page to come. Apps no longer use `up` and `down`
+`down` moves to the app on the left or right; their long press (one second)
+opens the shown app's **routing page**, and closes it again: the left encoder
+picks a row, the right one turns it. An output (`A`, `B`, `SUB` for
+`SUPERSAW`) steps through the jacks `A` to `D` and `OFF`, skipping those
+another app holds; an input the app reads by itself (`RATCHET`'s `CLOCK`,
+`SCOPE`'s `IN`) steps through the four jacks of its kind, which apps may
+share. An app's CV inputs are set in their own submenu, on the physical jacks. Apps no longer use `up` and `down`
 themselves. While two run, a column of pixels left of the title marks them,
 the one shown two pixels wide.
 

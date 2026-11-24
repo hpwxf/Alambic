@@ -49,6 +49,7 @@ pub mod modulation;
 pub mod platform;
 pub mod presence;
 pub mod profile;
+pub mod routing;
 pub mod settings;
 pub mod signal;
 pub mod splash;

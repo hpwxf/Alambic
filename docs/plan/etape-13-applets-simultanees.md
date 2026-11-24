@@ -55,8 +55,8 @@ jusqu'au lot qui change le panneau (13d), et celui-là seulement là où les ges
 
 ### 13e — page de routage
 
-* Carte d'entrées par instance (identité par défaut) appliquée à son `InputSnapshot` ; les assignations de CV
-  lisent alors les entrées de l'instance (D-046, § 5 : à confirmer).
+* Carte d'entrées par instance (identité par défaut) appliquée à son `InputSnapshot`, pour les entrées que l'app
+  lit elle-même (`App::input_ports`) ; les assignations de CV restent sur les prises physiques.
 
 * Écran du moteur, commun : ports de sortie de l'instance au focus vers `A` à `D` ou `OFF` (sorties d'autres
   instances marquées et sautées), ports d'entrée vers `CV1` à `CV4` / `TR1` à `TR4`. Écran de référence nouveau,

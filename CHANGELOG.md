@@ -65,6 +65,11 @@ Architectural decisions behind each change are in `journal/` (French).
   time; `up` and `down` show one or the other, marked by a column of pixels
   left of the title. Every applet's title moved three pixels right to make
   room. The menu scrolls.
+- **A routing page per applet** (journal/D-046), opened and closed by a
+  long press of `up` or `down`: each output port to a jack or `OFF`, never
+  one another applet holds (`SUPERSAW`'s `SUB` turned off stops being
+  computed and frees C), and the inputs an applet reads by itself to any
+  jack of their kind (`RATCHET`'s `CLOCK`, `SCOPE`'s `IN`).
 - **`up` and `down` belong to the panel** (journal/D-046): a short press
   moves to the applet on the left or right, a long press (one second) is
   kept for the routing page to come. The applets moved what they did with

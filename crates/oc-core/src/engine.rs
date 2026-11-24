@@ -27,6 +27,7 @@ use crate::platform::{
     MilliVolts, TRIGGER_CHANNELS, TriggerChannel,
 };
 use crate::profile::{Profile, Stage};
+use crate::routing::RoutingPage;
 use crate::settings::Settings;
 use crate::splash::SplashScreen;
 use crate::system::{Line, SystemOutcome, SystemScreen};
@@ -86,6 +87,8 @@ enum Screen {
     App,
     /// The app picker.
     Menu,
+    /// The routing page of the applet with the focus (journal/D-046).
+    Routing,
     /// The system settings; the applet is paused and the outputs rest.
     System,
     /// The calibration wizard; the applet is paused and the wizard drives
@@ -109,6 +112,7 @@ pub struct Engine<A, O, D, C, K, S> {
     /// backend sets it: drawn by the splash and the settings screens.
     build_id: &'static str,
     menu: Menu,
+    routing: RoutingPage,
     system: SystemScreen,
     wizard: CalibrationWizard,
     /// Raw ADC code of each input on the last tick, for the wizard.
@@ -176,6 +180,7 @@ where
             splash: SplashScreen::new(),
             build_id: "",
             menu: Menu::new(),
+            routing: RoutingPage::new(),
             system: SystemScreen::new(),
             wizard: CalibrationWizard::new(),
             raw_codes: [0; CV_CHANNELS],
@@ -261,11 +266,12 @@ where
         if !self.owns_outputs() {
             self.reverse_encoders(&mut snapshot);
         }
-        let menu_was_up = self.screen == Screen::Menu;
+        let panel_was_taken = matches!(self.screen, Screen::Menu | Screen::Routing);
         self.route_panel(&snapshot, wired);
         // The click that closed the menu launched the applet, or opened the
-        // settings: it is not also theirs, nor is its release a tap.
-        if menu_was_up && self.screen != Screen::Menu {
+        // settings, and the press that closed the routing page was its: it
+        // is not also the applet's, nor is its release a tap.
+        if panel_was_taken && !matches!(self.screen, Screen::Menu | Screen::Routing) {
             snapshot.silence_controls();
             self.buttons.swallow();
         }
@@ -275,7 +281,7 @@ where
         // changes hands, so picking an app cannot also move the applet's own
         // selection behind the menu. The settings screen pauses it and rests
         // the outputs instead: it may drive them itself (calibration).
-        if self.screen == Screen::Menu {
+        if matches!(self.screen, Screen::Menu | Screen::Routing) {
             snapshot.silence_controls();
         }
         let mark = self.clock.fine_count();
@@ -315,6 +321,7 @@ where
             let mark = self.clock.fine_count();
             match self.screen {
                 Screen::Menu => self.menu.render(self.display.frame_mut()),
+                Screen::Routing => self.routing.render(self.display.frame_mut(), &self.apps),
                 Screen::System => self.system.render(self.display.frame_mut(), self.build_id),
                 Screen::Calibration => self.wizard.render(self.display.frame_mut()),
                 Screen::App | Screen::Splash => {
@@ -355,7 +362,7 @@ where
                 Params::levels([self.wizard.output_level(); CV_CHANNELS]),
                 Route::IDENTITY,
             ),
-            Screen::App | Screen::Menu | Screen::Splash => Patch {
+            Screen::App | Screen::Menu | Screen::Routing | Screen::Splash => Patch {
                 parts: self.apps.update(snapshot),
                 held: [None; CV_CHANNELS],
             },
@@ -555,7 +562,7 @@ where
     fn route_panel(&mut self, snapshot: &InputSnapshot, wired: [i8; 2]) {
         if snapshot.buttons.menu_chord() {
             match self.screen {
-                Screen::Menu => self.screen = Screen::App,
+                Screen::Menu | Screen::Routing => self.screen = Screen::App,
                 Screen::System => {
                     self.settings = *self.system.original();
                     self.screen = Screen::App;
@@ -604,8 +611,8 @@ where
             Screen::System => self.route_system(&snapshot.buttons, wired),
             Screen::Calibration => self.route_wizard(&snapshot.buttons, wired),
             // A short `up` or `down` moves the focus to the applet left or
-            // right, without wrapping (journal/D-046); the long press is
-            // the routing page's, to come.
+            // right, without wrapping; a long one opens its routing page,
+            // and closes it again (journal/D-046).
             Screen::App => {
                 let focus = self.apps.focus();
                 if snapshot.buttons.pressed(Button::Up) {
@@ -613,6 +620,22 @@ where
                 }
                 if snapshot.buttons.pressed(Button::Down) {
                     self.apps.set_focus(focus + 1);
+                }
+                if snapshot.buttons.long_pressed(Button::Up)
+                    || snapshot.buttons.long_pressed(Button::Down)
+                {
+                    self.routing.open();
+                    self.screen = Screen::Routing;
+                }
+            }
+            Screen::Routing => {
+                if snapshot.buttons.long_pressed(Button::Up)
+                    || snapshot.buttons.long_pressed(Button::Down)
+                {
+                    self.screen = Screen::App;
+                } else {
+                    self.routing
+                        .update(snapshot.controls.encoder_delta, &mut self.apps);
                 }
             }
             Screen::Splash => {}
@@ -853,6 +876,12 @@ where
         if matches!(self.screen, Screen::Menu) {
             self.screen = Screen::App;
         }
+    }
+
+    /// Whether the routing page currently owns the screen.
+    #[must_use]
+    pub const fn routing_is_open(&self) -> bool {
+        matches!(self.screen, Screen::Routing)
     }
 
     /// Whether the app menu currently owns the screen.

@@ -239,3 +239,20 @@ recopié dans chaque appelant ; ramenés par une boucle à un passage et `#[inli
   moins tournent : un pixel par instance dans la colonne x = 0, un pixel sur deux en descendant (jusqu'à quatre),
   celui du focus large de deux pixels, sur un fond effacé ; caché avec une seule instance.
 * Coût : `.text` −20 o contre la première partie ; pile ≈ 11 600 o.
+
+## Lot 13e (2026-11-24) — la page de routage
+
+* **Écran du moteur** (`oc_core::routing::RoutingPage`, `Screen::Routing`), ouvert et fermé par l'appui long de
+  `up` ou `down`, fermé aussi par l'accord ; les apps tournent derrière, comme derrière le menu, et l'appui qui la
+  ferme ne leur parvient pas. Titre `ROUTE <APP>` à la place commune, une ligne par port : les sorties, puis les
+  entrées ; le gauche choisit, le droit tourne. Une sortie passe par `A` à `D` et `OFF` en sautant les prises tenues
+  ailleurs ; une entrée par les quatre prises de son genre.
+* **Carte d'entrées** (`InputRoute`, une par instance, identité par défaut) appliquée à l'`InputSnapshot` de
+  l'instance ; `App::input_ports` déclare ce que l'app lit elle-même (`InputPort` : nom, genre, voie) :
+  `RATCHET` `CLOCK` (`TR1`), `SCOPE` `IN` (`CV1`). **Les assignations de CV restent sur les prises physiques** :
+  une app qui lit ses CV par des assignations (`TONE`, `SUPERSAW`, les CV de `RATCHET`) ne déclare pas de port CV,
+  donc sa carte ne déplace pas ce qu'elles lisent (§ 5 : à revoir si une app doit rebrancher ses CV d'un bloc).
+* Tests : `routing.rs` (lignes, sorties qui sautent les prises tenues, entrées), `tests/instances.rs` (appui long,
+  `SUB` coupée et plus préparée ; deux `RATCHET`, la seconde cadencée par `TR2`) ; scénario et écran de référence
+  `routing`.
+* Coût : `.text` +2 712 o, `.rodata` +272 o ; pile ≈ 11 648 o.

@@ -6,7 +6,7 @@
 use oc_core::apps::AppId;
 use oc_core::apps::ratchet::TRIGGER_MV;
 use oc_core::buttons::LONG_PRESS_TICKS;
-use oc_core::platform::{Button, CvChannel};
+use oc_core::platform::{Button, CvChannel, TriggerChannel};
 use oc_core::testing::{MockEngine, adc_reading, mock_engine};
 
 /// One tick of a millisecond.
@@ -134,4 +134,50 @@ fn the_screen_marks_the_instances_left_of_the_title() {
     assert!(frame.pixel(0, 0) && !frame.pixel(1, 0), "RATCHET");
     assert!(frame.pixel(0, 2) && frame.pixel(1, 2), "SCOPE, focused");
     assert!(!frame.pixel(0, 4), "two marks for two instances");
+}
+
+#[test]
+fn a_long_press_opens_the_routing_page_where_a_port_goes_off() {
+    let mut engine = mock_engine(0);
+    engine.select_app(AppId::Supersaw);
+    let long = usize::try_from(LONG_PRESS_TICKS).unwrap() + 10;
+    hold(&mut engine, Button::Down, long);
+    assert!(engine.routing_is_open());
+    // SUB is the third row: two detents of the left encoder, one of the
+    // right turns it from C to D, the next to OFF.
+    engine.parts_mut().3.turn(0, 2);
+    tick(&mut engine);
+    engine.parts_mut().3.turn(1, 2);
+    tick(&mut engine);
+    assert_eq!(engine.apps().route().output(2), None, "SUB off");
+    assert!(
+        engine.params().as_supersaw().unwrap().parts[2].is_none(),
+        "and no longer prepared"
+    );
+    hold(&mut engine, Button::Up, long);
+    assert!(!engine.routing_is_open(), "a long press closes it");
+    assert_eq!(engine.apps().len(), 1);
+}
+
+#[test]
+fn an_instance_reads_the_trigger_its_map_plugs_in() {
+    let mut engine = mock_engine(0);
+    engine.select_app(AppId::Ratchet);
+    engine.apps_mut().add(AppId::Ratchet);
+    // The second one's CLOCK from TR2; its A on C.
+    engine.apps_mut().set_input(1, 0, 1).unwrap();
+    let mut copies = [false; 4];
+    for step in 0..40 {
+        let high = (5..10).contains(&step);
+        engine.parts_mut().2.set(TriggerChannel::Two, high);
+        tick(&mut engine);
+        for (seen, level) in copies.iter_mut().zip(engine.outputs()) {
+            *seen |= level == TRIGGER_MV;
+        }
+    }
+    assert_eq!(
+        copies,
+        [false, false, true, true],
+        "TR2 reaches the second RATCHET alone: its A copies it, its B bursts"
+    );
 }

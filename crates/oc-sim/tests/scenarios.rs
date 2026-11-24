@@ -249,6 +249,24 @@ fn ratchet_shows_the_input_submenu() {
 }
 
 #[test]
+fn a_long_press_opens_the_routing_page_where_sub_goes_off() {
+    let mut simulator = replay("routing");
+    assert!(simulator.routing_is_open());
+    assert_eq!(simulator.current_app(), AppId::Supersaw);
+    assert!(
+        simulator
+            .app::<SupersawApp>()
+            .params()
+            .as_supersaw()
+            .unwrap()
+            .parts[2]
+            .is_none(),
+        "SUB routed nowhere: not prepared"
+    );
+    assert_screen_matches(&mut simulator, "routing");
+}
+
+#[test]
 fn supersaw_plays_its_settings_and_cv2_once_assigned() {
     let mut simulator = replay("supersaw");
     assert_eq!(simulator.current_app(), AppId::Supersaw);
@@ -425,6 +443,7 @@ fn every_scenario_file_has_a_test_and_a_snapshot() {
         "supersaw",
         "supersaw_inputs",
         "supersaw_page2",
+        "routing",
     ];
 
     let mut found: Vec<String> = std::fs::read_dir(scenario_dir())
