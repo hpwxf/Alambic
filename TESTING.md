@@ -525,7 +525,12 @@ With the module running and the USB cable on the Teensy (journal/D-029):
    takes it, `cargo probe route @1 a=b` is refused (`Taken`);
    `cargo probe set @1 prob 50` reaches the second app alone; `focus @0`
    shows `SUPERSAW` again, `remove @1` stops `RATCHET` and C and D fall to
-   0 V.
+   0 V. On the panel, with three apps added from the menu (`ADD APP`): a
+   short `down` shows the next, from the last round to the first, `up` the
+   other way; the marks left of the title, as wide as a list's scroll bar,
+   put the one shown across the column. Hold `down` one second: the routing
+   page opens with the same marks; a short `up` or `down` there moves to the
+   next app's routes, the page staying open; hold one second to close it.
 7. `cargo probe reboot`, then `cargo xtask flash`: the flash goes through with
    no PROGRAM press.
 

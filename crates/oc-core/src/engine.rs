@@ -303,33 +303,8 @@ where
         let rendered = !sending && self.ticks_since_render >= self.render_interval;
         if rendered {
             self.ticks_since_render = 0;
-            // The applet sees its own lanes: what reached the jack each
-            // goes to, nothing for one that goes nowhere (journal/D-046).
-            let route = self.apps.route();
-            let cv_out = core::array::from_fn(|lane| {
-                route
-                    .output(lane)
-                    .map_or(0, |output| outputs[output.index()])
-            });
-            let context = TickContext {
-                tick_count: self.tick_count,
-                duration_micros: self.last_duration_micros,
-                cv_out,
-                outputs_forced: self.screen != Screen::Calibration
-                    && self.forced_outputs.iter().any(Option::is_some),
-            };
             let mark = self.clock.fine_count();
-            match self.screen {
-                Screen::Menu => self.menu.render(self.display.frame_mut()),
-                Screen::Routing => self.routing.render(self.display.frame_mut(), &self.apps),
-                Screen::System => self.system.render(self.display.frame_mut(), self.build_id),
-                Screen::Calibration => self.wizard.render(self.display.frame_mut()),
-                Screen::App | Screen::Splash => {
-                    let frame = self.display.frame_mut();
-                    self.apps.render(frame, &context);
-                    instance_marks(frame, self.apps.len(), self.apps.focus());
-                }
-            }
+            self.render_screen(&outputs);
             self.record_since(Stage::Render, mark);
             self.prepare_frame();
             if self.display.page_count() > 1 {
@@ -611,16 +586,11 @@ where
             Screen::System => self.route_system(&snapshot.buttons, wired),
             Screen::Calibration => self.route_wizard(&snapshot.buttons, wired),
             // A short `up` or `down` moves the focus to the applet left or
-            // right, without wrapping; a long one opens its routing page,
-            // and closes it again (journal/D-046).
+            // right, from the last round to the first and back, on the
+            // applet's screen as on its routing page; a long one opens that
+            // page, and closes it again (journal/D-046).
             Screen::App => {
-                let focus = self.apps.focus();
-                if snapshot.buttons.pressed(Button::Up) {
-                    self.apps.set_focus(focus.saturating_sub(1));
-                }
-                if snapshot.buttons.pressed(Button::Down) {
-                    self.apps.set_focus(focus + 1);
-                }
+                self.move_focus(&snapshot.buttons);
                 if snapshot.buttons.long_pressed(Button::Up)
                     || snapshot.buttons.long_pressed(Button::Down)
                 {
@@ -633,6 +603,8 @@ where
                     || snapshot.buttons.long_pressed(Button::Down)
                 {
                     self.screen = Screen::App;
+                } else if self.move_focus(&snapshot.buttons) {
+                    self.routing.open();
                 } else {
                     self.routing
                         .update(snapshot.controls.encoder_delta, &mut self.apps);
@@ -640,6 +612,55 @@ where
             }
             Screen::Splash => {}
         }
+    }
+
+    /// Draws the screen on show into the frame: the applet with the focus,
+    /// or a page of the engine, with the instances' marks over the applet's
+    /// screen and its routing page.
+    fn render_screen(&mut self, outputs: &[MilliVolts; CV_CHANNELS]) {
+        // The applet sees its own lanes: what reached the jack each
+        // goes to, nothing for one that goes nowhere (journal/D-046).
+        let route = self.apps.route();
+        let cv_out = core::array::from_fn(|lane| {
+            route
+                .output(lane)
+                .map_or(0, |output| outputs[output.index()])
+        });
+        let context = TickContext {
+            tick_count: self.tick_count,
+            duration_micros: self.last_duration_micros,
+            cv_out,
+            outputs_forced: self.screen != Screen::Calibration
+                && self.forced_outputs.iter().any(Option::is_some),
+        };
+        match self.screen {
+            Screen::Menu => self.menu.render(self.display.frame_mut()),
+            Screen::Routing => {
+                let frame = self.display.frame_mut();
+                self.routing.render(frame, &self.apps);
+                instance_marks(frame, self.apps.len(), self.apps.focus());
+            }
+            Screen::System => self.system.render(self.display.frame_mut(), self.build_id),
+            Screen::Calibration => self.wizard.render(self.display.frame_mut()),
+            Screen::App | Screen::Splash => {
+                let frame = self.display.frame_mut();
+                self.apps.render(frame, &context);
+                instance_marks(frame, self.apps.len(), self.apps.focus());
+            }
+        }
+    }
+
+    /// Moves the focus one applet left on a short `up`, one right on a short
+    /// `down`, wrapping at both ends; whether it moved.
+    fn move_focus(&mut self, buttons: &ButtonEvents) -> bool {
+        let before = self.apps.focus();
+        if buttons.pressed(Button::Up) {
+            self.apps.step_focus(false);
+        }
+        if buttons.pressed(Button::Down) {
+            self.apps.step_focus(true);
+        }
+        self.apps.focus() != before
     }
 
     /// Drives the settings screen; the engine runs with its draft while open.

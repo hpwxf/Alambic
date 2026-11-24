@@ -99,19 +99,38 @@ fn hold(engine: &mut MockEngine, button: Button, ticks: usize) {
 }
 
 #[test]
-fn up_and_down_move_the_focus_without_wrapping() {
+fn up_and_down_move_the_focus_round_the_ends() {
     let mut engine = ratchet_and_scope();
     assert_eq!(engine.apps().focus(), 1);
     hold(&mut engine, Button::Up, 10);
     assert_eq!(engine.current_app(), AppId::Ratchet, "up: to the left");
     hold(&mut engine, Button::Up, 10);
-    assert_eq!(engine.apps().focus(), 0, "the left end stays");
+    assert_eq!(engine.apps().focus(), 1, "up from the first: the last");
     hold(&mut engine, Button::Down, 10);
+    assert_eq!(engine.apps().focus(), 0, "down from the last: the first");
     hold(&mut engine, Button::Down, 10);
-    assert_eq!(engine.apps().focus(), 1, "down: to the right, then stays");
+    assert_eq!(engine.apps().focus(), 1, "down: to the right");
     let long = usize::try_from(LONG_PRESS_TICKS).unwrap() + 10;
     hold(&mut engine, Button::Up, long);
     assert_eq!(engine.apps().focus(), 1, "a long press is not a move");
+}
+
+#[test]
+fn up_and_down_move_the_focus_on_the_routing_page_too() {
+    let mut engine = ratchet_and_scope();
+    let long = usize::try_from(LONG_PRESS_TICKS).unwrap() + 10;
+    hold(&mut engine, Button::Down, long);
+    assert!(engine.routing_is_open());
+    hold(&mut engine, Button::Down, 10);
+    assert!(engine.routing_is_open(), "a short press leaves it open");
+    assert_eq!(engine.current_app(), AppId::Ratchet, "on RATCHET's routes");
+    let frame = engine.frame();
+    assert!(
+        frame.pixel(0, 0) && frame.pixel(2, 0) && !frame.pixel(0, 2) && frame.pixel(1, 2),
+        "the marks on the page, RATCHET's across"
+    );
+    hold(&mut engine, Button::Up, 10);
+    assert_eq!(engine.current_app(), AppId::Scope, "round the left end");
 }
 
 #[test]
@@ -122,7 +141,7 @@ fn the_screen_marks_the_instances_left_of_the_title() {
         tick(&mut engine);
     }
     assert!(
-        !engine.frame().pixel(0, 0),
+        !engine.frame().pixel(1, 0),
         "one applet alone: no mark, the title's place is empty"
     );
     engine.apps_mut().add(AppId::Scope);
@@ -130,9 +149,16 @@ fn the_screen_marks_the_instances_left_of_the_title() {
         tick(&mut engine);
     }
     let frame = engine.frame();
-    // SCOPE, second, has the focus: its mark two pixels wide.
-    assert!(frame.pixel(0, 0) && !frame.pixel(1, 0), "RATCHET");
-    assert!(frame.pixel(0, 2) && frame.pixel(1, 2), "SCOPE, focused");
+    // SCOPE, second, has the focus: its mark across the scroll bar's width,
+    // RATCHET's a pixel on its track.
+    assert!(
+        !frame.pixel(0, 0) && frame.pixel(1, 0) && !frame.pixel(2, 0),
+        "RATCHET"
+    );
+    assert!(
+        frame.pixel(0, 2) && frame.pixel(1, 2) && frame.pixel(2, 2),
+        "SCOPE, focused"
+    );
     assert!(!frame.pixel(0, 4), "two marks for two instances");
 }
 

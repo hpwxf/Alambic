@@ -58,13 +58,14 @@ Architectural decisions behind each change are in `journal/` (French).
 
 ### Changed
 
-- **Two applets at once** (journal/D-046): the app menu's `ADD APP` starts
-  a second one beside the one shown, on the outputs nobody uses (an applet
+- **Up to four applets at once** (journal/D-046): the app menu's `ADD APP`
+  starts another beside the one shown, on the outputs nobody uses (an applet
   declares the outputs it writes: `RATCHET` A and B, `SUPERSAW` A, B and
-  its sub-octave), and `REMOVE APP` stops the one shown. Both run all the
-  time; `up` and `down` show one or the other, marked by a column of pixels
-  left of the title. Every applet's title moved three pixels right to make
-  room. The menu scrolls.
+  its sub-octave), and `REMOVE APP` stops the one shown. All run all the
+  time; `up` and `down` show the next or the previous, round the ends and
+  from the routing page too, marked by a column of dots left of the title,
+  in line with a list's scroll bar. Every applet's title moved four pixels
+  right to make room. The menu scrolls.
 - **Instances through the probe** (journal/D-046), probe protocol 9: a
   module and a host tool must be updated together. `cargo probe add`,
   `instances`, `route @N port=jack…`, `focus @N` and `remove @N` do what

@@ -58,7 +58,7 @@ use crate::platform::{
 /// How many applets can run at once, each in a slot of its own that
 /// takes some of the outputs (journal/D-046). Two is the practical case
 /// measured first, four the limit tried next.
-pub const MAX_INSTANCES: usize = 2;
+pub const MAX_INSTANCES: usize = 4;
 
 /// One output an applet writes: a lane of its sound, which its route sends
 /// to a jack or nowhere (journal/D-046).
@@ -606,6 +606,19 @@ impl AppHost {
         } else {
             false
         }
+    }
+
+    /// Moves the focus to the next instance, `forward` to the right, from
+    /// the last round to the first and back.
+    pub const fn step_focus(&mut self, forward: bool) {
+        if self.count == 0 {
+            return;
+        }
+        self.focus = if forward {
+            (self.focus + 1) % self.count
+        } else {
+            (self.focus + self.count - 1) % self.count
+        };
     }
 
     /// The slot of the instance at `position`.

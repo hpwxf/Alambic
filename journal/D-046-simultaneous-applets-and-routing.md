@@ -132,9 +132,13 @@ Tranché par l'utilisateur le 2026-11-24, après la proposition :
 * **le nom de l'app à une place commune de l'écran**, que toutes les apps respectent : le moteur sait où poser
   l'indicateur sans le demander à chacune.
 
-Reste à trancher :
-
-* `MAX_INSTANCES` retenu, d'après les deux mesures.
+* **`MAX_INSTANCES` = 4** (2026-11-24, après les deux mesures du lot 13g) : le calcul tient (`audio` 6,4 µs au plus
+  avec quatre `SUPERSAW`), et quatre sorties bornent de toute façon à quatre les instances qui jouent ; le prix est
+  fixe (`.text` +2,5 Kio, `.data` +888 o, pile +1,4 Kio), la pile à surveiller ;
+* **`up` / `down` tournent en boucle** (après la dernière, la première ; avant la première, la dernière) et
+  **changent aussi d'instance depuis la page de routage**, qui s'ouvre alors sur celle de la nouvelle instance ;
+* **l'indicateur large de `SCROLL_WIDTH`**, dans l'alignement de la barre de défilement des listes, **et dessiné
+  aussi sur la page de routage**.
 
 **Critères d'acceptation** (ce qui la fait passer à `adoptée`) :
 
@@ -289,3 +293,36 @@ La pile grandit surtout par les copies du `Patch` et des `Routed` dans la boucle
 `Engine::update_params`) ; à 4, elle reste au-dessus du seuil d'alerte (2 Kio) mais s'en approche : à surveiller
 avant d'aller plus loin. Criterion ne tranche pas : selon `N`, l'inlining déplace les chiffres dans les deux sens
 (`voice/two_supersaws_routed_sample_to_codes` 46,8 ns à 2, 36,6 ns à 4), le coût réel est celui du module.
+
+## Lot 13g, module (2026-11-24) — mesures, `MAX_INSTANCES` à 4, gestes ajustés
+
+Relevés de l'utilisateur, `cargo probe stats`, `NOTE` sous le bruit de CV1 ; µs, moyenne (max) :
+
+| | `SUPERSAW` seule (étape 11e) | `SUPERSAW` + `RATCHET`, N = 2 (`8911df1`) | 4 × `SUPERSAW`, N = 4 |
+|---|---|---|---|
+| `audio` | ≈ 4,2 (5,0) | 4,20 (5,07) | 4,49 (6,37) |
+| `audio_period` max | — | 23,55 | 23,55 |
+| `voice` | 1,0 à 1,6 | 0,86 | 2,14 |
+| `voice_params` | 0,35 | 0,50 | 1,21 |
+| `update` | 2,05 | 6,02 | 10,81 |
+| `publish` | 4,98 | 14,32 | 35,70 (42,62) |
+| `tick` | 15,0 (108) | 17,64 (111) | 25,42 (121) |
+
+* `audio` reste sous le tiers de la période avec quatre instances ; `audio_period` ne bouge pas : la fusion des
+  `Changes` dans la section critique de `publish` ne retarde pas l'interruption. La boucle passe ≈ 355 µs sur 1 000
+  dans le pire cas (`sample` 291 µs compris).
+* `publish` croît d'≈ 9 µs par `SUPERSAW` modulée, contre ≈ 5 µs pour la seule de l'étape 11 : à entrées fixes,
+  aucune instance n'est repréparée sur l'hôte (vérifié par un test jetable sur les quatre configurations), l'écart
+  vient donc du bruit de CV1, que chaque `SUPERSAW` suit, et probablement des copies de `Changes` (≈ 330 o par
+  emplacement), qui grossissent avec N ; non instrumenté. Sans conséquence au budget actuel, suite possible.
+* Mémoire à N = 4 (`cargo xtask size`) : `.text` 0x2aa44 (21,4 Kio d'ITCM libres), `.data` 0x24cc, pile ≈ 13 008 o
+  (3 376 o libres, alerte sous 2 Kio).
+
+Retenu : `MAX_INSTANCES = 4`. Ajustés à l'essai, à la demande de l'utilisateur :
+
+* `up` / `down` courts tournent en boucle (`AppHost::step_focus`), sur l'écran de l'app comme sur la page de
+  routage, qui reste ouverte et se rouvre sur la première ligne de la nouvelle instance ;
+* l'indicateur prend la largeur de la barre de défilement (`SCROLL_WIDTH`, 3 px) : le focus sur toute la largeur,
+  les autres d'un pixel au milieu, sur la piste pointillée de la barre ; il est dessiné aussi sur la page de
+  routage. Le titre passe à `LIST_LEFT` (4 px), un pixel à droite de l'indicateur et aligné sur les lignes des
+  listes ; écrans de référence régénérés, seule la ligne du titre bouge (diff relu).

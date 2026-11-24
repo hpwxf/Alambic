@@ -146,22 +146,27 @@ pub fn bipolar_hbar(
 }
 
 /// Where every applet's title starts on its top row: right of the column
-/// where the engine marks the instances running (journal/D-046).
-pub const TITLE_LEFT: i32 = 3;
+/// where the engine marks the instances running, a pixel apart, where a
+/// list's rows start (journal/D-046).
+pub const TITLE_LEFT: i32 = LIST_LEFT;
 
-/// The instances running, one pixel each down the left column of the top
-/// row, the one with the focus two pixels wide: drawn over an applet's
-/// screen, left of its title ([`TITLE_LEFT`]), when more than one runs
-/// (journal/D-046).
+/// The instances running, one mark each down the left column of the top
+/// row, as wide as a list's scroll bar ([`SCROLL_WIDTH`]) and in line with
+/// it: the one with the focus across the whole width, the others a pixel on
+/// the bar's track. Drawn over an applet's screen or its routing page, left
+/// of the title ([`TITLE_LEFT`]), when more than one runs (journal/D-046).
 pub fn instance_marks(frame: &mut FrameBuffer, count: usize, focus: usize) {
     if count < 2 {
         return;
     }
-    fill_rect(frame, 0, 0, TITLE_LEFT, ROW_HEIGHT, Ink::Dark);
+    fill_rect(frame, 0, 0, SCROLL_WIDTH, ROW_HEIGHT, Ink::Dark);
     for position in 0..count.min(4) {
         let y = i32::try_from(position * 2).unwrap_or(0);
-        let width = if position == focus { 2 } else { 1 };
-        fill_rect(frame, 0, y, width, 1, Ink::Lit);
+        if position == focus {
+            fill_rect(frame, 0, y, SCROLL_WIDTH, 1, Ink::Lit);
+        } else {
+            fill_rect(frame, SCROLL_WIDTH / 2, y, 1, 1, Ink::Lit);
+        }
     }
 }
 
