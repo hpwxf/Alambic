@@ -274,3 +274,18 @@ recopié dans chaque appelant ; ramenés par une boucle à un passage et `#[inli
   (la montrer sur le module et dans la page, ✕ pour l'arrêter), *Add beside*, la table de routage de l'instance
   affichée, des listes qui envoient à chaque changement. Pas encore essayée dans Chrome.
 * Coût : `.text` +3 256 o (≈ 24,4 Kio d'ITCM libres), pile inchangée (≈ 11 648 o).
+
+## Lot 13g, côté hôte (2026-11-24) — `MAX_INSTANCES` à 4
+
+Mesuré sur `8586de7` en passant la constante de 2 à 4, puis revenu à 2 (les tests passent avec les deux) :
+
+| | 2 | 4 |
+|---|---|---|
+| `.text` | 0x29e70 | 0x2a844 (+2 516 o) |
+| `.data` (`MAILBOX` : un `Setup` par emplacement) | 0x2154 | 0x24cc (+888 o) |
+| pile, chemin le plus profond (`main` + interruptions) | ≈ 11 648 o | ≈ 13 008 o (+1 360 o ; 3 376 o libres) |
+
+La pile grandit surtout par les copies du `Patch` et des `Routed` dans la boucle (`AppHost::update`,
+`Engine::update_params`) ; à 4, elle reste au-dessus du seuil d'alerte (2 Kio) mais s'en approche : à surveiller
+avant d'aller plus loin. Criterion ne tranche pas : selon `N`, l'inlining déplace les chiffres dans les deux sens
+(`voice/two_supersaws_routed_sample_to_codes` 46,8 ns à 2, 36,6 ns à 4), le coût réel est celui du module.

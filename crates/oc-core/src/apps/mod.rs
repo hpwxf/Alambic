@@ -896,7 +896,7 @@ mod tests {
     use super::diagnostic::DiagnosticApp;
     use super::param::Refused;
     use super::scope::ScopeApp;
-    use super::{App, AppHost, AppId, InputSnapshot, Instance};
+    use super::{App, AppHost, AppId, InputSnapshot, Instance, MAX_INSTANCES};
     use crate::apps::sound::Params;
     use crate::audio::Route;
     use crate::audio::basic::Channel;
@@ -1003,6 +1003,10 @@ mod tests {
         second.set(0, Some(CvChannel::Three));
         second.set(1, Some(CvChannel::Four));
         assert_eq!(host.route(), second, "C and D");
+        while host.len() < MAX_INSTANCES {
+            assert!(host.add(AppId::Tone).is_some());
+            assert!(host.route().is_off(), "no output left for it");
+        }
         assert_eq!(host.add(AppId::Tone), None, "every slot taken");
     }
 
