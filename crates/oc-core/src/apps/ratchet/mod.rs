@@ -44,7 +44,7 @@ use self::burst::{
 use self::tempo::Tempo;
 use crate::apps::param::{ParamSpec, ParamValue, Refused, Unit};
 use crate::apps::sound::Params;
-use crate::apps::{App, AppId, InputSnapshot, TickContext};
+use crate::apps::{App, AppId, InputSnapshot, Port, TickContext};
 use crate::fixed::{self, ONE};
 use crate::fmt::TextBuf;
 use crate::framebuffer::{FrameBuffer, ROW_HEIGHT, WIDTH_I32};
@@ -917,9 +917,17 @@ fn position(setting: Setting, burst: &Burst) -> i32 {
     i32::try_from(permille.clamp(0, 1_000)).unwrap_or(0)
 }
 
+/// A copies `TR1`, B bursts: C and D stay free for another applet
+/// (journal/D-046).
+const PORTS: [Port; 2] = [Port { name: "A" }, Port { name: "B" }];
+
 impl App for RatchetApp {
     fn id(&self) -> AppId {
         AppId::Ratchet
+    }
+
+    fn output_ports(&self) -> &'static [Port] {
+        &PORTS
     }
 
     fn update(&mut self, input: &InputSnapshot) -> Params {

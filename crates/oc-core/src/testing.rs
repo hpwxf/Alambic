@@ -364,7 +364,7 @@ impl MockEngine {
         let report = self.engine.tick();
         self.outputs = self
             .player
-            .play(self.engine.params_revision(), self.engine.params());
+            .play(self.engine.params_revision(), self.engine.patch());
         self.engine.write_outputs(&self.outputs);
         report
     }

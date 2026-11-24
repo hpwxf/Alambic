@@ -22,7 +22,8 @@ jusqu'au lot qui change le panneau (13d), et celui-là seulement là où les ges
 
 * `App::output_ports() -> &'static [Port]` (nom, sortie par défaut ; par défaut `A` à `D`) ; `SUPERSAW` : `A`, `B`,
   `SUB` ; `RATCHET` : `A`, `B` ; les autres selon ce qu'elles écrivent.
-* `Route` (voie locale → `Option<CvOut>`), `Refused` sur une sortie déjà tenue ; l'app voit ses ports désactivés.
+* `Route` (voie locale → `Option<CvChannel>`). Le refus d'une sortie déjà tenue et l'app qui voit ses ports
+  désactivés passent en 13c, avec les instances.
 * `oc_core::audio` : la voix d'une instance et l'assemblage des voies vers les sorties physiques (nom à fixer :
   `Mix`, `Rack`…), une sortie libre à 0 V ; le maintien de la sonde (`held`) appliqué après le routage, hors de
   `Params<G>`.

@@ -157,3 +157,34 @@ Reste à trancher :
   nomme alors une entrée de l'instance, plus une entrée physique.
 * Un besoin de routage d'une app vers une autre avant la fin de l'étape : en faire une étape à part, pas un ajout
   à celle-ci.
+
+## Lot 13b (2026-11-24) — les sorties en ports, une instance
+
+Le statut reste `proposée`. Ce que l'implémentation a fixé :
+
+* **`oc_core::audio`** : `Params<G>` ne porte plus que le son ; `Route` (voie → `Option<CvChannel>`, `IDENTITY`,
+  `OFF`, `first(n)`) ; `Routed` (paramètres et route d'un emplacement) ; `Patch<G, N>` (un `Routed` par emplacement
+  et les niveaux maintenus par la sonde, appliqués après le routage) ; `Voices<G, N>` (une `Voice` par emplacement,
+  un emplacement dont la route n'atteint rien ne tourne pas, une sortie qu'aucune route n'atteint à 0 V) ;
+  `Changes<G, N>` (le `Setup` des seuls emplacements dont les paramètres ont changé, toutes les routes, les niveaux
+  maintenus), `merge` dans `MAILBOX`, `applied` après la copie par l'interruption.
+* **Un seul `Follower` par patch**, pas un par instance : quand la révision avance, il compare les paramètres de
+  chaque emplacement à ceux qu'il a préparés et ne refait que les `Setup` qui ont changé. Une révision unique
+  (`Engine::params_revision`) reste ce que compare la boucle à chaque tick.
+* **`App::output_ports`** : `A` à `D` par défaut, `A`, `B` pour `RATCHET`, `A`, `B`, `SUB` pour `SUPERSAW` ;
+  `AppHost::route` donne la route de l'app en cours (`Route::first` du nombre de ports). `MAX_INSTANCES = 2`
+  (`apps/mod.rs`), seul l'emplacement 0 sert. `Engine::params` rend les paramètres de l'app en cours,
+  `Engine::patch` ce que jouent les backends.
+* **Reportés en 13c**, avec les instances qui les rendent utiles : le refus d'une sortie déjà tenue et le fait que
+  l'app sache ses ports désactivés.
+
+Mesures :
+
+* `tests/voice_samples.rs` passe désormais par le chemin entier (patch, route des ports, `Player`) : sommes de
+  contrôle inchangées pour `TONE`, `SUPERSAW`, la rampe de `DIAGNOSTIC` et les triggers de `RATCHET` ; écrans de
+  référence inchangés.
+* Code (`cargo xtask size` contre `master`) : `.text` +3 848 o (31,9 Kio d'ITCM libres), `.rodata` +416 o, `.data`
+  +440 o (`MAILBOX` porte un `Changes`) ; pile ≈ 11 800 o (inchangée).
+* Hôte (criterion) : `engine/tick_*` inchangés (+0,4 %, bruit) ; `voice/supersaw_routed_sample_to_codes` 36,6 ns
+  contre 27,7 ns pour la voix seule : l'aiguillage des voies coûte ≈ 9 ns par échantillon ;
+  `two_supersaws_routed_sample_to_codes` 46,8 ns, le second banc ≈ 10 ns. À mesurer sur le module (13g).

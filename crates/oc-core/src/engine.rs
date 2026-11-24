@@ -13,9 +13,10 @@
 //! ticks after the drawing, and the next frame waits for the last page
 //! (journal/D-023, option C+; `docs/agents/firmware.md`, "The screen").
 
-use crate::apps::sound::Params;
+use crate::apps::sound::{Params, Patch};
 use crate::apps::{App, AppHost, AppId};
 use crate::apps::{InputSnapshot, TickContext};
+use crate::audio::Route;
 use crate::buttons::{ButtonEvents, ButtonReader};
 use crate::calibration::Calibration;
 use crate::framebuffer::FrameBuffer;
@@ -127,9 +128,9 @@ pub struct Engine<A, O, D, C, K, S> {
     previous_fine: Option<u32>,
     /// Levels a host probe holds on the outputs (journal/D-029).
     forced_outputs: [Option<MilliVolts>; CV_CHANNELS],
-    /// What the outputs carry since the last tick (journal/D-033).
-    params: Params,
-    /// Moves on whenever [`Self::params`] changes.
+    /// What the outputs carry since the last tick (journal/D-033, D-046).
+    patch: Patch,
+    /// Moves on whenever [`Self::patch`] changes.
     params_revision: u32,
     /// What the outputs last played, as the backend reported it.
     played: [MilliVolts; CV_CHANNELS],
@@ -185,7 +186,7 @@ where
             profile,
             previous_fine: None,
             forced_outputs: [None; CV_CHANNELS],
-            params: Params::REST,
+            patch: Patch::single(Params::REST, Route::IDENTITY),
             params_revision: 0,
             played: [0; CV_CHANNELS],
             screen: Screen::Splash,
@@ -330,21 +331,27 @@ where
     /// What the outputs carry from this tick on, from the screen in charge,
     /// then the levels a probe holds.
     fn update_params(&mut self, snapshot: &InputSnapshot) {
-        let mut params = match self.screen {
-            Screen::System => Params::REST,
-            Screen::Calibration => Params::levels([self.wizard.output_level(); CV_CHANNELS]),
-            Screen::App | Screen::Menu | Screen::Splash => self.apps.update(snapshot),
+        let (params, route) = match self.screen {
+            Screen::System => (Params::REST, Route::IDENTITY),
+            Screen::Calibration => (
+                Params::levels([self.wizard.output_level(); CV_CHANNELS]),
+                Route::IDENTITY,
+            ),
+            Screen::App | Screen::Menu | Screen::Splash => {
+                (self.apps.update(snapshot), self.apps.route())
+            }
         };
+        let mut patch = Patch::single(params, route);
         // The wizard measures the outputs it drives: a forced level would
         // calibrate against the wrong voltage.
         if self.screen != Screen::Calibration {
             for (index, forced) in self.forced_outputs.into_iter().enumerate() {
                 if let Some(level) = forced {
-                    params.hold(index, level);
+                    patch.hold(index, level);
                 }
             }
         }
-        self.replace_params(params);
+        self.replace_patch(patch);
     }
 
     /// Runs one tick of the boot animation.
@@ -359,7 +366,7 @@ where
         self.splash.advance(elapsed);
 
         let outputs = self.played;
-        self.replace_params(Params::REST);
+        self.replace_patch(Patch::single(Params::REST, Route::IDENTITY));
 
         let mark = self.clock.fine_count();
         self.splash.render(self.display.frame_mut(), self.build_id);
@@ -404,7 +411,7 @@ where
         self.previous_micros = None;
         self.previous_fine = None;
         self.forced_outputs = [None; CV_CHANNELS];
-        self.replace_params(Params::REST);
+        self.replace_patch(Patch::single(Params::REST, Route::IDENTITY));
         // The backend's voice restarts at rest too (`testing::MockEngine`).
         self.played = [0; CV_CHANNELS];
         self.last_duration_micros = 0;
@@ -435,18 +442,25 @@ where
         self.forced_outputs[channel.index()] = level;
     }
 
-    /// What the outputs carry since the last tick, levels held by the probe
-    /// included: what a backend's voice renders at its own rate
-    /// ([`crate::audio::Player`], journal/D-033, D-040). The engine renders
-    /// none.
+    /// What the running applet publishes for its lanes since the last tick
+    /// (journal/D-033, D-046). What the outputs carry is [`Self::patch`].
     #[must_use]
     pub const fn params(&self) -> &Params {
-        &self.params
+        &self.patch.parts[0].params
     }
 
-    /// Moves on whenever [`Self::params`] changes, wrapping: a backend that
-    /// hands the parameters on compares this instead of the parameters, a
-    /// few bytes instead of a whole [`Params`] every tick.
+    /// What the outputs carry since the last tick: each slot's parameters
+    /// and route, levels held by the probe included; what a backend's
+    /// voices render at their own rate ([`crate::audio::Player`],
+    /// journal/D-040, D-046). The engine renders none.
+    #[must_use]
+    pub const fn patch(&self) -> &Patch {
+        &self.patch
+    }
+
+    /// Moves on whenever [`Self::patch`] changes, wrapping: a backend that
+    /// hands the patch on compares this instead of the patch, a few bytes
+    /// instead of a whole [`Patch`] every tick.
     #[must_use]
     pub const fn params_revision(&self) -> u32 {
         self.params_revision
@@ -459,10 +473,10 @@ where
         self.played = levels;
     }
 
-    /// Makes `params` what the outputs carry.
-    fn replace_params(&mut self, params: Params) {
-        if params != self.params {
-            self.params = params;
+    /// Makes `patch` what the outputs carry.
+    fn replace_patch(&mut self, patch: Patch) {
+        if patch != self.patch {
+            self.patch = patch;
             self.params_revision = self.params_revision.wrapping_add(1);
         }
     }
@@ -1132,7 +1146,7 @@ mod tests {
         assert_eq!(engine.parts_mut().1.flushes, 0, "the tick writes no output");
 
         let mut player = Player::new(TICK_RATE_HZ);
-        let levels = player.play(engine.params_revision(), engine.params());
+        let levels = player.play(engine.params_revision(), engine.patch());
         assert_eq!(levels[1], adc_reading(1_500), "one sample of the params");
         engine.write_outputs(&levels);
         assert_eq!(engine.parts_mut().1.level(CvChannel::Two), levels[1]);

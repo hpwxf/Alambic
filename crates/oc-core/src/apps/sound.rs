@@ -10,6 +10,7 @@
 //! Written by hand while the list is two long; a macro would write the same
 //! three enums once it grows.
 
+use crate::apps::MAX_INSTANCES;
 use crate::apps::supersaw::bank::{SupersawBank, SupersawParams, SupersawSetup, SupersawState};
 use crate::audio::basic::{Basic, BasicParams, BasicSetup, BasicState};
 use crate::audio::{self, Generator};
@@ -24,9 +25,22 @@ pub type Setup = audio::Setup<Sound>;
 /// The voice every backend runs.
 pub type Voice = audio::Voice<Sound>;
 
-/// The voice a backend plays the engine's outputs with, following its
-/// parameters (journal/D-040).
-pub type Player = audio::Player<Sound>;
+/// What every output carries: each instance slot's parameters and route,
+/// and the levels a probe holds (journal/D-046).
+pub type Patch = audio::Patch<Sound, MAX_INSTANCES>;
+
+/// What the audio context takes from the loop when the patch changed.
+pub type Changes = audio::Changes<Sound, MAX_INSTANCES>;
+
+/// The voices of every slot, routed to the outputs.
+pub type Voices = audio::Voices<Sound, MAX_INSTANCES>;
+
+/// What tells a backend's voices that the patch changed (journal/D-040).
+pub type Follower = audio::Follower<Sound, MAX_INSTANCES>;
+
+/// The voices a backend plays the engine's outputs with, following its
+/// patch (journal/D-040, D-046).
+pub type Player = audio::Player<Sound, MAX_INSTANCES>;
 
 /// Every kind of sound this image's applets make.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

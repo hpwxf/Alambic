@@ -288,7 +288,7 @@ impl Simulator {
         let report = self.engine.tick();
         let levels = self
             .player
-            .play(self.engine.params_revision(), self.engine.params());
+            .play(self.engine.params_revision(), self.engine.patch());
         self.engine.write_outputs(&levels);
         if self.engine.take_save_request() {
             let saved = self.save_settings();

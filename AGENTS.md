@@ -127,9 +127,12 @@ Details per crate: `docs/agents/code-map.md`.
 
 * **An applet publishes what each output carries, not samples**: the
   parameters of a generator (`oc_core::apps::sound::Params`: levels and
-  tones, or `SUPERSAW`'s bank). A `Voice` renders them one sample at a time
-  at its backend's rate, keeping the generator's state across changes
-  (journal/D-033, D-042, D-044). **`oc_core::audio` names no applet**: it
+  tones, or `SUPERSAW`'s bank), on the lanes of its declared output ports
+  (`App::output_ports`); a `Route` sends each lane to a jack or nowhere. A
+  `Voice` per instance slot renders them one sample at a time at its
+  backend's rate, keeping the generator's state across changes, and
+  `Voices` places the lanes on the outputs (journal/D-033, D-042, D-044,
+  D-046). **`oc_core::audio` names no applet**: it
   holds the `Generator` trait, the voice and the generic blocks; an
   applet's own DSP lives with the applet, and the list of generators an
   image has is `apps/sound.rs`. **Anything that depends on the parameters

@@ -6,6 +6,10 @@
 //! `f32` bank's, retaken when its phases became integers (journal/D-039,
 //! F2), on purpose, and kept when the integer bank went.
 //!
+//! Since D-046 the samples go the whole way a backend plays them: the
+//! applet's parameters in the first slot of a patch, along the route of its
+//! ports, through the voices of every slot.
+//!
 //! Switching between two kinds of sound (a tone, then the supersaw) is left
 //! out on purpose: D-044 starts a generator afresh when the kind changes,
 //! where the voice of D-033 kept the bank's phases across.
@@ -13,10 +17,11 @@
 use oc_core::apps::diagnostic::DiagnosticApp;
 use oc_core::apps::param::ParamValue;
 use oc_core::apps::ratchet::RatchetApp;
-use oc_core::apps::sound::{Params, Voice};
+use oc_core::apps::sound::{Params, Patch, Player};
 use oc_core::apps::supersaw::SupersawApp;
 use oc_core::apps::tone::ToneApp;
 use oc_core::apps::{App, InputSnapshot};
+use oc_core::audio::Route;
 
 /// The module's audio rate.
 const RATE_HZ: u32 = 47_619;
@@ -30,14 +35,15 @@ fn tick() -> InputSnapshot {
 }
 
 /// FNV-1a over every output of `samples` samples after each parameter
-/// change of `scenes`, the voice kept from one to the next.
-fn checksum(scenes: &[Params], samples: usize) -> u64 {
-    let mut voice = Voice::new(RATE_HZ);
+/// change of `scenes`, played along `route`, the voices kept from one to the
+/// next.
+fn checksum(scenes: &[Params], route: Route, samples: usize) -> u64 {
+    let mut player = Player::new(RATE_HZ);
     let mut hash: u64 = 0xcbf2_9ce4_8422_2325;
-    for scene in scenes {
-        voice.set_params(scene);
+    for (revision, scene) in (0_u32..).zip(scenes) {
+        let patch = Patch::single(*scene, route);
         for _ in 0..samples {
-            for output in voice.next_sample() {
+            for output in player.play(revision, &patch) {
                 for byte in output.to_le_bytes() {
                     hash ^= u64::from(byte);
                     hash = hash.wrapping_mul(0x0000_0100_0000_01b3);
@@ -60,8 +66,9 @@ fn scenes(app: &mut dyn App, changes: &[(usize, ParamValue)]) -> Vec<Params> {
 }
 
 fn checksum_of(app: &mut dyn App, changes: &[(usize, ParamValue)]) -> u64 {
+    let route = Route::first(app.output_ports().len());
     let scenes = scenes(app, changes);
-    checksum(&scenes, 2_048)
+    checksum(&scenes, route, 2_048)
 }
 
 #[test]
@@ -107,7 +114,7 @@ fn a_cv_applet_plays_the_same_levels() {
     let scenes: Vec<_> = (0..64)
         .map(|_| App::update(&mut diagnostic, &tick()))
         .collect();
-    let sum = checksum(&scenes, 48);
+    let sum = checksum(&scenes, Route::first(diagnostic.output_ports().len()), 48);
     assert_eq!(sum, 0x4ac1_c6f7_3da4_2325, "DIAGNOSTIC RAMP: {sum:#018x}");
 
     // RATCHET's triggers: a burst by hand, tick by tick.
@@ -116,6 +123,6 @@ fn a_cv_applet_plays_the_same_levels() {
     let scenes: Vec<_> = (0..600)
         .map(|_| App::update(&mut ratchet, &tick()))
         .collect();
-    let sum = checksum(&scenes, 48);
+    let sum = checksum(&scenes, Route::first(ratchet.output_ports().len()), 48);
     assert_eq!(sum, 0x88d4_4f77_cee2_7f25, "RATCHET: {sum:#018x}");
 }

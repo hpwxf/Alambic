@@ -104,7 +104,7 @@ fn a_probe_holds_an_output_over_the_tone() {
     engine.tick();
     assert_eq!(engine.outputs()[1], 1_234);
     // Held over the sound, which plays on beneath (journal/D-044).
-    assert_eq!(engine.params().held[1], Some(1_234));
+    assert_eq!(engine.patch().held[1], Some(1_234));
     let channels = engine.params().as_basic().unwrap().channels;
     assert!(matches!(channels[0], Channel::Tone(_)) && matches!(channels[1], Channel::Tone(_)));
 }

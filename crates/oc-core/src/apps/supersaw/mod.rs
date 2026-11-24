@@ -29,7 +29,7 @@ use crate::apps::param::{ParamSpec, ParamValue, Refused, Unit};
 use crate::apps::sound::Params;
 use crate::apps::tone::{self, HIGHEST_NOTE, LOWEST_NOTE, note_name, pitch_permille, write_hertz};
 pub use crate::apps::tone::{SET_NOTE, frequency_from};
-use crate::apps::{App, AppId, InputSnapshot, TickContext};
+use crate::apps::{App, AppId, InputSnapshot, Port, TickContext};
 use crate::audio::MilliHertz;
 use crate::fmt::{TextBuf, write_volts};
 use crate::framebuffer::{FrameBuffer, ROW_HEIGHT, WIDTH_I32};
@@ -710,6 +710,10 @@ impl SupersawApp {
     }
 }
 
+/// A and B carry the bank, C its sub-octave, which a route may turn off to
+/// free the jack (journal/D-046).
+const PORTS: [Port; 3] = [Port { name: "A" }, Port { name: "B" }, Port { name: "SUB" }];
+
 impl App for SupersawApp {
     fn id(&self) -> AppId {
         AppId::Supersaw
@@ -778,6 +782,10 @@ impl App for SupersawApp {
 
     fn assign_sweep(&self, index: usize) -> Option<(MilliVolts, MilliVolts)> {
         sweep(*Setting::ALL.get(index)?)
+    }
+
+    fn output_ports(&self) -> &'static [Port] {
+        &PORTS
     }
 
     fn update(&mut self, input: &InputSnapshot) -> Params {

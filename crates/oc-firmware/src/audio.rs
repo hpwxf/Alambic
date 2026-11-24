@@ -23,9 +23,10 @@
 //!
 //! The engine keeps its output and display traits: [`MutedOutputs`] stands
 //! for outputs it never writes, [`MailboxDisplay`] hands its frames over;
-//! after each tick the loop's [`Publisher`] hands on [`oc_core::Engine::params`] when its
-//! revision moved, and prepares the voice's [`Setup`] there, outside any critical section: the
-//! interrupt only copies it (journal/D-040). Everything the
+//! after each tick the loop's [`Publisher`] hands on [`oc_core::Engine::patch`] when its
+//! revision moved, and prepares there, outside any critical section, the setups of the slots
+//! whose parameters changed ([`Changes`]): the interrupt only copies them (journal/D-040,
+//! D-046). Everything the
 //! contexts share sits in [`critical_section::Mutex`]es: the loop's sections
 //! are copies of a few hundred bytes (a frame: 1 KiB). They delay the
 //! interrupts a little, never the DAC.
@@ -44,8 +45,7 @@ use teensy4_bsp::hal::lpspi::{ClockConfigs, Interrupts, Lpspi, Status, Transacti
 use teensy4_bsp::hal::pit::{self, Pit};
 use teensy4_bsp::ral::lpspi::TCR;
 
-use oc_core::apps::sound::{Params, Setup, Voice};
-use oc_core::audio::Follower;
+use oc_core::apps::sound::{Changes, Follower, Patch, Voices};
 use oc_core::calibration::CvOutputCalibration;
 use oc_core::framebuffer::{FrameBuffer, LEN};
 use oc_core::platform::{AnalogOut, CV_CHANNELS, CvChannel, Display, MilliVolts};
@@ -68,10 +68,12 @@ const DAC_TCR: u32 = (23 << TCR::FRAMESZ::offset) | ((board::DAC_PCS as u32) << 
 
 /// What the loop leaves for the interrupt, and what the interrupt measured.
 struct Mailbox {
-    /// The voice prepared for the engine's last parameters.
-    setup: Setup,
+    /// What the engine's patch changed since the interrupt last took it:
+    /// the setups prepared for the slots that moved, every route and held
+    /// level.
+    changes: Changes,
     calibration: [CvOutputCalibration; CV_CHANNELS],
-    /// Set when `setup` or `calibration` changed since the interrupt took
+    /// Set when `changes` or `calibration` changed since the interrupt took
     /// them.
     fresh: bool,
     /// The levels of the last sample the interrupt computed, for the engine
@@ -116,7 +118,7 @@ impl Stats {
 }
 
 static MAILBOX: Mutex<RefCell<Mailbox>> = Mutex::new(RefCell::new(Mailbox {
-    setup: Setup::rest(board::AUDIO_RATE_HZ),
+    changes: Changes::SILENCE,
     calibration: [CvOutputCalibration::FACTORY; CV_CHANNELS],
     fresh: false,
     played: [0; CV_CHANNELS],
@@ -144,7 +146,7 @@ struct AudioState {
     /// The timing in force on the bus.
     current_clock: ClockConfigs,
     stream: FrameStream,
-    voice: Voice,
+    voices: Voices,
     calibration: [CvOutputCalibration; CV_CHANNELS],
     /// The ring slot the DMA reads at its next trigger.
     dma_next: usize,
@@ -217,7 +219,7 @@ pub(crate) fn start(
         clocks,
         current_clock: clocks.dac,
         stream: FrameStream::new(controller),
-        voice: Voice::new(board::AUDIO_RATE_HZ),
+        voices: Voices::new(board::AUDIO_RATE_HZ),
         calibration: [CvOutputCalibration::FACTORY; CV_CHANNELS],
         dma_next: 0,
         chunk_active: false,
@@ -346,12 +348,12 @@ pub(crate) fn stop() {
 
 /// What the loop last handed the interrupt, so that a tick where nothing
 /// changed costs a comparison of a revision and of the calibration, outside
-/// any critical section: comparing the whole [`Params`] under one cost
+/// any critical section: comparing the whole parameters under one cost
 /// 1.5 µs a tick. Owned by the loop, the only writer of the mailbox.
 #[derive(Debug)]
 pub(crate) struct Publisher {
-    /// The parameters last prepared, by their revision; forgotten when the
-    /// mailbox holds something else (the outputs at rest).
+    /// The patch last prepared, by its revision, and each slot's parameters;
+    /// forgotten when the mailbox holds something else (the outputs at rest).
     follower: Follower,
     calibration: Option<[CvOutputCalibration; CV_CHANNELS]>,
 }
@@ -372,15 +374,15 @@ impl Publisher {
     pub(crate) fn publish(
         &mut self,
         revision: u32,
-        params: &Params,
+        patch: &Patch,
         calibration: &[CvOutputCalibration; CV_CHANNELS],
     ) {
-        let setup = self.follower.setup(revision, params, board::AUDIO_RATE_HZ);
+        let changes = self.follower.follow(revision, patch, board::AUDIO_RATE_HZ);
         let new_calibration = self.calibration.as_ref() != Some(calibration);
-        if setup.is_none() && !new_calibration {
+        if changes.is_none() && !new_calibration {
             return;
         }
-        hand_over(setup.as_ref(), calibration);
+        hand_over(changes.as_ref(), calibration);
         self.calibration = Some(*calibration);
     }
 
@@ -390,7 +392,7 @@ impl Publisher {
     /// [`resume_outputs`] restarts it; the next [`Self::publish`] brings the
     /// parameters back.
     pub(crate) fn rest_outputs(&mut self, calibration: &[CvOutputCalibration; CV_CHANNELS]) {
-        hand_over(Some(&Setup::rest(board::AUDIO_RATE_HZ)), calibration);
+        hand_over(Some(&Changes::SILENCE), calibration);
         self.follower.forget();
         self.calibration = Some(*calibration);
         let running = critical_section::with(|cs| STATE.borrow_ref(cs).is_some());
@@ -411,13 +413,14 @@ impl Publisher {
     }
 }
 
-/// Puts `setup`, when there is one, and `calibration` in the mailbox for the
-/// interrupt to take at its next period.
-fn hand_over(setup: Option<&Setup>, calibration: &[CvOutputCalibration; CV_CHANNELS]) {
+/// Puts `changes`, when there are some, and `calibration` in the mailbox
+/// for the interrupt to take at its next period; changes it has not taken
+/// yet are merged, the newer setup of a slot replacing the older.
+fn hand_over(changes: Option<&Changes>, calibration: &[CvOutputCalibration; CV_CHANNELS]) {
     critical_section::with(|cs| {
         let mut mail = MAILBOX.borrow_ref_mut(cs);
-        if let Some(setup) = setup {
-            mail.setup = *setup;
+        if let Some(changes) = changes {
+            mail.changes.merge(changes);
         }
         mail.calibration = *calibration;
         mail.fresh = true;
@@ -523,7 +526,8 @@ impl AudioState {
         // prepared: taking them is a copy (journal/D-040).
         if mail.fresh {
             let start = DWT::cycle_count();
-            self.voice.apply(&mail.setup);
+            self.voices.apply(&mail.changes);
+            mail.changes.applied();
             mail.stats
                 .voice_params
                 .record(DWT::cycle_count().wrapping_sub(start));
@@ -531,7 +535,7 @@ impl AudioState {
             mail.fresh = false;
         }
         let start = DWT::cycle_count();
-        let samples = self.voice.next_sample();
+        let samples = self.voices.next_sample();
         mail.stats
             .voice
             .record(DWT::cycle_count().wrapping_sub(start));

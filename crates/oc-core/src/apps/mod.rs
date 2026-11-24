@@ -46,6 +46,7 @@ use crate::apps::scope::ScopeApp;
 use crate::apps::sound::Params;
 use crate::apps::supersaw::SupersawApp;
 use crate::apps::tone::ToneApp;
+use crate::audio::Route;
 use crate::buttons::ButtonEvents;
 use crate::framebuffer::FrameBuffer;
 use crate::modulation::Assign;
@@ -53,6 +54,28 @@ use crate::modulation::slots::slot_of;
 use crate::platform::{
     BUTTONS, CV_CHANNELS, ControlEvents, ENCODERS, MilliVolts, TRIGGER_CHANNELS,
 };
+
+/// How many applets can run at once, each in a slot of its own that
+/// takes some of the outputs (journal/D-046). Two is the practical case
+/// measured first, four the limit tried next.
+pub const MAX_INSTANCES: usize = 2;
+
+/// One output an applet writes: a lane of its sound, which its route sends
+/// to a jack or nowhere (journal/D-046).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Port {
+    /// The name its routing page shows.
+    pub name: &'static str,
+}
+
+/// Four ports named after the jacks they go to by default: an applet that
+/// writes every output.
+pub const PORTS_A_TO_D: [Port; CV_CHANNELS] = [
+    Port { name: "A" },
+    Port { name: "B" },
+    Port { name: "C" },
+    Port { name: "D" },
+];
 
 /// Everything the applet observes during one tick.
 #[derive(Debug, Clone, Copy)]
@@ -136,6 +159,13 @@ pub trait App: Any {
 
     /// Draws the applet's screen.
     fn render(&self, frame: &mut FrameBuffer, context: &TickContext);
+
+    /// The outputs it writes, in the order of the lanes of the sound it
+    /// publishes: port `i` is lane `i`, and a lane past the last port is
+    /// never heard (journal/D-046). Every output by default.
+    fn output_ports(&self) -> &'static [Port] {
+        &PORTS_A_TO_D
+    }
 
     /// The parameters it is set by, in a fixed order: an index into this
     /// list names one in [`get`](Self::get) and [`set`](Self::set)
@@ -404,6 +434,14 @@ impl AppHost {
     /// Runs one tick of the current applet: what the outputs carry.
     pub fn update(&mut self, input: &InputSnapshot) -> Params {
         self.get_mut(self.current).update(input)
+    }
+
+    /// Where the current applet's lanes go: each of its ports to the jack
+    /// of the same rank, the only route while one applet runs
+    /// (journal/D-046).
+    #[must_use]
+    pub fn route(&self) -> Route {
+        Route::first(self.get(self.current).output_ports().len())
     }
 
     /// Draws the current applet's screen.

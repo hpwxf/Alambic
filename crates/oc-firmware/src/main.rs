@@ -430,7 +430,7 @@ fn run(running: &mut Running) -> ! {
         let mark = engine.clock().fine_count();
         publisher.publish(
             engine.params_revision(),
-            engine.params(),
+            engine.patch(),
             &engine.calibration().outputs,
         );
         record_since(engine, Stage::Publish, mark);

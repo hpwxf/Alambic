@@ -13,10 +13,11 @@ use std::hint::black_box;
 use oc_core::apps::AppId;
 use oc_core::apps::diagnostic::DiagnosticApp;
 use oc_core::apps::ratchet::RatchetApp;
-use oc_core::apps::sound::{Params, Setup, Voice};
+use oc_core::apps::sound::{Follower, Params, Patch, Setup, Voice, Voices};
 use oc_core::apps::supersaw::bank::{FULL, Part, SQUARE_WIDTH, Supersaw, SupersawParams};
 use oc_core::apps::tone::ToneApp;
 use oc_core::apps::{InputSnapshot, TickContext};
+use oc_core::audio::Route;
 use oc_core::buttons::ButtonReader;
 use oc_core::calibration::{CvInputCalibration, CvOutputCalibration};
 use oc_core::framebuffer::FrameBuffer;
@@ -261,6 +262,33 @@ fn voice(criterion: &mut Criterion) {
     group.bench_function("supersaw_sample_to_codes", |bencher| {
         bencher.iter(|| {
             let samples = bank.next_sample();
+            black_box(samples.map(|level| output.to_code(level)))
+        });
+    });
+
+    // The same bank through the voices of every slot, alone along its
+    // route, then beside a second bank on C and D (journal/D-046): what the
+    // routing costs the interrupt, and what a second instance does.
+    let one = Patch::single(Params::supersaw(sound), Route::first(3));
+    let mut alone = Voices::new(48_000);
+    alone.apply(&Follower::new().follow(1, &one, 48_000).unwrap());
+    group.bench_function("supersaw_routed_sample_to_codes", |bencher| {
+        bencher.iter(|| {
+            let samples = alone.next_sample();
+            black_box(samples.map(|level| output.to_code(level)))
+        });
+    });
+    let mut two = Patch::OFF;
+    two.parts[0] = one.parts[0];
+    two.parts[0].route = Route::first(2);
+    two.parts[1].params = Params::supersaw(sound);
+    two.parts[1].route.set(0, Some(CvChannel::Three));
+    two.parts[1].route.set(1, Some(CvChannel::Four));
+    let mut pair = Voices::new(48_000);
+    pair.apply(&Follower::new().follow(1, &two, 48_000).unwrap());
+    group.bench_function("two_supersaws_routed_sample_to_codes", |bencher| {
+        bencher.iter(|| {
+            let samples = pair.next_sample();
             black_box(samples.map(|level| output.to_code(level)))
         });
     });

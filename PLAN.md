@@ -73,7 +73,7 @@ la sonde par instance. Étape 3 de la trajectoire de D-043.
 | Lot | Contenu | État |
 |---|---|---|
 | **13a** — ADR et plan | D-046 proposée, plan de l'étape | ✅ |
-| **13b** — sorties en ports | `output_ports`, `Route`, une voix par instance, maintien de la sonde après le routage, `MAILBOX` à `[Setup; MAX_INSTANCES]` ; une instance : échantillons et écrans identiques | |
+| **13b** — sorties en ports | `audio` : `Route`, `Patch`, `Voices`, `Changes` (un `Setup` par emplacement changé), `Follower` par patch ; maintien de la sonde après le routage ; `App::output_ports` (`RATCHET` A, B ; `SUPERSAW` A, B, `SUB`) ; `MAX_INSTANCES = 2`, un emplacement servi ; sommes de `voice_samples` par le chemin entier et écrans inchangés ; `.text` +3 848 o, `.data` +440 o ; criterion : `tick` inchangé, aiguillage ≈ 9 ns par échantillon, second banc ≈ 10 ns | ✅ |
 | **13c** — instances | pool, focus, toutes mises à jour, carte d'entrées, menu (remplacer, ajouter, retirer) | |
 | **13d** — panneau | appui court (instance) / long (routage, 1 s), actions `up` / `down` des apps déplacées, indicateur de 4 pixels à gauche du nom (révision de D-021) | |
 | **13e** — page de routage | écran du moteur commun aux apps | |
