@@ -1,7 +1,9 @@
 # Étape 6 — Premier applet musical : Ratchet (plan du 2026-11-17)
 
 Décision : [D-032](../../journal/D-032-ratchet-applet.md). Demande de l'utilisateur : deux applets simples mais
-utiles ; la première est un ratchet (rafales de triggers), la seconde reste à décrire.
+utiles ; la première est un ratchet (rafales de triggers), la seconde reste à décrire. Étape terminée le 2026-11-24
+avec Ratchet seul, la seconde applet reportée dans `roadmap.md` ; bilan :
+[avancement/etape-6.md](avancement/etape-6.md).
 
 ## Lots
 

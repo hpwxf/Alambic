@@ -28,7 +28,7 @@
 
 | Étape | Contenu pressenti | Dépend de |
 |---|---|---|
-| 6 — premiers applets musicaux | Ratchet (D-032, plan `etape-6-ratchet.md`), puis une seconde à décrire ; à 1 kHz (D-023 C+) | D-019, D-023, D-032 |
+| ? — seconde applet de déclenchement | sortie de l'étape 6 (terminée avec Ratchet seul, 2026-11-24) : une applet simple mais utile à côté de Ratchet, à décrire | D-032, D-036, D-043 |
 | ? — seconde carte | Teensy 4.1 / O.R.N.8 (notes locales non suivies) | D-003, D-007 |
 
 ## Questions ouvertes
