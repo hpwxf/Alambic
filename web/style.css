@@ -122,6 +122,7 @@ table.apps tr.input-panel .row {
   box-sizing: border-box;
 }
 table.apps input.input-field { width: 5em; }
+table.apps input.input-seconds { width: 3.5em; }
 /* Room for the longest mark (`+CV4 ▾`), so that a change of input moves
    no column. */
 table.apps button.input-mark { min-width: 6.5em; text-align: left; }

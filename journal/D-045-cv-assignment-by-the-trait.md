@@ -6,7 +6,7 @@
 | **Date** | 2026-11-22 |
 | **Auteur** | Pascal Havé |
 | **Statut** | adoptée |
-| **Commits** | `cab6b5d` (ADR et plan) ; `fc4c04c` (cœur, 12b), `06c97b8` (protocole 8, 12c), `0cc4889` (CLI, 12d), `8b44f2b` (page web, 12e), `e25b47d` (pile, 12f) ; adoptée dans ce commit |
+| **Commits** | `cab6b5d` (ADR et plan) ; `fc4c04c` (cœur, 12b), `06c97b8` (protocole 8, 12c), `0cc4889` (CLI, 12d), `8b44f2b` (page web, 12e), `e25b47d` (pile, 12f) ; adoptée en `1a6d35b` ; `CENTER` de la page à la clôture de l'étape (12g) |
 | **Relations** | prolonge D-035 (le sous-menu d'assignation) et D-036 (sa mécanique dans `oc_core::modulation`) ; étend le modèle de D-043 (trait `App`, protocole de la sonde) ; prépare la persistance des assignations (réserve de l'étape 8, D-028) |
 
 ## 1. Contexte
@@ -66,8 +66,15 @@ un seul mécanisme sans code propre à chaque app. Deux précisions venues de la
 d'app coûtait ≈ 1,9 Kio de `.text`) ; `CENTER` se fait côté hôte, sur les lectures de `Stream`, avec le même
 `Assign::center`.
 
-Restent à essayer sur le module, sans enjeu pour la décision : le sous-panneau web champ par champ (TESTING 9.1c) et
-`--center` sous un LFO (TESTING 9.1b). Le plan est `docs/plan/etape-12-assignation-sonde.md`.
+Restaient à essayer sur le module, sans enjeu pour la décision : le sous-panneau web champ par champ (TESTING 9.1c) et
+`--center` sous un LFO (TESTING 9.1b) ; essayés, concluants (2026-11-24). Le plan est
+`docs/plan/etape-12-assignation-sonde.md`, l'avancement `docs/plan/avancement/etape-12.md`.
+
+### Complément du 2026-11-24 : `CENTER` dans la page
+
+La page gagne le `CENTER` de la CLI, sans rien changer à la décision : elle lit le flux à chaque tick pendant
+quelques secondes, garde les échantillons sur une durée de l'horloge du module, comme `cargo probe`, et
+ajuste l'entrée par `oc_probe::apps::centered`, donc par le même `Assign::center` que le module. Firmware inchangé.
 
 ## 5. Ce qui nous ferait changer d'avis
 

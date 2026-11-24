@@ -21,14 +21,14 @@ mod applets;
 use wasm_bindgen::prelude::wasm_bindgen;
 
 use applets::Applet;
-pub use applets::{AppList, AppView, Editor};
+pub use applets::{AppList, AppView, Editor, Readings};
 
 use oc_core::framebuffer::LEN;
 use oc_halfkay::Report;
 use oc_image::flash::{FlashImage, Format, firmware_image};
 use oc_probe::client::{AppEntry, InputEntry, ProbeError, SpecEntry};
 use oc_probe::{apps, render};
-use oc_protocol::{Error, FrameReader, MAX_FRAME, Reply, Request, VERSION, decode, encode};
+use oc_protocol::{Error, FrameReader, MAX_FRAME, Reply, Request, Sample, VERSION, decode, encode};
 
 /// The probe port's USB vendor identifier, for the Web Serial port filter.
 #[wasm_bindgen]
@@ -179,6 +179,8 @@ pub struct Message {
     bytes: Vec<u8>,
     /// What an applet message carried, for [`AppList`] and [`AppView`].
     applet: Option<Applet>,
+    /// What a sample carried, for [`Readings`].
+    sample: Option<Sample>,
 }
 
 #[wasm_bindgen]
@@ -220,6 +222,7 @@ impl Message {
             page: 0,
             bytes: Vec::new(),
             applet: None,
+            sample: None,
         }
     }
 
@@ -255,10 +258,12 @@ impl Message {
                 page,
                 bytes: bytes.to_vec(),
                 applet: None,
+                sample: None,
             },
-            Reply::Sample(sample) => {
-                Self::with_text(MessageKind::Sample, render::sample_line(&sample))
-            }
+            Reply::Sample(sample) => Self {
+                sample: Some(sample),
+                ..Self::with_text(MessageKind::Sample, render::sample_line(&sample))
+            },
             Reply::Done => Self::with_text(MessageKind::Done, String::new()),
             Reply::Error(error) => Self::refused(error),
             Reply::App {

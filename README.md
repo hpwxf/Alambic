@@ -389,7 +389,10 @@ python3 -m http.server -d dist/web 8000      # then open http://localhost:8000
 It needs Chrome or Edge on a desktop (Web Serial and WebHID; neither Firefox
 nor Safari has them) and a secure context: `localhost` or https. The probe
 side does what `cargo probe` does: screen capture (live too), profile, sample
-stream, held outputs. The flash side takes the firmware **ELF**, with the
+stream, held outputs, and an *Apps* panel that reads and sets each applet's
+settings and their CV inputs as `cargo probe set` and `assign` do, `CENTER`
+included: it reads the input from the stream for a few seconds and fits the
+scale and shift with the module's own function. The flash side takes the firmware **ELF**, with the
 same checks as `cargo xtask flash`, or an Intel **HEX** (the CI artefact,
 say) with reduced checks ([ELF or HEX](#elf-or-hex)); it shows the file's
 SHA-256 and writes it through the bootloader (HalfKay) after an explicit

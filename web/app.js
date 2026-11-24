@@ -17,6 +17,8 @@ const STREAM_LINES = 200;
 const LOADER_WAIT_MS = 10000;
 /** Pixel scale of the screen canvas. */
 const SCREEN_SCALE = 4;
+/** How long `CENTER` reads an input at first, seconds of the module's clock. */
+const CENTER_SECONDS = 5;
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -38,6 +40,8 @@ class Session {
     this.port = port;
     this.reader = new oc.ProbeReader();
     this.pending = [];
+    /** The readings a `CENTER` collects from the stream, or null. */
+    this.listening = null;
     this.closed = false;
     this.writer = port.writable.getWriter();
     this.portReader = port.readable.getReader();
@@ -62,18 +66,31 @@ class Session {
   }
 
   /**
-   * Hands a message to the stream view or to the oldest waiting request. A
-   * request that keeps its messages gets the WebAssembly objects too, as
-   * `item.message`, and frees them itself (`release`).
+   * Hands a message to the stream view, to a `CENTER` listening, or to the
+   * oldest waiting request. A request that keeps its messages gets the
+   * WebAssembly objects too, as `item.message`, and frees them itself
+   * (`release`).
    */
   dispatch(message) {
     const kind = message.kind;
-    const item = { kind, text: message.text, page: message.page, bytes: message.bytes };
     if (kind === oc.MessageKind.Sample) {
+      const listening = this.listening;
+      if (listening) {
+        // Every tick, a thousand a second: kept, not printed.
+        const full = listening.readings.absorb(message);
+        message.free();
+        if (full) {
+          this.stopListening();
+          listening.resolve(listening.readings);
+        }
+        return;
+      }
+      const text = message.text;
       message.free();
-      appendStream(item.text);
+      appendStream(text);
       return;
     }
+    const item = { kind, text: message.text, page: message.page, bytes: message.bytes };
     const head = this.pending[0];
     if (!head) { // an answer nobody waits for
       message.free();
@@ -105,6 +122,31 @@ class Session {
       release(waiting.messages);
       waiting.reject(error);
     }
+    const listening = this.listening;
+    this.stopListening();
+    listening?.reject(error);
+  }
+
+  /**
+   * Hands the stream's samples to `readings` (an `oc.Readings`) instead of
+   * the stream view, until they span the `seconds` it was made for: resolves
+   * with it then, rejects if the samples stop coming.
+   */
+  listen(readings, seconds) {
+    this.stopListening();
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => {
+        this.stopListening();
+        reject(new Error("the stream stopped before the time was up"));
+      }, seconds * 1000 + 2 * ANSWER_TIMEOUT_MS);
+      this.listening = { readings, resolve, reject, timer };
+    });
+  }
+
+  /** Gives the stream back to its view, leaving a listen unsettled. */
+  stopListening() {
+    if (this.listening) clearTimeout(this.listening.timer);
+    this.listening = null;
   }
 
   /**
@@ -372,12 +414,28 @@ function toggleInputPanel(at) {
     line.append(label);
     editors.set(field, editor);
   }
+  const seconds = document.createElement("input");
+  seconds.type = "number";
+  seconds.min = "1";
+  seconds.max = "60";
+  seconds.value = String(CENTER_SECONDS);
+  seconds.className = "needs-probe input-seconds";
+  const center = document.createElement("button");
+  center.className = "needs-probe";
+  center.textContent = "CENTER";
+  center.title = "Read the input for so many seconds of the module's clock, then set SCALE "
+    + "and SHIFT to carry what it swung through onto the setting's range, as the submenu's "
+    + "CENTER does; the stream view stops";
+  center.addEventListener("click", () => centerInput(at));
+  const centerLabel = document.createElement("label");
+  centerLabel.append(center, " over ", seconds, " s");
+  line.append(centerLabel);
   status.textContent = "each change goes to the module at once; closing this keeps it";
   line.append(status);
   td.append(line);
   row.append(td);
   entry.row.after(row);
-  entry.panel = { row, editors, status, sending: null };
+  entry.panel = { row, editors, status, sending: null, center, seconds, centering: false };
   showMark(entry, at);
 }
 
@@ -443,6 +501,51 @@ async function setInput(at, field, text) {
   } finally {
     panel.sending = null;
     showInput(at);
+  }
+}
+
+/**
+ * `CENTER` for parameter `at`, as `cargo probe assign --center` does it:
+ * streams every tick for the seconds the panel says, then sets the scale and
+ * shift that carry what the input swung through onto the setting's range,
+ * computed by the same function as the module's submenu (journal/D-045).
+ */
+async function centerInput(at) {
+  const { panel } = paramRows[at];
+  if (!session || !appView || !panel || panel.centering) return;
+  const probe = session;
+  const view = appView;
+  const asked = Math.round(Number(panel.seconds.value));
+  const seconds = Number.isFinite(asked) && asked >= 1 ? Math.min(asked, 60) : CENTER_SECONDS;
+  panel.seconds.value = String(seconds);
+  panel.centering = true;
+  panel.center.disabled = true;
+  panel.status.textContent = `reading the input for ${seconds} s of the module's clock…`;
+  const readings = new oc.Readings(seconds);
+  let streaming = false;
+  try {
+    const listened = probe.listen(readings, seconds);
+    listened.catch(() => {}); // settled below; a failed start leaves it unwatched
+    streaming = true;
+    await probe.ask(oc.request_stream(1));
+    await listened;
+    streaming = false;
+    await probe.ask(oc.request_stream(0));
+    if (appView !== view) throw new Error("another app is on show now");
+    const frame = view.center_request(at, readings);
+    const [item] = await probe.ask(frame, 1, true);
+    const shown = view.absorb_input(at, item.message);
+    release([item]);
+    panel.status.textContent = `centered on ${readings.len} readings: ${shown}`;
+  } catch (error) {
+    panel.status.textContent = `error: ${error.message ?? error}`;
+  } finally {
+    probe.stopListening();
+    if (streaming && session === probe) probe.ask(oc.request_stream(0)).catch(() => {});
+    readings.free();
+    panel.centering = false;
+    panel.center.disabled = !session;
+    if (session === probe && appView === view) showInput(at);
   }
 }
 
