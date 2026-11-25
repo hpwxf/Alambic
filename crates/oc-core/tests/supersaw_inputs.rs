@@ -4,7 +4,7 @@
 
 use oc_core::apps::AppId;
 use oc_core::apps::supersaw::SupersawApp;
-use oc_core::apps::supersaw::bank::FULL;
+use oc_core::apps::supersaw::dsp::FULL;
 use oc_core::apps::supersaw::{DEFAULT_AMOUNT, DEFAULT_LEVEL_MV, Setting};
 use oc_core::modulation::{AssignLine, Effect};
 use oc_core::platform::{Button, CvChannel};
@@ -99,7 +99,7 @@ fn an_input_nobody_assigned_moves_nothing() {
             engine.parts_mut().0.patch(channel, millivolts);
         }
         step(&mut engine);
-        let played = engine.params().as_supersaw().unwrap().bank;
+        let played = engine.params().as_supersaw().unwrap().saw;
         assert_eq!(played.detune, FULL, "{millivolts} mV");
         assert_eq!(played.mix, DEFAULT_AMOUNT, "{millivolts} mV");
         assert_eq!(played.amplitude, DEFAULT_LEVEL_MV, "{millivolts} mV");
@@ -111,7 +111,7 @@ fn the_note_takes_cv1_at_one_volt_per_octave_until_it_is_removed() {
     let mut engine = supersaw();
     engine.parts_mut().0.patch(CvChannel::One, 1_000);
     step(&mut engine);
-    let octave_up = engine.params().as_supersaw().unwrap().bank.frequency;
+    let octave_up = engine.params().as_supersaw().unwrap().saw.frequency;
     assign(&mut engine, Setting::Note, 0, Effect::Add);
     assert!(
         engine
@@ -122,7 +122,7 @@ fn the_note_takes_cv1_at_one_volt_per_octave_until_it_is_removed() {
             .is_none()
     );
     step(&mut engine);
-    let alone = engine.params().as_supersaw().unwrap().bank.frequency;
+    let alone = engine.params().as_supersaw().unwrap().saw.frequency;
     assert_eq!(alone, 110_000, "A2, CV1 ignored");
     // The input as the converter reads it, a few hertz from 220.
     assert!(octave_up.abs_diff(220_000) < 1_000, "{octave_up}");
@@ -137,7 +137,7 @@ fn an_input_assigned_to_the_detune_adds_twenty_percent_a_volt() {
     let reading = adc_reading(1_000);
     let expected = i32::from(DEFAULT_AMOUNT) + reading / 5;
     assert_eq!(
-        i32::from(engine.params().as_supersaw().unwrap().bank.detune),
+        i32::from(engine.params().as_supersaw().unwrap().saw.detune),
         expected
     );
     assert_eq!(
@@ -161,7 +161,7 @@ fn an_envelope_multiplying_the_level_makes_a_vca() {
         step(&mut engine);
         let reading = adc_reading(envelope);
         let expected = (i64::from(DEFAULT_LEVEL_MV) * i64::from(reading) + 2_500) / 5_000;
-        let played = engine.params().as_supersaw().unwrap().bank.amplitude;
+        let played = engine.params().as_supersaw().unwrap().saw.amplitude;
         assert_eq!(i64::from(played), expected.clamp(0, 3_000), "{envelope} mV");
         assert!(played.abs_diff(level) < 10, "{envelope} mV: {played}");
     }

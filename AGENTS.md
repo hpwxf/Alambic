@@ -143,7 +143,7 @@ Details per crate: `docs/agents/code-map.md`.
 * **Internal unit: millivolts, `i32`** (`oc_core::platform::MilliVolts`).
   Floating point only inside a DSP block, which computes in `f32` with
   integer accumulators and renders millivolts at its edges (the supersaw
-  bank, `apps/supersaw/bank/float.rs`, journal/D-039; the rules in
+  oscillator, `apps/supersaw/dsp/oscillator.rs`, journal/D-039; the rules in
   `docs/agents/firmware.md`, "DSP in `f32`"); `core` only (no `sqrt` or
   `round` without `std`). Parameters, control, conversions and calibration
   stay integer; `oc-vcv-ffi`'s ABI stays `int32_t` millivolts, `f32` in

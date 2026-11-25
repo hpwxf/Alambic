@@ -12,7 +12,9 @@
 //! Written by hand while the list is two long; a macro would write the same
 //! three enums once it grows.
 
-use crate::apps::supersaw::bank::{SupersawBank, SupersawParams, SupersawSetup, SupersawState};
+use crate::apps::supersaw::generator::{
+    SupersawGenerator, SupersawParams, SupersawSetup, SupersawState,
+};
 use crate::audio::basic::{Basic, BasicParams, BasicSetup, BasicState};
 use crate::audio::{self, Generator};
 use crate::platform::{CV_CHANNELS, MilliVolts};
@@ -71,7 +73,7 @@ impl Generator for Sound {
         match params {
             SoundParams::Basic(params) => SoundSetup::Basic(Basic::setup(params, rate_hz)),
             SoundParams::Supersaw(params) => {
-                SoundSetup::Supersaw(SupersawBank::setup(params, rate_hz))
+                SoundSetup::Supersaw(SupersawGenerator::setup(params, rate_hz))
             }
         }
     }
@@ -86,7 +88,7 @@ impl Generator for Sound {
         match (&mut *state, setup) {
             (SoundState::Basic(state), SoundSetup::Basic(setup)) => Basic::apply(state, setup),
             (SoundState::Supersaw(state), SoundSetup::Supersaw(setup)) => {
-                SupersawBank::apply(state, setup);
+                SupersawGenerator::apply(state, setup);
             }
             (_, SoundSetup::Basic(setup)) => {
                 let mut fresh = Basic::start();
@@ -94,8 +96,8 @@ impl Generator for Sound {
                 *state = SoundState::Basic(fresh);
             }
             (_, SoundSetup::Supersaw(setup)) => {
-                let mut fresh = SupersawBank::start();
-                SupersawBank::apply(&mut fresh, setup);
+                let mut fresh = SupersawGenerator::start();
+                SupersawGenerator::apply(&mut fresh, setup);
                 *state = SoundState::Supersaw(fresh);
             }
         }
@@ -105,7 +107,7 @@ impl Generator for Sound {
     fn next(state: &mut SoundState) -> [MilliVolts; CV_CHANNELS] {
         match state {
             SoundState::Basic(state) => Basic::next(state),
-            SoundState::Supersaw(state) => SupersawBank::next(state),
+            SoundState::Supersaw(state) => SupersawGenerator::next(state),
         }
     }
 }
@@ -156,7 +158,7 @@ impl From<[MilliVolts; CV_CHANNELS]> for Params {
 }
 
 impl SoundState {
-    /// The supersaw bank it runs, if that is its kind: what an analysis
+    /// The supersaw it runs, if that is its kind: what an analysis
     /// needs of its steps and phases.
     #[must_use]
     pub const fn supersaw(&self) -> Option<&SupersawState> {
@@ -170,22 +172,23 @@ impl SoundState {
 #[cfg(test)]
 mod tests {
     use super::Params;
-    use crate::apps::supersaw::bank::{Part, SupersawParams};
+    use crate::apps::supersaw::dsp::Part;
+    use crate::apps::supersaw::generator::SupersawParams;
     use crate::audio::basic::{BasicParams, Channel};
     use crate::playback::Voice;
 
     #[test]
     fn a_change_of_kind_starts_the_new_kind_afresh() {
-        let mut saw = SupersawParams::OFF;
-        saw.bank.amplitude = 1_000;
-        saw.bank.frequency = 110_000;
-        saw.parts[0] = Some(Part::Mono);
+        let mut sound = SupersawParams::OFF;
+        sound.saw.amplitude = 1_000;
+        sound.saw.frequency = 110_000;
+        sound.parts[0] = Some(Part::Mono);
         let mut voice = Voice::new(47_619);
-        voice.set_params(&Params::supersaw(saw));
+        voice.set_params(&Params::supersaw(sound));
         let first: [_; 64] = core::array::from_fn(|_| voice.next_sample());
         voice.set_params(&Params::levels([5; 4]));
         assert_eq!(voice.next_sample(), [5; 4]);
-        voice.set_params(&Params::supersaw(saw));
+        voice.set_params(&Params::supersaw(sound));
         let again: [_; 64] = core::array::from_fn(|_| voice.next_sample());
         assert_eq!(first, again, "the bank starts again from its first phases");
     }

@@ -2,8 +2,8 @@
 //! on the bank the module plays (lot 8c′, journal/D-037): the decision on
 //! oversampling four times (lot 8d) rests on these figures.
 //!
-//! The bank is the one in `oc_core::apps::supersaw::bank`, in `f32` with
-//! integer phases (journal/D-039), rendered at the module's 47 619 Hz and read in millivolts as the
+//! The bank is the oscillator of `oc_core::apps::supersaw::dsp`, in `f32`
+//! with integer phases (journal/D-039), rendered at the module's 47 619 Hz and read in millivolts as the
 //! DAC receives them; the sawtooths it replaces, naive ramps at the same
 //! pitches and gains, are the reference. Each voice's pitch is known exactly
 //! from its phase step, so a spectrum separates its harmonics from
@@ -50,8 +50,8 @@ use std::fs;
 use std::io::Write as _;
 use std::path::Path;
 
-use oc_core::apps::supersaw::bank::{
-    Bank, CENTRE, FULL, NARROWEST_WIDTH, SQUARE_WIDTH, Supersaw, VOICES, voice_gains,
+use oc_core::apps::supersaw::dsp::{
+    CENTRE, FULL, NARROWEST_WIDTH, Oscillator, SQUARE_WIDTH, Supersaw, VOICES, voice_gains,
 };
 use oc_core::apps::tone;
 use oc_core::calibration::{CV_OUT_MAX_MV, CV_OUT_MIN_MV};
@@ -442,7 +442,7 @@ fn gains_of(params: &Supersaw) -> [f64; VOICES] {
 /// `length` samples of `params`, as [`render`] plays them, with each voice's
 /// step and starting phase.
 fn render_for(params: &Supersaw, length: usize) -> (Vec<f64>, [u32; VOICES], [u32; VOICES]) {
-    let mut bank = Bank::new();
+    let mut bank = Oscillator::new();
     bank.set(params, RATE_HZ);
     let phases = bank.phases();
     (played(&mut bank, length), bank.steps(), phases)
@@ -533,14 +533,14 @@ fn power_db(error: &[f64], reference: &[f64]) -> f64 {
 
 /// `length` samples of `params` on the mono part, as [`render`] plays them.
 fn play(params: &Supersaw, length: usize) -> Vec<f64> {
-    let mut bank = Bank::new();
+    let mut bank = Oscillator::new();
     bank.set(params, RATE_HZ);
     played(&mut bank, length)
 }
 
 /// `length` samples of the mono part of `bank`, in millivolts, after the
 /// high-pass has settled.
-fn played(bank: &mut Bank, length: usize) -> Vec<f64> {
+fn played(bank: &mut Oscillator, length: usize) -> Vec<f64> {
     for _ in 0..SETTLE {
         bank.next_frame();
     }

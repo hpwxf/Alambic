@@ -143,3 +143,20 @@ qui comparaient les deux bancs (le banc reste épinglé par `tests/voice_samples
 par `aliasing`), `SUPERSAW_CALC`. Ce qui reste en entier : la préparation commune (courbe de désaccord, gains,
 normaliseurs, par `fixed::div_wide`), qui ne tourne qu'au changement de paramètres. Non fait : l'écoute comparée des
 deux bancs aux notes basses.
+
+## Révision du 2026-11-25 — le DSP nommé par son rôle, la couche relais retirée
+
+La couche `bank::Setup` / `bank::Bank` cachait lequel des deux bancs tournait pendant l'essai par `CALC` ; le banc
+entier retiré, elle ne faisait plus que relayer `float::Setup` / `float::Bank`, en gardant une copie des réglages
+(`Supersaw`) que personne ne lisait. Le nom `bank` désignait en outre deux choses : les réglages dans
+`SupersawParams`, les coefficients dans `SupersawSetup` (remarque de l'utilisateur).
+
+* **`apps/supersaw/dsp/`** : `mod.rs` garde les réglages (`Supersaw`), les parties, les courbes de Szabo et la
+  préparation en entiers, qui devient `Coefficients::new` ; `oscillator.rs` (l'ex-`float.rs`) rend les échantillons :
+  `Coefficients` (l'ex-`float::Setup`) et `Oscillator` (l'ex-`float::Bank`). Le `f32` est un détail
+  d'`oscillator.rs`, que les noms ne portent plus.
+* **`apps/supersaw/generator.rs`** : `SupersawGenerator` (l'ex-`SupersawBank`), `SupersawParams { saw, parts }`,
+  `SupersawSetup { coefficients, parts }`, `SupersawState { oscillator, parts }` : une étape par contexte, chacune
+  une fois (D-040).
+* Échantillons identiques au bit près (`tests/voice_samples.rs`, exemple `aliasing`). Firmware : `.text` −396 o,
+  `.rodata` −56 o, `.data` −128 o (`MAILBOX` : 16 o de moins par `Setup`), pile −16 o.

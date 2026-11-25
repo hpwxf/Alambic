@@ -1,5 +1,6 @@
-//! Seven detuned band-limited sawtooths around one pitch (journal/D-037),
-//! computed in `f32` with integer phases (`float`, journal/D-039).
+//! The supersaw's DSP: seven detuned band-limited sawtooths around one pitch
+//! (journal/D-037), rendered by an [`Oscillator`] from the [`Coefficients`]
+//! its parameters decide.
 //!
 //! The detune curve, the spread of the seven voices and the two mix laws are
 //! Adam Szabo's measurements of the JP-8000 (*How to Emulate the Super Saw*,
@@ -7,8 +8,9 @@
 //! polynomial (`PolyBLEP`), which removes most of the aliasing a naive ramp
 //! folds back into the audible band; the sum goes through a one-pole
 //! high-pass tuned on the fundamental. Everything that needs a division is
-//! computed when the parameters change, never per sample, by [`Setup::new`],
-//! which a backend may run outside its audio context (journal/D-040).
+//! computed when the parameters change, never per sample, by
+//! [`Coefficients::new`], which a backend may run outside its audio context
+//! (journal/D-040).
 //!
 //! The parts come out as falling sawtooths: the high-pass turns each jump
 //! into a spike several times higher than the rest of the wave, and the
@@ -17,21 +19,23 @@
 //! hear a waveform's polarity (journal/D-037, revision of 2026-11-18).
 //!
 //! This module holds the parameters and the parts, Szabo's curves, and the
-//! preparation the bank starts from (each voice's phase step, each voice's
-//! gain, the normalisers), in integers; `float` turns it into its
-//! coefficients and renders the samples. An integer bank ran beside it on
-//! trial until journal/D-039 was decided.
+//! preparation the oscillator starts from (each voice's phase step, each
+//! voice's gain, the normalisers), in integers; `oscillator` turns it into
+//! its coefficients and renders the samples, in `f32` with integer phases
+//! (journal/D-039): a detail of its own, which the names here do not carry.
 //!
-//! The bank is `SUPERSAW`'s own (journal/D-044): it lives with the applet,
-//! and reaches the outputs as the [`SupersawBank`] generator. Should another
-//! applet need it, it moves to a shared DSP library rather than back into
-//! `audio`.
+//! The DSP is `SUPERSAW`'s own (journal/D-044): it lives with the applet,
+//! and reaches the outputs through [`super::generator`]. Should another
+//! applet need it, this module moves to a shared DSP library rather than
+//! back into `audio`.
 
-mod float;
+mod oscillator;
 
-use crate::audio::{Generator, MilliHertz, phase_step};
+pub use self::oscillator::{Coefficients, Oscillator};
+
+use crate::audio::{MilliHertz, phase_step};
 use crate::fixed::div_wide;
-use crate::platform::{CV_CHANNELS, MilliVolts};
+use crate::platform::MilliVolts;
 
 /// Sawtooths in the bank.
 pub const VOICES: usize = 7;
@@ -166,22 +170,7 @@ const PHASES: [u32; VOICES] = {
     phases
 };
 
-/// Everything a supersaw's parameters decide, computed once when they
-/// change (journal/D-040). Building it touches no bank, so it can run
-/// outside the audio context; [`Bank::apply`] only copies it.
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub struct Setup {
-    params: Supersaw,
-    coefficients: float::Setup,
-}
-
-impl Setup {
-    /// Nothing played: what a new bank holds.
-    pub const OFF: Self = Self {
-        params: Supersaw::OFF,
-        coefficients: float::Setup::OFF,
-    };
-
+impl Coefficients {
     /// What `params` decide at `rate_hz`: the preparation in integers, then
     /// the bank's coefficients from it.
     #[must_use]
@@ -214,164 +203,28 @@ impl Setup {
         let lead =
             u32::try_from(div_wide(u64::from(FULL - width) << 32, u32::from(FULL))).unwrap_or(0);
         let blend = (shape, lead);
-        Self {
-            params: *params,
-            coefficients: float::Setup::new(&steps, &gains, normalisers, blend, params.amplitude),
-        }
-    }
-
-    /// The parameters it was built from.
-    #[must_use]
-    pub const fn params(&self) -> &Supersaw {
-        &self.params
+        Self::from_prepared(&steps, &gains, normalisers, blend, params.amplitude)
     }
 }
 
-/// The running state of a supersaw.
-#[derive(Debug, Clone)]
-pub struct Bank {
-    params: Supersaw,
-    float: float::Bank,
-}
-
-impl Bank {
-    /// A silent bank, its phases spread so no two voices start together.
+impl Oscillator {
+    /// A silent oscillator, its phases spread so no two voices start
+    /// together.
     #[must_use]
     pub const fn new() -> Self {
-        Self {
-            params: Supersaw::OFF,
-            float: float::Bank::new(&PHASES),
-        }
-    }
-
-    /// The parameters it plays.
-    #[must_use]
-    pub const fn params(&self) -> &Supersaw {
-        &self.params
-    }
-
-    /// Each voice's phase step, a turn being `2^32`: what an analysis needs
-    /// to tell a voice's harmonics from what folds back.
-    #[must_use]
-    pub fn steps(&self) -> [u32; VOICES] {
-        self.float.steps()
-    }
-
-    /// Each voice's phase now, a turn being `2^32`: with [`Self::steps`],
-    /// what a reference rendering needs to start where the bank does.
-    #[must_use]
-    pub fn phases(&self) -> [u32; VOICES] {
-        self.float.phases()
+        Self::starting_at(&PHASES)
     }
 
     /// Plays `params` at `rate_hz` from the next sample on, keeping the
     /// phases and the filters' state.
     pub fn set(&mut self, params: &Supersaw, rate_hz: u32) {
-        self.apply(&Setup::new(params, rate_hz));
-    }
-
-    /// Plays what `setup` prepared from the next sample on, keeping the
-    /// phases and the filters' state: copies only, no division.
-    pub fn apply(&mut self, setup: &Setup) {
-        self.params = setup.params;
-        self.float.apply(&setup.coefficients);
-    }
-
-    /// One sample of every part, then advances.
-    #[inline]
-    pub fn next_frame(&mut self) -> Frame {
-        self.float.next_frame()
+        self.apply(&Coefficients::new(params, rate_hz));
     }
 }
 
-impl Default for Bank {
+impl Default for Oscillator {
     fn default() -> Self {
         Self::new()
-    }
-}
-
-/// What the supersaw generator plays (journal/D-044): the bank's
-/// parameters, and which part each output carries, `None` for 0 V.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct SupersawParams {
-    /// The bank.
-    pub bank: Supersaw,
-    /// The part each output carries, A to D.
-    pub parts: [Option<Part>; CV_CHANNELS],
-}
-
-impl SupersawParams {
-    /// Nothing played, no output fed.
-    pub const OFF: Self = Self {
-        bank: Supersaw::OFF,
-        parts: [None; CV_CHANNELS],
-    };
-}
-
-/// What [`SupersawParams`] decide at a rate: the bank's [`Setup`], and the
-/// parts.
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub struct SupersawSetup {
-    bank: Setup,
-    parts: [Option<Part>; CV_CHANNELS],
-}
-
-/// What runs: the bank, and the part each output takes from it.
-#[derive(Debug, Clone)]
-pub struct SupersawState {
-    bank: Bank,
-    parts: [Option<Part>; CV_CHANNELS],
-}
-
-impl SupersawState {
-    /// The bank it runs, for an analysis that needs its steps and phases.
-    #[must_use]
-    pub const fn bank(&self) -> &Bank {
-        &self.bank
-    }
-}
-
-/// The bank as a generator: one frame of every part a sample, each output
-/// taking its own.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct SupersawBank;
-
-impl Generator for SupersawBank {
-    type Params = SupersawParams;
-    type Setup = SupersawSetup;
-    type State = SupersawState;
-
-    const REST: SupersawParams = SupersawParams::OFF;
-    const REST_SETUP: SupersawSetup = SupersawSetup {
-        bank: Setup::OFF,
-        parts: [None; CV_CHANNELS],
-    };
-
-    fn setup(params: &SupersawParams, rate_hz: u32) -> SupersawSetup {
-        SupersawSetup {
-            bank: Setup::new(&params.bank, rate_hz),
-            parts: params.parts,
-        }
-    }
-
-    fn start() -> SupersawState {
-        SupersawState {
-            bank: Bank::new(),
-            parts: [None; CV_CHANNELS],
-        }
-    }
-
-    fn apply(state: &mut SupersawState, setup: &SupersawSetup) {
-        state.bank.apply(&setup.bank);
-        state.parts = setup.parts;
-    }
-
-    #[inline]
-    fn next(state: &mut SupersawState) -> [MilliVolts; CV_CHANNELS] {
-        let frame = state.bank.next_frame();
-        state
-            .parts
-            .map(|part| part.map_or(0, |part| frame.part(part)))
     }
 }
 
@@ -457,9 +310,10 @@ fn louder(normaliser: i64, loudness: i64) -> i64 {
 
 #[cfg(test)]
 mod tests {
+    use super::Oscillator;
     use super::{
-        Bank, CENTRE, FULL, LEFT, NARROWEST_WIDTH, OFFSETS, PHASES, RIGHT, SQUARE_WIDTH, Supersaw,
-        UNIT, VOICES, detune_curve, mix_gains, shape_loudness,
+        CENTRE, FULL, LEFT, NARROWEST_WIDTH, OFFSETS, PHASES, RIGHT, SQUARE_WIDTH, Supersaw, UNIT,
+        VOICES, detune_curve, mix_gains, shape_loudness,
     };
 
     #[test]
@@ -489,7 +343,7 @@ mod tests {
 
     #[test]
     fn silence_stays_silent() {
-        let mut bank = Bank::new();
+        let mut bank = Oscillator::new();
         for _ in 0..100 {
             assert_eq!(bank.next_frame(), super::Frame::default());
         }
@@ -522,7 +376,7 @@ mod tests {
             width: SQUARE_WIDTH,
             amplitude: 1_000,
         };
-        let mut bank = Bank::new();
+        let mut bank = Oscillator::new();
         bank.set(&params, 47_619);
         assert_eq!(bank.phases(), PHASES);
         for _ in 0..1_000 {
@@ -536,7 +390,7 @@ mod tests {
 
     #[test]
     fn full_detune_keeps_every_voice_below_half_a_turn() {
-        let mut bank = Bank::new();
+        let mut bank = Oscillator::new();
         let params = Supersaw {
             frequency: 20_000_000,
             detune: FULL,

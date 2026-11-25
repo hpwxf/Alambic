@@ -4,9 +4,10 @@
 use std::f64::consts::TAU;
 
 use oc_core::apps::sound::Params;
-use oc_core::apps::supersaw::bank::{
-    FULL, NARROWEST_WIDTH, Part, SQUARE_WIDTH, Supersaw, SupersawParams, detune_curve, mix_gains,
+use oc_core::apps::supersaw::dsp::{
+    FULL, NARROWEST_WIDTH, Part, SQUARE_WIDTH, Supersaw, detune_curve, mix_gains,
 };
+use oc_core::apps::supersaw::generator::SupersawParams;
 use oc_core::audio::basic::{BasicParams, Channel, Tone};
 use oc_core::audio::wave::Waveform;
 use oc_core::playback::Voice;
@@ -73,7 +74,7 @@ fn bank_voice(supersaw: Supersaw) -> Voice {
 /// `supersaw` on A (mono), B and C (left and right) and D (the sub-octave).
 fn all_parts(supersaw: Supersaw) -> Params {
     Params::supersaw(SupersawParams {
-        bank: supersaw,
+        saw: supersaw,
         parts: [
             Some(Part::Mono),
             Some(Part::Left),

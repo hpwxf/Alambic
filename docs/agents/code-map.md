@@ -31,7 +31,8 @@ rationale behind each crate is in the journal entry cited.
 | The `App` trait, the registry and dispatch (`AppId`, `AppHost`) | `crates/oc-core/src/apps/mod.rs` (journal/D-043) |
 | What an applet exposes: parameters, observables, actions (`ParamSpec`, `write_summary`) | `crates/oc-core/src/apps/param.rs` (journal/D-043) |
 | The applets | `crates/oc-core/src/apps/`: `diagnostic.rs`, `scope.rs`, `gfx_demo.rs`, `ratchet/`, `tone.rs`, `supersaw.rs` |
-| The supersaw bank, the applet's own | `crates/oc-core/src/apps/supersaw/bank.rs` (parameters, Szabo's curves, the preparation in integers, the `SupersawBank` generator), `bank/float.rs` (the bank in `f32`, integer phases, journal/D-039) |
+| The supersaw's DSP, the applet's own | `crates/oc-core/src/apps/supersaw/dsp/mod.rs` (the sound's parameters `Supersaw`, parts, Szabo's curves, `Coefficients::new`: the preparation in integers), `dsp/oscillator.rs` (`Oscillator`: the seven voices in `f32`, integer phases, journal/D-039) |
+| The supersaw as a generator | `crates/oc-core/src/apps/supersaw/generator.rs` (`SupersawGenerator`: `SupersawParams`, `SupersawSetup`, `SupersawState`, journal/D-044) |
 | The generators this image composes (`Sound`) and what an applet publishes (`Params`) | `crates/oc-core/src/apps/sound.rs` (journal/D-044) |
 | What a backend plays them with, for this image's instance slots (`Patch`, `Setup`, `Voice`, `Changes`, `Voices`, `Follower`, `Player`; `MAX_INSTANCES` in `apps/mod.rs`) | `crates/oc-core/src/playback.rs` (journal/D-040, D-046) |
 | The `Generator` trait, the voice, `Setup`, routes and the voices of every slot, the waveforms, levels and tones (`Basic`) | `crates/oc-core/src/audio/mod.rs`, `audio/wave.rs`, `audio/basic.rs` (journal/D-033, D-040, D-044, D-046) |

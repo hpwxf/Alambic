@@ -1,11 +1,12 @@
 //! The `SUPERSAW` applet (journal/D-037): seven detuned band-limited
-//! sawtooths around one pitch, the applet's own bank ([`bank`], journal/D-044).
+//! sawtooths around one pitch, the applet's own DSP ([`dsp`]), reaching the
+//! outputs as a generator ([`generator`], journal/D-044).
 //!
 //! A and B carry all seven voices, or the left and right halves with
 //! `STEREO ON`; C a sawtooth an octave below; D rests at 0 V. The left
 //! encoder picks a setting, the right one changes it. `SHAPE` blends each
 //! voice from a sawtooth into a pulse, `WIDTH` sets that pulse's width, a
-//! square at 50 % (journal/D-037, revisions of 2026-11-19). The bank
+//! square at 50 % (journal/D-037, revisions of 2026-11-19). The oscillator
 //! computes in `f32` (journal/D-039). The waveform's settings are on the
 //! first page, `LEVEL` and `STEREO` on the second, a scroll bar left of
 //! them showing which.
@@ -17,14 +18,15 @@
 //! unplugged input, which reads a few millivolts of noise on the module,
 //! moves nothing (journal/D-037, revision of 2026-11-18).
 
-pub mod bank;
+pub mod dsp;
+pub mod generator;
 
 use core::fmt::Write as _;
 
-use self::bank::{
-    FULL, NARROWEST_WIDTH, OFFSETS, Part, SQUARE_WIDTH, Supersaw, SupersawParams, detune_curve,
-    voice_gains,
+use self::dsp::{
+    FULL, NARROWEST_WIDTH, OFFSETS, Part, SQUARE_WIDTH, Supersaw, detune_curve, voice_gains,
 };
+use self::generator::SupersawParams;
 use crate::apps::param::{ParamSpec, ParamValue, Refused, Unit};
 use crate::apps::sound::Params;
 use crate::apps::tone::{self, HIGHEST_NOTE, LOWEST_NOTE, note_name, pitch_permille, write_hertz};
@@ -379,7 +381,7 @@ impl SupersawApp {
             (Part::Mono, Part::Mono)
         };
         Params::supersaw(SupersawParams {
-            bank: Supersaw {
+            saw: Supersaw {
                 frequency: self.frequency(),
                 detune: self.played_detune(),
                 mix: self.played_mix(),
@@ -835,7 +837,7 @@ fn write_percent<const N: usize>(line: &mut TextBuf<N>, amount: u16) {
 
 #[cfg(test)]
 mod tests {
-    use super::bank::{FULL, NARROWEST_WIDTH, Part, SQUARE_WIDTH};
+    use super::dsp::{FULL, NARROWEST_WIDTH, Part, SQUARE_WIDTH};
     use super::{
         AMOUNT_STEP, DEFAULT_AMOUNT, DEFAULT_LEVEL_MV, DEFAULT_NOTE, HIGHEST_NOTE, LOWEST_NOTE,
         MAX_LEVEL_MV, SET_NOTE, SHAPE_ICON_LEFT, SHAPE_ICON_PERIOD, Setting, SupersawApp,
@@ -857,7 +859,7 @@ mod tests {
         let mut app = SupersawApp::new();
         let params = app.update(&InputSnapshot::default());
         assert_eq!(app.note(), DEFAULT_NOTE);
-        assert_eq!(params.as_supersaw().unwrap().bank.frequency, 110_000);
+        assert_eq!(params.as_supersaw().unwrap().saw.frequency, 110_000);
         assert_eq!(
             params.as_supersaw().unwrap().parts,
             [Some(Part::Mono), Some(Part::Mono), Some(Part::Sub), None]
@@ -901,7 +903,7 @@ mod tests {
     #[test]
     fn width_starts_square_and_stays_within_its_course() {
         let mut app = SupersawApp::new();
-        assert_eq!(app.params().as_supersaw().unwrap().bank.width, SQUARE_WIDTH);
+        assert_eq!(app.params().as_supersaw().unwrap().saw.width, SQUARE_WIDTH);
         app.update(&turn(4, -20));
         assert_eq!(app.selected(), Setting::Width);
         assert_eq!(app.width(), 300, "a percent a detent");
@@ -944,11 +946,11 @@ mod tests {
     #[test]
     fn shape_starts_as_a_sawtooth_and_takes_an_input() {
         let mut app = SupersawApp::new();
-        assert_eq!(app.params().as_supersaw().unwrap().bank.shape, 0);
+        assert_eq!(app.params().as_supersaw().unwrap().saw.shape, 0);
         app.update(&turn(3, 25));
         assert_eq!(app.selected(), Setting::Shape);
         assert_eq!(app.shape(), 25 * AMOUNT_STEP);
-        assert_eq!(app.params().as_supersaw().unwrap().bank.shape, 250);
+        assert_eq!(app.params().as_supersaw().unwrap().saw.shape, 250);
         assert_eq!(sweep(Setting::Shape), Some((0, 5_000)));
         assert!(app.assign(Setting::Shape).is_some());
         // Beyond the square, it stays a square.
@@ -965,14 +967,14 @@ mod tests {
         };
         let params = app.update(&input);
         assert_eq!(
-            params.as_supersaw().unwrap().bank.frequency,
+            params.as_supersaw().unwrap().saw.frequency,
             220_000,
             "one volt, one octave"
         );
-        assert_eq!(params.as_supersaw().unwrap().bank.detune, DEFAULT_AMOUNT);
-        assert_eq!(params.as_supersaw().unwrap().bank.mix, DEFAULT_AMOUNT);
+        assert_eq!(params.as_supersaw().unwrap().saw.detune, DEFAULT_AMOUNT);
+        assert_eq!(params.as_supersaw().unwrap().saw.mix, DEFAULT_AMOUNT);
         assert_eq!(
-            params.as_supersaw().unwrap().bank.amplitude,
+            params.as_supersaw().unwrap().saw.amplitude,
             DEFAULT_LEVEL_MV
         );
         assert!(app.assign(Setting::Stereo).is_none());
