@@ -18,7 +18,8 @@ cargo xtask flash                             # validate, show SHA-256 digest, c
 # Live probe of a running module (journal/D-029)
 cargo probe stats                             # also stream, out, screen, reboot
 cargo probe app ratchet                       # the applets' model (D-043): also apps, get, set, act, select, assign (D-045)
-scripts/profile-supersaw.sh 10 label         # SUPERSAW's profile through the probe (CV assigned on the panel)
+scripts/profile-supersaw.sh 10 label         # SUPERSAW's profile through the probe (CV assigned by it)
+INSTANCES=4 DETUNE_INPUT=cv1 scripts/profile-supersaw.sh 10 label   # four at once, one output each, all on CV1
 
 # VCV Rack 2 plugin (needs a downloaded Rack SDK)
 cargo xtask vcv build --rack-dir <path>

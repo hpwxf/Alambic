@@ -17,11 +17,12 @@
 use oc_core::apps::diagnostic::DiagnosticApp;
 use oc_core::apps::param::ParamValue;
 use oc_core::apps::ratchet::RatchetApp;
-use oc_core::apps::sound::{Params, Patch, Player};
+use oc_core::apps::sound::Params;
 use oc_core::apps::supersaw::SupersawApp;
 use oc_core::apps::tone::ToneApp;
 use oc_core::apps::{App, InputSnapshot};
 use oc_core::audio::Route;
+use oc_core::playback::{Patch, Player};
 
 /// The module's audio rate.
 const RATE_HZ: u32 = 47_619;
@@ -40,10 +41,11 @@ fn tick() -> InputSnapshot {
 fn checksum(scenes: &[Params], route: Route, samples: usize) -> u64 {
     let mut player = Player::new(RATE_HZ);
     let mut hash: u64 = 0xcbf2_9ce4_8422_2325;
-    for (revision, scene) in (0_u32..).zip(scenes) {
-        let patch = Patch::single(*scene, route);
+    let mut patch = Patch::OFF;
+    for scene in scenes {
+        patch.update(&Patch::single(*scene, route));
         for _ in 0..samples {
-            for output in player.play(revision, &patch) {
+            for output in player.play(&patch) {
                 for byte in output.to_le_bytes() {
                     hash ^= u64::from(byte);
                     hash = hash.wrapping_mul(0x0000_0100_0000_01b3);

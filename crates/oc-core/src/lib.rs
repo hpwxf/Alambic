@@ -47,6 +47,7 @@ pub mod gfx;
 pub mod menu;
 pub mod modulation;
 pub mod platform;
+pub mod playback;
 pub mod presence;
 pub mod profile;
 pub mod routing;

@@ -13,8 +13,9 @@ use std::hint::black_box;
 use oc_core::apps::AppId;
 use oc_core::apps::diagnostic::DiagnosticApp;
 use oc_core::apps::ratchet::RatchetApp;
-use oc_core::apps::sound::{Follower, Params, Patch, Setup, Voice, Voices};
-use oc_core::apps::supersaw::bank::{FULL, Part, SQUARE_WIDTH, Supersaw, SupersawParams};
+use oc_core::apps::sound::Params;
+use oc_core::apps::supersaw::dsp::{FULL, Part, SQUARE_WIDTH, Supersaw};
+use oc_core::apps::supersaw::generator::SupersawParams;
 use oc_core::apps::tone::ToneApp;
 use oc_core::apps::{InputSnapshot, TickContext};
 use oc_core::audio::Route;
@@ -23,6 +24,7 @@ use oc_core::calibration::{CvInputCalibration, CvOutputCalibration};
 use oc_core::framebuffer::FrameBuffer;
 use oc_core::menu::Menu;
 use oc_core::platform::{Button, ControlEvents, CvChannel, TriggerChannel};
+use oc_core::playback::{Follower, Patch, Setup, Voice, Voices};
 use oc_core::testing::mock_engine;
 
 /// A snapshot with all four inputs and all four triggers busy.
@@ -243,7 +245,7 @@ fn voice(criterion: &mut Criterion) {
     // (journal/D-037), in `f32` (journal/D-039), every part read.
     let mut bank = Voice::new(48_000);
     let mut sound = SupersawParams {
-        bank: Supersaw {
+        saw: Supersaw {
             frequency: 110_000,
             detune: FULL / 2,
             mix: FULL / 2,
@@ -271,7 +273,7 @@ fn voice(criterion: &mut Criterion) {
     // routing costs the interrupt, and what a second instance does.
     let one = Patch::single(Params::supersaw(sound), Route::first(3));
     let mut alone = Voices::new(48_000);
-    alone.apply(&Follower::new().follow(1, &one, 48_000).unwrap());
+    alone.apply(&Follower::new().follow(&one, 48_000).unwrap());
     group.bench_function("supersaw_routed_sample_to_codes", |bencher| {
         bencher.iter(|| {
             let samples = alone.next_sample();
@@ -279,13 +281,15 @@ fn voice(criterion: &mut Criterion) {
         });
     });
     let mut two = Patch::OFF;
-    two.parts[0] = one.parts[0];
-    two.parts[0].route = Route::first(2);
-    two.parts[1].params = Params::supersaw(sound);
-    two.parts[1].route.set(0, Some(CvChannel::Three));
-    two.parts[1].route.set(1, Some(CvChannel::Four));
+    two.set_params(0, Params::supersaw(sound));
+    two.set_route(0, Route::first(2));
+    two.set_params(1, Params::supersaw(sound));
+    let mut route = Route::OFF;
+    route.set(0, Some(CvChannel::Three));
+    route.set(1, Some(CvChannel::Four));
+    two.set_route(1, route);
     let mut pair = Voices::new(48_000);
-    pair.apply(&Follower::new().follow(1, &two, 48_000).unwrap());
+    pair.apply(&Follower::new().follow(&two, 48_000).unwrap());
     group.bench_function("two_supersaws_routed_sample_to_codes", |bencher| {
         bencher.iter(|| {
             let samples = pair.next_sample();
@@ -294,7 +298,7 @@ fn voice(criterion: &mut Criterion) {
     });
 
     // The same as squares: one more corrected sawtooth per voice.
-    sound.bank.shape = FULL;
+    sound.saw.shape = FULL;
     bank.set_params(&Params::supersaw(sound));
     group.bench_function("supersaw_square_sample_to_codes", |bencher| {
         bencher.iter(|| {
@@ -302,7 +306,7 @@ fn voice(criterion: &mut Criterion) {
             black_box(samples.map(|level| output.to_code(level)))
         });
     });
-    sound.bank.shape = 0;
+    sound.saw.shape = 0;
 
     // What the loop prepares whenever the parameters change, a CV moving
     // them every tick (journal/D-040).

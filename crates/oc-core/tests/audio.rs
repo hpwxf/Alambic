@@ -4,11 +4,12 @@
 use std::f64::consts::TAU;
 
 use oc_core::apps::AppId;
-use oc_core::apps::sound::{Params, Voice};
+use oc_core::apps::sound::Params;
 use oc_core::apps::tone::{REFERENCE_NOTE, frequency};
 use oc_core::audio::basic::{BasicParams, Channel, Tone};
 use oc_core::audio::wave::{ONE, Waveform, sine};
 use oc_core::platform::CvChannel;
+use oc_core::playback::Voice;
 use oc_core::settings::Settings;
 use oc_core::testing::{MockEngine, mock_engine_at_boot};
 
@@ -104,7 +105,7 @@ fn a_probe_holds_an_output_over_the_tone() {
     engine.tick();
     assert_eq!(engine.outputs()[1], 1_234);
     // Held over the sound, which plays on beneath (journal/D-044).
-    assert_eq!(engine.patch().held[1], Some(1_234));
+    assert_eq!(engine.patch().held()[1], Some(1_234));
     let channels = engine.params().as_basic().unwrap().channels;
     assert!(matches!(channels[0], Channel::Tone(_)) && matches!(channels[1], Channel::Tone(_)));
 }

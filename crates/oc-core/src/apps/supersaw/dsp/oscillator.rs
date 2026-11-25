@@ -1,6 +1,7 @@
-//! The supersaw bank in `f32` (journal/D-039): the voices, curves and parts
-//! of journal/D-037, adopted over the integer bank they were first written
-//! in, cheaper on the module and as precise.
+//! The supersaw's oscillator (journal/D-037): its seven voices, the
+//! high-pass and the parts, rendered in `f32` (journal/D-039), adopted over
+//! the integer bank they were first written in, cheaper on the module and
+//! as precise.
 //!
 //! The phases run as integers, a turn being `2^32`, and wrap for
 //! free: in `f32` a phase near the end of its turn keeps 24 bits, and its
@@ -8,8 +9,8 @@
 //! reads it as a fraction of a turn; the `PolyBLEP` correction multiplies
 //! by each voice's `1 / dt`, computed when the parameters change, so there
 //! is still no division per sample. What the
-//! two banks share as a table or a root (the detune curve, the mix laws,
-//! the normalisers, prepared in integers by the parent module) is converted: `core` has no
+//! preparation computes as a table or a root (the detune curve, the mix
+//! laws, the normalisers, in integers in the parent module) is converted: `core` has no
 //! `sqrt` without `std`, and Szabo's polynomial loses all its precision in
 //! `f32`. Only the samples leave as millivolts, rounded and held within the
 //! outputs.
@@ -107,10 +108,11 @@ fn inverse(step: u32) -> f32 {
     if step == 0 { 0.0 } else { 1.0 / turns(step) }
 }
 
-/// What the parameters decide for the bank, part of the supersaw's
-/// [`super::Setup`] (journal/D-040).
+/// Everything a supersaw's parameters decide, computed once when they
+/// change (journal/D-040): built by [`Coefficients::new`], outside the audio
+/// context; [`Oscillator::apply`] only copies it.
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub(super) struct Setup {
+pub struct Coefficients {
     steps: [u32; VOICES],
     inverses: [f32; VOICES],
     sub_step: u32,
@@ -123,9 +125,9 @@ pub(super) struct Setup {
     amplitude: f32,
 }
 
-impl Setup {
-    /// Nothing played.
-    pub(super) const OFF: Self = Self {
+impl Coefficients {
+    /// Nothing played: what a new oscillator holds.
+    pub const OFF: Self = Self {
         steps: [0; VOICES],
         inverses: [0.0; VOICES],
         sub_step: 0,
@@ -141,7 +143,7 @@ impl Setup {
     /// From the preparation in integers: the voices' steps, their gains
     /// in 1.15, the normalisers `2^32 / root` of gains in 1.15, and the
     /// blend: the shape in 1.15 and the lead a turn being `2^32`.
-    pub(super) fn new(
+    pub(super) fn from_prepared(
         steps: &[u32; VOICES],
         gains: &[i64; VOICES],
         normalisers: (i64, i64),
@@ -166,9 +168,10 @@ impl Setup {
     }
 }
 
-/// The running state of the `f32` supersaw.
+/// The running state of a supersaw: the voices' phases and the filters,
+/// and the coefficients copied from the last [`Coefficients`].
 #[derive(Debug, Clone)]
-pub(super) struct Bank {
+pub struct Oscillator {
     saws: [Saw; VOICES],
     sub: Saw,
     /// Each voice's gain.
@@ -188,9 +191,9 @@ pub(super) struct Bank {
     filters: [HighPass; 3],
 }
 
-impl Bank {
-    /// A silent bank starting at `phases`, a turn being `2^32`.
-    pub(super) const fn new(phases: &[u32; VOICES]) -> Self {
+impl Oscillator {
+    /// A silent oscillator starting at `phases`, a turn being `2^32`.
+    pub(super) const fn starting_at(phases: &[u32; VOICES]) -> Self {
         let mut saws = [Saw::at(0); VOICES];
         let mut index = 0;
         while index < VOICES {
@@ -210,19 +213,23 @@ impl Bank {
         }
     }
 
-    /// Each voice's phase step, a turn being `2^32`.
-    pub(super) fn steps(&self) -> [u32; VOICES] {
+    /// Each voice's phase step, a turn being `2^32`: what an analysis needs
+    /// to tell a voice's harmonics from what folds back.
+    #[must_use]
+    pub fn steps(&self) -> [u32; VOICES] {
         self.saws.map(|saw| saw.step)
     }
 
-    /// Each voice's phase now, a turn being `2^32`.
-    pub(super) fn phases(&self) -> [u32; VOICES] {
+    /// Each voice's phase now, a turn being `2^32`: with [`Self::steps`],
+    /// what a reference rendering needs to start where the oscillator does.
+    #[must_use]
+    pub fn phases(&self) -> [u32; VOICES] {
         self.saws.map(|saw| saw.phase)
     }
 
     /// Plays what `setup` prepared from the next sample on, keeping the
-    /// phases and the filters' state.
-    pub(super) fn apply(&mut self, setup: &Setup) {
+    /// phases and the filters' state: copies only, no division.
+    pub fn apply(&mut self, setup: &Coefficients) {
         for ((saw, &step), &inverse) in self.saws.iter_mut().zip(&setup.steps).zip(&setup.inverses)
         {
             saw.step = step;
@@ -240,7 +247,7 @@ impl Bank {
 
     /// One sample of every part, then advances.
     #[inline]
-    pub(super) fn next_frame(&mut self) -> Frame {
+    pub fn next_frame(&mut self) -> Frame {
         // Each voice weighed by its gain.
         let mut values = [0.0f32; VOICES];
         for ((value, saw), gain) in values.iter_mut().zip(&mut self.saws).zip(self.gains) {

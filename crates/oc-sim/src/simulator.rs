@@ -12,7 +12,6 @@ use std::io;
 use std::path::{Path, PathBuf};
 
 use oc_core::TickReport;
-use oc_core::apps::sound::Player;
 use oc_core::apps::{App, AppId};
 use oc_core::debounce::DEFAULT_STABLE_SAMPLES;
 use oc_core::engine::TICK_RATE_HZ;
@@ -20,6 +19,7 @@ use oc_core::framebuffer::FrameBuffer;
 use oc_core::platform::{
     BUTTONS, Button, CV_CHANNELS, CvChannel, MilliVolts, TRIGGER_CHANNELS, TriggerChannel,
 };
+use oc_core::playback::Player;
 use oc_core::settings::{LoadOutcome, SettingsStore};
 use oc_core::testing::{BareMockEngine, MEMORY_FLASH_BYTES, MemoryFlash, bare_mock_engine_at_boot};
 use oc_core::toast::SaveOutcome;
@@ -286,9 +286,7 @@ impl Simulator {
     pub fn step(&mut self) -> TickReport {
         self.engine.clock().advance(TICK_MICROS);
         let report = self.engine.tick();
-        let levels = self
-            .player
-            .play(self.engine.params_revision(), self.engine.patch());
+        let levels = self.player.play(self.engine.patch());
         self.engine.write_outputs(&levels);
         if self.engine.take_save_request() {
             let saved = self.save_settings();

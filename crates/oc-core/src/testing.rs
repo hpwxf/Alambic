@@ -15,7 +15,6 @@ use embedded_storage_async::nor_flash::{
     ErrorType, NorFlash, NorFlashError, NorFlashErrorKind, ReadNorFlash,
 };
 
-use crate::apps::sound::Player;
 use crate::calibration::{CvInputCalibration, CvOutputCalibration};
 use crate::engine::{Engine, TICK_RATE_HZ, TickReport};
 use crate::framebuffer::FrameBuffer;
@@ -23,6 +22,7 @@ use crate::platform::{
     AnalogIn, AnalogOut, CV_CHANNELS, Clock, ControlEvents, Controls, CvChannel, DigitalIn,
     Display, MilliVolts, TRIGGER_CHANNELS, TriggerChannel,
 };
+use crate::playback::Player;
 use crate::settings::{FLASH_BYTES, SECTOR_BYTES};
 
 /// CV inputs backed by a plain array of levels.
@@ -362,9 +362,7 @@ impl MockEngine {
     /// report, whose [`TickReport::cv_out`] is what played before the tick.
     pub fn tick(&mut self) -> TickReport {
         let report = self.engine.tick();
-        self.outputs = self
-            .player
-            .play(self.engine.params_revision(), self.engine.patch());
+        self.outputs = self.player.play(self.engine.patch());
         self.engine.write_outputs(&self.outputs);
         report
     }

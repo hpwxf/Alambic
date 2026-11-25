@@ -1,46 +1,26 @@
 //! What this image's applets can sound like (journal/D-044): the
-//! generators it composes, the one [`Sound`] the voice runs.
+//! generators it composes, the one [`Sound`] the voice runs, and the
+//! [`Params`] an applet publishes. What a backend plays them with is
+//! [`crate::playback`].
 //!
 //! The list sits beside [`AppHost`](super::AppHost), where the image picks its
 //! applets: `audio` holds the mechanism and names none of them. Each kind of
 //! sound is one variant; the voice dispatches on it once a sample, statically,
-//! and a [`Setup`] stays a value of fixed size the audio interrupt copies
+//! and a [`Setup`](crate::playback::Setup) stays a value of fixed size the audio interrupt copies
 //! (journal/D-040): the largest of the generators' setups, not their sum.
 //!
 //! Written by hand while the list is two long; a macro would write the same
 //! three enums once it grows.
 
-use crate::apps::MAX_INSTANCES;
-use crate::apps::supersaw::bank::{SupersawBank, SupersawParams, SupersawSetup, SupersawState};
+use crate::apps::supersaw::generator::{
+    SupersawGenerator, SupersawParams, SupersawSetup, SupersawState,
+};
 use crate::audio::basic::{Basic, BasicParams, BasicSetup, BasicState};
 use crate::audio::{self, Generator};
 use crate::platform::{CV_CHANNELS, MilliVolts};
 
 /// What the outputs carry, as the running applet publishes it.
 pub type Params = audio::Params<Sound>;
-
-/// What [`Params`] decide at a rate, prepared in the loop.
-pub type Setup = audio::Setup<Sound>;
-
-/// The voice every backend runs.
-pub type Voice = audio::Voice<Sound>;
-
-/// What every output carries: each instance slot's parameters and route,
-/// and the levels a probe holds (journal/D-046).
-pub type Patch = audio::Patch<Sound, MAX_INSTANCES>;
-
-/// What the audio context takes from the loop when the patch changed.
-pub type Changes = audio::Changes<Sound, MAX_INSTANCES>;
-
-/// The voices of every slot, routed to the outputs.
-pub type Voices = audio::Voices<Sound, MAX_INSTANCES>;
-
-/// What tells a backend's voices that the patch changed (journal/D-040).
-pub type Follower = audio::Follower<Sound, MAX_INSTANCES>;
-
-/// The voices a backend plays the engine's outputs with, following its
-/// patch (journal/D-040, D-046).
-pub type Player = audio::Player<Sound, MAX_INSTANCES>;
 
 /// Every kind of sound this image's applets make.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -93,7 +73,7 @@ impl Generator for Sound {
         match params {
             SoundParams::Basic(params) => SoundSetup::Basic(Basic::setup(params, rate_hz)),
             SoundParams::Supersaw(params) => {
-                SoundSetup::Supersaw(SupersawBank::setup(params, rate_hz))
+                SoundSetup::Supersaw(SupersawGenerator::setup(params, rate_hz))
             }
         }
     }
@@ -108,7 +88,7 @@ impl Generator for Sound {
         match (&mut *state, setup) {
             (SoundState::Basic(state), SoundSetup::Basic(setup)) => Basic::apply(state, setup),
             (SoundState::Supersaw(state), SoundSetup::Supersaw(setup)) => {
-                SupersawBank::apply(state, setup);
+                SupersawGenerator::apply(state, setup);
             }
             (_, SoundSetup::Basic(setup)) => {
                 let mut fresh = Basic::start();
@@ -116,8 +96,8 @@ impl Generator for Sound {
                 *state = SoundState::Basic(fresh);
             }
             (_, SoundSetup::Supersaw(setup)) => {
-                let mut fresh = SupersawBank::start();
-                SupersawBank::apply(&mut fresh, setup);
+                let mut fresh = SupersawGenerator::start();
+                SupersawGenerator::apply(&mut fresh, setup);
                 *state = SoundState::Supersaw(fresh);
             }
         }
@@ -127,7 +107,7 @@ impl Generator for Sound {
     fn next(state: &mut SoundState) -> [MilliVolts; CV_CHANNELS] {
         match state {
             SoundState::Basic(state) => Basic::next(state),
-            SoundState::Supersaw(state) => SupersawBank::next(state),
+            SoundState::Supersaw(state) => SupersawGenerator::next(state),
         }
     }
 }
@@ -178,7 +158,7 @@ impl From<[MilliVolts; CV_CHANNELS]> for Params {
 }
 
 impl SoundState {
-    /// The supersaw bank it runs, if that is its kind: what an analysis
+    /// The supersaw it runs, if that is its kind: what an analysis
     /// needs of its steps and phases.
     #[must_use]
     pub const fn supersaw(&self) -> Option<&SupersawState> {
@@ -191,22 +171,24 @@ impl SoundState {
 
 #[cfg(test)]
 mod tests {
-    use super::{Params, Voice};
-    use crate::apps::supersaw::bank::{Part, SupersawParams};
+    use super::Params;
+    use crate::apps::supersaw::dsp::Part;
+    use crate::apps::supersaw::generator::SupersawParams;
     use crate::audio::basic::{BasicParams, Channel};
+    use crate::playback::Voice;
 
     #[test]
     fn a_change_of_kind_starts_the_new_kind_afresh() {
-        let mut saw = SupersawParams::OFF;
-        saw.bank.amplitude = 1_000;
-        saw.bank.frequency = 110_000;
-        saw.parts[0] = Some(Part::Mono);
+        let mut sound = SupersawParams::OFF;
+        sound.saw.amplitude = 1_000;
+        sound.saw.frequency = 110_000;
+        sound.parts[0] = Some(Part::Mono);
         let mut voice = Voice::new(47_619);
-        voice.set_params(&Params::supersaw(saw));
+        voice.set_params(&Params::supersaw(sound));
         let first: [_; 64] = core::array::from_fn(|_| voice.next_sample());
         voice.set_params(&Params::levels([5; 4]));
         assert_eq!(voice.next_sample(), [5; 4]);
-        voice.set_params(&Params::supersaw(saw));
+        voice.set_params(&Params::supersaw(sound));
         let again: [_; 64] = core::array::from_fn(|_| voice.next_sample());
         assert_eq!(first, again, "the bank starts again from its first phases");
     }

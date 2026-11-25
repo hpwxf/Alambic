@@ -39,11 +39,11 @@ it already, this file only points to it.
   (`crates/oc-firmware/src/main.rs`): each tick samples the inputs (four
   blocking ADC conversions, the trigger edge latches, the panel), runs
   `Engine::tick`, then publishes `Engine::patch` and the output
-  calibration (`audio::Publisher`), and waits for its deadline (previous
+  calibration (`realtime::Publisher`), and waits for its deadline (previous
   deadline + 1 ms) while serving USB. The publisher compares
-  `Engine::params_revision` rather than the patch, and builds there,
+  the patch's revisions (`Patch::revision`, one per slot besides) rather than the patch, and builds there,
   outside any critical section, the `Setup` of each instance slot whose
-  parameters changed, handed over as `oc_core::apps::sound::Changes` with
+  parameters changed, handed over as `oc_core::playback::Changes` with
   every route and held level (journal/D-040, D-046).
 * **The audio path** owns the SPI bus at 47 619 Hz (PIT channel 0 on PERCLK,
   21 counts). Each timeout makes the DMA copy one slot of a ring into
@@ -53,15 +53,15 @@ it already, this file only points to it.
   waits for the burst's echo and sends a piece of the screen; LPSPI4's
   frame-complete interrupt releases the OLED's chip select. One sample per
   period, no blocks (journal/D-042). Step by step: the module documentation
-  of `crates/oc-firmware/src/audio.rs`; DMA, ring and handlers:
-  `audio_irq.rs`.
+  of `crates/oc-firmware/src/realtime/mod.rs` (the DAC side in `dac.rs`,
+  the screen side in `screen.rs`); DMA, ring and handlers: `irq.rs`.
 * The two share mailboxes behind `critical_section::Mutex`, short copies
   only. The engine renders no voice (journal/D-040): on the module the
   interrupt plays and the loop reports what it played
-  (`Engine::set_played`), the engine's outputs (`audio::MutedOutputs`)
+  (`Engine::set_played`), the engine's outputs (`realtime::MutedOutputs`)
   never written; the simulator plays an `oc_core::audio::Player` once a
   tick and writes it (`Engine::write_outputs`), Rack once a sample
-  (`oc_engine_audio`). The firmware's `audio::Publisher` and the
+  (`oc_engine_audio`). The firmware's `realtime::Publisher` and the
   `Player` decide when to prepare through one `oc_core::audio::Follower`,
   slot by slot.
 
@@ -74,7 +74,7 @@ it already, this file only points to it.
   pixels, CPU only; *sending* copies them to the panel over the shared bus.
   The panel keeps showing what it last received.
 * The engine draws every `board::RENDER_INTERVAL_TICKS` ticks and
-  `present`s the frame: on the module (`audio::MailboxDisplay`) a 1 KiB copy
+  `present`s the frame: on the module (`realtime::MailboxDisplay`) a 1 KiB copy
   into the mailbox, the latest frame winning. The interrupt sends it in
   chunks (`oc_drivers::ssd130x::FrameStream`, commands or pixels, never both,
   `board::OLED_CHUNK_BYTES` a period). The boot splash presents every tick.
@@ -92,7 +92,7 @@ it already, this file only points to it.
 * The loop's stages are wall-clock time, the audio interrupt included: a
   stage that lasts long enough takes one (4.2 µs), so a stage's mean moves
   with where the interrupt falls, and only sums of stages compare. `publish`
-  (`audio::Publisher::publish`, after the tick) is the loop's share of new
+  (`realtime::Publisher::publish`, after the tick) is the loop's share of new
   parameters: the comparison, and `Setup::new` when they changed
   (journal/D-040).
 * The end of a transfer is read from its echo in the receive FIFO: the busy
@@ -105,8 +105,9 @@ it already, this file only points to it.
   it, elsewhere), so profiling never changes a test or a golden screen
   (`oc_core::profile`, journal/D-029). Host benchmarks are a regression guard,
   not a hardware measurement (`docs/agents/tools.md`).
-* `scripts/profile-supersaw.sh` sets `SUPERSAW` through the probe and runs
-  `stats` in each case; the CV assignments stay the panel's. `render`
+* `scripts/profile-supersaw.sh` sets `SUPERSAW` through the probe, its CV
+  assignments included, and runs `stats`; `INSTANCES=N` runs N of them side
+  by side, `DETUNE_INPUT` moves `DETUNE` off CV2. `render`
   depends on the page shown (about 95 µs on `SUPERSAW`'s first page, its
   voices animated, 54 µs on the second), and moves the tick's mean by
   about 2 µs: compare a page with the same page.
@@ -143,7 +144,7 @@ for any block that runs per sample in the audio interrupt.
   hardware, fine in a `Setup`, never per sample (D-040).
 * **Everything the parameters decide goes in `Generator::setup`**, run in
   the loop when they change (D-040): reciprocals, coefficients, gains. Under
-  a moving CV it runs every tick, in `audio::Publisher`, so its cost shows
+  a moving CV it runs every tick, in `realtime::Publisher`, so its cost shows
   in `publish`, not in `voice`.
 * **`core` has no `sqrt`, `round` or `floor`.** Prepare roots in integers
   (`isqrt`) in the `Setup`; round by hand. An `as` conversion from `f32` to

@@ -39,11 +39,11 @@ use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::ptr;
 
 use oc_core::Engine;
-use oc_core::apps::sound::Player;
 use oc_core::framebuffer::LEN as FRAMEBUFFER_LEN;
 use oc_core::platform::{
     BUTTONS, Button, CV_CHANNELS, CvChannel, ENCODERS, MilliVolts, TRIGGER_CHANNELS, TriggerChannel,
 };
+use oc_core::playback::Player;
 use oc_core::settings;
 use oc_core::testing::{
     MockAnalogIn, MockAnalogOut, MockControls, MockDigitalIn, MockDisplay, VirtualClock,
@@ -372,9 +372,7 @@ pub unsafe extern "C" fn oc_engine_audio(engine: *mut OcEngine, sample_rate_hz: 
             engine.player.set_rate(sample_rate_hz);
         }
         // Rack reads millivolts: the engine's outputs need no codes.
-        engine.cv_out = engine
-            .player
-            .play(engine.engine.params_revision(), engine.engine.patch());
+        engine.cv_out = engine.player.play(engine.engine.patch());
         engine.engine.set_played(engine.cv_out);
     }));
 }

@@ -31,8 +31,10 @@ rationale behind each crate is in the journal entry cited.
 | The `App` trait, the registry and dispatch (`AppId`, `AppHost`) | `crates/oc-core/src/apps/mod.rs` (journal/D-043) |
 | What an applet exposes: parameters, observables, actions (`ParamSpec`, `write_summary`) | `crates/oc-core/src/apps/param.rs` (journal/D-043) |
 | The applets | `crates/oc-core/src/apps/`: `diagnostic.rs`, `scope.rs`, `gfx_demo.rs`, `ratchet/`, `tone.rs`, `supersaw.rs` |
-| The supersaw bank, the applet's own | `crates/oc-core/src/apps/supersaw/bank.rs` (parameters, Szabo's curves, the preparation in integers, the `SupersawBank` generator), `bank/float.rs` (the bank in `f32`, integer phases, journal/D-039) |
-| The generators this image composes (`Sound`, `Params`, `Setup`, `Voice`), and the patch of its instance slots (`Patch`, `Changes`, `Voices`, `Player`, `MAX_INSTANCES` in `apps/mod.rs`) | `crates/oc-core/src/apps/sound.rs` (journal/D-044) |
+| The supersaw's DSP, the applet's own | `crates/oc-core/src/apps/supersaw/dsp/mod.rs` (the sound's parameters `Supersaw`, parts, Szabo's curves, `Coefficients::new`: the preparation in integers), `dsp/oscillator.rs` (`Oscillator`: the seven voices in `f32`, integer phases, journal/D-039) |
+| The supersaw as a generator | `crates/oc-core/src/apps/supersaw/generator.rs` (`SupersawGenerator`: `SupersawParams`, `SupersawSetup`, `SupersawState`, journal/D-044) |
+| The generators this image composes (`Sound`) and what an applet publishes (`Params`) | `crates/oc-core/src/apps/sound.rs` (journal/D-044) |
+| What a backend plays them with, for this image's instance slots (`Patch`, `Setup`, `Voice`, `Changes`, `Voices`, `Follower`, `Player`; `MAX_INSTANCES` in `apps/mod.rs`) | `crates/oc-core/src/playback.rs` (journal/D-040, D-046) |
 | The `Generator` trait, the voice, `Setup`, routes and the voices of every slot, the waveforms, levels and tones (`Basic`) | `crates/oc-core/src/audio/mod.rs`, `audio/wave.rs`, `audio/basic.rs` (journal/D-033, D-040, D-044, D-046) |
 | A parameter modulated by a CV input, and its submenu | `crates/oc-core/src/modulation/mod.rs`, `modulation/editor.rs` (journal/D-035, D-036); an applet's inputs and open submenu, a parameter's slot: `modulation/slots.rs` (`Modulations`, `slot_of`); reached by the probe through `App::assigns` and `assign` / `set_assign` on `dyn App` (journal/D-045) |
 | The app menu (`up`+`down`) | `crates/oc-core/src/menu.rs` |
@@ -48,7 +50,7 @@ rationale behind each crate is in the journal entry cited.
 | Where the loop's time goes | `crates/oc-core/src/profile.rs` |
 | Deterministic mocks used by every `oc-core` test | `crates/oc-core/src/testing.rs` |
 | The pinout (the only file allowed to name a pin) | `crates/oc-firmware/src/board.rs` (rule test: `xtask/tests/pin_rule.rs`) |
-| The audio path and its mailboxes | `crates/oc-firmware/src/audio.rs`; DMA, ring, handlers: `audio_irq.rs` |
+| The real-time path: what the interrupts own and the loop hands them | `crates/oc-firmware/src/realtime/mod.rs` (shared state, bus, timing, mailbox, start and checks), `dac.rs` (the DAC side, `Publisher`, `MutedOutputs`), `screen.rs` (the screen side, `MailboxDisplay`); DMA, ring, handlers: `irq.rs` |
 | The two USB serial ports and the log | `crates/oc-firmware/src/usb.rs`, `usb_log.rs` |
 | The OLED's blocking initialisation bus, whose `flush` waits for the last bit | `crates/oc-firmware/src/framed_spi.rs` |
 | The Teensy's settings flash (boot ROM calls) | `crates/oc-firmware/src/flash_store.rs` |
