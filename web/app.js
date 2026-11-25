@@ -215,9 +215,11 @@ async function connect() {
     setProbeStatus(`connected: ${hello.text}`);
     setProbeEnabled(true);
   } catch (error) {
-    setProbeStatus(/protocol/.test(error.message)
-      ? `${error.message}; Install below still updates it`
-      : `wrong one (${error.message}): click Connect and pick the other`);
+    if (/protocol/.test(error.message)) {
+      setProbeStatus(`${error.message}; Install below still updates it`, true);
+    } else {
+      setProbeStatus(`wrong one (${error.message}): click Connect and pick the other`);
+    }
     await closeSession();
   }
 }
@@ -321,8 +323,11 @@ function appendStream(line) {
   out.scrollTop = out.scrollHeight;
 }
 
-function setProbeStatus(text) {
-  $("probe-status").textContent = text;
+/** Says how the probe stands; `alert` marks what must not be missed. */
+function setProbeStatus(text, alert = false) {
+  const status = $("probe-status");
+  status.textContent = text;
+  status.classList.toggle("alert", alert);
 }
 
 function setProbeEnabled(connected) {

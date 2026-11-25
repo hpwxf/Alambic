@@ -7,6 +7,7 @@
   --accent: #2b6cb0;
   --warn-bg: #fff4d6;
   --warn-fg: #6b4e00;
+  --alert: #c0281f;
   color-scheme: light dark;
 }
 
@@ -20,6 +21,7 @@
     --accent: #7fb2ec;
     --warn-bg: #3a3014;
     --warn-fg: #f2d68a;
+    --alert: #ff6b5e;
   }
 }
 
@@ -61,6 +63,8 @@ h3 { margin: 0 0 8px; font-size: 1rem; }
 
 .row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 6px 0; }
 .status { color: var(--muted); }
+/* What must not be missed, such as a module of another protocol. */
+.status.alert { color: var(--alert); font-weight: 700; }
 
 button, select, input {
   font: inherit;
