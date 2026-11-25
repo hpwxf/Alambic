@@ -535,9 +535,7 @@ where
                     self.screen = Screen::App;
                 }
                 Screen::App | Screen::Splash => {
-                    let running = self.apps.len();
-                    self.menu
-                        .open(self.apps.current(), running < MAX_INSTANCES, running > 1);
+                    self.menu.open(self.apps.current());
                     self.screen = Screen::Menu;
                 }
             }
@@ -552,14 +550,6 @@ where
                 {
                     Some(MenuOutcome::Launch(chosen)) => {
                         self.apps.select(chosen);
-                        self.screen = Screen::App;
-                    }
-                    Some(MenuOutcome::Add(chosen)) => {
-                        self.apps.add(chosen);
-                        self.screen = Screen::App;
-                    }
-                    Some(MenuOutcome::Remove) => {
-                        self.apps.remove();
                         self.screen = Screen::App;
                     }
                     Some(MenuOutcome::OpenSetup) => {
@@ -624,14 +614,14 @@ where
             Screen::Routing => {
                 let frame = self.display.frame_mut();
                 self.routing.render(frame, &self.apps);
-                instance_marks(frame, self.apps.len(), self.apps.focus());
+                instance_marks(frame, self.apps.occupied(), self.apps.focus());
             }
             Screen::System => self.system.render(self.display.frame_mut(), self.build_id),
             Screen::Calibration => self.wizard.render(self.display.frame_mut()),
             Screen::App | Screen::Splash => {
                 let frame = self.display.frame_mut();
                 self.apps.render(frame, &context);
-                instance_marks(frame, self.apps.len(), self.apps.focus());
+                instance_marks(frame, self.apps.occupied(), self.apps.focus());
             }
         }
     }
@@ -883,6 +873,13 @@ where
         if matches!(self.screen, Screen::Menu) {
             self.screen = Screen::App;
         }
+    }
+
+    /// Puts a fresh applet of kind `id` in the slot at `position`, as the
+    /// menu does on the one with the focus ([`AppHost::select_at`]);
+    /// `false` for no such slot.
+    pub fn select_app_at(&mut self, position: usize, id: AppId) -> bool {
+        self.apps.select_at(position, id)
     }
 
     /// Whether the routing page currently owns the screen.

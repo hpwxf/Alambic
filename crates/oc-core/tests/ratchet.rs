@@ -492,8 +492,9 @@ fn the_submenu_is_a_frame_over_the_main_screen() {
     engine.clock().advance(1_000);
     engine.tick();
     let frame = engine.parts_mut().4.frame_mut().clone();
-    // No activity on top: the title bar's lights are covered.
-    assert!((0..128).all(|x| !frame.pixel(x, 0)));
+    // No activity on top: the title bar's lights are covered; left of
+    // them, the engine's marks of the slots (journal/D-046).
+    assert!((oc_core::gfx::controls::TITLE_LEFT..128).all(|x| !frame.pixel(x, 0)));
     // The frame's sides and bottom, and the edge broken by the title.
     assert!(frame.pixel(0, 30) && frame.pixel(127, 30) && frame.pixel(64, 53));
     assert!(frame.pixel(64, 3) && !frame.pixel(5, 3));

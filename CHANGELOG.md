@@ -58,6 +58,16 @@ Architectural decisions behind each change are in `journal/` (French).
 
 ### Changed
 
+- **Four slots, always** (journal/D-046, revision of 2026-11-25): the
+  module always runs four applets, an empty slot running `NOTHING`, which
+  holds no output and says how to fill it. `up` and `down` visit every
+  slot; the menu puts the app picked in the slot shown, `NOTHING`, last,
+  empties it; `ADD APP` and `REMOVE APP` are gone. The marks left of the
+  title are always drawn, a dot for each slot that runs an app. Probe
+  protocol 10: `SelectApp` names a slot (`cargo probe select tone @2`),
+  `AddInstance` and `RemoveInstance` are gone; `cargo probe add` fills the
+  first empty slot and `remove @N` empties one. In the browser tool, *Put in
+  an empty slot* replaces *Add beside*.
 - **Up to four applets at once** (journal/D-046): the app menu's `ADD APP`
   starts another beside the one shown, on the outputs nobody uses (an applet
   declares the outputs it writes: `RATCHET` A and B, `SUPERSAW` A, B and

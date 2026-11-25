@@ -123,7 +123,12 @@ impl AppList {
     }
 }
 
-/// The instances running, from a `ListInstances` answer (journal/D-046).
+/// The index of `NOTHING`, what an empty slot runs (journal/D-046).
+// The apps fit a byte: the protocol names them by one.
+#[allow(clippy::cast_possible_truncation)]
+const NOTHING: u8 = oc_core::apps::AppId::Nothing.index() as u8;
+
+/// Every slot, from a `ListInstances` answer (journal/D-046).
 #[wasm_bindgen]
 #[derive(Debug, Clone, Default)]
 pub struct Instances {
@@ -202,16 +207,35 @@ impl Instances {
             .unwrap_or(0)
     }
 
-    /// Starts applet `app` beside the one shown.
+    /// Whether the slot `at` is empty: it runs `NOTHING` (journal/D-046).
     #[must_use]
-    pub fn add_request(app: u8) -> Vec<u8> {
-        frame(&Request::AddInstance { app })
+    pub fn is_empty_slot(&self, at: usize) -> bool {
+        self.app(at) == NOTHING
     }
 
-    /// Stops the instance at `position`.
+    /// The first empty slot, left to right, or -1 when every slot runs an
+    /// applet.
+    #[must_use]
+    pub fn first_empty(&self) -> i32 {
+        (0..self.instances.len())
+            .find(|&at| self.is_empty_slot(at))
+            .and_then(|at| i32::try_from(at).ok())
+            .unwrap_or(-1)
+    }
+
+    /// Puts a fresh applet `app` in the slot at `position`.
+    #[must_use]
+    pub fn place_request(app: u8, position: u8) -> Vec<u8> {
+        frame(&Request::SelectApp {
+            app,
+            instance: Some(position),
+        })
+    }
+
+    /// Empties the slot at `position`: `NOTHING` in it.
     #[must_use]
     pub fn remove_request(position: u8) -> Vec<u8> {
-        frame(&Request::RemoveInstance { instance: position })
+        Self::place_request(NOTHING, position)
     }
 
     /// Shows the instance at `position` on the module.
@@ -705,10 +729,13 @@ impl AppView {
         })
     }
 
-    /// The request that hands this applet the outputs and the screen.
+    /// The request that puts this applet in the slot shown on the module.
     #[must_use]
     pub fn select_request(&self) -> Vec<u8> {
-        frame(&Request::SelectApp { app: self.app })
+        frame(&Request::SelectApp {
+            app: self.app,
+            instance: None,
+        })
     }
 }
 
@@ -810,8 +837,8 @@ fn range(spec: &SpecEntry) -> String {
 
 #[cfg(test)]
 mod tests {
-    use oc_core::apps::AppId;
     use oc_core::apps::ratchet::RatchetApp;
+    use oc_core::apps::{AppId, MAX_INSTANCES};
     use oc_core::testing::{MockEngine, mock_engine};
     use oc_protocol::server::{Identity, Server};
     use oc_protocol::{Request, VERSION};
@@ -1095,11 +1122,12 @@ mod tests {
 
         let mut module = Module::running(AppId::Ratchet);
         let supersaw = u8::try_from(AppId::Supersaw.index()).unwrap();
-        let [added] = module
-            .send(&Instances::add_request(supersaw))
+        let [placed] = module
+            .send(&Instances::place_request(supersaw, 1))
             .try_into()
             .unwrap();
-        assert_eq!(added.kind, MessageKind::Applet);
+        assert_eq!(placed.kind, MessageKind::Done);
+        module.send(&Instances::focus_request(1));
 
         let mut instances = Instances::new();
         let done = module
@@ -1107,7 +1135,9 @@ mod tests {
             .iter()
             .map(|message| instances.absorb(message))
             .last();
-        assert_eq!((done, instances.len()), (Some(true), 2));
+        assert_eq!((done, instances.len()), (Some(true), MAX_INSTANCES));
+        assert_eq!(instances.first_empty(), 2);
+        assert!(instances.is_empty_slot(3) && !instances.is_empty_slot(1));
         assert_eq!(instances.app(1), supersaw);
         assert!(instances.focused(1) && !instances.focused(0));
         assert_eq!((instances.output(1, 0), instances.output(1, 2)), (2, -1));

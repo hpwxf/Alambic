@@ -42,28 +42,30 @@ for the hardware.
 
 ## Apps and the app menu
 
-The module runs up to four apps at once, each on its own outputs (journal/D-046),
-one of them on the screen and the panel at a time. A short press of `up` or
-`down` moves to the app on the left or right, from the last round to the
-first, on the routing page too; their long press (one second)
+The module has four slots, each running an app on its own outputs
+(journal/D-046), one of them on the screen and the panel at a time; a slot
+nobody uses runs `NOTHING`, which holds no output and says how to fill it. A
+short press of `up` or `down` moves to the slot on the left or right, empty
+ones too, from the last round to the first, on the routing page too; their
+long press (one second)
 opens the shown app's **routing page**, and closes it again: the left encoder
 picks a row, the right one turns it. An output (`A`, `B`, `SUB` for
 `SUPERSAW`) steps through the jacks `A` to `D` and `OFF`, skipping those
 another app holds; an input the app reads by itself (`RATCHET`'s `CLOCK`,
 `SCOPE`'s `IN`) steps through the four jacks of its kind, which apps may
 share. An app's CV inputs are set in their own submenu, on the physical jacks. Apps no longer use `up` and `down`
-themselves. While two or more run, a column of marks left of the title, as
-wide as a list's scroll bar, shows them on the app's screen and its routing
-page: a dot each, the one shown across the column.
+themselves. A column of marks left of the title, as wide as a list's scroll
+bar, shows the slots on the app's screen and its routing page: a dot for
+each that runs an app, nothing for an empty one, the one shown across the
+column.
 
 **Holding `up` and `down` together** opens the app menu; `up`/`down` or the
 left encoder move the highlight (the list scrolls), either encoder press
 launches the highlighted app in the place of the one shown, which starts
 afresh, and holding both again closes the menu without changing anything.
-`ADD APP`, while a place is free, lists the apps again: the one picked starts
-right of the one shown, on the outputs no app uses, in order (`RATCHET` beside
-`SUPERSAW` gets D), and takes the screen. `REMOVE APP`, while two run, stops
-the one shown and frees its outputs, which go to 0 V. The running
+An app put in a slot takes the outputs no app uses, in order (`RATCHET`
+beside `SUPERSAW` gets D); `NOTHING`, last of the apps, empties the slot shown
+and frees its outputs, which go to 0 V. The running
 app keeps tracking its inputs and driving its outputs while the menu is up, so
 opening it never interrupts a patch. In the simulator press `m`; in VCV Rack
 the chord is unreachable with a mouse, so right-click the module and choose
@@ -381,14 +383,14 @@ cargo probe app ratchet        # its parameters and values, observables, actions
 cargo probe set ratchet prob 50  # as the panel would, within its bounds
 cargo probe get supersaw freq  # a parameter or what it plays now
 cargo probe act ratchet burst  # an action, here a burst as the left click starts one
-cargo probe select tone        # hand it the outputs and the screen
+cargo probe select tone        # put it in the slot shown; `select tone @2` in slot 2
 cargo probe assign supersaw detune input=cv2 effect=add  # a parameter's CV input, field by field
 cargo probe assign supersaw detune --center 5  # fit it to what CV2 carries, as CENTER does
-cargo probe add ratchet        # start RATCHET beside the app shown, on the free outputs
-cargo probe instances          # the apps running, @0 @1..., where their ports go
+cargo probe add ratchet        # put RATCHET in the first empty slot, on the free outputs
+cargo probe instances          # the four slots, @0 to @3, where their ports go
 cargo probe route @0 sub=off   # its routing page from afar: sub=off, a=d, clock=tr2
 cargo probe set @1 prob 50     # @N names one instance; a name, the first of that app
-cargo probe focus @1           # show it on the screen; `remove @1` stops it
+cargo probe focus @1           # show it on the screen; `remove @1` empties the slot
 ```
 
 `cargo probe` is an alias of `cargo run -q -p oc-probe --`. The tool finds the

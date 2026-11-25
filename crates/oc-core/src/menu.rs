@@ -8,7 +8,7 @@
 //! opens or closes — that is [`Engine::tick`](crate::Engine)'s job — so this
 //! module only knows how to move a highlight and draw a list.
 
-use crate::gfx::controls::{LIST_LEFT, SCROLL_WIDTH, row_highlight, scroll_track, scroll_window};
+use crate::gfx::controls::{LIST_LEFT, SCROLL_WIDTH, row_highlight, scroll_window};
 use crate::gfx::{Ink, Point};
 
 use crate::apps::AppId;
@@ -36,29 +36,18 @@ const TEXT_INSET: i32 = LIST_LEFT + 2;
 /// Label of the entry that opens the system settings.
 const SETUP_LABEL: &str = "SETUP";
 
-/// Label of the entry that adds an applet, and title of the list it opens.
-const ADD_LABEL: &str = "ADD APP";
-
-/// Label of the entry that stops the applet with the focus.
-const REMOVE_LABEL: &str = "REMOVE APP";
-
 /// Rows of entries under the title: past that, the list scrolls.
 const VISIBLE: usize = (ROWS - FIRST_ROW) as usize;
 
-/// Most entries: every app, `ADD APP`, `REMOVE APP`, then `SETUP`.
-const MOST_ENTRIES: usize = AppId::ALL.len() + 3;
+/// The entries: every app, `NOTHING` last among them, then `SETUP`.
+const ENTRIES: usize = AppId::ALL.len() + 1;
 
 /// One line of the menu.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MenuEntry {
-    /// An applet to run in the place of the one with the focus, or, while
-    /// adding, beside it.
+    /// An applet to run in the place of the one with the focus;
+    /// [`AppId::Nothing`] empties its slot (journal/D-046).
     App(AppId),
-    /// Adds an applet right of the one with the focus: the list of apps
-    /// again, to pick which (journal/D-046).
-    Add,
-    /// Stops the applet with the focus.
-    Remove,
     /// The system settings screen.
     Setup,
 }
@@ -68,8 +57,6 @@ impl MenuEntry {
     const fn label(self) -> &'static str {
         match self {
             Self::App(id) => id.name(),
-            Self::Add => ADD_LABEL,
-            Self::Remove => REMOVE_LABEL,
             Self::Setup => SETUP_LABEL,
         }
     }
@@ -81,11 +68,6 @@ pub enum MenuOutcome {
     /// The highlighted app was confirmed: it takes the place of the one with
     /// the focus.
     Launch(AppId),
-    /// An app was picked from `ADD APP`: it starts right of the one with the
-    /// focus.
-    Add(AppId),
-    /// `REMOVE APP` was confirmed: the one with the focus stops.
-    Remove,
     /// `SETUP` was confirmed: open the system settings.
     OpenSetup,
 }
@@ -94,24 +76,13 @@ pub enum MenuOutcome {
 #[derive(Debug, Clone, Copy, Default)]
 pub struct Menu {
     selected: usize,
-    /// Whether another applet can start: a slot is free.
-    can_add: bool,
-    /// Whether the applet with the focus can stop: it is not alone.
-    can_remove: bool,
-    /// Whether `ADD APP` was confirmed: the list is the apps to add.
-    adding: bool,
 }
 
 impl Menu {
     /// A menu with the first app highlighted.
     #[must_use]
     pub const fn new() -> Self {
-        Self {
-            selected: 0,
-            can_add: false,
-            can_remove: false,
-            adding: false,
-        }
+        Self { selected: 0 }
     }
 
     /// Returns the menu to its initial state.
@@ -119,53 +90,23 @@ impl Menu {
         *self = Self::new();
     }
 
-    /// Opens the menu with `current`, the app with the focus, highlighted;
-    /// `ADD APP` listed when `can_add`, `REMOVE APP` when `can_remove`.
-    pub const fn open(&mut self, current: AppId, can_add: bool, can_remove: bool) {
+    /// Opens the menu with `current`, the app with the focus, highlighted.
+    pub const fn open(&mut self, current: AppId) {
         self.selected = current.index();
-        self.can_add = can_add;
-        self.can_remove = can_remove;
-        self.adding = false;
     }
 
-    /// Whether it lists the apps to add rather than the menu.
-    #[must_use]
-    pub const fn is_adding(&self) -> bool {
-        self.adding
-    }
-
-    /// How many entries it lists now.
-    const fn len(&self) -> usize {
-        if self.adding {
-            AppId::ALL.len()
-        } else {
-            AppId::ALL.len() + self.can_add as usize + self.can_remove as usize + 1
+    /// The entry at `index`: the apps, then `SETUP`.
+    const fn at(index: usize) -> MenuEntry {
+        match AppId::from_index(index) {
+            Some(id) => MenuEntry::App(id),
+            None => MenuEntry::Setup,
         }
-    }
-
-    /// The entry at `index`: the apps, then what applies of `ADD APP` and
-    /// `REMOVE APP`, then `SETUP`; while adding, the apps alone.
-    const fn at(&self, index: usize) -> MenuEntry {
-        if let Some(id) = AppId::from_index(index) {
-            return MenuEntry::App(id);
-        }
-        let mut extra = index - AppId::ALL.len();
-        if self.can_add {
-            if extra == 0 {
-                return MenuEntry::Add;
-            }
-            extra -= 1;
-        }
-        if self.can_remove && extra == 0 {
-            return MenuEntry::Remove;
-        }
-        MenuEntry::Setup
     }
 
     /// The entry currently highlighted.
     #[must_use]
     pub const fn selected(&self) -> MenuEntry {
-        self.at(self.selected)
+        Self::at(self.selected)
     }
 
     /// Moves the highlight, wrapping in both directions.
@@ -173,7 +114,7 @@ impl Menu {
         if steps == 0 {
             return;
         }
-        let count = i32::try_from(self.len()).unwrap_or(1);
+        let count = i32::try_from(ENTRIES).unwrap_or(1);
         let selected = i32::try_from(self.selected).unwrap_or(0);
         self.selected =
             usize::try_from((selected + steps).rem_euclid(count)).unwrap_or(self.selected);
@@ -184,9 +125,7 @@ impl Menu {
     ///
     /// `up` and `down` move the highlight, and so does the left encoder;
     /// clockwise moves *down* the list, matching the direction that encoder
-    /// already selects channels in. Pressing either encoder confirms;
-    /// confirming `ADD APP` lists the apps to add, with the highlight where
-    /// it was.
+    /// already selects channels in. Pressing either encoder confirms.
     pub fn update(&mut self, buttons: &ButtonEvents, encoder_delta: i8) -> Option<MenuOutcome> {
         let mut steps = i32::from(encoder_delta);
         if buttons.pressed(Button::Down) {
@@ -198,24 +137,17 @@ impl Menu {
         self.move_by(steps);
 
         if buttons.pressed(Button::LeftEncoder) || buttons.pressed(Button::RightEncoder) {
-            return match (self.adding, self.selected()) {
-                (true, MenuEntry::App(id)) => Some(MenuOutcome::Add(id)),
-                (_, MenuEntry::App(id)) => Some(MenuOutcome::Launch(id)),
-                (_, MenuEntry::Add) => {
-                    self.adding = true;
-                    self.selected = 0;
-                    None
-                }
-                (_, MenuEntry::Remove) => Some(MenuOutcome::Remove),
-                (_, MenuEntry::Setup) => Some(MenuOutcome::OpenSetup),
+            return match self.selected() {
+                MenuEntry::App(id) => Some(MenuOutcome::Launch(id)),
+                MenuEntry::Setup => Some(MenuOutcome::OpenSetup),
             };
         }
         None
     }
 
     /// First entry shown, so that the highlight stays on screen.
-    const fn first_visible(&self) -> usize {
-        let last_start = self.len().saturating_sub(VISIBLE);
+    const fn first_visible(self) -> usize {
+        let last_start = ENTRIES.saturating_sub(VISIBLE);
         let first = self.selected.saturating_sub(VISIBLE - 1);
         if first < last_start {
             first
@@ -228,35 +160,22 @@ impl Menu {
     /// inverse video and the scroll bar at the left.
     pub fn render(&self, frame: &mut FrameBuffer) {
         frame.clear();
-        let title = if self.adding { ADD_LABEL } else { TITLE };
-        text::draw(frame, title, Point::zero(), TextStyle::lit(&FONT_5X8));
+        text::draw(frame, TITLE, Point::zero(), TextStyle::lit(&FONT_5X8));
 
         let first = self.first_visible();
         let rows = i32::try_from(VISIBLE).unwrap_or(1);
-        if self.len() > VISIBLE {
-            scroll_window(
-                frame,
-                0,
-                FIRST_ROW * ROW_HEIGHT,
-                SCROLL_WIDTH,
-                rows * ROW_HEIGHT,
-                first,
-                VISIBLE,
-                self.len(),
-            );
-        } else {
-            // One page: the scroll bar's place, empty, lines the entries up
-            // with the screens that scroll.
-            let shown = i32::try_from(self.len()).unwrap_or(1);
-            scroll_track(
-                frame,
-                0,
-                FIRST_ROW * ROW_HEIGHT,
-                SCROLL_WIDTH,
-                shown * ROW_HEIGHT,
-            );
-        }
-        for (slot, index) in (first..self.len()).take(VISIBLE).enumerate() {
+        // More entries than rows (asserted below): it always scrolls.
+        scroll_window(
+            frame,
+            0,
+            FIRST_ROW * ROW_HEIGHT,
+            SCROLL_WIDTH,
+            rows * ROW_HEIGHT,
+            first,
+            VISIBLE,
+            ENTRIES,
+        );
+        for (slot, index) in (first..ENTRIES).take(VISIBLE).enumerate() {
             let row = FIRST_ROW + i32::try_from(slot).unwrap_or(0);
             let top = row * ROW_HEIGHT;
             let highlighted = index == self.selected;
@@ -270,7 +189,7 @@ impl Menu {
             };
             text::draw(
                 frame,
-                self.at(index).label(),
+                Self::at(index).label(),
                 Point::new(TEXT_INSET, top),
                 style,
             );
@@ -278,7 +197,7 @@ impl Menu {
     }
 }
 
-const _: () = assert!(MOST_ENTRIES > VISIBLE, "the menu scrolls once it has more");
+const _: () = assert!(ENTRIES > VISIBLE, "the menu scrolls");
 
 #[cfg(test)]
 mod tests {
@@ -322,7 +241,7 @@ mod tests {
     #[test]
     fn opening_highlights_the_running_app() {
         let mut menu = Menu::new();
-        menu.open(AppId::Scope, false, false);
+        menu.open(AppId::Scope);
         assert_eq!(menu.selected(), MenuEntry::App(AppId::Scope));
         menu.reset();
         assert_eq!(menu.selected(), MenuEntry::App(AppId::Diagnostic));
@@ -375,7 +294,7 @@ mod tests {
     fn either_encoder_press_launches_the_highlighted_app() {
         for button in [Button::LeftEncoder, Button::RightEncoder] {
             let mut menu = Menu::new();
-            menu.open(AppId::Scope, false, false);
+            menu.open(AppId::Scope);
             assert_eq!(
                 menu.update(&press(button), 0),
                 Some(MenuOutcome::Launch(AppId::Scope)),
@@ -415,18 +334,19 @@ mod tests {
             "the app name is punched out of the band in inverse video"
         );
         assert_ne!(
-            page[0], band,
-            "the scroll bar's place stays outside the highlight"
+            page[row_left - 1],
+            band,
+            "the gap after the scroll bar stays outside the highlight"
         );
     }
 
     #[test]
-    fn the_empty_scroll_track_stays_left_of_the_highlight() {
+    fn the_scroll_bar_stays_left_of_the_highlight() {
         let mut frame = FrameBuffer::new();
         Menu::new().render(&mut frame);
 
-        assert!(frame.pixel(1, ROW_HEIGHT));
-        assert!(!frame.pixel(0, ROW_HEIGHT));
+        assert!(frame.pixel(1, ROW_HEIGHT), "the thumb, at the top");
+        assert!(!frame.pixel(LIST_LEFT - 1, ROW_HEIGHT), "a gap");
         assert!(frame.pixel(LIST_LEFT, ROW_HEIGHT));
     }
 
@@ -434,7 +354,7 @@ mod tests {
     fn every_app_is_listed_on_its_own_row() {
         let mut frame = FrameBuffer::new();
         Menu::new().render(&mut frame);
-        for index in 0..=AppId::ALL.len() {
+        for index in 0..super::VISIBLE {
             let row = usize::try_from(FIRST_ROW).unwrap() + index;
             let page = &frame.as_bytes()[row * WIDTH..(row + 1) * WIDTH];
             assert!(
@@ -449,49 +369,21 @@ mod tests {
     }
 
     #[test]
-    fn add_and_remove_sit_between_the_apps_and_setup_when_they_apply() {
+    fn nothing_is_the_last_app_before_setup() {
         let mut menu = Menu::new();
-        menu.open(AppId::Diagnostic, true, true);
-        menu.move_by(-3);
-        assert_eq!(menu.selected(), MenuEntry::Add);
-        menu.move_by(1);
-        assert_eq!(menu.selected(), MenuEntry::Remove);
-        menu.move_by(1);
-        assert_eq!(menu.selected(), MenuEntry::Setup);
-        menu.open(AppId::Diagnostic, false, true);
         menu.move_by(-2);
-        assert_eq!(menu.selected(), MenuEntry::Remove, "nothing to add");
-        menu.open(AppId::Diagnostic, false, false);
-        menu.move_by(-1);
-        assert_eq!(menu.selected(), MenuEntry::Setup, "one app, no room");
-    }
-
-    #[test]
-    fn add_lists_the_apps_to_start_beside() {
-        let mut menu = Menu::new();
-        menu.open(AppId::Diagnostic, true, false);
-        menu.move_by(-2);
-        assert_eq!(menu.update(&press(Button::RightEncoder), 0), None);
-        assert!(menu.is_adding());
-        assert_eq!(menu.selected(), MenuEntry::App(AppId::Diagnostic));
-        menu.move_by(-1);
+        assert_eq!(menu.selected(), MenuEntry::App(AppId::Nothing));
         assert_eq!(
-            menu.selected(),
-            MenuEntry::App(AppId::Supersaw),
-            "the apps alone, wrapping"
+            menu.update(&press(Button::RightEncoder), 0),
+            Some(MenuOutcome::Launch(AppId::Nothing)),
+            "it empties the slot shown"
         );
-        assert_eq!(
-            menu.update(&press(Button::LeftEncoder), 0),
-            Some(MenuOutcome::Add(AppId::Supersaw))
-        );
-        menu.open(AppId::Tone, true, true);
-        assert!(!menu.is_adding(), "opening again starts from the menu");
     }
 
     #[test]
     fn a_long_list_scrolls_with_the_highlight() {
         let mut menu = Menu::new();
-        menu.open(AppId::Diagnostic, true, true);
+        menu.open(AppId::Diagnostic);
         menu.move_by(-1);
         assert_eq!(menu.selected(), MenuEntry::Setup);
         let mut frame = FrameBuffer::new();
@@ -502,6 +394,6 @@ mod tests {
             page.iter().any(|&byte| byte != 0),
             "SETUP, highlighted, on the last row"
         );
-        assert_eq!(menu.first_visible(), 2, "nine entries, seven rows");
+        assert_eq!(menu.first_visible(), 1, "eight entries, seven rows");
     }
 }

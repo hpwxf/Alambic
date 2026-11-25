@@ -256,8 +256,7 @@ mod tests {
     fn supersaw_and_ratchet() -> AppHost {
         let mut host = AppHost::new();
         host.select(AppId::Supersaw);
-        host.add(AppId::Ratchet);
-        host.set_focus(0);
+        host.select_at(1, AppId::Ratchet);
         host
     }
 

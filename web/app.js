@@ -328,10 +328,12 @@ async function listApps(probe) {
   for (let at = 0; at < instances.len; at += 1) if (instances.focused(at)) focused = at;
   chooser.value = String(instances.app(focused));
   await showInstance(probe, focused);
-  return `${count} apps, ${instances.len} running`;
+  let running = 0;
+  for (let at = 0; at < instances.len; at += 1) if (!instances.is_empty_slot(at)) running += 1;
+  return `${count} apps, ${running} of ${instances.len} slots running`;
 }
 
-/** Lists the instances running and draws a button for each. */
+/** Lists the slots and draws a button for each. */
 async function listInstances(probe) {
   const items = await probe.ask(oc.Instances.list_request(), UNTIL_DONE, true);
   const list = new oc.Instances();
@@ -359,13 +361,13 @@ function drawInstances() {
       },
     ));
     row.append(show);
-    if (instances.len > 1) {
+    if (!instances.is_empty_slot(at)) {
       const remove = document.createElement("button");
       remove.className = "needs-probe";
       remove.textContent = "✕";
-      remove.title = `stop @${at}`;
+      remove.title = `empty @${at}`;
       remove.addEventListener("click", (event) => request(
-        event.currentTarget, "apps-status", "stopping…", async (probe) => {
+        event.currentTarget, "apps-status", "emptying…", async (probe) => {
           await probe.ask(oc.Instances.remove_request(at));
           return listApps(probe);
         },
@@ -998,9 +1000,11 @@ async function main() {
     (probe) => showApp(probe, Number(event.target.value)),
   ));
   $("apps-add").addEventListener("click", (event) => request(
-    event.currentTarget, "apps-status", "adding…", async (probe) => {
-      if (!appView) return "list the apps first";
-      await probe.ask(oc.Instances.add_request(Number($("apps-choice").value)));
+    event.currentTarget, "apps-status", "placing…", async (probe) => {
+      if (!appView || !instances) return "list the apps first";
+      const free = instances.first_empty();
+      if (free < 0) return "no empty slot: empty one with ✕ first";
+      await probe.ask(oc.Instances.place_request(Number($("apps-choice").value), free));
       return listApps(probe);
     },
   ));
