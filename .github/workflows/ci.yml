@@ -37,7 +37,7 @@ jobs:
         run: cargo clippy --all-targets --all-features -- -D warnings
       - name: Clippy (firmware, ARM)
         run: >
-          cargo clippy --package oc-firmware
+          cargo clippy --package oc-firmware --package oc-board --package oc-realtime
           --target thumbv7em-none-eabihf -- -D warnings
 
   test:

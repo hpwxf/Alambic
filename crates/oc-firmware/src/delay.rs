@@ -11,8 +11,7 @@
 
 use embedded_hal::delay::DelayNs;
 
-/// Core clock of the i.MX RT1062 as configured by the board support package.
-pub(crate) const CORE_CLOCK_HZ: u32 = 600_000_000;
+pub(crate) use oc_board::CORE_CLOCK_HZ;
 
 /// Core clock cycles per microsecond.
 const CYCLES_PER_MICRO: u32 = CORE_CLOCK_HZ / 1_000_000;

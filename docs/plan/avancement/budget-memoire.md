@@ -218,3 +218,26 @@ a été pris alors que la page web tenait le port de la sonde et le module sur u
 * La pile : le chemin du démarrage (`boot` 3 936 o, `engine_in_static` 3 808 o, `Instance::new` 504 o).
 * Les bancs criterion (`[profile.bench]` hérite de `release`) mesurent désormais `oc-core` en `s` : un garde-fou de
   régression, pas une mesure du module.
+
+### `oc-realtime` en `3`, `oc-firmware` en `s` (2026-11-26, suite)
+
+Le chemin temps réel dans sa crate (`oc-realtime`, `3`), la carte dans la sienne (`oc-board`), le firmware au défaut.
+
+| Variante | `.text` | ITCM libre | pile |
+|---|---|---|---|
+| `s` par défaut, `oc-firmware` en `3` (`c102866`) | 0x26b20 | 37,2 Kio | 11 096 o |
+| **`oc-realtime` en `3`, `oc-firmware` en `s`** | **0x1eb20** | **69,2 Kio** | **9 424 o** |
+
+| Étape | 1 `SUPERSAW` avant | après | 4 `SUPERSAW` avant | après |
+|---|---|---|---|---|
+| `voice` | 1,08 | 1,11 | 3,18 | 3,58 |
+| `audio` (max) | 3,93 (5,24) | 4,15 (4,99) | 5,43 (7,10) | 5,84 (7,58) |
+| `voice_params` | 0,59 | 0,77 | 1,03 | 1,09 |
+| `publish` | 16,65 | 16,63 | 31,83 | 33,93 |
+| `update` | 7,80 | 8,89 | 17,03 | 15,72 |
+| `render` | 121,6 | 122,8 | 127,7 | 133,8 |
+| `tick` | 21,26 | 23,18 | 30,42 | 35,89 |
+
+* `boot` revient à 3 016 o de cadre et le code de démarrage à son niveau `s` ; la pile du démarrage redescend.
+* Le chemin par échantillon perd ≈ 12 % à quatre instances : la crate racine en `s` règle les passes de LTO pour tout
+  le programme (probable, non vérifié).

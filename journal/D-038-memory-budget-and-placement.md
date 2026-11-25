@@ -349,3 +349,39 @@ bruit de CV1, 10 s ; µs, moyenne ; détail dans `docs/plan/avancement/budget-me
 * La pile, 11 096 o (5 288 o libres) : le démarrage (`boot` 3 936 o, `engine_in_static` 3 808 o, `Instance::new`
   504 o en `s`).
 * `update` et `render` (contrôle, dessin) prennent ≈ 40 % et ≈ 17 % : à 1 kHz et tous les 20 ticks, sans enjeu.
+
+## Révision (2026-11-26, suite) — le chemin temps réel en `3`, le firmware en `s`
+
+`boot`, compilé en `3` dans `oc-firmware`, grossissait de 5 Kio quand les crates de la carte passaient en `s` (11 276
+→ 16 340 o) ; ses appels restaient les mêmes : le volume vient du code généré sur place, que `#[inline(never)]` ne
+réduirait pas (une fonction ainsi marquée reste compilée au niveau de sa crate). Le levier : ne plus mettre en `3` que
+ce qui doit l'être, dans une crate à part.
+
+* **`oc-realtime`** (`3`) : l'ex-`oc-firmware/src/realtime/` (l'interruption, la boîte aux lettres, le `Publisher`),
+  où s'instancient `Voices<Sound, 4>`, les générateurs et `Follower::follow` ; son `irq.rs` reste le seul `unsafe` du
+  chemin (AGENTS.md).
+* **`oc-board`** (`s`) : l'ex-`board.rs`, tel quel, avec `CORE_CLOCK_HZ` ; lu par le firmware et par `oc-realtime`,
+  qui ne peut dépendre d'un binaire (une lib dans le paquet `oc-firmware` partagerait son niveau et ferait un cycle
+  `oc-firmware` → `oc-realtime` → `oc-firmware`). Il reste le seul fichier à nommer une broche (D-007).
+* **`oc-firmware`** (`s`, le défaut) : `boot`, la boucle, l'USB, les réglages, `Engine<…>` instancié.
+* Les trois crates hors de `default-members` ; la CI passe clippy sur les trois.
+
+Mesures (module, mêmes réglages que la révision précédente ; µs, moyenne) :
+
+| | `s` par défaut, `oc-firmware` en `3` | **`oc-realtime` en `3`, `oc-firmware` en `s`** |
+|---|---|---|
+| ITCM libre | 37,2 Kio | **69,2 Kio** |
+| pile | 11 096 o | **9 424 o** |
+| `voice`, 1 / 4 `SUPERSAW` | 1,08 / 3,18 | 1,11 / 3,58 |
+| `audio`, 1 / 4 | 3,93 / 5,43 | 4,15 / 5,84 |
+| `voice_params`, 1 / 4 | 0,59 / 1,03 | 0,77 / 1,09 |
+| `publish`, 1 / 4 | 16,7 / 31,8 | 16,6 / 33,9 |
+| `update`, 4 | 17,0 | 15,7 |
+| `render`, 4 | 127,7 | 133,8 |
+| `tick`, 4 | 30,4 | 35,9 |
+
+* 32 Kio d'ITCM de plus ; le chemin par échantillon perd ≈ 12 % à quatre `SUPERSAW` (`voice` 3,18 → 3,58 µs,
+  `audio` 5,43 → 5,84 µs, loin de la moitié de la période, 10,5 µs), rien à une. Avec LTO `fat`, la crate racine
+  fixe le niveau des passes communes (déroulage, vectorisation) : le code de `oc-realtime`, compilé en `3`, n'en
+  garde qu'une part ; explication probable, non vérifiée.
+* La pile du démarrage redescend (`boot` 3 016 o, `engine_in_static` 3 024 o) : 6 960 o libres.

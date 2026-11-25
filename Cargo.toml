@@ -1,6 +1,7 @@
 [workspace]
 resolver = "3"
 members = [
+    "crates/oc-board",
     "crates/oc-buildinfo",
     "crates/oc-core",
     "crates/oc-drivers",
@@ -10,6 +11,7 @@ members = [
     "crates/oc-image",
     "crates/oc-probe",
     "crates/oc-protocol",
+    "crates/oc-realtime",
     "crates/oc-sim",
     "crates/oc-vcv-ffi",
     "crates/oc-web",
@@ -133,10 +135,12 @@ overflow-checks = true
 # runs. At "s" in `oc-core`, four modulated SUPERSAWs cost `publish` +33 %.
 [profile.release.package.oc-dsp]
 opt-level = 3
-# The firmware: the audio interrupt (47 619 runs a second, 21 us each) and
-# the per-sample path it instantiates (`Voices`, the generators, inlined
-# from `oc-core` and `oc-dsp`), with the loop around them.
-[profile.release.package.oc-firmware]
+# The real-time path: the audio interrupt (47 619 runs a second, 21 us
+# each) and the per-sample path it instantiates (`Voices`, the generators,
+# inlined from `oc-core` and `oc-dsp`), with the publisher that prepares the
+# setups. A crate apart from the firmware, which compiles at "s": with it
+# at "s", `voice` doubles and `audio` nears half the period.
+[profile.release.package.oc-realtime]
 opt-level = 3
 # VCV Rack's module: the same per-sample path, instantiated here, at Rack's
 # sample rate.

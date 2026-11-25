@@ -80,3 +80,9 @@ son relâchement explicite, comme avant ; il l'est seulement quelques microsecon
   rendre impossible.
 * La provenance est un firmware écrit pour le Teensy 3.2 ; la carte TLM T4 n'a été vérifiée que partiellement sur
   le module (OLED, encodeurs, boutons : `3f50a42`, `a8f3560`). Entrées CV et triggers : niveau 9 à faire.
+
+## Révision du 2026-11-26 — `board.rs` dans sa crate, `oc-board`
+
+Le fichier qui nomme les broches devient `crates/oc-board/src/lib.rs`, tel quel, pour que le firmware et son chemin
+temps réel, désormais une crate à part (`oc-realtime`, D-038), le lisent tous deux. La règle tient : c'est le seul
+fichier à nommer une broche ; `xtask/tests/pin_rule.rs` balaie `oc-firmware`, `oc-board` et `oc-realtime`.

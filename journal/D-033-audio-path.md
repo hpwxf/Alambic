@@ -324,3 +324,10 @@ l'écran, le bus qu'ils se partagent, le calage sur le déclencheur) et la boît
 * Comportement inchangé, mêmes opérations dans le même ordre à chaque période. `realtime::start` reste hors ligne
   (`#[inline(never)]`) : plus petit, il était inliné dans `boot` avec l'état de 2 Kio qu'il bâtit, et la pile du
   démarrage reprenait 1 904 o. Firmware : `.text` +176 o, `.rodata` +88 o, `.data` +8 o ; pile inchangée (8 968 o).
+
+## Révision du 2026-11-26 — le chemin temps réel dans `oc-realtime`
+
+`realtime/` quitte `oc-firmware` pour la crate `oc-realtime`, compilée en `opt-level = 3` quand le firmware l'est en
+`s` (D-038, révision du même jour) ; les constantes de la carte qu'il lit (lignes PCS, cadence, budgets du bus,
+horloges) viennent d'`oc-board`, l'ex-`board.rs`. Comportement inchangé ; `irq.rs` y reste le seul `unsafe` du
+chemin.

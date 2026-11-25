@@ -26,14 +26,14 @@ the reserves of `PLAN.md`.
 Level 9 is the only one that is not automated, and the only one that can
 confirm what is still taken from the reference firmware's source: the factory
 calibration (`Calibration::FACTORY` in `crates/oc-core/src/calibration.rs`)
-and the OLED controller (`crates/oc-firmware/src/board.rs`).
+and the OLED controller (`crates/oc-board/src/lib.rs`).
 
 ## Level 0 — Static checks
 
 ```sh
 cargo fmt --all -- --check
 cargo clippy --all-targets --all-features -- -D warnings
-cargo clippy --package oc-firmware --target thumbv7em-none-eabihf -- -D warnings
+cargo clippy --package oc-firmware --package oc-board --package oc-realtime --target thumbv7em-none-eabihf -- -D warnings
 ```
 
 The workspace enables `clippy::pedantic`, `missing_debug_implementations`,
@@ -262,7 +262,8 @@ exists, and skips (does not fail) when it does not, so CI does not need to
 build the firmware first just to run this suite.
 
 `xtask/tests/pin_rule.rs` also runs here: it scans every source of
-`crates/oc-firmware/src/` except `board.rs` and fails if one names a BSP pin
+`oc-firmware`, `oc-board` and `oc-realtime` except `crates/oc-board/src/lib.rs`
+and fails if one names a BSP pin
 token (`P13`, `p13`) outside a comment, which keeps the pin-naming safety rule
 of `AGENTS.md` true (journal/D-007).
 
@@ -389,7 +390,7 @@ Record the results in the step's progress file, not here.
   on a separate chip, so a bad firmware cannot brick the module or block a
   future upload — pressing PROGRAM always recovers it. The residual risk is
   electrical, not "bricking".
-* Have `crates/oc-firmware/src/board.rs` open. It is the **only** place pin
+* Have `crates/oc-board/src/lib.rs` open. It is the **only** place pin
   numbers are allowed to appear, and its header table states which pins are
   inputs — never configure a probe, jumper or generator to drive an input
   pin (`CV1`–`CV4`, the trigger inputs, the encoder/button lines) as an

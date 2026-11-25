@@ -1,0 +1,23 @@
+[package]
+name = "oc-realtime"
+description = "The Ornament & Crime firmware's real-time path: the DAC by DMA, the audio interrupt, the screen between bursts"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+publish = false
+
+[dependencies]
+oc-core.workspace = true
+oc-drivers.workspace = true
+oc-board = { path = "../oc-board" }
+teensy4-bsp = "0.6"
+# `#[interrupt]` for the two handlers.
+imxrt-rt = { version = "0.1", features = ["device"] }
+cortex-m = "0.7"
+critical-section = "1"
+
+[lints]
+workspace = true

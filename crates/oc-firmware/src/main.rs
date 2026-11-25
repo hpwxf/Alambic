@@ -50,14 +50,12 @@
 #![deny(unsafe_code)]
 #![warn(missing_docs)]
 
-mod board;
 mod boot_led;
 mod clock;
 mod cv_in;
 mod delay;
 mod flash_store;
 mod framed_spi;
-mod realtime;
 mod reboot;
 #[cfg(feature = "settings-stress")]
 mod stress;
@@ -65,6 +63,8 @@ mod usb;
 mod usb_log;
 
 use core::cell::RefCell;
+use oc_board as board;
+use oc_realtime as realtime;
 
 use embedded_hal::delay::DelayNs as _;
 use embedded_hal::digital::OutputPin as _;

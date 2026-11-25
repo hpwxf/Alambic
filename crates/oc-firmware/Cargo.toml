@@ -11,6 +11,8 @@ publish = false
 
 [dependencies]
 oc-core.workspace = true
+oc-board = { path = "../oc-board" }
+oc-realtime = { path = "../oc-realtime" }
 oc-drivers.workspace = true
 
 # Without its `rt` feature: the runtime is configured by this crate's
@@ -61,8 +63,8 @@ imxrt-rt = { version = "0.1", features = ["device"] }
 # Stock O&C panels are SH1106 (the default). These opt into the other
 # controllers used on some third-party builds. Getting the choice wrong gives
 # a blank or garbled screen with no other symptom.
-ssd1306 = []
-ssd1309 = []
+ssd1306 = ["oc-board/ssd1306"]
+ssd1309 = ["oc-board/ssd1309"]
 # Test firmware only: at power-up, save the settings 300 times and read each
 # back before running normally (src/stress.rs, TESTING.md 9.5c). Never for a
 # module in use: it wears the settings sectors for nothing.
@@ -70,7 +72,7 @@ settings-stress = []
 # Lot 7a comparison (journal/D-033): the OLED at 8 MHz, the rate the module
 # was brought up at, the bus switching clock between it and the DAC at 22 MHz.
 # The default runs both at 22 MHz.
-oled-spi-8mhz = []
+oled-spi-8mhz = ["oc-board/oled-spi-8mhz"]
 
 [lints]
 workspace = true

@@ -53,7 +53,7 @@ it already, this file only points to it.
   waits for the burst's echo and sends a piece of the screen; LPSPI4's
   frame-complete interrupt releases the OLED's chip select. One sample per
   period, no blocks (journal/D-042). Step by step: the module documentation
-  of `crates/oc-firmware/src/realtime/mod.rs` (the DAC side in `dac.rs`,
+  of `crates/oc-realtime/src/lib.rs` (the DAC side in `dac.rs`,
   the screen side in `screen.rs`); DMA, ring and handlers: `irq.rs`.
 * The two share mailboxes behind `critical_section::Mutex`, short copies
   only. The engine renders no voice (journal/D-040): on the module the

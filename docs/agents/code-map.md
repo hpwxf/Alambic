@@ -11,7 +11,9 @@ rationale behind each crate is in the journal entry cited.
 | `crates/oc-dsp` | The applets' signal processing, `no_std`, no applet, engine or platform: the supersaw's coefficients and oscillator, fixed-point helpers, `phase_step`. A crate of its own so that the release profile compiles it at `opt-level = 3` while `oc-core` compiles at `s` (journal/D-038). |
 | `crates/oc-core` | **All** behaviour: platform traits, `Engine::tick`, the applets and the app menu, the output parameters, routes and voices (`audio`: `Patch`, `Route`, `Voices`; backends play them through `audio::Player`, `audio::Follower`), CV modulation of a parameter and its submenu (`modulation`), graphics (`gfx`, `text`), buttons and the chord, calibration, settings, framebuffer, profiling. Knows nothing about registers or an OS. |
 | `crates/oc-drivers` | Peripheral protocols (DAC8565, SH1106 / SSD1306 / SSD1309, triggers, shared SPI bus) over `embedded-hal` 1.0 only, tested against recording mock buses. |
-| `crates/oc-firmware` | Pure wiring: `teensy4-bsp` / `imxrt-hal` resources into the `oc-core` traits, the 1 kHz loop, the audio path. The one crate that cannot be tested on the host. |
+| `crates/oc-firmware` | Pure wiring: `teensy4-bsp` / `imxrt-hal` resources into the `oc-core` traits, the 1 kHz loop, USB, the settings flash; compiled for size. With `oc-board` and `oc-realtime`, the crates that cannot be tested on the host. |
+| `crates/oc-board` | The pinout (the only file allowed to name a pin) and the board's clocks, bus timings and real-time budgets, read by the firmware and its real-time path (journal/D-007, D-038). |
+| `crates/oc-realtime` | The real-time path, compiled for speed: the DAC written by DMA, the audio interrupt that renders each sample and sends the screen between bursts, the mailbox and publisher the loop feeds it through (journal/D-033, D-038). |
 | `crates/oc-protocol` | Probe messages (`Request`, `Reply`), `postcard` + COBS framing, `FrameReader`, and the module's side (`server`) (journal/D-029). |
 | `crates/oc-probe` | Host tool over the probe port: a `Client` over any byte stream (tested through an in-memory loopback on a mock engine); CLI `stats`, `stream`, `out`, `screen`, `reboot` (journal/D-029). |
 | `crates/oc-image` | The pre-flash gate (`validate`, re-exported as `xtask::validate`), the flash contents of a validated ELF (`flash::flash_image`, byte for byte what `llvm-objcopy -O ihex` gives) or of an Intel HEX (`hex`, `boot`: reduced checks); pure over bytes (journal/D-031). |
@@ -51,8 +53,8 @@ rationale behind each crate is in the journal entry cited.
 | Text and fonts | `crates/oc-core/src/text/mod.rs`; generated `text/fonts.rs`; the `embedded-graphics` test adapter is `crates/oc-core/tests/common/mod.rs` |
 | Where the loop's time goes | `crates/oc-core/src/profile.rs` |
 | Deterministic mocks used by every `oc-core` test | `crates/oc-core/src/testing.rs` |
-| The pinout (the only file allowed to name a pin) | `crates/oc-firmware/src/board.rs` (rule test: `xtask/tests/pin_rule.rs`) |
-| The real-time path: what the interrupts own and the loop hands them | `crates/oc-firmware/src/realtime/mod.rs` (shared state, bus, timing, mailbox, start and checks), `dac.rs` (the DAC side, `Publisher`, `MutedOutputs`), `screen.rs` (the screen side, `MailboxDisplay`); DMA, ring, handlers: `irq.rs` |
+| The pinout (the only file allowed to name a pin) | `crates/oc-board/src/lib.rs` (rule test: `xtask/tests/pin_rule.rs`) |
+| The real-time path: what the interrupts own and the loop hands them | `crates/oc-realtime/src/lib.rs` (shared state, bus, timing, mailbox, start and checks), `dac.rs` (the DAC side, `Publisher`, `MutedOutputs`), `screen.rs` (the screen side, `MailboxDisplay`); DMA, ring, handlers: `irq.rs` |
 | The two USB serial ports and the log | `crates/oc-firmware/src/usb.rs`, `usb_log.rs` |
 | The OLED's blocking initialisation bus, whose `flush` waits for the last bit | `crates/oc-firmware/src/framed_spi.rs` |
 | The Teensy's settings flash (boot ROM calls) | `crates/oc-firmware/src/flash_store.rs` |

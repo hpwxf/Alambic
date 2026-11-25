@@ -1,7 +1,7 @@
 //! Enforces the firmware's pin-naming rule (journal/D-007).
 //!
-//! `crates/oc-firmware/src/board.rs` is the only firmware source allowed to
-//! name a Teensy pin, because a wrong pin direction is the one way this
+//! `crates/oc-board/src/lib.rs` is the only firmware source allowed to name a
+//! Teensy pin, because a wrong pin direction is the one way this
 //! firmware could damage hardware. The rule used to live in documentation
 //! only and drifted; this test makes it a build failure instead. It runs on
 //! the host, so a plain `cargo test` covers the cross-compiled crate's
@@ -14,13 +14,21 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-/// The single file allowed to name a pin.
-const BOARD: &str = "board.rs";
+/// The single file allowed to name a pin, from the workspace's root.
+const BOARD: &str = "crates/oc-board/src/lib.rs";
+
+/// The crates the firmware image is built from that talk to the chip: the
+/// firmware, its board and its real-time path (journal/D-038, revision of
+/// 2026-11-26).
+const FIRMWARE_CRATES: [&str; 3] = ["oc-firmware", "oc-board", "oc-realtime"];
 
 fn firmware_sources() -> Vec<PathBuf> {
-    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../crates/oc-firmware/src");
+    let workspace = Path::new(env!("CARGO_MANIFEST_DIR")).join("..");
     let mut sources = Vec::new();
-    let mut pending = vec![root];
+    let mut pending: Vec<PathBuf> = FIRMWARE_CRATES
+        .iter()
+        .map(|name| workspace.join("crates").join(name).join("src"))
+        .collect();
     while let Some(dir) = pending.pop() {
         let entries = fs::read_dir(&dir)
             .unwrap_or_else(|error| panic!("cannot read {}: {error}", dir.display()));
@@ -75,13 +83,14 @@ fn the_token_matcher_recognises_pin_names_only() {
 #[test]
 fn only_board_rs_names_a_teensy_pin() {
     let sources = firmware_sources();
+    let board = |path: &&PathBuf| path.ends_with(BOARD);
     assert!(
-        sources.iter().any(|path| path.ends_with(BOARD)),
+        sources.iter().any(|path| board(&path)),
         "{BOARD} not found: the firmware source layout changed"
     );
 
     let mut violations = Vec::new();
-    for path in sources.iter().filter(|path| !path.ends_with(BOARD)) {
+    for path in sources.iter().filter(|path| !board(path)) {
         let text = fs::read_to_string(path)
             .unwrap_or_else(|error| panic!("cannot read {}: {error}", path.display()));
         for (number, line) in text.lines().enumerate() {
@@ -93,7 +102,7 @@ fn only_board_rs_names_a_teensy_pin() {
 
     assert!(
         violations.is_empty(),
-        "only crates/oc-firmware/src/{BOARD} may name a Teensy pin \
+        "only {BOARD} may name a Teensy pin \
          (journal/D-007); add a signal group there instead:\n{}",
         violations.join("\n")
     );

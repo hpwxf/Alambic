@@ -600,7 +600,7 @@ another module, check with the diagnostic applet before trusting it:
   or `--features ssd1309` if the screen stays blank or only a band of rows
   lights up.
 
-The pinout itself is in one reviewed table in `crates/oc-firmware/src/board.rs`,
+The pinout itself is in one reviewed table in `crates/oc-board/src/lib.rs`,
 which is the only file allowed to name a pin. Note that the firmware drives
 **no** UART: every LPUART available on pins 0-23 collides with the panel. Boot
 diagnostics go out over **USB CDC** instead (a virtual serial port on the
@@ -640,7 +640,7 @@ Application firmware cannot erase it, so a bad image can neither destroy the
 module nor prevent a later upload: pressing PROGRAM always restores bootloader
 mode. The residual risks are electrical (driving a pin that is wired as an
 input, out-of-range voltages) and are addressed by a single reviewed pinout
-table in `crates/oc-firmware/src/board.rs`, not by the upload tool.
+table in `crates/oc-board/src/lib.rs`, not by the upload tool.
 
 ## Licence
 
