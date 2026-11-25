@@ -30,6 +30,7 @@ pub mod basic;
 pub mod wave;
 
 use core::fmt::Debug;
+use core::marker::PhantomData;
 
 use self::wave::ONE;
 use crate::calibration::{CV_OUT_MAX_MV, CV_OUT_MIN_MV};
@@ -180,36 +181,110 @@ impl<G: Generator> Routed<G> {
 /// levels a host probe holds over them (journal/D-029, D-046). An output no
 /// route reaches sits at 0 V; when two routes reach one, the later slot's
 /// wins, which the engine never lets happen.
+///
+/// A patch numbers its own changes (journal/D-040): a revision that moves
+/// whenever anything in it changes, and one per slot that moves when that
+/// slot's parameters do. A [`Follower`] reads those numbers instead of
+/// keeping parameters of its own to compare, so the changes go through the
+/// methods that count them.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Patch<G: Generator, const N: usize> {
-    /// One per instance slot.
-    pub parts: [Routed<G>; N],
-    /// A level per output that overrides whatever reaches it, `None` to let
-    /// it through.
-    pub held: [Option<MilliVolts>; CV_CHANNELS],
+    parts: [Routed<G>; N],
+    held: [Option<MilliVolts>; CV_CHANNELS],
+    revision: u32,
+    slot_revisions: [u32; N],
 }
 
 impl<G: Generator, const N: usize> Patch<G, N> {
     /// Every slot empty, every output at 0 V.
-    pub const OFF: Self = Self {
-        parts: [Routed::OFF; N],
-        held: [None; CV_CHANNELS],
-    };
+    pub const OFF: Self = Self::new([Routed::OFF; N]);
+
+    /// `parts`, one per slot, nothing held, nothing counted yet.
+    #[must_use]
+    pub const fn new(parts: [Routed<G>; N]) -> Self {
+        Self {
+            parts,
+            held: [None; CV_CHANNELS],
+            revision: 0,
+            slot_revisions: [0; N],
+        }
+    }
 
     /// `params` in the first slot along `route`, the others empty.
     #[must_use]
     pub const fn single(params: Params<G>, route: Route) -> Self {
-        let mut patch = Self::OFF;
+        let mut parts = [Routed::OFF; N];
         if N > 0 {
-            patch.parts[0] = Routed { params, route };
+            parts[0] = Routed { params, route };
         }
-        patch
+        Self::new(parts)
     }
 
-    /// Holds output `index` at `level`, whatever reaches it.
-    pub const fn hold(&mut self, index: usize, level: MilliVolts) {
-        if index < CV_CHANNELS {
-            self.held[index] = Some(level);
+    /// Each slot's parameters and route.
+    #[must_use]
+    pub const fn parts(&self) -> &[Routed<G>; N] {
+        &self.parts
+    }
+
+    /// A level per output that overrides whatever reaches it, `None` to let
+    /// it through.
+    #[must_use]
+    pub const fn held(&self) -> &[Option<MilliVolts>; CV_CHANNELS] {
+        &self.held
+    }
+
+    /// Moves whenever anything in the patch changes, wrapping.
+    #[must_use]
+    pub const fn revision(&self) -> u32 {
+        self.revision
+    }
+
+    /// Plays `params` in `slot` (a slot past the last is ignored).
+    pub fn set_params(&mut self, slot: usize, params: Params<G>) {
+        if let Some(part) = self.parts.get_mut(slot)
+            && part.params != params
+        {
+            part.params = params;
+            self.slot_revisions[slot] = self.slot_revisions[slot].wrapping_add(1);
+            self.revision = self.revision.wrapping_add(1);
+        }
+    }
+
+    /// Sends `slot`'s lanes along `route` (a slot past the last is ignored).
+    pub fn set_route(&mut self, slot: usize, route: Route) {
+        if let Some(part) = self.parts.get_mut(slot)
+            && part.route != route
+        {
+            part.route = route;
+            self.revision = self.revision.wrapping_add(1);
+        }
+    }
+
+    /// Holds output `index` at `level`, whatever reaches it; `None` lets it
+    /// through again.
+    pub fn hold(&mut self, index: usize, level: Option<MilliVolts>) {
+        if let Some(held) = self.held.get_mut(index)
+            && *held != level
+        {
+            *held = level;
+            self.revision = self.revision.wrapping_add(1);
+        }
+    }
+
+    /// Plays `parts`, one per slot, counting what differs: what the engine
+    /// hands it each tick.
+    pub fn set_parts(&mut self, parts: &[Routed<G>; N]) {
+        for (slot, part) in parts.iter().enumerate() {
+            self.set_params(slot, part.params);
+            self.set_route(slot, part.route);
+        }
+    }
+
+    /// Takes in what `newer` carries, counting what differs.
+    pub fn update(&mut self, newer: &Self) {
+        self.set_parts(&newer.parts);
+        for (index, &level) in newer.held.iter().enumerate() {
+            self.hold(index, level);
         }
     }
 }
@@ -425,50 +500,46 @@ impl<G: Generator, const N: usize> Voices<G, N> {
     }
 }
 
-/// Follows the patch a publisher numbers
-/// ([`Engine::params_revision`](crate::engine::Engine::params_revision)):
+/// Follows a [`Patch`] by the numbers it keeps
+/// ([`Engine::patch`](crate::engine::Engine::patch)'s, for a backend):
 /// what tells a backend's voices that it changed, by a few bytes rather than
 /// a whole [`Patch`] every tick or every sample (journal/D-040). When the
-/// revision moves, only the slots whose parameters changed are prepared
-/// again.
+/// patch's revision moves, only the slots whose own revision moved are
+/// prepared again: the follower keeps numbers, not parameters.
 #[derive(Debug, Clone, Copy)]
 pub struct Follower<G: Generator, const N: usize> {
-    /// The revision last followed, if any.
+    /// The patch's revision last followed, if any.
     revision: Option<u32>,
-    /// The parameters of each slot last prepared.
-    prepared: [Option<Params<G>>; N],
+    /// Each slot's revision last prepared, if any.
+    prepared: [Option<u32>; N],
+    generator: PhantomData<G>,
 }
 
 impl<G: Generator, const N: usize> Follower<G, N> {
-    const NOTHING: Option<Params<G>> = None;
-
     /// A follower that has followed nothing: its first [`Self::follow`]
     /// prepares every slot.
     #[must_use]
     pub const fn new() -> Self {
         Self {
             revision: None,
-            prepared: [Self::NOTHING; N],
+            prepared: [None; N],
+            generator: PhantomData,
         }
     }
 
-    /// What `patch` changes at `rate_hz`, if `revision` is not the one last
-    /// followed; nothing otherwise.
-    pub fn follow(
-        &mut self,
-        revision: u32,
-        patch: &Patch<G, N>,
-        rate_hz: u32,
-    ) -> Option<Changes<G, N>> {
-        if self.revision == Some(revision) {
+    /// What `patch` changes at `rate_hz`, if its revision is not the one
+    /// last followed; nothing otherwise.
+    pub fn follow(&mut self, patch: &Patch<G, N>, rate_hz: u32) -> Option<Changes<G, N>> {
+        if self.revision == Some(patch.revision) {
             return None;
         }
-        self.revision = Some(revision);
+        self.revision = Some(patch.revision);
         let mut changes = Changes::SILENCE;
         for (slot, part) in patch.parts.iter().enumerate() {
-            if self.prepared[slot] != Some(part.params) {
+            let revision = Some(patch.slot_revisions[slot]);
+            if self.prepared[slot] != revision {
                 changes.setups[slot] = Some(Setup::new(&part.params, rate_hz));
-                self.prepared[slot] = Some(part.params);
+                self.prepared[slot] = revision;
             }
             changes.routes[slot] = part.route;
         }
@@ -480,7 +551,7 @@ impl<G: Generator, const N: usize> Follower<G, N> {
     /// slot whatever its revision.
     pub const fn forget(&mut self) {
         self.revision = None;
-        self.prepared = [Self::NOTHING; N];
+        self.prepared = [None; N];
     }
 }
 
@@ -524,10 +595,10 @@ impl<G: Generator, const N: usize> Player<G, N> {
     }
 
     /// One sample of every output of `patch`, then advances; the voices are
-    /// prepared again only when `revision` moved on, and only the slots that
-    /// changed.
-    pub fn play(&mut self, revision: u32, patch: &Patch<G, N>) -> [MilliVolts; CV_CHANNELS] {
-        if let Some(changes) = self.follower.follow(revision, patch, self.voices.rate_hz()) {
+    /// prepared again only when its revision moved on, and only the slots
+    /// that changed.
+    pub fn play(&mut self, patch: &Patch<G, N>) -> [MilliVolts; CV_CHANNELS] {
+        if let Some(changes) = self.follower.follow(patch, self.voices.rate_hz()) {
             self.voices.apply(&changes);
         }
         self.voices.next_sample()
@@ -600,10 +671,10 @@ mod tests {
             Route::IDENTITY,
         );
         let mut player = Player::new(4_000);
-        player.play(1, &patch);
+        player.play(&patch);
         player.set_rate(8_000);
         assert_eq!(player.rate_hz(), 8_000);
-        let samples: [i32; 9] = core::array::from_fn(|_| player.play(1, &patch)[1]);
+        let samples: [i32; 9] = core::array::from_fn(|_| player.play(&patch)[1]);
         assert_eq!(
             samples[0], samples[8],
             "one period every 8 samples at 8 kHz"
@@ -617,9 +688,9 @@ mod tests {
         let mut params = with(0, tone(Waveform::Square, 1_000_000, 2_000));
         params.sound.channels[1] = Channel::Level(-7);
         let mut patch = Patch::<Basic, 1>::single(params, Route::IDENTITY);
-        patch.hold(0, 250);
+        patch.hold(0, Some(250));
         let mut player = Player::new(4_000);
-        assert_eq!(player.play(1, &patch)[..2], [250, -7]);
+        assert_eq!(player.play(&patch)[..2], [250, -7]);
     }
 
     #[test]
@@ -630,11 +701,7 @@ mod tests {
         route.set(2, Some(CvChannel::One));
         let mut player = Player::new(4_000);
         let patch = Patch::<Basic, 1>::single(params, route);
-        assert_eq!(
-            player.play(1, &patch),
-            [3, 0, 0, 1],
-            "unrouted outputs at 0 V"
-        );
+        assert_eq!(player.play(&patch), [3, 0, 0, 1], "unrouted outputs at 0 V");
         assert_eq!(Route::first(2).output(1), Some(CvChannel::Two));
         assert_eq!(Route::first(2).output(2), None);
         assert!(Route::OFF.is_off() && !Route::first(1).is_off());
@@ -643,50 +710,54 @@ mod tests {
     #[test]
     fn two_slots_share_the_outputs() {
         let mut patch = Patch::<Basic, 2>::OFF;
-        patch.parts[0].params = Params::new(BasicParams::levels([1, 2, 3, 4]));
-        patch.parts[0].route = Route::first(2);
-        patch.parts[1].params = Params::new(BasicParams::levels([5, 6, 7, 8]));
-        patch.parts[1].route.set(0, Some(CvChannel::Three));
-        patch.parts[1].route.set(1, Some(CvChannel::Four));
+        patch.set_params(0, Params::new(BasicParams::levels([1, 2, 3, 4])));
+        patch.set_route(0, Route::first(2));
+        patch.set_params(1, Params::new(BasicParams::levels([5, 6, 7, 8])));
+        let mut route = Route::OFF;
+        route.set(0, Some(CvChannel::Three));
+        route.set(1, Some(CvChannel::Four));
+        patch.set_route(1, route);
         let mut player = Player::new(4_000);
-        assert_eq!(player.play(1, &patch), [1, 2, 5, 6]);
-        patch.parts[1].route = Route::OFF;
-        assert_eq!(
-            player.play(2, &patch),
-            [1, 2, 0, 0],
-            "an empty slot is silent"
-        );
+        assert_eq!(player.play(&patch), [1, 2, 5, 6]);
+        patch.set_route(1, Route::OFF);
+        assert_eq!(player.play(&patch), [1, 2, 0, 0], "an empty slot is silent");
     }
 
     #[test]
     fn only_the_slots_that_changed_are_prepared_again() {
         let mut patch = Patch::<Basic, 2>::OFF;
-        patch.parts[0].params = with(0, tone(Waveform::Sine, 440_000, 1_000));
+        patch.set_params(0, with(0, tone(Waveform::Sine, 440_000, 1_000)));
         let mut follower = Follower::new();
-        let first = follower.follow(1, &patch, 1_000).unwrap();
+        let first = follower.follow(&patch, 1_000).unwrap();
         assert!(
             first.setups.iter().all(Option::is_some),
             "everything at first"
         );
-        patch.parts[1].route = Route::first(1);
-        let routed = follower.follow(2, &patch, 1_000).unwrap();
+        patch.set_route(1, Route::first(1));
+        let routed = follower.follow(&patch, 1_000).unwrap();
         assert!(
             routed.setups.iter().all(Option::is_none),
             "a route is no setup"
         );
         assert_eq!(routed.routes[1], Route::first(1));
-        patch.parts[1].params = with(0, tone(Waveform::Saw, 110_000, 500));
-        let moved = follower.follow(3, &patch, 1_000).unwrap();
+        patch.set_params(1, with(0, tone(Waveform::Saw, 110_000, 500)));
+        let moved = follower.follow(&patch, 1_000).unwrap();
         assert!(moved.setups[0].is_none() && moved.setups[1].is_some());
+        assert!(follower.follow(&patch, 1_000).is_none(), "nothing new");
+        patch.set_params(1, with(0, tone(Waveform::Saw, 110_000, 500)));
+        assert!(
+            follower.follow(&patch, 1_000).is_none(),
+            "the same parameters again: no change counted"
+        );
     }
 
     #[test]
     fn changes_merge_until_applied() {
         let mut patch = Patch::<Basic, 2>::OFF;
         let mut follower = Follower::new();
-        let mut pending = follower.follow(1, &patch, 1_000).unwrap();
-        patch.parts[1].route = Route::first(1);
-        pending.merge(&follower.follow(2, &patch, 1_000).unwrap());
+        let mut pending = follower.follow(&patch, 1_000).unwrap();
+        patch.set_route(1, Route::first(1));
+        pending.merge(&follower.follow(&patch, 1_000).unwrap());
         assert!(
             pending.setups.iter().all(Option::is_some),
             "the first setups kept"
@@ -716,16 +787,18 @@ mod tests {
 
     #[test]
     fn a_follower_prepares_once_per_revision() {
-        let patch = Patch::<Basic, 1>::single(
+        let mut patch = Patch::<Basic, 1>::single(
             with(0, tone(Waveform::Sine, 440_000, 1_000)),
             Route::IDENTITY,
         );
         let mut follower = Follower::new();
-        assert!(follower.follow(7, &patch, 1_000).is_some(), "the first one");
-        assert!(follower.follow(7, &patch, 1_000).is_none(), "same revision");
-        assert!(follower.follow(8, &patch, 1_000).is_some(), "moved on");
+        assert!(follower.follow(&patch, 1_000).is_some(), "the first one");
+        assert!(follower.follow(&patch, 1_000).is_none(), "same revision");
+        patch.hold(2, Some(5));
+        let held = follower.follow(&patch, 1_000).unwrap();
+        assert!(held.setups[0].is_none(), "moved on, but not the slot");
         follower.forget();
-        let again = follower.follow(8, &patch, 1_000).unwrap();
+        let again = follower.follow(&patch, 1_000).unwrap();
         assert!(again.setups[0].is_some(), "forgotten: prepared again");
     }
 
@@ -733,12 +806,14 @@ mod tests {
     fn a_player_plays_what_a_voice_given_the_params_plays() {
         let mut player = Player::<Basic, 1>::new(47_619);
         let mut voice = BasicVoice::new(47_619);
-        for (revision, frequency) in [(1, 110_000), (2, 4_186_000), (3, 220_000)] {
+        let mut patch = Patch::OFF;
+        patch.set_route(0, Route::IDENTITY);
+        for frequency in [110_000, 4_186_000, 220_000] {
             let params = with(0, tone(Waveform::Sine, frequency, 1_000));
             voice.set_params(&params);
-            let patch = Patch::single(params, Route::IDENTITY);
+            patch.set_params(0, params);
             for _ in 0..500 {
-                assert_eq!(player.play(revision, &patch), voice.next_sample());
+                assert_eq!(player.play(&patch), voice.next_sample());
             }
         }
     }

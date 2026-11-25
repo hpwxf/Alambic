@@ -362,9 +362,7 @@ impl MockEngine {
     /// report, whose [`TickReport::cv_out`] is what played before the tick.
     pub fn tick(&mut self) -> TickReport {
         let report = self.engine.tick();
-        self.outputs = self
-            .player
-            .play(self.engine.params_revision(), self.engine.patch());
+        self.outputs = self.player.play(self.engine.patch());
         self.engine.write_outputs(&self.outputs);
         report
     }

@@ -41,7 +41,7 @@ it already, this file only points to it.
   `Engine::tick`, then publishes `Engine::patch` and the output
   calibration (`audio::Publisher`), and waits for its deadline (previous
   deadline + 1 ms) while serving USB. The publisher compares
-  `Engine::params_revision` rather than the patch, and builds there,
+  the patch's revisions (`Patch::revision`, one per slot besides) rather than the patch, and builds there,
   outside any critical section, the `Setup` of each instance slot whose
   parameters changed, handed over as `oc_core::playback::Changes` with
   every route and held level (journal/D-040, D-046).

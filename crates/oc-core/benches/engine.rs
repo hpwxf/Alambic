@@ -273,7 +273,7 @@ fn voice(criterion: &mut Criterion) {
     // routing costs the interrupt, and what a second instance does.
     let one = Patch::single(Params::supersaw(sound), Route::first(3));
     let mut alone = Voices::new(48_000);
-    alone.apply(&Follower::new().follow(1, &one, 48_000).unwrap());
+    alone.apply(&Follower::new().follow(&one, 48_000).unwrap());
     group.bench_function("supersaw_routed_sample_to_codes", |bencher| {
         bencher.iter(|| {
             let samples = alone.next_sample();
@@ -281,13 +281,15 @@ fn voice(criterion: &mut Criterion) {
         });
     });
     let mut two = Patch::OFF;
-    two.parts[0] = one.parts[0];
-    two.parts[0].route = Route::first(2);
-    two.parts[1].params = Params::supersaw(sound);
-    two.parts[1].route.set(0, Some(CvChannel::Three));
-    two.parts[1].route.set(1, Some(CvChannel::Four));
+    two.set_params(0, Params::supersaw(sound));
+    two.set_route(0, Route::first(2));
+    two.set_params(1, Params::supersaw(sound));
+    let mut route = Route::OFF;
+    route.set(0, Some(CvChannel::Three));
+    route.set(1, Some(CvChannel::Four));
+    two.set_route(1, route);
     let mut pair = Voices::new(48_000);
-    pair.apply(&Follower::new().follow(1, &two, 48_000).unwrap());
+    pair.apply(&Follower::new().follow(&two, 48_000).unwrap());
     group.bench_function("two_supersaws_routed_sample_to_codes", |bencher| {
         bencher.iter(|| {
             let samples = pair.next_sample();

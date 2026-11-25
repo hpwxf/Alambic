@@ -286,9 +286,7 @@ impl Simulator {
     pub fn step(&mut self) -> TickReport {
         self.engine.clock().advance(TICK_MICROS);
         let report = self.engine.tick();
-        let levels = self
-            .player
-            .play(self.engine.params_revision(), self.engine.patch());
+        let levels = self.player.play(self.engine.patch());
         self.engine.write_outputs(&levels);
         if self.engine.take_save_request() {
             let saved = self.save_settings();

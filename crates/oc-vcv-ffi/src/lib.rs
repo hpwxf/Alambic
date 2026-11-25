@@ -372,9 +372,7 @@ pub unsafe extern "C" fn oc_engine_audio(engine: *mut OcEngine, sample_rate_hz: 
             engine.player.set_rate(sample_rate_hz);
         }
         // Rack reads millivolts: the engine's outputs need no codes.
-        engine.cv_out = engine
-            .player
-            .play(engine.engine.params_revision(), engine.engine.patch());
+        engine.cv_out = engine.player.play(engine.engine.patch());
         engine.engine.set_played(engine.cv_out);
     }));
 }

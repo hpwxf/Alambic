@@ -123,3 +123,20 @@ disparaît du module et de Rack. Mesures : `docs/plan/avancement/etape-11.md`.
 * Au plus deux copies des paramètres par contexte : le patch courant et le nouveau dans la boucle, le `Setup` transmis
   et l'état joué dans l'interruption. Firmware : `.text` −716 o, `.rodata` −208 o, `.data` −400 o (`MAILBOX` : un
   `Params` de moins par emplacement), pile −8 o ; échantillons identiques au bit près.
+
+## Révision du 2026-11-25 — le patch numérote ses changements, par emplacement
+
+Le moteur comparait chaque tick un `Patch` neuf au sien et avançait une révision globale ; le `Follower` comparait
+ensuite, emplacement par emplacement, les `Params` reçus à une copie des derniers préparés : deux comparaisons et une
+troisième copie des paramètres dans le contexte de contrôle.
+
+* **`Patch` numérote ses propres changements** : une révision qui avance dès que quelque chose change, et une par
+  emplacement qui avance quand ses paramètres changent. Ses champs sont privés : `set_params`, `set_route`, `hold`,
+  `set_parts`, `update` comptent ce qui diffère ; `parts()`, `held()`, `revision()` le lisent.
+* **Le moteur écrit dans son patch** (`set_parts` avec ce que rendent les applets, puis `hold`) au lieu d'en bâtir un
+  neuf ; `Engine::params_revision` disparaît au profit de `Engine::patch().revision()`.
+* **`Follower` ne garde que des numéros** (`[Option<u32>; N]` au lieu de `[Option<Params>; N]`) ; `follow(&patch,
+  rate)` et `Player::play(&patch)` ne prennent plus de révision à part.
+* Gain attendu au tick : quelques centaines de cycles par changement, sous la dispersion de `publish` ; firmware
+  `.text` −1 656 o, `.rodata` −248 o, pile −40 o (le chemin le plus profond est celui du démarrage, que ce
+  changement ne touche pas). Échantillons identiques au bit près.

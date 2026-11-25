@@ -428,11 +428,7 @@ fn run(running: &mut Running) -> ! {
         engine.set_played(audio::played());
         let report = engine.tick();
         let mark = engine.clock().fine_count();
-        publisher.publish(
-            engine.params_revision(),
-            engine.patch(),
-            &engine.calibration().outputs,
-        );
+        publisher.publish(engine.patch(), &engine.calibration().outputs);
         record_since(engine, Stage::Publish, mark);
         if report.tick_count == AUDIO_REPORT_TICK {
             let since = audio::totals().since(boot_audio);

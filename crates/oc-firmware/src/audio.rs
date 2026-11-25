@@ -397,7 +397,7 @@ pub(crate) fn stop() {
 /// 1.5 µs a tick. Owned by the loop, the only writer of the mailbox.
 #[derive(Debug)]
 pub(crate) struct Publisher {
-    /// The patch last prepared, by its revision, and each slot's parameters;
+    /// The patch last prepared, by its revisions;
     /// forgotten when the mailbox holds something else (the outputs at rest).
     follower: Follower,
     calibration: Option<[CvOutputCalibration; CV_CHANNELS]>,
@@ -418,11 +418,10 @@ impl Publisher {
     /// interrupt never waits for their divisions (journal/D-040).
     pub(crate) fn publish(
         &mut self,
-        revision: u32,
         patch: &Patch,
         calibration: &[CvOutputCalibration; CV_CHANNELS],
     ) {
-        let changes = self.follower.follow(revision, patch, board::AUDIO_RATE_HZ);
+        let changes = self.follower.follow(patch, board::AUDIO_RATE_HZ);
         let new_calibration = self.calibration.as_ref() != Some(calibration);
         if changes.is_none() && !new_calibration {
             return;
