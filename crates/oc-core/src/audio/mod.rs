@@ -216,46 +216,26 @@ impl<G: Generator, const N: usize> Patch<G, N> {
 
 /// Everything [`Params`] decide at a rate, computed once when they change
 /// (journal/D-040). Building it touches no voice, so a backend may do it
-/// outside its audio context.
+/// outside its audio context. It holds the generator's setup alone: the
+/// parameters stay in the control context, which knows what changed, and
+/// the rate is the voice's.
 #[derive(Debug, Clone, Copy)]
 pub struct Setup<G: Generator> {
-    rate_hz: u32,
-    params: Params<G>,
     sound: G::Setup,
 }
 
 impl<G: Generator> Setup<G> {
-    /// Every output at rest at `rate_hz` (at least one).
-    #[must_use]
-    pub const fn rest(rate_hz: u32) -> Self {
-        Self {
-            rate_hz: if rate_hz == 0 { 1 } else { rate_hz },
-            params: Params::REST,
-            sound: G::REST_SETUP,
-        }
-    }
+    /// Every output at rest, whatever the rate.
+    pub const REST: Self = Self {
+        sound: G::REST_SETUP,
+    };
 
     /// What `params` decide at `rate_hz` (at least one).
     #[must_use]
     pub fn new(params: &Params<G>, rate_hz: u32) -> Self {
-        let rate_hz = rate_hz.max(1);
         Self {
-            rate_hz,
-            params: *params,
-            sound: G::setup(&params.sound, rate_hz),
+            sound: G::setup(&params.sound, rate_hz.max(1)),
         }
-    }
-
-    /// The parameters it was built from.
-    #[must_use]
-    pub const fn params(&self) -> &Params<G> {
-        &self.params
-    }
-
-    /// The rate it was built for.
-    #[must_use]
-    pub const fn rate_hz(&self) -> u32 {
-        self.rate_hz
     }
 }
 
@@ -263,11 +243,11 @@ impl<G: Generator> Setup<G> {
 ///
 /// The per-sample work is the generator's; everything the parameters decide
 /// is prepared by [`Setup::new`]. Its lanes reach the outputs through
-/// [`Voices`].
+/// [`Voices`]. It keeps the generator's state and its rate, not the
+/// parameters: what changed is the control context's to know.
 #[derive(Debug, Clone)]
 pub struct Voice<G: Generator> {
     rate_hz: u32,
-    params: Params<G>,
     state: G::State,
 }
 
@@ -280,7 +260,6 @@ impl<G: Generator> Voice<G> {
         G::apply(&mut state, &G::REST_SETUP);
         Self {
             rate_hz: rate_hz.max(1),
-            params: Params::REST,
             state,
         }
     }
@@ -291,31 +270,25 @@ impl<G: Generator> Voice<G> {
         self.rate_hz
     }
 
-    /// Changes the rate, keeping the phases; the frequencies stay as they are.
-    pub fn set_rate(&mut self, rate_hz: u32) {
-        self.apply(&Setup::new(&self.params, rate_hz));
+    /// Changes the rate the next parameters are prepared at
+    /// ([`Self::set_params`]); what plays keeps its steps until then, so a
+    /// backend prepares its parameters again ([`Player::set_rate`]).
+    pub const fn set_rate(&mut self, rate_hz: u32) {
+        self.rate_hz = if rate_hz == 0 { 1 } else { rate_hz };
     }
 
-    /// The parameters it renders.
-    #[must_use]
-    pub const fn params(&self) -> &Params<G> {
-        &self.params
-    }
-
-    /// Renders `params` from the next sample on. A tone keeps its phase, so a
-    /// new frequency or shape continues the wave where it was.
+    /// Renders `params` from the next sample on, prepared at the voice's
+    /// rate. A tone keeps its phase, so a new frequency or shape continues
+    /// the wave where it was.
     pub fn set_params(&mut self, params: &Params<G>) {
-        if self.params != *params {
-            self.apply(&Setup::new(params, self.rate_hz));
-        }
+        self.apply(&Setup::new(params, self.rate_hz));
     }
 
-    /// Renders what `setup` prepared, at its rate, from the next sample on,
-    /// keeping the phases as [`Self::set_params`] does: copies only, no
-    /// division (journal/D-040).
+    /// Renders what `setup` prepared from the next sample on, keeping the
+    /// phases as [`Self::set_params`] does: copies only, no division
+    /// (journal/D-040). The setup is the caller's to prepare at the voice's
+    /// rate.
     pub fn apply(&mut self, setup: &Setup<G>) {
-        self.rate_hz = setup.rate_hz;
-        self.params = setup.params;
         G::apply(&mut self.state, &setup.sound);
     }
 
@@ -404,7 +377,8 @@ impl<G: Generator, const N: usize> Voices<G, N> {
         self.slots.first().map_or(1, Voice::rate_hz)
     }
 
-    /// Changes the rate, keeping the phases; the frequencies stay as they are.
+    /// Changes the rate the next changes are prepared at; what plays keeps
+    /// its steps until then ([`Voice::set_rate`]).
     pub fn set_rate(&mut self, rate_hz: u32) {
         for voice in &mut self.slots {
             voice.set_rate(rate_hz);
@@ -541,9 +515,12 @@ impl<G: Generator, const N: usize> Player<G, N> {
         self.voices.rate_hz()
     }
 
-    /// Changes the rate, keeping the phases; the frequencies stay as they are.
+    /// Changes the rate, keeping the phases; the frequencies stay as they
+    /// are: every slot is prepared again at the new rate on the next
+    /// [`Self::play`].
     pub fn set_rate(&mut self, rate_hz: u32) {
         self.voices.set_rate(rate_hz);
+        self.follower.forget();
     }
 
     /// One sample of every output of `patch`, then advances; the voices are
@@ -618,16 +595,21 @@ mod tests {
 
     #[test]
     fn a_new_rate_keeps_the_pitch() {
-        let mut voice = BasicVoice::new(4_000);
-        voice.set_params(&with(1, tone(Waveform::Saw, 1_000_000, 1_000)));
-        voice.set_rate(8_000);
-        assert_eq!(voice.rate_hz(), 8_000);
-        let samples: [i32; 9] = core::array::from_fn(|_| voice.next_sample()[1]);
+        let patch = Patch::<Basic, 1>::single(
+            with(1, tone(Waveform::Saw, 1_000_000, 1_000)),
+            Route::IDENTITY,
+        );
+        let mut player = Player::new(4_000);
+        player.play(1, &patch);
+        player.set_rate(8_000);
+        assert_eq!(player.rate_hz(), 8_000);
+        let samples: [i32; 9] = core::array::from_fn(|_| player.play(1, &patch)[1]);
         assert_eq!(
             samples[0], samples[8],
             "one period every 8 samples at 8 kHz"
         );
-        assert!(samples[0] < samples[1] && samples[1] < samples[2]);
+        let distinct = (0..8).all(|a| (0..a).all(|b| samples[a] != samples[b]));
+        assert!(distinct, "not a shorter period: {samples:?}");
     }
 
     #[test]
@@ -759,17 +741,5 @@ mod tests {
                 assert_eq!(player.play(revision, &patch), voice.next_sample());
             }
         }
-    }
-
-    #[test]
-    fn a_setup_brings_its_rate_and_parameters() {
-        let params = with(0, tone(Waveform::Sine, 440_000, 1_000));
-        let setup = Setup::new(&params, 8_000);
-        assert_eq!((setup.rate_hz(), setup.params()), (8_000, &params));
-        let mut voice = BasicVoice::new(4_000);
-        voice.apply(&setup);
-        assert_eq!((voice.rate_hz(), voice.params()), (8_000, &params));
-        assert_eq!(Setup::<Basic>::rest(0).rate_hz(), 1);
-        assert_eq!(Setup::<Basic>::rest(48_000).params(), &Params::REST);
     }
 }
