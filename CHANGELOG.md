@@ -66,8 +66,10 @@ Architectural decisions behind each change are in `journal/` (French).
   title are always drawn, a dot for each slot that runs an app. Probe
   protocol 10: `SelectApp` names a slot (`cargo probe select tone @2`),
   `AddInstance` and `RemoveInstance` are gone; `cargo probe add` fills the
-  first empty slot and `remove @N` empties one. In the browser tool, *Put in
-  an empty slot* replaces *Add beside*.
+  first empty slot and `remove @N` empties one. In the browser tool, *Add
+  beside* is gone: *Run in slot @N* puts the chosen app in the slot shown,
+  which its button marks filled in the accent colour; an empty slot is
+  dashed.
 - **Up to four applets at once** (journal/D-046): the app menu's `ADD APP`
   starts another beside the one shown, on the outputs nobody uses (an applet
   declares the outputs it writes: `RATCHET` A and B, `SUPERSAW` A, B and

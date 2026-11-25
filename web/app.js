@@ -344,14 +344,27 @@ async function listInstances(probe) {
   drawInstances();
 }
 
+/** The slot shown on the module, -1 before the slots are listed. */
+function activeSlot() {
+  if (!instances) return -1;
+  for (let at = 0; at < instances.len; at += 1) if (instances.focused(at)) return at;
+  return -1;
+}
+
 function drawInstances() {
   const row = $("apps-instances");
   row.replaceChildren();
+  const active = activeSlot();
+  $("apps-select").textContent = active < 0 ? "Run on the module" : `Run in slot @${active}`;
   for (let at = 0; at < instances.len; at += 1) {
     const show = document.createElement("button");
-    show.className = "needs-probe";
-    const mark = instances.focused(at) ? " ◂" : "";
-    show.textContent = `@${at} ${appNames.get(instances.app(at)) ?? "?"}${mark}`;
+    const empty = instances.is_empty_slot(at);
+    show.className = "needs-probe slot";
+    show.classList.toggle("active", at === active);
+    show.classList.toggle("empty", empty);
+    show.setAttribute("aria-pressed", String(at === active));
+    show.title = at === active ? "shown on the module" : "show it on the module";
+    show.textContent = empty ? `@${at} empty` : `@${at} ${appNames.get(instances.app(at)) ?? "?"}`;
     show.addEventListener("click", (event) => request(
       event.currentTarget, "apps-status", "showing…", async (probe) => {
         await probe.ask(oc.Instances.focus_request(at));
@@ -999,19 +1012,15 @@ async function main() {
   $("apps-choice").addEventListener("change", (event) => run(
     (probe) => showApp(probe, Number(event.target.value)),
   ));
-  $("apps-add").addEventListener("click", (event) => request(
-    event.currentTarget, "apps-status", "placing…", async (probe) => {
-      if (!appView || !instances) return "list the apps first";
-      const free = instances.first_empty();
-      if (free < 0) return "no empty slot: empty one with ✕ first";
-      await probe.ask(oc.Instances.place_request(Number($("apps-choice").value), free));
-      return listApps(probe);
-    },
-  ));
   $("apps-select").addEventListener("click", (event) => request(
     event.currentTarget, "apps-status", "switching…", async (probe) => {
       if (!appView) return "list the apps first";
-      await probe.ask(appView.select_request());
+      const app = Number($("apps-choice").value);
+      const active = activeSlot();
+      // In the slot shown on the module, which a click on a slot button
+      // makes the one shown here too (journal/D-046).
+      await probe.ask(active < 0 ? appView.select_request()
+        : oc.Instances.place_request(app, active));
       return listApps(probe);
     },
   ));

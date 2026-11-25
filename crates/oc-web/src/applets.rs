@@ -213,16 +213,6 @@ impl Instances {
         self.app(at) == NOTHING
     }
 
-    /// The first empty slot, left to right, or -1 when every slot runs an
-    /// applet.
-    #[must_use]
-    pub fn first_empty(&self) -> i32 {
-        (0..self.instances.len())
-            .find(|&at| self.is_empty_slot(at))
-            .and_then(|at| i32::try_from(at).ok())
-            .unwrap_or(-1)
-    }
-
     /// Puts a fresh applet `app` in the slot at `position`.
     #[must_use]
     pub fn place_request(app: u8, position: u8) -> Vec<u8> {
@@ -1136,7 +1126,6 @@ mod tests {
             .map(|message| instances.absorb(message))
             .last();
         assert_eq!((done, instances.len()), (Some(true), MAX_INSTANCES));
-        assert_eq!(instances.first_empty(), 2);
         assert!(instances.is_empty_slot(3) && !instances.is_empty_slot(1));
         assert_eq!(instances.app(1), supersaw);
         assert!(instances.focused(1) && !instances.focused(0));

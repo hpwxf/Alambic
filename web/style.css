@@ -127,3 +127,13 @@ table.apps input.input-seconds { width: 3.5em; }
    no column. */
 table.apps button.input-mark { min-width: 6.5em; text-align: left; }
 code { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 0.9em; }
+
+/* The module's slots (journal/D-046): the one on its screen filled in the
+   accent colour, an empty one dashed. */
+button.slot.empty { border-style: dashed; color: var(--muted); }
+button.slot.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--panel);
+  font-weight: 600;
+}

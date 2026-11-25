@@ -364,7 +364,9 @@ Tranché par l'utilisateur :
   `REMOVE APP` disparaissent, le menu ne fait plus que remplacer ;
 * **protocole 10** : `SelectApp` nomme un emplacement (`instance: Option<u8>`, `None` pour celui du focus) ;
   `AddInstance` et `RemoveInstance` disparaissent ; la CLI garde `add` (le premier emplacement vide) et `remove @N`
-  (`NOTHING` dedans) au-dessus de `SelectApp`, et prend `select <app> @N` ; la page, *Put in an empty slot*.
+  (`NOTHING` dedans) au-dessus de `SelectApp`, et prend `select <app> @N` ; dans la page, *Run in slot @N* met l'app choisie dans l'emplacement montré sur le
+  module (essayée par l'utilisateur, un bouton *Put in an empty slot* n'avait pas de sens : retiré), dont le bouton
+  est plein, de la couleur d'accent ; un emplacement vide, en pointillés.
 
 Ce qui change :
 
