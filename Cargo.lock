@@ -2621,7 +2621,7 @@ dependencies = [
 
 [[package]]
 name = "oc-board"
-version = "0.6.0"
+version = "0.7.0"
 dependencies = [
  "embedded-hal 1.0.0",
  "oc-core",
@@ -2631,14 +2631,14 @@ dependencies = [
 
 [[package]]
 name = "oc-buildinfo"
-version = "0.6.0"
+version = "0.7.0"
 dependencies = [
  "vergen-gix",
 ]
 
 [[package]]
 name = "oc-core"
-version = "0.6.0"
+version = "0.7.0"
 dependencies = [
  "criterion",
  "embassy-futures",
@@ -2653,7 +2653,7 @@ dependencies = [
 
 [[package]]
 name = "oc-drivers"
-version = "0.6.0"
+version = "0.7.0"
 dependencies = [
  "embedded-hal 1.0.0",
  "oc-core",
@@ -2661,11 +2661,11 @@ dependencies = [
 
 [[package]]
 name = "oc-dsp"
-version = "0.6.0"
+version = "0.7.0"
 
 [[package]]
 name = "oc-firmware"
-version = "0.6.0"
+version = "0.7.0"
 dependencies = [
  "cortex-m",
  "critical-section",
@@ -2690,18 +2690,18 @@ dependencies = [
 
 [[package]]
 name = "oc-halfkay"
-version = "0.6.0"
+version = "0.7.0"
 
 [[package]]
 name = "oc-image"
-version = "0.6.0"
+version = "0.7.0"
 dependencies = [
  "sha2",
 ]
 
 [[package]]
 name = "oc-probe"
-version = "0.6.0"
+version = "0.7.0"
 dependencies = [
  "anyhow",
  "clap",
@@ -2713,7 +2713,7 @@ dependencies = [
 
 [[package]]
 name = "oc-protocol"
-version = "0.6.0"
+version = "0.7.0"
 dependencies = [
  "oc-core",
  "postcard",
@@ -2723,7 +2723,7 @@ dependencies = [
 
 [[package]]
 name = "oc-realtime"
-version = "0.6.0"
+version = "0.7.0"
 dependencies = [
  "cortex-m",
  "critical-section",
@@ -2736,7 +2736,7 @@ dependencies = [
 
 [[package]]
 name = "oc-sim"
-version = "0.6.0"
+version = "0.7.0"
 dependencies = [
  "anyhow",
  "clap",
@@ -2747,7 +2747,7 @@ dependencies = [
 
 [[package]]
 name = "oc-vcv-ffi"
-version = "0.6.0"
+version = "0.7.0"
 dependencies = [
  "cbindgen",
  "oc-buildinfo",
@@ -2756,7 +2756,7 @@ dependencies = [
 
 [[package]]
 name = "oc-web"
-version = "0.6.0"
+version = "0.7.0"
 dependencies = [
  "oc-core",
  "oc-halfkay",
@@ -4416,7 +4416,7 @@ checksum = "f17a85883d4e6d00e8a97c586de764dabcc06133f7f1d55dce5cdc070ad7fe59"
 
 [[package]]
 name = "xtask"
-version = "0.6.0"
+version = "0.7.0"
 dependencies = [
  "anyhow",
  "clap",
