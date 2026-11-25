@@ -16,7 +16,7 @@ use oc_drivers::dac8565::channel_word;
 
 use super::irq::{SLOT_WORDS, SLOTS};
 use super::{Bus, MAILBOX, STATE, periods};
-use crate::board;
+use oc_board as board;
 
 /// The PIT channel that triggers the DMA ([`board::AUDIO_DMA_CHANNEL`]).
 const DAC_TIMER: pit::Channel = pit::Channel::Chan0;
@@ -163,7 +163,7 @@ impl Audio {
 /// any critical section: comparing the whole parameters under one cost
 /// 1.5 µs a tick. Owned by the loop, the only writer of the mailbox.
 #[derive(Debug)]
-pub(crate) struct Publisher {
+pub struct Publisher {
     /// The patch last prepared, by its revisions; forgotten when the
     /// mailbox holds something else (the outputs at rest).
     follower: Follower,
@@ -172,7 +172,8 @@ pub(crate) struct Publisher {
 
 impl Publisher {
     /// Nothing handed yet: the first [`Self::publish`] copies everything.
-    pub(crate) const fn new() -> Self {
+    #[must_use]
+    pub const fn new() -> Self {
         Self {
             follower: Follower::new(),
             calibration: None,
@@ -183,11 +184,7 @@ impl Publisher {
     /// from the next period on; copies only when something changed. New
     /// parameters are prepared here, outside the critical section, so the
     /// interrupt never waits for their divisions (journal/D-040).
-    pub(crate) fn publish(
-        &mut self,
-        patch: &Patch,
-        calibration: &[CvOutputCalibration; CV_CHANNELS],
-    ) {
+    pub fn publish(&mut self, patch: &Patch, calibration: &[CvOutputCalibration; CV_CHANNELS]) {
         let changes = self.follower.follow(patch, board::AUDIO_RATE_HZ);
         let new_calibration = self.calibration.as_ref() != Some(calibration);
         if changes.is_none() && !new_calibration {
@@ -202,7 +199,7 @@ impl Publisher {
     /// interrupts (journal/D-033), and the bursts would pile up in the FIFO.
     /// [`resume_outputs`] restarts it; the next [`Self::publish`] brings the
     /// parameters back.
-    pub(crate) fn rest_outputs(&mut self, calibration: &[CvOutputCalibration; CV_CHANNELS]) {
+    pub fn rest_outputs(&mut self, calibration: &[CvOutputCalibration; CV_CHANNELS]) {
         hand_over(Some(&Changes::SILENCE), calibration);
         self.follower.forget();
         self.calibration = Some(*calibration);
@@ -224,6 +221,12 @@ impl Publisher {
     }
 }
 
+impl Default for Publisher {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 /// Puts `changes`, when there are some, and `calibration` in the mailbox
 /// for the interrupt to take at its next period; changes it has not taken
 /// yet are merged, the newer setup of a slot replacing the older.
@@ -241,13 +244,14 @@ fn hand_over(changes: Option<&Changes>, calibration: &[CvOutputCalibration; CV_C
 /// The levels of the last sample the interrupt computed: what the outputs
 /// carry, for the engine to report instead of rendering them a second time
 /// (journal/D-040).
-pub(crate) fn played() -> [MilliVolts; CV_CHANNELS] {
+#[must_use]
+pub fn played() -> [MilliVolts; CV_CHANNELS] {
     critical_section::with(|cs| MAILBOX.borrow_ref(cs).dac.played)
 }
 
 /// Restarts the DMA paused by [`Publisher::rest_outputs`], where it stopped
 /// in the ring.
-pub(crate) fn resume_outputs() {
+pub fn resume_outputs() {
     critical_section::with(|cs| {
         if let Some(state) = STATE.borrow_ref_mut(cs).as_mut() {
             super::irq::resume_dma(&state.audio.dma);
@@ -259,7 +263,7 @@ pub(crate) fn resume_outputs() {
 /// writes the DAC from [`Publisher::publish`], and the loop never calls
 /// [`oc_core::Engine::write_outputs`] (journal/D-040).
 #[derive(Debug)]
-pub(crate) struct MutedOutputs;
+pub struct MutedOutputs;
 
 impl AnalogOut for MutedOutputs {
     fn write_code(&mut self, _channel: CvChannel, _code: u16) {}

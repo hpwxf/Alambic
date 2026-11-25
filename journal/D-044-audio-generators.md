@@ -190,3 +190,12 @@ le seul fichier qui connaissait à la fois `Sound` et `MAX_INSTANCES`. Les apple
 * **`apps::sound`** garde la composition de l'image et `Params`. Le moteur y prend `Params`, et `Patch` dans
   `playback` ; les backends prennent tout dans `playback`.
 * Code produit inchangé : des alias déplacés.
+
+## Révision du 2026-11-26 — le DSP du supersaw dans `oc-dsp`
+
+Le banc devait quitter l'applet au premier partage, vers une bibliothèque DSP. Il la quitte pour une autre raison :
+le profil `release` passe en `s` par défaut et ne garde `3` que pour ce qui le justifie (D-038, révision du même
+jour) ; la préparation des coefficients, non générique, serait compilée en `s` dans `oc-core` (`publish` +33 % avec
+quatre `SUPERSAW` modulées). `crates/oc-dsp` porte le DSP (`supersaw`, `fixed`, `phase_step`) ; l'applet garde ses
+réglages, son écran, ses CV et son générateur (`apps/supersaw/generator.rs`), et ré-exporte le DSP
+(`apps::supersaw::dsp`). `oc_core::audio` reste le mécanisme (trait, voix, routes), `apps/sound.rs` la composition.

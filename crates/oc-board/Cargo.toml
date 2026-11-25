@@ -1,0 +1,27 @@
+[package]
+name = "oc-board"
+description = "The Ornament & Crime pinout on the Teensy 4.0, and the board's clocks and timings"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+publish = false
+
+[dependencies]
+oc-core.workspace = true
+oc-drivers.workspace = true
+teensy4-bsp = "0.6"
+embedded-hal.workspace = true
+
+[features]
+# Stock O&C panels are SH1106 (the default). These opt into the other
+# controllers used on some third-party builds; `oc-firmware` forwards them.
+ssd1306 = []
+ssd1309 = []
+# The OLED at 8 MHz (journal/D-033, lot 7a); forwarded by `oc-firmware`.
+oled-spi-8mhz = []
+
+[lints]
+workspace = true

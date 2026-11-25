@@ -169,3 +169,75 @@ le framebuffer est juste (`cargo probe screen`) et que tous les morceaux d'écra
   retenu, est mesuré aussi sous bruit.
 * L'effet de placement sur `audio` est une explication probable, non prouvée.
 * La sonde échoue parfois au premier appel juste après un démarrage (une reprise suffit) ; non analysé.
+
+## `s` par défaut, `3` justifié (2026-11-26)
+
+La règle inversée (D-038, révision du 2026-11-26) : profil `release` en `s`, `3` pour `oc-dsp`, `oc-firmware` et
+`oc-vcv-ffi`. Branche `opt-split`. Module : `scripts/profile-supersaw.sh` à `DETUNE_INPUT=cv1` (`MIX` 50 %, `SHAPE`
+25 %, `STEREO ON`, `NOTE` et `DETUNE` de chaque instance sous le bruit de CV1), 10 s ; µs, moyenne (max).
+
+| Variante | `.text` | ITCM libre | pile |
+|---|---|---|---|
+| référence (`3`, code froid en `s`), `05c5a13` | 0x29670 | 26,4 Kio | 9 312 o |
+| `oc-core` en `s` | 0x2519c | 43,6 Kio | 10 272 o |
+| `oc-core` en `s`, DSP dans `oc-dsp` en `3` | 0x25728 | 42,2 Kio | 10 184 o |
+| **`s` par défaut, `3` : `oc-dsp`, `oc-firmware`, `oc-vcv-ffi`** | **0x26b20** | **37,2 Kio** | **11 096 o** |
+| `s` par défaut, `oc-firmware` en `s` aussi | 0x1dc20 | 73,0 Kio | 9 200 o |
+
+Une `SUPERSAW` :
+
+| Étape | référence | `oc-core` `s` | + `oc-dsp` `3` | `s` par défaut | `oc-firmware` `s` |
+|---|---|---|---|---|---|
+| `publish` | 16,91 | 18,83 | 16,66 | 16,65 | 12,31 |
+| `update` | 7,21 | 7,45 | 7,76 | 7,80 | 8,36 |
+| `audio` | 3,98 (4,90) | 3,92 (4,89) | 4,12 (5,24) | 3,93 (5,24) | 5,06 (6,64) |
+| `voice` | 1,10 | 1,09 | 1,08 | 1,08 | 1,88 |
+| `voice_params` | 0,55 | 0,63 | 0,60 | 0,59 | 0,90 |
+
+Quatre `SUPERSAW`, une sortie chacune :
+
+| Étape | référence | `oc-core` `s` | + `oc-dsp` `3` | `s` par défaut | `oc-firmware` `s` |
+|---|---|---|---|---|---|
+| `publish` | 32,91 | 43,82 | 31,97 | 31,83 | 39,23 |
+| `update` | 12,06 | 17,13 | 16,84 | 17,03 | 22,96 |
+| `tick` | 24,70 | 30,53 | 30,38 | 30,42 | 48,85 |
+| `render` | 109,6 ¹ | 128,8 | 128,0 | 127,7 | 185,7 |
+| `audio` | 5,54 (7,12) | 5,45 (7,25) | 5,46 (7,24) | 5,43 (7,10) | 9,87 (11,38) |
+| `voice` | 3,18 | 3,21 | 3,20 | 3,18 | 6,72 |
+| `voice_params` | 0,95 | 1,12 | 1,04 | 1,03 | 1,21 |
+
+¹ Relevé du 2026-11-25 sur le même firmware (`6e8cdb0`) et le même script ; celui de la référence du jour (38,7 µs)
+a été pris alors que la page web tenait le port de la sonde et le module sur un autre écran : non comparable.
+
+* `oc-core` en `s` ne touche pas le chemin par échantillon (instancié dans `oc-firmware`) mais coûte à `publish`
+  (`Sound::setup`, `Coefficients::new`, non génériques) ; `oc-dsp` en `3` le lui rend.
+* `oc-firmware` en `s` : le niveau de la crate racine pèse sur tout le programme (−36 Kio), mais `voice` double et
+  `audio` approche la moitié de la période : refusé.
+* Le retenu contre « `oc-core` en `s` seul » : 5 Kio de plus, dans `boot` (11 276 → 16 340 o), qui inline davantage
+  les crates de la carte passées en `s` ; code de démarrage, à reprendre si l'ITCM se resserre.
+* La pile : le chemin du démarrage (`boot` 3 936 o, `engine_in_static` 3 808 o, `Instance::new` 504 o).
+* Les bancs criterion (`[profile.bench]` hérite de `release`) mesurent désormais `oc-core` en `s` : un garde-fou de
+  régression, pas une mesure du module.
+
+### `oc-realtime` en `3`, `oc-firmware` en `s` (2026-11-26, suite)
+
+Le chemin temps réel dans sa crate (`oc-realtime`, `3`), la carte dans la sienne (`oc-board`), le firmware au défaut.
+
+| Variante | `.text` | ITCM libre | pile |
+|---|---|---|---|
+| `s` par défaut, `oc-firmware` en `3` (`c102866`) | 0x26b20 | 37,2 Kio | 11 096 o |
+| **`oc-realtime` en `3`, `oc-firmware` en `s`** | **0x1eb20** | **69,2 Kio** | **9 424 o** |
+
+| Étape | 1 `SUPERSAW` avant | après | 4 `SUPERSAW` avant | après |
+|---|---|---|---|---|
+| `voice` | 1,08 | 1,11 | 3,18 | 3,58 |
+| `audio` (max) | 3,93 (5,24) | 4,15 (4,99) | 5,43 (7,10) | 5,84 (7,58) |
+| `voice_params` | 0,59 | 0,77 | 1,03 | 1,09 |
+| `publish` | 16,65 | 16,63 | 31,83 | 33,93 |
+| `update` | 7,80 | 8,89 | 17,03 | 15,72 |
+| `render` | 121,6 | 122,8 | 127,7 | 133,8 |
+| `tick` | 21,26 | 23,18 | 30,42 | 35,89 |
+
+* `boot` revient à 3 016 o de cadre et le code de démarrage à son niveau `s` ; la pile du démarrage redescend.
+* Le chemin par échantillon perd ≈ 12 % à quatre instances : la crate racine en `s` règle les passes de LTO pour tout
+  le programme (probable, non vérifié).

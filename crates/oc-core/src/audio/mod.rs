@@ -36,8 +36,7 @@ use self::wave::ONE;
 use crate::calibration::{CV_OUT_MAX_MV, CV_OUT_MIN_MV};
 use crate::platform::{CV_CHANNELS, CvChannel, MilliVolts};
 
-/// A frequency in thousandths of a hertz.
-pub type MilliHertz = u32;
+pub use oc_dsp::{MilliHertz, phase_step};
 
 /// What renders one sample of every output (journal/D-044). An applet
 /// publishes its [`Generator::Params`]; the loop turns them into a
@@ -603,21 +602,6 @@ impl<G: Generator, const N: usize> Player<G, N> {
         }
         self.voices.next_sample()
     }
-}
-
-/// The phase a sample advances for `frequency` at `rate_hz`, held below half
-/// a turn: at or above half the rate, a tone would alias to another pitch.
-#[must_use]
-pub fn phase_step(frequency: MilliHertz, rate_hz: u32) -> u32 {
-    let turn = 1u64 << 32;
-    // Divided in 32 bits whenever the rate in millihertz fits (journal/D-040).
-    let numerator = u64::from(frequency) << 32;
-    let step = match rate_hz.max(1).checked_mul(1_000) {
-        Some(millihertz) => crate::fixed::div_wide(numerator, millihertz),
-        None => numerator / (u64::from(rate_hz) * 1_000),
-    };
-    // One step short of half a turn: the highest pitch that is still itself.
-    u32::try_from(step.min(turn / 2 - 1)).unwrap_or(u32::MAX)
 }
 
 /// `value`, `ONE` being the peak, as a level of peak `amplitude`, rounded

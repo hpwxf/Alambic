@@ -2620,6 +2620,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "oc-board"
+version = "0.6.0"
+dependencies = [
+ "embedded-hal 1.0.0",
+ "oc-core",
+ "oc-drivers",
+ "teensy4-bsp",
+]
+
+[[package]]
 name = "oc-buildinfo"
 version = "0.6.0"
 dependencies = [
@@ -2634,6 +2644,7 @@ dependencies = [
  "embassy-futures",
  "embedded-graphics",
  "embedded-storage-async",
+ "oc-dsp",
  "postcard",
  "proptest",
  "sequential-storage",
@@ -2649,6 +2660,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "oc-dsp"
+version = "0.6.0"
+
+[[package]]
 name = "oc-firmware"
 version = "0.6.0"
 dependencies = [
@@ -2659,10 +2674,12 @@ dependencies = [
  "imxrt-ral",
  "imxrt-rt",
  "log",
+ "oc-board",
  "oc-buildinfo",
  "oc-core",
  "oc-drivers",
  "oc-protocol",
+ "oc-realtime",
  "static_cell",
  "teensy4-bsp",
  "teensy4-fcb",
@@ -2702,6 +2719,19 @@ dependencies = [
  "postcard",
  "proptest",
  "serde",
+]
+
+[[package]]
+name = "oc-realtime"
+version = "0.6.0"
+dependencies = [
+ "cortex-m",
+ "critical-section",
+ "imxrt-rt",
+ "oc-board",
+ "oc-core",
+ "oc-drivers",
+ "teensy4-bsp",
 ]
 
 [[package]]

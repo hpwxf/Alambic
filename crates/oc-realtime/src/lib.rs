@@ -1,5 +1,8 @@
 //! The real-time path (journal/D-033, lots 7c and 7e): what the interrupts
-//! own and what the 1 kHz loop hands them. The DAC is written by DMA at
+//! own and what the 1 kHz loop hands them. A crate of its own, compiled for
+//! speed, so that the firmware around it compiles for size: the per-sample
+//! path (`Voices`, the generators) is instantiated here (journal/D-038,
+//! revision of 2026-11-26). The DAC is written by DMA at
 //! instants the PIT fixes, an interrupt computes the samples and sends the
 //! screen between two DAC bursts; the loop only leaves them what to play
 //! and what to show.
@@ -7,7 +10,7 @@
 //! # One period, 21 PERCLK counts
 //!
 //! 1. PIT channel 0 times out: the DMA copies one slot of the ring
-//!    ([`irq`]) into LPSPI4, four 24-bit words on PCS0, about 5.5 µs on the
+//!    (`irq`) into LPSPI4, four 24-bit words on PCS0, about 5.5 µs on the
 //!    bus. The instant does not depend on any software.
 //! 2. The copy done (the words queued, not yet sent), the DMA raises its
 //!    interrupt: it counts the bursts by their echo in the receive FIFO,
@@ -23,8 +26,8 @@
 //! # The interrupts' side
 //!
 //! What the two handlers own is one `SharedState`: the DAC's side
-//! ([`dac`]: the trigger, the DMA, the voices, steps 1 and 2) and the
-//! screen's ([`screen`]: the OLED's lines and the frame going out, steps 3
+//! (`dac`: the trigger, the DMA, the voices, steps 1 and 2) and the
+//! screen's (`screen`: the OLED's lines and the frame going out, steps 3
 //! and 4), with what both depend on, here: the bus they take turns on
 //! (`Bus`, LPSPI4 and the timing in force) and where the period stands
 //! (`Timing`, on the cycle counter). Each side reaches the bus only through
@@ -44,7 +47,10 @@
 //! never the DAC.
 //!
 //! The DMA's programming, the ring and the handlers, the only `unsafe` of
-//! this path, are in [`irq`].
+//! this path, are in `irq`.
+
+#![no_std]
+#![deny(unsafe_code)]
 
 mod dac;
 mod irq;
@@ -65,11 +71,10 @@ use oc_core::profile::{Stage, Stat};
 use oc_drivers::ssd130x::Controller;
 
 use self::dac::{Audio, DacMail};
-pub(crate) use self::dac::{MutedOutputs, Publisher, played, resume_outputs};
-pub(crate) use self::screen::MailboxDisplay;
+pub use self::dac::{MutedOutputs, Publisher, played, resume_outputs};
+pub use self::screen::MailboxDisplay;
 use self::screen::{Screen, ScreenMail};
-use crate::board::{self, BusClocks};
-use crate::delay::CORE_CLOCK_HZ;
+use oc_board::{self as board, BusClocks, CORE_CLOCK_HZ};
 
 /// What the loop leaves for the interrupts, and what they measured: a half
 /// for each side, and what the period itself counts.
@@ -140,7 +145,7 @@ const CYCLES_PER_MICRO: u32 = CORE_CLOCK_HZ / 1_000_000;
 #[allow(clippy::too_many_arguments)]
 // The hardware the path takes over, each once, at start-up.
 #[inline(never)]
-pub(crate) fn start(
+pub fn start(
     mut spi: Lpspi,
     oled_cs: Output,
     oled_dc: Output,
@@ -175,22 +180,23 @@ pub(crate) fn start(
 
 /// What the real-time path has done since start-up, each count wrapping.
 #[derive(Debug, Clone, Copy, Default)]
-pub(crate) struct Totals {
+pub struct Totals {
     /// Runs of the interrupt.
-    pub(crate) periods: u32,
+    pub periods: u32,
     /// DAC bursts the DMA sent, counted by their echo.
-    pub(crate) bursts: u32,
+    pub bursts: u32,
     /// Screen chunks sent.
-    pub(crate) chunks: u32,
+    pub chunks: u32,
     /// OLED releases after a chunk.
-    pub(crate) releases: u32,
+    pub releases: u32,
     /// Whole frames sent to the screen.
-    pub(crate) frames: u32,
+    pub frames: u32,
 }
 
 impl Totals {
     /// What happened between `earlier` and `self`.
-    pub(crate) const fn since(self, earlier: Self) -> Self {
+    #[must_use]
+    pub const fn since(self, earlier: Self) -> Self {
         Self {
             periods: self.periods.wrapping_sub(earlier.periods),
             bursts: self.bursts.wrapping_sub(earlier.bursts),
@@ -202,7 +208,8 @@ impl Totals {
 }
 
 /// The real-time path's counts so far.
-pub(crate) fn totals() -> Totals {
+#[must_use]
+pub fn totals() -> Totals {
     critical_section::with(|cs| {
         let mail = MAILBOX.borrow_ref(cs);
         Totals {
@@ -217,25 +224,26 @@ pub(crate) fn totals() -> Totals {
 
 /// What [`self_check`] saw of the real-time path.
 #[derive(Debug)]
-pub(crate) struct Health {
+pub struct Health {
     /// How long the check lasted, on the cycle counter, in microseconds.
-    pub(crate) micros: u32,
+    pub micros: u32,
     /// What happened during it.
-    pub(crate) counts: Totals,
+    pub counts: Totals,
     /// The interrupt's duration, mean and longest, in microseconds.
-    pub(crate) audio_micros: (u32, u32),
+    pub audio_micros: (u32, u32),
     /// The time between two runs, shortest and longest, in microseconds.
-    pub(crate) period_micros: (u32, u32),
+    pub period_micros: (u32, u32),
     /// Whether the period's NVIC line is enabled, and whether it is pending.
-    pub(crate) line: (bool, bool),
+    pub line: (bool, bool),
     /// The DMA channel's error flag and the controller's error status
     /// register, should it fail to read the ring or write LPSPI4.
-    pub(crate) dma_error: (bool, u32),
+    pub dma_error: (bool, u32),
 }
 
 impl Health {
     /// `count` events during the check, as a rate a second.
-    pub(crate) const fn per_second(&self, count: u32) -> u64 {
+    #[must_use]
+    pub const fn per_second(&self, count: u32) -> u64 {
         if self.micros == 0 {
             return 0;
         }
@@ -247,7 +255,8 @@ impl Health {
 /// counter (a busy delay runs short on the M7), for the boot log: a silent
 /// DMA or interrupt shows on USB rather than as a black screen, and the
 /// rates and durations give a baseline to compare a later log with.
-pub(crate) fn self_check(micros: u32) -> Health {
+#[must_use]
+pub fn self_check(micros: u32) -> Health {
     critical_section::with(|cs| {
         let mut mail = MAILBOX.borrow_ref_mut(cs);
         mail.run = Stat::new();
@@ -288,7 +297,7 @@ pub(crate) fn self_check(micros: u32) -> Health {
 
 /// Stops the DMA and the interrupts, the outputs left where they are:
 /// before handing the chip to the bootloader.
-pub(crate) fn stop() {
+pub fn stop() {
     irq::disable();
     critical_section::with(|cs| {
         if let Some(state) = STATE.borrow_ref_mut(cs).as_mut() {
@@ -303,7 +312,7 @@ fn periods() -> u32 {
 }
 
 /// Moves what the interrupts measured into `profile`.
-pub(crate) fn drain_stats(profile: &mut oc_core::profile::Profile) {
+pub fn drain_stats(profile: &mut oc_core::profile::Profile) {
     let (run, period, voice, voice_params, frame) = critical_section::with(|cs| {
         let mut mail = MAILBOX.borrow_ref_mut(cs);
         let mail = &mut *mail;

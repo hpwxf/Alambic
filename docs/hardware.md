@@ -71,12 +71,12 @@ codes qu'un convertisseur numérique-analogique (DAC) transforme en tension. Ent
 | **OLED SH1106** 128 × 64 | CS 8, D/C 6, RST 7 (GPIO) | 22 MHz sur ce module ; envoyé par tronçons de 20 octets entre deux rafales du DAC ; une trame ≈ 1,34 ms | § 6.3, `crates/oc-drivers/src/ssd130x.rs`, D-009, D-033 |
 | **Bus LPSPI4** | partagé DAC + OLED ; MOSI 11, SCK 13 (aussi la LED), MISO 12 inutilisé | horloge LPSPI 132 MHz ; FIFO de 16 mots ; PCS0 pour le DAC, PCS3 (sans broche) pour l'OLED | § 4.2, D-010, D-033 |
 | **4 entrées trigger** | broches 0 à 3, transistors inverseurs, pull-up | fronts capturés par le détecteur de front des GPIO ; aucune impulsion perdue dès ≈ 0,68 ms | `crates/oc-drivers/src/triggers.rs`, D-019 |
-| **2 encodeurs + 4 boutons** | broches 4, 5, 14 à 16, 21 à 23 | pull-up 22 kΩ et hystérésis des pads indispensables | `crates/oc-firmware/src/board.rs`, D-007 |
+| **2 encodeurs + 4 boutons** | broches 4, 5, 14 à 16, 21 à 23 | pull-up 22 kΩ et hystérésis des pads indispensables | `crates/oc-board/src/lib.rs`, D-007 |
 | **USB natif** | 2 ports série : journal texte, sonde binaire | interrogé par la boucle, pas d'interruption | `crates/oc-firmware/src/usb.rs`, D-011, D-029 |
 | **LED** (broche 13) | étapes du démarrage, puis SCK du SPI | clignote SOS sur une panique | `crates/oc-firmware/src/boot_led.rs` |
 | **Aucun UART** | — | toutes les LPUART des broches 0–23 entrent en conflit avec le panneau | D-011, en-tête de `main.rs` |
 
-La table des broches fait foi dans `crates/oc-firmware/src/board.rs`, **seul fichier autorisé à nommer une
+La table des broches fait foi dans `crates/oc-board/src/lib.rs`, **seul fichier autorisé à nommer une
 broche** : configurer en sortie une broche que le module pilote en entrée est la seule façon d'abîmer le matériel.
 
 **Réserve [ce module]** : la carte TLM Audio O_C T4 n'est pas documentée publiquement. Ce qui suit sur l'électronique

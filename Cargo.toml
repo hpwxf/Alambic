@@ -1,14 +1,17 @@
 [workspace]
 resolver = "3"
 members = [
+    "crates/oc-board",
     "crates/oc-buildinfo",
     "crates/oc-core",
     "crates/oc-drivers",
+    "crates/oc-dsp",
     "crates/oc-firmware",
     "crates/oc-halfkay",
     "crates/oc-image",
     "crates/oc-probe",
     "crates/oc-protocol",
+    "crates/oc-realtime",
     "crates/oc-sim",
     "crates/oc-vcv-ffi",
     "crates/oc-web",
@@ -23,6 +26,7 @@ default-members = [
     "crates/oc-buildinfo",
     "crates/oc-core",
     "crates/oc-drivers",
+    "crates/oc-dsp",
     "crates/oc-halfkay",
     "crates/oc-image",
     "crates/oc-probe",
@@ -44,6 +48,7 @@ authors = ["Pascal Havé"]
 [workspace.dependencies]
 oc-core = { path = "crates/oc-core", version = "0.6.0" }
 oc-drivers = { path = "crates/oc-drivers", version = "0.6.0" }
+oc-dsp = { path = "crates/oc-dsp", version = "0.6.0" }
 oc-protocol = { path = "crates/oc-protocol", version = "0.6.0" }
 oc-image = { path = "crates/oc-image" }
 oc-halfkay = { path = "crates/oc-halfkay" }
@@ -114,40 +119,45 @@ module_name_repetitions = "allow"
 debug = 2
 codegen-units = 1
 lto = "fat"
-opt-level = 3
+# Size by default (journal/D-038, revision of 2026-11-26): most of the code
+# (the engine, the applets' control, menus, text and graphics, USB, the
+# probe, the settings) runs at 1 kHz or less, far inside its budget, and the
+# ITCM it lives in is the scarce memory. What must be fast says so below,
+# crate by crate: with fat LTO a function keeps the level of the crate it is
+# generated in (generic and `#[inline]` code where it is instantiated), and
+# stable Rust has no per-function level. "s" rather than "z": the latter's
+# outliner is the least exercised path (it exposed the early LPSPI flush).
+opt-level = "s"
 overflow-checks = true
 
-# Cold code at "s": the USB stack, the probe's protocol and the settings
-# store run from the 1 kHz loop, never in the audio interrupt, and take
-# about 5 KiB less ITCM this way (journal/D-038). "s" rather than "z": the
-# latter's outliner is the least exercised path (it exposed the early LPSPI
-# flush). With fat LTO, a function keeps the level of the crate defining it.
-[profile.release.package.usb-device]
-opt-level = "s"
-[profile.release.package.usbd-serial]
-opt-level = "s"
-[profile.release.package.imxrt-usbd]
-opt-level = "s"
-[profile.release.package.postcard]
-opt-level = "s"
-[profile.release.package.oc-protocol]
-opt-level = "s"
-[profile.release.package.sequential-storage]
-opt-level = "s"
-[profile.release.package.cobs]
-opt-level = "s"
-[profile.release.package.serde]
-opt-level = "s"
-[profile.release.package.heapless]
-opt-level = "s"
-[profile.release.package.embassy-futures]
-opt-level = "s"
-[profile.release.package.futures-util]
-opt-level = "s"
-[profile.release.package.log]
-opt-level = "s"
-[profile.release.package.teensy4-panic]
-opt-level = "s"
+# The DSP: the oscillators' coefficients, prepared whenever a parameter
+# moves (`publish`, up to four slots a tick), and the blocks every sample
+# runs. At "s" in `oc-core`, four modulated SUPERSAWs cost `publish` +33 %.
+[profile.release.package.oc-dsp]
+opt-level = 3
+# The real-time path: the audio interrupt (47 619 runs a second, 21 us
+# each) and the per-sample path it instantiates (`Voices`, the generators,
+# inlined from `oc-core` and `oc-dsp`), with the publisher that prepares the
+# setups. A crate apart from the firmware, which compiles at "s": with it
+# at "s", `voice` doubles and `audio` nears half the period.
+[profile.release.package.oc-realtime]
+opt-level = 3
+# The firmware itself (boot, the loop, USB, settings) stays at the default
+# "s". With fat LTO the root crate's level also sets the passes shared by
+# the whole program, so the per-sample path keeps only part of its 3. Four
+# modulated SUPERSAWs (journal/D-038, revision of 2026-11-26):
+#
+#   oc-firmware at     ITCM free   voice     audio (budget 10.5 us)
+#   "s" (this)         69.2 KiB    3.58 us   5.84 us
+#   3                  37.2 KiB    3.18 us   5.43 us
+#
+# If `audio` nears its budget, uncomment the next two lines first.
+# [profile.release.package.oc-firmware]
+# opt-level = 3
+# VCV Rack's module: the same per-sample path, instantiated here, at Rack's
+# sample rate.
+[profile.release.package.oc-vcv-ffi]
+opt-level = 3
 
 [profile.dev]
 opt-level = 1

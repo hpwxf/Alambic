@@ -309,3 +309,79 @@ deux copies de `SettingsStore` (0x410), plus le `SettingsStore` porté par `Runn
   de la boucle (`main` 952, `run` 1 744, `Usb::serve` 2 864, `Server::serve_instances` 1 424, `AppHost::add` 840) :
   ≈ 8 968 o avec les interruptions, **7 416 o libres** (contre 3 704). `.bss` +4 096 o : 1 048 o pour le magasin,
   le reste en alignement des tampons USB sur 4 Kio, en DTCM (320 Kio) ; `.text` −292 o.
+
+## Révision (2026-11-26) — `s` par défaut, `3` là où c'est justifié, le DSP dans `oc-dsp`
+
+À la demande de l'utilisateur, la règle s'inverse : le profil `release` est en `opt-level = "s"`, et une crate ne
+passe à `3` que si sa raison est écrite à côté d'elle dans le `Cargo.toml` racine. La plupart du code (moteur,
+contrôle des applets, menus, texte, graphisme, USB, sonde, réglages) tourne à 1 kHz ou moins, loin de son budget, dans
+l'ITCM, la mémoire rare. Avec LTO `fat`, une fonction garde le niveau de la crate où elle est **générée** : le code
+générique et `#[inline]` l'est là où il est instancié ; Rust stable n'a pas de niveau par fonction (`#[optimize]`
+instable).
+
+* **En `3`** : `oc-dsp` (nouvelle crate : les coefficients préparés à chaque changement, `publish`, et les blocs par
+  échantillon), `oc-firmware` (l'interruption audio et le chemin par échantillon qu'il instancie : `Voices`, les
+  générateurs, inlinés depuis `oc-core` et `oc-dsp`), `oc-vcv-ffi` (le même chemin, à la cadence de Rack). Les lignes
+  `s` par dépendance (code froid) deviennent inutiles.
+* **`oc-dsp`** : le DSP du supersaw (`supersaw::{Supersaw, Coefficients, Oscillator, …}`), `fixed` (`log2`, `exp2`,
+  `div_wide`), `phase_step` ; sans applet, moteur ni plateforme ; `oc-core` les ré-exporte aux mêmes chemins
+  (`apps::supersaw::dsp`, `fixed`, `audio::phase_step`). Révision de D-044 du même jour.
+
+Mesures (`cargo xtask size` ; module, `scripts/profile-supersaw.sh` à `DETUNE_INPUT=cv1`, `NOTE` et `DETUNE` sous le
+bruit de CV1, 10 s ; µs, moyenne ; détail dans `docs/plan/avancement/budget-memoire.md`) :
+
+| | référence (`3`, froid en `s`) | `oc-core` en `s` | + `oc-dsp` en `3` | **`s` par défaut** | `oc-firmware` en `s` aussi |
+|---|---|---|---|---|---|
+| ITCM libre | 26,4 Kio | 43,6 Kio | 42,2 Kio | **37,2 Kio** | 73,0 Kio |
+| pile | 9 312 o | 10 272 o | 10 184 o | **11 096 o** | 9 200 o |
+| `publish`, 1 / 4 `SUPERSAW` | 16,9 / 32,9 | 18,8 / 43,8 | 16,7 / 32,0 | **16,7 / 31,8** | 12,3 / 39,2 |
+| `audio`, 4 `SUPERSAW` | 5,54 | 5,45 | 5,46 | **5,43** | 9,87 |
+| `voice`, 4 `SUPERSAW` | 3,18 | 3,21 | 3,20 | **3,18** | 6,72 |
+| `update`, 4 `SUPERSAW` | 12,1 | 17,1 | 16,8 | **17,0** | 23,0 |
+| `tick`, 4 `SUPERSAW` | 24,7 | 30,5 | 30,4 | **30,4** | 48,9 |
+
+* `oc-dsp` en `3` rend à `publish` ce que `oc-core` en `s` lui coûtait ; `voice` et `audio` ne bougent pas tant que
+  `oc-firmware` est en `3`. `oc-firmware` en `s` gagnerait 36 Kio de plus, mais double `voice` et porte `audio` près de
+  la moitié de la période (10,5 µs) : refusé.
+* Retenu : 10,8 Kio d'ITCM de plus que la référence. Contre l'essai à `3` par défaut avec `oc-core` en `s`, 5 Kio de
+  moins : `boot` (en `3`, dans `oc-firmware`) inline davantage les crates de la carte passées en `s` (11 276 →
+  16 340 o) ; code froid, à reprendre si l'ITCM se resserre.
+* La pile, 11 096 o (5 288 o libres) : le démarrage (`boot` 3 936 o, `engine_in_static` 3 808 o, `Instance::new`
+  504 o en `s`).
+* `update` et `render` (contrôle, dessin) prennent ≈ 40 % et ≈ 17 % : à 1 kHz et tous les 20 ticks, sans enjeu.
+
+## Révision (2026-11-26, suite) — le chemin temps réel en `3`, le firmware en `s`
+
+`boot`, compilé en `3` dans `oc-firmware`, grossissait de 5 Kio quand les crates de la carte passaient en `s` (11 276
+→ 16 340 o) ; ses appels restaient les mêmes : le volume vient du code généré sur place, que `#[inline(never)]` ne
+réduirait pas (une fonction ainsi marquée reste compilée au niveau de sa crate). Le levier : ne plus mettre en `3` que
+ce qui doit l'être, dans une crate à part.
+
+* **`oc-realtime`** (`3`) : l'ex-`oc-firmware/src/realtime/` (l'interruption, la boîte aux lettres, le `Publisher`),
+  où s'instancient `Voices<Sound, 4>`, les générateurs et `Follower::follow` ; son `irq.rs` reste le seul `unsafe` du
+  chemin (AGENTS.md).
+* **`oc-board`** (`s`) : l'ex-`board.rs`, tel quel, avec `CORE_CLOCK_HZ` ; lu par le firmware et par `oc-realtime`,
+  qui ne peut dépendre d'un binaire (une lib dans le paquet `oc-firmware` partagerait son niveau et ferait un cycle
+  `oc-firmware` → `oc-realtime` → `oc-firmware`). Il reste le seul fichier à nommer une broche (D-007).
+* **`oc-firmware`** (`s`, le défaut) : `boot`, la boucle, l'USB, les réglages, `Engine<…>` instancié.
+* Les trois crates hors de `default-members` ; la CI passe clippy sur les trois.
+
+Mesures (module, mêmes réglages que la révision précédente ; µs, moyenne) :
+
+| | `s` par défaut, `oc-firmware` en `3` | **`oc-realtime` en `3`, `oc-firmware` en `s`** |
+|---|---|---|
+| ITCM libre | 37,2 Kio | **69,2 Kio** |
+| pile | 11 096 o | **9 424 o** |
+| `voice`, 1 / 4 `SUPERSAW` | 1,08 / 3,18 | 1,11 / 3,58 |
+| `audio`, 1 / 4 | 3,93 / 5,43 | 4,15 / 5,84 |
+| `voice_params`, 1 / 4 | 0,59 / 1,03 | 0,77 / 1,09 |
+| `publish`, 1 / 4 | 16,7 / 31,8 | 16,6 / 33,9 |
+| `update`, 4 | 17,0 | 15,7 |
+| `render`, 4 | 127,7 | 133,8 |
+| `tick`, 4 | 30,4 | 35,9 |
+
+* 32 Kio d'ITCM de plus ; le chemin par échantillon perd ≈ 12 % à quatre `SUPERSAW` (`voice` 3,18 → 3,58 µs,
+  `audio` 5,43 → 5,84 µs, loin de la moitié de la période, 10,5 µs), rien à une. Avec LTO `fat`, la crate racine
+  fixe le niveau des passes communes (déroulage, vectorisation) : le code de `oc-realtime`, compilé en `3`, n'en
+  garde qu'une part ; explication probable, non vérifiée.
+* La pile du démarrage redescend (`boot` 3 016 o, `engine_in_static` 3 024 o) : 6 960 o libres.

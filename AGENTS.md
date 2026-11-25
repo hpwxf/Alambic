@@ -51,7 +51,7 @@ tool file (journal/D-001).
 ```sh
 cargo fmt --all -- --check
 cargo clippy --all-targets --all-features -- -D warnings
-cargo clippy -p oc-firmware --target thumbv7em-none-eabihf -- -D warnings
+cargo clippy -p oc-firmware -p oc-board -p oc-realtime --target thumbv7em-none-eabihf -- -D warnings
 cargo test --all-features
 cargo xtask build && cargo xtask size
 ```
@@ -96,8 +96,9 @@ picked from a front-panel menu; the list is `AppId` in
 
 | Crate | `no_std` | `unsafe` |
 |---|---|---|
-| `oc-core` (all behaviour), `oc-drivers` (peripheral protocols), `oc-protocol` (probe messages), `oc-halfkay` (bootloader reports) | yes | `forbid(unsafe_code)` |
-| `oc-firmware` (wiring, the loop, the audio path) | yes (bin) | `deny(unsafe_code)`, three exceptions (below) |
+| `oc-core` (all behaviour), `oc-dsp` (the applets' signal processing, compiled for speed), `oc-drivers` (peripheral protocols), `oc-protocol` (probe messages), `oc-halfkay` (bootloader reports) | yes | `forbid(unsafe_code)` |
+| `oc-firmware` (wiring, the loop, USB, settings) | yes (bin) | `deny(unsafe_code)`, two exceptions (below) |
+| `oc-board` (the pinout, clocks and timings), `oc-realtime` (the audio interrupt, the DAC by DMA, the screen between bursts) | yes | `deny(unsafe_code)`; `oc-realtime` one exception (below) |
 | `oc-sim`, `oc-probe`, `oc-image`, `oc-web`, `oc-vcv-ffi`, `oc-buildinfo`, `xtask` | no | ordinary (`oc-vcv-ffi`: defensive C ABI) |
 
 Details per crate: `docs/agents/code-map.md`.
@@ -143,7 +144,7 @@ Details per crate: `docs/agents/code-map.md`.
 * **Internal unit: millivolts, `i32`** (`oc_core::platform::MilliVolts`).
   Floating point only inside a DSP block, which computes in `f32` with
   integer accumulators and renders millivolts at its edges (the supersaw
-  oscillator, `apps/supersaw/dsp/oscillator.rs`, journal/D-039; the rules in
+  oscillator, `crates/oc-dsp/src/supersaw/oscillator.rs`, journal/D-039; the rules in
   `docs/agents/firmware.md`, "DSP in `f32`"); `core` only (no `sqrt` or
   `round` without `std`). Parameters, control, conversions and calibration
   stay integer; `oc-vcv-ffi`'s ABI stays `int32_t` millivolts, `f32` in
@@ -161,17 +162,17 @@ Details per crate: `docs/agents/code-map.md`.
 
 ### Firmware and hardware safety
 
-* **`crates/oc-firmware/src/board.rs` is the only file allowed to name a
+* **`crates/oc-board/src/lib.rs` is the only file allowed to name a
   Teensy pin.** A wrong pin direction is the one way this firmware could
   damage the hardware. `board::split` hands out signal groups whose `claim`
   methods apply direction and pad configuration; a new pin goes in the table
   *and* in a group. Enforced by `xtask/tests/pin_rule.rs` (journal/D-007).
-* **`unsafe` is confined to three modules** of `oc-firmware`, each with a
-  module-level `#![allow(unsafe_code)]` and a `SAFETY:` comment on every
-  block: `flash_store.rs` (boot ROM flash driver, journal/D-028),
-  `reboot.rs` (fuse read and hand-over to the bootloader, journal/D-029),
-  `realtime/irq.rs` (the DAC's DMA, its ring, the interrupt handlers,
-  journal/D-033). Any new `unsafe` goes in a module of its own, the same way.
+* **`unsafe` is confined to three modules**, each with a module-level
+  `#![allow(unsafe_code)]` and a `SAFETY:` comment on every block:
+  `oc-firmware`'s `flash_store.rs` (boot ROM flash driver, journal/D-028)
+  and `reboot.rs` (fuse read and hand-over to the bootloader,
+  journal/D-029), and `oc-realtime`'s `irq.rs` (the DAC's DMA, its ring,
+  the interrupt handlers, journal/D-033); both crates deny it elsewhere. Any new `unsafe` goes in a module of its own, the same way.
 * **The firmware drives no UART**: every LPUART on pins 0–23 collides with
   the panel (`crates/oc-firmware/src/main.rs`). Diagnostics use USB CDC (a
   text log port and a binary probe port) and the boot LED (journal/D-011).
@@ -179,7 +180,16 @@ Details per crate: `docs/agents/code-map.md`.
   in its first four sectors, Teensyduino's EEPROM emulation and restore
   program above. `xtask::validate` rejects an image that reaches it; never
   move the settings into the last sector (`MEMORY.md`).
-* **`oc-firmware` is outside `default-members`**, and **`RUSTFLAGS` must
+* **The release profile optimises for size (`opt-level = "s"`) by
+  default**; a crate goes to `3` only with its reason written next to it in
+  the root `Cargo.toml` (journal/D-038): today `oc-dsp` (the coefficients
+  prepared per change, the per-sample blocks), `oc-realtime` (the audio
+  interrupt and the per-sample path it instantiates) and `oc-vcv-ffi`; the
+  firmware binary itself is at `s`. Speed-critical computation goes in
+  `oc-dsp`, or in `oc-realtime` for what the interrupt does, never in
+  `oc-core` or `oc-firmware`.
+* **`oc-firmware`, `oc-board` and `oc-realtime` are outside
+  `default-members`** (they build for the target only), and **`RUSTFLAGS` must
   never be set in the environment** (it drops `-Tt4link.x`). There is no
   `memory.x` and no `flip-link`, on purpose (`docs/agents/firmware.md`).
 

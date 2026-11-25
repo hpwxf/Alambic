@@ -40,7 +40,7 @@ pub mod calibration;
 pub mod debounce;
 pub mod encoder;
 pub mod engine;
-pub mod fixed;
+pub use oc_dsp::fixed;
 pub mod fmt;
 pub mod framebuffer;
 pub mod gfx;

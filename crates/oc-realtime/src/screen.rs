@@ -12,7 +12,7 @@ use oc_drivers::fifo;
 use oc_drivers::ssd130x::{ChunkKind, Controller, FrameStream};
 
 use super::{Bus, MAILBOX};
-use crate::board;
+use oc_board as board;
 
 /// The screen's half of the mailbox: the frame and contrast the loop leaves,
 /// what the interrupt sent of them.
@@ -144,13 +144,14 @@ fn settle(pin: &Output, high: bool) {
 
 /// The engine's display on the module: the frame it draws is copied for the
 /// interrupt to send, the latest one winning.
-pub(crate) struct MailboxDisplay {
+pub struct MailboxDisplay {
     frame: FrameBuffer,
 }
 
 impl MailboxDisplay {
     /// A blank frame.
-    pub(crate) const fn new() -> Self {
+    #[must_use]
+    pub const fn new() -> Self {
         Self {
             frame: FrameBuffer::new(),
         }
@@ -172,6 +173,12 @@ impl Display for MailboxDisplay {
 
     fn set_contrast(&mut self, contrast: u8) {
         critical_section::with(|cs| MAILBOX.borrow_ref_mut(cs).screen.contrast = Some(contrast));
+    }
+}
+
+impl Default for MailboxDisplay {
+    fn default() -> Self {
+        Self::new()
     }
 }
 

@@ -1,4 +1,9 @@
-//! **The single source of truth for the Ornament & Crime pinout.**
+//! **The single source of truth for the Ornament & Crime pinout**, and the
+//! board's other facts: clocks, the shared bus's timings, the real-time
+//! path's budgets (journal/D-007, D-033). A crate of its own so that the
+//! firmware and its real-time path (`oc-realtime`, compiled for speed) both
+//! read it, while the firmware itself compiles for size (journal/D-038,
+//! revision of 2026-11-26).
 //!
 //! # Read this before the first flash
 //!
@@ -69,6 +74,9 @@
 //! and its measurement on the module live in `oc_core::calibration`
 //! (journal/D-027).
 
+#![no_std]
+#![deny(unsafe_code)]
+
 use oc_core::calibration::{CV_IN_MAX_MV, CV_IN_MIN_MV, CV_OUT_MAX_MV, CV_OUT_MIN_MV};
 use oc_core::platform::{BUTTONS, CV_CHANNELS, ENCODERS, TRIGGER_CHANNELS};
 use oc_drivers::panel::EncoderPins;
@@ -91,7 +99,11 @@ use teensy4_bsp::pins::t40::{
 /// 5.5 V, and 25 MHz from 2.7 to 3.6 V (SBAS411C, timing note 3); on the O&C
 /// schematic it runs from the 3.3 V analog rail. From LPSPI4's 132 MHz the
 /// nearest allowed rate is 22 MHz (journal/D-033).
-pub(crate) const DAC_SPI_HZ: u32 = 22_000_000;
+/// Core clock of the i.MX RT1062 as the board support package configures
+/// it: what the cycle counter counts.
+pub const CORE_CLOCK_HZ: u32 = 600_000_000;
+
+pub const DAC_SPI_HZ: u32 = 22_000_000;
 
 /// SPI clock for the OLED, in hertz.
 ///
@@ -99,7 +111,7 @@ pub(crate) const DAC_SPI_HZ: u32 = 22_000_000;
 /// suggests the SH1106 takes; the `oled-spi-8mhz` feature keeps the rate this
 /// module was brought up at, the bus then switching clock between the two
 /// (journal/D-033, lot 7a).
-pub(crate) const OLED_SPI_HZ: u32 = if cfg!(feature = "oled-spi-8mhz") {
+pub const OLED_SPI_HZ: u32 = if cfg!(feature = "oled-spi-8mhz") {
     8_000_000
 } else {
     22_000_000
@@ -107,15 +119,15 @@ pub(crate) const OLED_SPI_HZ: u32 = if cfg!(feature = "oled-spi-8mhz") {
 
 /// The chip select of the DAC: LPSPI4's PCS0, which the controller asserts
 /// for each 24-bit word.
-pub(crate) const DAC_PCS: Pcs = Pcs::Pcs0;
+pub const DAC_PCS: Pcs = Pcs::Pcs0;
 
 /// The chip select of the OLED's transactions: one no pad carries, so they
 /// never assert the DAC's (the OLED's own is a GPIO).
-pub(crate) const OLED_PCS: Pcs = Pcs::Pcs3;
+pub const OLED_PCS: Pcs = Pcs::Pcs3;
 
 /// Readies the bus for the OLED's blocking initialisation, before the audio
 /// interrupt takes the bus over (journal/D-033).
-pub(crate) fn select_oled(spi: &mut Lpspi) {
+pub fn select_oled(spi: &mut Lpspi) {
     spi.set_pcs(OLED_PCS);
 }
 
@@ -128,16 +140,16 @@ const MIN_DBT: u8 = 4;
 
 /// The bus timings of the two devices, computed once.
 #[derive(Clone, Copy)]
-pub(crate) struct BusClocks {
+pub struct BusClocks {
     /// The DAC's clock and delays.
-    pub(crate) dac: ClockConfigs,
+    pub dac: ClockConfigs,
     /// The OLED's.
-    pub(crate) oled: ClockConfigs,
+    pub oled: ClockConfigs,
 }
 
 /// Computes the timings of the DAC and the OLED on `spi`, and leaves the
 /// OLED's in force.
-pub(crate) fn bus_clocks(spi: &mut Lpspi) -> BusClocks {
+pub fn bus_clocks(spi: &mut Lpspi) -> BusClocks {
     let clocks = BusClocks {
         dac: timing(spi, DAC_SPI_HZ),
         oled: timing(spi, OLED_SPI_HZ),
@@ -147,7 +159,7 @@ pub(crate) fn bus_clocks(spi: &mut Lpspi) -> BusClocks {
 }
 
 /// The timing `imxrt-hal` derives for `hz`, the gap between words widened to
-/// [`MIN_DBT`].
+/// `MIN_DBT`.
 fn timing(spi: &mut Lpspi, hz: u32) -> ClockConfigs {
     spi.disabled(|spi| spi.set_clock_hz(LPSPI_FREQUENCY, hz));
     let mut configs = spi.clock_configs();
@@ -158,26 +170,26 @@ fn timing(spi: &mut Lpspi, hz: u32) -> ClockConfigs {
 /// The audio timer's clock: the PIT on PERCLK, which the BSP runs at 1 MHz.
 /// GPT2's crystal input, the only one 48 kHz divides, did not start on the
 /// module (journal/D-033, lot 7c).
-pub(crate) const AUDIO_TIMER_HZ: u32 = PERCLK_FREQUENCY;
+pub const AUDIO_TIMER_HZ: u32 = PERCLK_FREQUENCY;
 
 /// PERCLK counts in an audio period.
-pub(crate) const AUDIO_PERIOD_COUNTS: u32 = 21;
+pub const AUDIO_PERIOD_COUNTS: u32 = 21;
 
 /// Audio samples a second on the four outputs: 47 619 (journal/D-033).
-pub(crate) const AUDIO_RATE_HZ: u32 = AUDIO_TIMER_HZ / AUDIO_PERIOD_COUNTS;
+pub const AUDIO_RATE_HZ: u32 = AUDIO_TIMER_HZ / AUDIO_PERIOD_COUNTS;
 
 /// The DMA channel that writes the DAC, and the PIT channel that triggers
 /// it: the DMAMUX ties PIT channel `n` to DMA channel `n`, for `n` below 4.
-pub(crate) const AUDIO_DMA_CHANNEL: usize = 0;
+pub const AUDIO_DMA_CHANNEL: usize = 0;
 
 /// The time a DAC burst takes, four 24-bit words at 22 MHz with their gaps
 /// and the DMA's start, rounded up, in microseconds.
-pub(crate) const DAC_BURST_MICROS: u32 = 6;
+pub const DAC_BURST_MICROS: u32 = 6;
 
 /// What the frame-complete interrupt needs, after a chunk's last bit, to
 /// release the OLED's chip select before the next DAC burst, in
 /// microseconds: with room for the loop's critical sections.
-pub(crate) const OLED_RELEASE_MICROS: u32 = 3;
+pub const OLED_RELEASE_MICROS: u32 = 3;
 
 /// What a piece of the screen may take on the bus, in nanoseconds: the
 /// period less the DAC burst, [`OLED_RELEASE_MICROS`] and a margin for the
@@ -185,12 +197,12 @@ pub(crate) const OLED_RELEASE_MICROS: u32 = 3;
 const OLED_CHUNK_BUDGET_NS: u64 = 8_000;
 
 /// The most pixel bytes sent to the OLED each audio period: what goes out in
-/// [`OLED_CHUNK_BUDGET_NS`] at its clock, in whole FIFO words of four bytes,
+/// `OLED_CHUNK_BUDGET_NS` at its clock, in whole FIFO words of four bytes,
 /// and at most 14 words so that the chunk and its command fit LPSPI4's
 /// 16-word transmit FIFO.
 #[allow(clippy::cast_possible_truncation)]
 // A few dozen bytes at most, by the clamp.
-pub(crate) const OLED_CHUNK_BYTES: usize = {
+pub const OLED_CHUNK_BYTES: usize = {
     let bytes = OLED_CHUNK_BUDGET_NS * OLED_SPI_HZ as u64 / 8_000_000_000;
     let words = bytes / 4;
     let words = if words < 1 {
@@ -207,7 +219,7 @@ pub(crate) const OLED_CHUNK_BYTES: usize = {
 /// microseconds, with a microsecond for the frame's own delays.
 #[allow(clippy::cast_possible_truncation)]
 // A few microseconds.
-pub(crate) const OLED_CHUNK_MICROS: u32 =
+pub const OLED_CHUNK_MICROS: u32 =
     ((OLED_CHUNK_BYTES as u64 * 8 * 1_000_000).div_ceil(OLED_SPI_HZ as u64) + 1) as u32;
 
 const _: () = assert!(
@@ -220,14 +232,14 @@ const _: () = assert!(
 ///
 /// The loop no longer touches the outputs or the screen: the audio
 /// interrupt does (journal/D-033).
-pub(crate) const TICK_PERIOD_MICROS: u32 = 1_000;
+pub const TICK_PERIOD_MICROS: u32 = 1_000;
 
 /// Redraw the screen once every this many ticks, i.e. about 50 Hz.
 ///
 /// Rendering costs three orders of magnitude more than the signal path (see the
 /// benchmarks in `oc-core`), and no OLED shows more than about 60 frames per
 /// second, so the redraw rate is decoupled from the control loop.
-pub(crate) const RENDER_INTERVAL_TICKS: u32 = 20;
+pub const RENDER_INTERVAL_TICKS: u32 = 20;
 
 /// Which OLED controller the panel carries.
 ///
@@ -235,7 +247,7 @@ pub(crate) const RENDER_INTERVAL_TICKS: u32 = 20;
 /// Override with the `ssd1306` or `ssd1309` Cargo features for third-party
 /// builds. Getting the controller wrong yields a blank or garbled screen
 /// without a panic.
-pub(crate) const OLED_CONTROLLER: Controller = if cfg!(feature = "ssd1309") {
+pub const OLED_CONTROLLER: Controller = if cfg!(feature = "ssd1309") {
     Controller::Ssd1309
 } else if cfg!(feature = "ssd1306") {
     Controller::Ssd1306
@@ -245,10 +257,10 @@ pub(crate) const OLED_CONTROLLER: Controller = if cfg!(feature = "ssd1309") {
 
 /// Trigger inputs are buffered through inverting transistors and pulled up, so
 /// a gate at the jack reads as a low pin.
-pub(crate) const TRIGGER_POLARITY: Polarity = Polarity::ActiveLow;
+pub const TRIGGER_POLARITY: Polarity = Polarity::ActiveLow;
 
 /// Buttons and encoder switches short to ground against an internal pull-up.
-pub(crate) const BUTTON_POLARITY: Polarity = Polarity::ActiveLow;
+pub const BUTTON_POLARITY: Polarity = Polarity::ActiveLow;
 
 /// Pad configuration for every panel digital input (triggers, buttons, encoder
 /// lines and encoder switches).
@@ -258,42 +270,43 @@ pub(crate) const BUTTON_POLARITY: Polarity = Polarity::ActiveLow;
 /// config the pins float, quadrature decoding never settles, and every
 /// active-low button looks stuck or dead. Hysteresis keeps mechanical contacts
 /// from chattering at the pad.
-pub(crate) const DIGITAL_INPUT_CONFIG: Config = Config::zero()
+pub const DIGITAL_INPUT_CONFIG: Config = Config::zero()
     .set_pull_keeper(Some(PullKeeper::Pullup22k))
     .set_hysteresis(Hysteresis::Enabled);
 
 /// The pad shared by the onboard LED and SPI SCK.
 ///
 /// Boot breadcrumbs borrow it as a GPIO; the SPI bus then consumes it.
-pub(crate) type LedSckPin = P13;
+pub type LedSckPin = P13;
 
 /// Every pin the module uses, grouped by signal.
 ///
 /// Built once by [`split`]. Fields are groups, not pins: the only way to turn
 /// a group into a usable peripheral is its `claim` method below, which applies
 /// the direction and pad configuration from the table above.
-pub(crate) struct BoardPins {
+pub struct BoardPins {
     /// Onboard LED, later SPI SCK.
-    pub(crate) led_sck: LedSckPin,
+    pub led_sck: LedSckPin,
     /// The four analog CV inputs.
-    pub(crate) cv: CvPins,
+    pub cv: CvPins,
     /// The four trigger inputs.
-    pub(crate) triggers: TriggerPins,
+    pub triggers: TriggerPins,
     /// SPI data lines (the clock is [`BoardPins::led_sck`]).
-    pub(crate) spi: SpiPins,
+    pub spi: SpiPins,
     /// DAC8565 chip select and reset.
-    pub(crate) dac: DacPins,
+    pub dac: DacPins,
     /// OLED chip select, data/command and reset.
-    pub(crate) oled: OledPins,
+    pub oled: OledPins,
     /// Encoders and buttons.
-    pub(crate) panel: PanelPins,
+    pub panel: PanelPins,
 }
 
 /// Splits the BSP's pin set into the module's signal groups.
 ///
 /// Pins the module does not use stay inside `pins` and are dropped, so nothing
 /// else can claim them by accident.
-pub(crate) fn split(pins: Pins) -> BoardPins {
+#[must_use]
+pub fn split(pins: Pins) -> BoardPins {
     BoardPins {
         led_sck: pins.p13,
         cv: CvPins {
@@ -345,7 +358,7 @@ fn with_pullup<P: Iomuxc>(mut pin: P) -> P {
 }
 
 /// The CV input pads, `CV1..CV4`. **Inputs only, never driven.**
-pub(crate) struct CvPins {
+pub struct CvPins {
     cv1: P19,
     cv2: P18,
     cv3: P20,
@@ -357,7 +370,13 @@ impl CvPins {
     ///
     /// The ADC channel of each pad is resolved from its type, so the mapping
     /// cannot silently drift from [`CV_ADC_CHANNELS`].
-    pub(crate) fn claim(self, adc: &Adc) -> [AnalogInput; CV_CHANNELS] {
+    ///
+    /// # Panics
+    ///
+    /// Never on this board: only for a pad the table above misplaced, a
+    /// fact of the hardware rather than of the run.
+    #[must_use]
+    pub fn claim(self, adc: &Adc) -> [AnalogInput; CV_CHANNELS] {
         let (Ok(cv1), Ok(cv2), Ok(cv3), Ok(cv4)) = (
             adc.input::<_, 1>(self.cv1),
             adc.input::<_, 1>(self.cv2),
@@ -377,7 +396,7 @@ impl CvPins {
 /// pulse width; its interrupt line stays closed in the NVIC, so nothing runs
 /// in an interrupt: the loop takes the latch once per tick. Enabling that line
 /// without a handler would land in the default handler.
-pub(crate) struct TriggerPin(Input);
+pub struct TriggerPin(Input);
 
 impl embedded_hal::digital::ErrorType for TriggerPin {
     type Error = core::convert::Infallible;
@@ -412,7 +431,7 @@ const fn active_pin_edge(polarity: Polarity) -> Trigger {
 }
 
 /// The trigger input pads, `TR1..TR4`.
-pub(crate) struct TriggerPins {
+pub struct TriggerPins {
     tr1: P0,
     tr2: P1,
     tr3: P2,
@@ -426,11 +445,12 @@ impl TriggerPins {
     /// `Port::input` and `Port::set_interrupt` fail only when a pin does not
     /// belong to the port, so each `expect` documents a fact of the table
     /// above.
-    pub(crate) fn claim(
-        self,
-        gpio1: &mut Port,
-        gpio4: &mut Port,
-    ) -> [TriggerPin; TRIGGER_CHANNELS] {
+    ///
+    /// # Panics
+    ///
+    /// Never on this board: only for a pad the table above misplaced, a
+    /// fact of the hardware rather than of the run.
+    pub fn claim(self, gpio1: &mut Port, gpio4: &mut Port) -> [TriggerPin; TRIGGER_CHANNELS] {
         let watch = |port: &mut Port, input: Input| {
             port.set_interrupt(&input, Some(active_pin_edge(TRIGGER_POLARITY)))
                 .expect("the input was claimed from this port");
@@ -459,7 +479,7 @@ impl TriggerPins {
 }
 
 /// The SPI data pads.
-pub(crate) struct SpiPins {
+pub struct SpiPins {
     sdo: P11,
     sdi: P12,
 }
@@ -467,7 +487,8 @@ pub(crate) struct SpiPins {
 impl SpiPins {
     /// The LPSPI4 pin set, taking the LED pad as the clock: from here on the
     /// LED must not be touched again.
-    pub(crate) fn with_clock(self, sck: LedSckPin) -> LpspiPins<P11, P12, P13> {
+    #[must_use]
+    pub fn with_clock(self, sck: LedSckPin) -> LpspiPins<P11, P12, P13> {
         LpspiPins {
             sdo: self.sdo,
             sdi: self.sdi,
@@ -477,24 +498,29 @@ impl SpiPins {
 }
 
 /// The DAC8565 control pads.
-pub(crate) struct DacPins {
+pub struct DacPins {
     cs: P10,
     reset: P9,
 }
 
 /// The DAC8565 control lines.
-pub(crate) struct DacLines {
+pub struct DacLines {
     /// Chip select, active low, muxed to LPSPI4's PCS0: the controller frames
     /// each 24-bit word itself ([`DAC_PCS`]). Held here so nothing else can
     /// claim the pad.
     _cs: P10,
     /// Reset, active low.
-    pub(crate) reset: Output,
+    pub reset: Output,
 }
 
 impl DacPins {
     /// Hands the chip select to LPSPI4 and claims the reset as a GPIO output.
-    pub(crate) fn claim(mut self, gpio2: &mut Port) -> DacLines {
+    ///
+    /// # Panics
+    ///
+    /// Never on this board: only for a pad the table above misplaced, a
+    /// fact of the hardware rather than of the run.
+    pub fn claim(mut self, gpio2: &mut Port) -> DacLines {
         iomuxc::lpspi::prepare(&mut self.cs);
         DacLines {
             _cs: self.cs,
@@ -504,25 +530,30 @@ impl DacPins {
 }
 
 /// The OLED control pads.
-pub(crate) struct OledPins {
+pub struct OledPins {
     cs: P8,
     dc: P6,
     reset: P7,
 }
 
 /// The OLED control lines, as GPIO outputs.
-pub(crate) struct OledLines {
+pub struct OledLines {
     /// Chip select, active low.
-    pub(crate) cs: Output,
+    pub cs: Output,
     /// Data / command select: low = command, high = data.
-    pub(crate) dc: Output,
+    pub dc: Output,
     /// Reset, active low.
-    pub(crate) reset: Output,
+    pub reset: Output,
 }
 
 impl OledPins {
     /// Claims the three pads as GPIO outputs.
-    pub(crate) fn claim(self, gpio2: &mut Port) -> OledLines {
+    ///
+    /// # Panics
+    ///
+    /// Never on this board: only for a pad the table above misplaced, a
+    /// fact of the hardware rather than of the run.
+    pub fn claim(self, gpio2: &mut Port) -> OledLines {
         OledLines {
             cs: gpio2.output(self.cs).expect("P8 is a GPIO2 pin"),
             dc: gpio2.output(self.dc).expect("P6 is a GPIO2 pin"),
@@ -532,7 +563,7 @@ impl OledPins {
 }
 
 /// The encoder and button pads.
-pub(crate) struct PanelPins {
+pub struct PanelPins {
     left_a: P22,
     left_b: P21,
     right_a: P16,
@@ -544,17 +575,22 @@ pub(crate) struct PanelPins {
 }
 
 /// The panel inputs, ready for `oc_drivers::panel::Panel::new`.
-pub(crate) struct PanelLines {
+pub struct PanelLines {
     /// Left then right encoder quadrature lines.
-    pub(crate) encoders: [EncoderPins<Input>; ENCODERS],
+    pub encoders: [EncoderPins<Input>; ENCODERS],
     /// Buttons in `oc_core::platform::Button` order: left switch, right
     /// switch, `up`, `down`.
-    pub(crate) buttons: [Input; BUTTONS],
+    pub buttons: [Input; BUTTONS],
 }
 
 impl PanelPins {
     /// Claims every panel pad as a pulled-up GPIO input.
-    pub(crate) fn claim(self, gpio1: &mut Port, gpio4: &mut Port) -> PanelLines {
+    ///
+    /// # Panics
+    ///
+    /// Never on this board: only for a pad the table above misplaced, a
+    /// fact of the hardware rather than of the run.
+    pub fn claim(self, gpio1: &mut Port, gpio4: &mut Port) -> PanelLines {
         PanelLines {
             encoders: [
                 EncoderPins {
@@ -597,7 +633,7 @@ impl PanelPins {
 /// Teensy pin 13 is `GPIO_B0_03` = `GPIO2_IO03`, which is also LPSPI4 SCK.
 /// Boot breadcrumbs may drive this pad as GPIO **before** the SPI bus claims
 /// it; afterwards only a panic handler (register-level SOS) may touch it.
-pub(crate) const LED_GPIO2_OFFSET: u32 = 3;
+pub const LED_GPIO2_OFFSET: u32 = 3;
 
 /// Offset, from the `FlexSPI` base, of the four 4 KiB sectors that hold the
 /// settings: `0x601F_0000` on the bus.
@@ -609,7 +645,7 @@ pub(crate) const LED_GPIO2_OFFSET: u32 = 3;
 /// firmware that used the EEPROM emulation finds its first sectors replaced.
 /// `cargo xtask` refuses an image that reaches this address
 /// (`RESERVED_FLASH_START` in `xtask/src/validate.rs`).
-pub(crate) const SETTINGS_FLASH_OFFSET: u32 = 0x001F_0000;
+pub const SETTINGS_FLASH_OFFSET: u32 = 0x001F_0000;
 
 /// Offset of the last flash sector, the Teensy's restore program: the settings
 /// must end before it.
@@ -630,7 +666,7 @@ const _: () = assert!(
 /// resolved from the pad types by `imxrt-iomuxc`. They are recorded here so that
 /// the table above can be checked against the Teensy documentation by eye, and
 /// asserted below so that the two cannot silently disagree.
-pub(crate) const CV_ADC_CHANNELS: [u32; CV_CHANNELS] = [5, 6, 15, 11];
+pub const CV_ADC_CHANNELS: [u32; CV_CHANNELS] = [5, 6, 15, 11];
 
 /// Compile-time sanity checks on the board data.
 ///
@@ -660,3 +696,30 @@ const _: () = {
         "the CV outputs are bipolar"
     );
 };
+
+/// A `Debug` that names the type and nothing more, for the groups of pads,
+/// whose HAL types print nothing useful and are never printed.
+macro_rules! opaque_debug {
+    ($($name:ident),* $(,)?) => {
+        $(impl core::fmt::Debug for $name {
+            fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+                f.debug_struct(stringify!($name)).finish_non_exhaustive()
+            }
+        })*
+    };
+}
+
+opaque_debug!(
+    BusClocks,
+    BoardPins,
+    CvPins,
+    TriggerPin,
+    TriggerPins,
+    SpiPins,
+    DacPins,
+    DacLines,
+    OledPins,
+    OledLines,
+    PanelPins,
+    PanelLines,
+);
