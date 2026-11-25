@@ -140,3 +140,7 @@ troisième copie des paramètres dans le contexte de contrôle.
 * Gain attendu au tick : quelques centaines de cycles par changement, sous la dispersion de `publish` ; firmware
   `.text` −1 656 o, `.rodata` −248 o, pile −40 o (le chemin le plus profond est celui du démarrage, que ce
   changement ne touche pas). Échantillons identiques au bit près.
+
+Mesuré sur le module après ces deux révisions (`docs/plan/avancement/nettoyage-audio.md`) : `publish` −25 % avec deux
+`SUPERSAW` modulées (28,1 → 21,1 µs), −23 % avec quatre (41,9 → 32,3 µs), `voice_params` −23 % ; `audio` inchangé.
+Reste un coût fixe d'≈ 10 µs par tick qui change, celui des quatre emplacements de `Changes`.

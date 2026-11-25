@@ -105,8 +105,9 @@ it already, this file only points to it.
   it, elsewhere), so profiling never changes a test or a golden screen
   (`oc_core::profile`, journal/D-029). Host benchmarks are a regression guard,
   not a hardware measurement (`docs/agents/tools.md`).
-* `scripts/profile-supersaw.sh` sets `SUPERSAW` through the probe and runs
-  `stats` in each case; the CV assignments stay the panel's. `render`
+* `scripts/profile-supersaw.sh` sets `SUPERSAW` through the probe, its CV
+  assignments included, and runs `stats`; `INSTANCES=N` runs N of them side
+  by side, `DETUNE_INPUT` moves `DETUNE` off CV2. `render`
   depends on the page shown (about 95 µs on `SUPERSAW`'s first page, its
   voices animated, 54 µs on the second), and moves the tick's mean by
   about 2 µs: compare a page with the same page.
