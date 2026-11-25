@@ -52,6 +52,13 @@ plugin's version is `2.<minor>.<patch>` of the workspace's
 * **`oc-probe`'s command line** (`serialport`, `clap`, `png`, the `port`
   module) sits behind its default `cli` feature; the client and the text
   rendering must build without it, `oc-web` depends on them that way.
+* **Restarting into the bootloader never depends on the probe protocol**:
+  `cargo xtask flash` and, past a version refusal, `cargo probe reboot` set
+  a module port to 134 baud, which every firmware since lot 3b3 honours
+  (`oc_probe::port::restart_into_loader`). The probe messages a tool of any
+  version needs (`Hello`, the version refusal, `RebootToLoader`) keep their
+  rank: new variants of `Request`, `Reply` and `Error` go last
+  (`crates/oc-protocol/tests/stable.rs`).
 * **The HalfKay bootloader cannot be erased** by application firmware
   (separate chip, ROM); pressing PROGRAM always restores it. The flash
   validations save time and catch wrong-architecture images; they do not

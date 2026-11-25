@@ -13,6 +13,8 @@ publish = false
 oc-image.workspace = true
 anyhow.workspace = true
 clap.workspace = true
+# The 134-baud restart into the bootloader before a flash (`flash.rs`).
+oc-probe = { workspace = true, features = ["cli"] }
 
 [lints]
 workspace = true

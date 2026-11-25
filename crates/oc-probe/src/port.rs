@@ -16,8 +16,15 @@ pub use crate::{PID, VID};
 /// How long a read waits before giving up.
 pub const TIMEOUT: Duration = Duration::from_millis(500);
 
-/// Any line rate but 134, which restarts the module into its bootloader.
+/// Any line rate but [`RESTART_BAUD`].
 const BAUD: u32 = 115_200;
+
+/// The line rate that restarts the module into its bootloader, on either of
+/// its ports: Teensyduino's gesture, which every firmware of this project
+/// has honoured since it had USB ports (lot 3b3), whatever its probe
+/// protocol. A virtual port has no rate; setting one is a USB request the
+/// firmware reads (`oc-firmware`'s `usb.rs`).
+pub const RESTART_BAUD: u32 = 134;
 
 /// An open probe session.
 pub type Session = Client<Box<dyn SerialPort>>;
@@ -34,6 +41,35 @@ pub fn open(path: &str) -> anyhow::Result<(Session, ModuleInfo)> {
     let mut client = Client::new(port);
     let info = client.hello()?;
     Ok((client, info))
+}
+
+/// Asks the module to restart into its bootloader by setting `path`, or
+/// each port that may be the module's, to [`RESTART_BAUD`]: no session, so
+/// a firmware speaking another protocol restarts too. The ports set; empty
+/// when none could be opened (the module is unplugged, already in its
+/// bootloader, or its ports are held elsewhere).
+///
+/// # Errors
+///
+/// When the host cannot list its ports.
+pub fn restart_into_loader(path: Option<&str>) -> anyhow::Result<Vec<String>> {
+    let paths = match path {
+        Some(path) => vec![path.to_owned()],
+        None => candidates()?,
+    };
+    let mut set = Vec::new();
+    for path in paths {
+        // Opening at that rate is the request; the port goes away with the
+        // module, so the second of its two may fail to open: one is enough.
+        if serialport::new(&path, RESTART_BAUD)
+            .timeout(TIMEOUT)
+            .open()
+            .is_ok()
+        {
+            set.push(path);
+        }
+    }
+    Ok(set)
 }
 
 /// The serial ports that may be the module's, the callout (`cu.`) side

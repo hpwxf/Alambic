@@ -216,6 +216,9 @@ fn main() -> anyhow::Result<()> {
         }
         return Ok(());
     }
+    if let Command::Reboot = cli.command {
+        return reboot(cli.port.as_deref());
+    }
     let (path, mut session, info) = port::find(cli.port.as_deref())?;
     eprintln!("{path}: oc-firmware {} ({})", info.firmware, info.build);
 
@@ -231,11 +234,7 @@ fn main() -> anyhow::Result<()> {
         Command::Triggers { seconds } => triggers(&mut session, seconds),
         Command::Sweep(args) => sweep(&mut session, &args),
         Command::Screen { png, scale } => screen(&mut session, png, scale),
-        Command::Reboot => {
-            session.reboot_to_loader()?;
-            eprintln!("restarting into the bootloader");
-            Ok(())
-        }
+        Command::Reboot => unreachable!("served before the session"),
         Command::Instances => {
             for instance in session.instances()? {
                 let description = session.describe(Target::Instance(instance.position))?;
@@ -353,6 +352,30 @@ struct Addressed {
 }
 
 /// The instance position `query` names, written `@N`.
+/// Restarts the module into its bootloader: through the probe when it
+/// speaks this tool's protocol, which says why a secure chip refuses; at
+/// [`port::RESTART_BAUD`] otherwise, which any version of the firmware
+/// honours.
+fn reboot(path: Option<&str>) -> anyhow::Result<()> {
+    match port::find(path) {
+        Ok((path, mut session, info)) => {
+            eprintln!("{path}: oc-firmware {} ({})", info.firmware, info.build);
+            session.reboot_to_loader()?;
+            eprintln!("restarting into the bootloader");
+            Ok(())
+        }
+        Err(error) => {
+            eprintln!("{error:#}; trying {} baud", port::RESTART_BAUD);
+            let set = port::restart_into_loader(path)?;
+            if set.is_empty() {
+                anyhow::bail!("no port could be set: is the module plugged in and running?");
+            }
+            eprintln!("{}: restarting into the bootloader", set.join(", "));
+            Ok(())
+        }
+    }
+}
+
 fn position(query: &str) -> anyhow::Result<u8> {
     apps::instance_position(query).with_context(|| format!("{query}: an instance is @N"))
 }

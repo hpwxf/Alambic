@@ -58,6 +58,13 @@ Architectural decisions behind each change are in `journal/` (French).
 
 ### Changed
 
+- **Flashing restarts the module itself**: `cargo xtask flash` sets the
+  module's port to 134 baud, Teensyduino's restart into the bootloader,
+  which every firmware of this project honours whatever its probe
+  protocol; `cargo probe reboot` does the same when the module speaks
+  another protocol. No PROGRAM press, no `reboot` first. The probe messages
+  every version needs to tell versions apart keep their encoding from
+  protocol 10 on.
 - **Ports named by what they carry** on the routing page, the probe and the
   browser tool: `RATCHET` `THRU` and `BURST`, `SUPERSAW` `L/MONO`, `R/MONO`
   and `SUB`, `TONE` `SIN`, `TRI`, `SAW` and `SQR`, instead of the jack each
