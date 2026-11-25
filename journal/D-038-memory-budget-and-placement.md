@@ -294,3 +294,18 @@ tout changement de taille du code peut produire.
 Écarté pour l'instant : séparer le DSP d'`oc-core` dans un crate gardé en O3 pour passer le reste en `s`
 (≈ 45 Kio de plus), qui toucherait D-044 et l'interruption d'`oc-firmware` ; l'option **B** (repartage des bancs)
 donne plus, sans coût de temps, et reste la suite quand `xtask size` avertira.
+
+## Révision (2026-11-25) — le magasin des réglages dans une `static`, hors du cadre du démarrage
+
+Le chemin le plus profond de la pile était celui du démarrage : `main` 1 992 o, `boot` 6 400 o, `engine_in_static`
+2 304 o, `AppHost::add` 840 o (≈ 11 808 o, 3 704 o libres avec les interruptions). `boot` est séparé de `run` pour que
+son cadre disparaisse avant celui de la boucle (`main`), mais c'est lui qui fixait la marge. Son cadre (0x190c)
+gardait surtout le magasin des réglages : le bloc de configuration de la flash (0x200), `SettingsFlash` (0x3a8) et
+deux copies de `SettingsStore` (0x410), plus le `SettingsStore` porté par `Running` dans le cadre de `main`.
+
+* **`SETTINGS: StaticCell<SettingsStore<SettingsFlash>>`**, ouvert par `settings_in_static` (non inliné), comme
+  `ENGINE` par `engine_in_static` ; `Running` n'en garde qu'une référence.
+* Mesuré (`cargo xtask size`) : `boot` 6 400 → 2 976 o, `main` 1 992 → 952 o ; le chemin le plus profond devient celui
+  de la boucle (`main` 952, `run` 1 744, `Usb::serve` 2 864, `Server::serve_instances` 1 424, `AppHost::add` 840) :
+  ≈ 8 968 o avec les interruptions, **7 416 o libres** (contre 3 704). `.bss` +4 096 o : 1 048 o pour le magasin,
+  le reste en alignement des tampons USB sur 4 Kio, en DTCM (320 Kio) ; `.text` −292 o.

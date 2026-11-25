@@ -125,6 +125,12 @@ type FirmwareEngine = Engine<
 /// (journal/D-038).
 static ENGINE: StaticCell<FirmwareEngine> = StaticCell::new();
 
+/// The settings store: the flash driver's configuration block, a page and
+/// the encoding buffer (≈ 1 KiB). In a static for the same reason as
+/// [`ENGINE`]: built in [`boot`], it left four copies in the start-up's
+/// frame.
+static SETTINGS: StaticCell<SettingsStore<SettingsFlash>> = StaticCell::new();
+
 /// How long the boot check of the audio path watches it, in microseconds:
 /// a few thousand periods, short enough not to delay the start-up.
 const AUDIO_CHECK_MICROS: u32 = 50_000;
@@ -327,19 +333,7 @@ fn boot() -> Running {
     // Loaded before the first tick, so the splash already uses the stored
     // screen preferences and the outputs the stored calibration. A module
     // whose flash cannot be used still starts, on the defaults.
-    let settings_store = match SettingsFlash::new() {
-        Ok(flash) => {
-            let mut store = SettingsStore::new(flash);
-            let (settings, outcome) = store.load_or_default();
-            log::info!("settings: {outcome:?}");
-            engine.apply_settings(settings);
-            Some(store)
-        }
-        Err(error) => {
-            log::warn!("settings flash unavailable ({error:?}): defaults, nothing saved");
-            None
-        }
-    };
+    let settings_store = settings_in_static(engine);
     usb.poll();
 
     #[cfg(feature = "settings-stress")]
@@ -378,7 +372,7 @@ struct Running {
     engine: &'static mut FirmwareEngine,
     usb: Usb,
     /// `None` when the flash cannot hold the settings.
-    settings_store: Option<SettingsStore<SettingsFlash>>,
+    settings_store: Option<&'static mut SettingsStore<SettingsFlash>>,
 }
 
 /// Wires the module, then runs the loop: [`boot`] and [`run`] one after
@@ -586,6 +580,29 @@ fn engine_in_static(
             audio::MailboxDisplay::new(),
         )
     })
+}
+
+/// Opens the settings store in [`SETTINGS`], once, and gives `engine` what
+/// it holds, or the defaults; `None` when the flash cannot be used, the
+/// module starting all the same. Not inlined, like [`engine_in_static`]:
+/// what it builds stays out of the start-up's frame.
+#[inline(never)]
+fn settings_in_static(
+    engine: &mut FirmwareEngine,
+) -> Option<&'static mut SettingsStore<SettingsFlash>> {
+    match SettingsFlash::new() {
+        Ok(flash) => {
+            let store = SETTINGS.init_with(|| SettingsStore::new(flash));
+            let (settings, outcome) = store.load_or_default();
+            log::info!("settings: {outcome:?}");
+            engine.apply_settings(settings);
+            Some(store)
+        }
+        Err(error) => {
+            log::warn!("settings flash unavailable ({error:?}): defaults, nothing saved");
+            None
+        }
+    }
 }
 
 /// Compile-time reminder that the engine drives exactly four channels.
