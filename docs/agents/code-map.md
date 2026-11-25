@@ -8,6 +8,7 @@ rationale behind each crate is in the journal entry cited.
 
 | Crate | Role |
 |---|---|
+| `crates/oc-dsp` | The applets' signal processing, `no_std`, no applet, engine or platform: the supersaw's coefficients and oscillator, fixed-point helpers, `phase_step`. A crate of its own so that the release profile compiles it at `opt-level = 3` while `oc-core` compiles at `s` (journal/D-038). |
 | `crates/oc-core` | **All** behaviour: platform traits, `Engine::tick`, the applets and the app menu, the output parameters, routes and voices (`audio`: `Patch`, `Route`, `Voices`; backends play them through `audio::Player`, `audio::Follower`), CV modulation of a parameter and its submenu (`modulation`), graphics (`gfx`, `text`), buttons and the chord, calibration, settings, framebuffer, profiling. Knows nothing about registers or an OS. |
 | `crates/oc-drivers` | Peripheral protocols (DAC8565, SH1106 / SSD1306 / SSD1309, triggers, shared SPI bus) over `embedded-hal` 1.0 only, tested against recording mock buses. |
 | `crates/oc-firmware` | Pure wiring: `teensy4-bsp` / `imxrt-hal` resources into the `oc-core` traits, the 1 kHz loop, the audio path. The one crate that cannot be tested on the host. |
@@ -31,7 +32,8 @@ rationale behind each crate is in the journal entry cited.
 | The `App` trait, the registry and dispatch (`AppId`, `AppHost`) | `crates/oc-core/src/apps/mod.rs` (journal/D-043) |
 | What an applet exposes: parameters, observables, actions (`ParamSpec`, `write_summary`) | `crates/oc-core/src/apps/param.rs` (journal/D-043) |
 | The applets | `crates/oc-core/src/apps/`: `diagnostic.rs`, `scope.rs`, `gfx_demo.rs`, `ratchet/`, `tone.rs`, `supersaw.rs` |
-| The supersaw's DSP, the applet's own | `crates/oc-core/src/apps/supersaw/dsp/mod.rs` (the sound's parameters `Supersaw`, parts, Szabo's curves, `Coefficients::new`: the preparation in integers), `dsp/oscillator.rs` (`Oscillator`: the seven voices in `f32`, integer phases, journal/D-039) |
+| The supersaw's DSP, compiled for speed | `crates/oc-dsp/src/supersaw/mod.rs` (the sound's parameters `Supersaw`, parts, Szabo's curves, `Coefficients::new`: the preparation in integers), `supersaw/oscillator.rs` (`Oscillator`: the seven voices in `f32`, integer phases, journal/D-039); re-exported as `oc_core::apps::supersaw::dsp` |
+| Fixed-point helpers (`log2`, `exp2`, `div_wide`) and `phase_step` | `crates/oc-dsp/src/fixed.rs`, `lib.rs`; re-exported as `oc_core::fixed`, `oc_core::audio::phase_step` |
 | The supersaw as a generator | `crates/oc-core/src/apps/supersaw/generator.rs` (`SupersawGenerator`: `SupersawParams`, `SupersawSetup`, `SupersawState`, journal/D-044) |
 | The generators this image composes (`Sound`) and what an applet publishes (`Params`) | `crates/oc-core/src/apps/sound.rs` (journal/D-044) |
 | What a backend plays them with, for this image's instance slots (`Patch`, `Setup`, `Voice`, `Changes`, `Voices`, `Follower`, `Player`; `MAX_INSTANCES` in `apps/mod.rs`) | `crates/oc-core/src/playback.rs` (journal/D-040, D-046) |

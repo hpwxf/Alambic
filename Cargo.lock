@@ -2634,6 +2634,7 @@ dependencies = [
  "embassy-futures",
  "embedded-graphics",
  "embedded-storage-async",
+ "oc-dsp",
  "postcard",
  "proptest",
  "sequential-storage",
@@ -2647,6 +2648,10 @@ dependencies = [
  "embedded-hal 1.0.0",
  "oc-core",
 ]
+
+[[package]]
+name = "oc-dsp"
+version = "0.6.0"
 
 [[package]]
 name = "oc-firmware"

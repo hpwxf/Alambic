@@ -16,8 +16,7 @@
 //! outputs.
 
 use super::{CENTRE, Frame, LEFT, RIGHT, VOICES};
-use crate::calibration::{CV_OUT_MAX_MV, CV_OUT_MIN_MV};
-use crate::platform::MilliVolts;
+use crate::{MilliVolts, OUT_MAX_MV as CV_OUT_MAX_MV, OUT_MIN_MV as CV_OUT_MIN_MV};
 
 /// One free-running sawtooth with what its correction needs.
 #[derive(Debug, Clone, Copy)]
@@ -353,8 +352,8 @@ mod tests {
     fn levels_are_rounded_and_held() {
         assert_eq!(millivolts(1.4), 1);
         assert_eq!(millivolts(-1.6), -2);
-        assert_eq!(millivolts(1e9), crate::calibration::CV_OUT_MAX_MV);
-        assert_eq!(millivolts(-1e9), crate::calibration::CV_OUT_MIN_MV);
+        assert_eq!(millivolts(1e9), crate::OUT_MAX_MV);
+        assert_eq!(millivolts(-1e9), crate::OUT_MIN_MV);
         assert_eq!(millivolts(-0.0), 0);
         assert_eq!(millivolts(f32::NAN), 0);
         assert_eq!(millivolts(2.5), 3);

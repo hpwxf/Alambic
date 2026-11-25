@@ -9,6 +9,7 @@ repository.workspace = true
 authors.workspace = true
 
 [dependencies]
+oc-dsp.workspace = true
 embassy-futures.workspace = true
 embedded-storage-async.workspace = true
 postcard.workspace = true

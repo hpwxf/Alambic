@@ -96,7 +96,7 @@ picked from a front-panel menu; the list is `AppId` in
 
 | Crate | `no_std` | `unsafe` |
 |---|---|---|
-| `oc-core` (all behaviour), `oc-drivers` (peripheral protocols), `oc-protocol` (probe messages), `oc-halfkay` (bootloader reports) | yes | `forbid(unsafe_code)` |
+| `oc-core` (all behaviour), `oc-dsp` (the applets' signal processing, compiled for speed), `oc-drivers` (peripheral protocols), `oc-protocol` (probe messages), `oc-halfkay` (bootloader reports) | yes | `forbid(unsafe_code)` |
 | `oc-firmware` (wiring, the loop, the audio path) | yes (bin) | `deny(unsafe_code)`, three exceptions (below) |
 | `oc-sim`, `oc-probe`, `oc-image`, `oc-web`, `oc-vcv-ffi`, `oc-buildinfo`, `xtask` | no | ordinary (`oc-vcv-ffi`: defensive C ABI) |
 
@@ -143,7 +143,7 @@ Details per crate: `docs/agents/code-map.md`.
 * **Internal unit: millivolts, `i32`** (`oc_core::platform::MilliVolts`).
   Floating point only inside a DSP block, which computes in `f32` with
   integer accumulators and renders millivolts at its edges (the supersaw
-  oscillator, `apps/supersaw/dsp/oscillator.rs`, journal/D-039; the rules in
+  oscillator, `crates/oc-dsp/src/supersaw/oscillator.rs`, journal/D-039; the rules in
   `docs/agents/firmware.md`, "DSP in `f32`"); `core` only (no `sqrt` or
   `round` without `std`). Parameters, control, conversions and calibration
   stay integer; `oc-vcv-ffi`'s ABI stays `int32_t` millivolts, `f32` in
@@ -179,6 +179,13 @@ Details per crate: `docs/agents/code-map.md`.
   in its first four sectors, Teensyduino's EEPROM emulation and restore
   program above. `xtask::validate` rejects an image that reaches it; never
   move the settings into the last sector (`MEMORY.md`).
+* **The release profile optimises for size (`opt-level = "s"`) by
+  default**; a crate goes to `3` only with its reason written next to it in
+  the root `Cargo.toml` (journal/D-038): today `oc-dsp` (the coefficients
+  prepared per change, the per-sample blocks), `oc-firmware` (the audio
+  interrupt and the per-sample path it instantiates) and `oc-vcv-ffi`.
+  Speed-critical computation goes in `oc-dsp`, not in `oc-core`, whose
+  non-generic code compiles at `s`.
 * **`oc-firmware` is outside `default-members`**, and **`RUSTFLAGS` must
   never be set in the environment** (it drops `-Tt4link.x`). There is no
   `memory.x` and no `flip-link`, on purpose (`docs/agents/firmware.md`).

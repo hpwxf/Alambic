@@ -76,6 +76,9 @@ pub const CV_OUT_MIN_MV: MilliVolts = -3_000;
 /// codes), so requests stop here.
 pub const CV_OUT_MAX_MV: MilliVolts = 6_000;
 
+// The DSP clamps its samples to the same range (journal/D-038).
+const _: () = assert!(CV_OUT_MIN_MV == oc_dsp::OUT_MIN_MV && CV_OUT_MAX_MV == oc_dsp::OUT_MAX_MV);
+
 /// Affine calibration of one CV input.
 ///
 /// `millivolts = (code - zero_code) * nanovolts_per_code / 1_000_000`

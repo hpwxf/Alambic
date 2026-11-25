@@ -24,18 +24,18 @@
 //! its coefficients and renders the samples, in `f32` with integer phases
 //! (journal/D-039): a detail of its own, which the names here do not carry.
 //!
-//! The DSP is `SUPERSAW`'s own (journal/D-044): it lives with the applet,
-//! and reaches the outputs through [`super::generator`]. Should another
-//! applet need it, this module moves to a shared DSP library rather than
-//! back into `audio`.
+//! The DSP is `SUPERSAW`'s (journal/D-044): the applet re-exports it
+//! (`oc_core::apps::supersaw::dsp`) and reaches the outputs through its
+//! generator (`oc_core::apps::supersaw::generator`). It lives here rather
+//! than with the applet to be compiled for speed (journal/D-038, revision
+//! of 2026-11-26).
 
 mod oscillator;
 
 pub use self::oscillator::{Coefficients, Oscillator};
 
-use crate::audio::{MilliHertz, phase_step};
 use crate::fixed::div_wide;
-use crate::platform::MilliVolts;
+use crate::{MilliHertz, MilliVolts, phase_step};
 
 /// Sawtooths in the bank.
 pub const VOICES: usize = 7;
