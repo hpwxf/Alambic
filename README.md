@@ -376,7 +376,7 @@ cargo probe stats --fresh 10   # the same over the next ten seconds only
 cargo probe stream --every 10  # inputs, codes, outputs and triggers every 10 ticks
 cargo probe out A -2000        # hold output A at -2 V until Enter, printing the inputs
 cargo probe screen --png s.png # capture the screen as the module shows it
-cargo probe reboot             # restart into the bootloader, then `cargo xtask flash`
+cargo probe reboot             # restart into the bootloader (any firmware version: at 134 baud if need be)
 
 cargo probe apps               # the applets, the running one marked
 cargo probe app ratchet        # its parameters and values, observables, actions
@@ -470,7 +470,7 @@ cargo build -p oc-firmware --target thumbv7em-none-eabihf --release
 
 ```sh
 cargo xtask flash --dry-run    # validate everything, upload nothing
-cargo xtask flash              # validate, show the digest, ask, then upload
+cargo xtask flash              # validate, show the digest, ask, restart the module into its bootloader, upload
 cargo xtask flash --yes        # no confirmation prompt (for CI)
 ```
 

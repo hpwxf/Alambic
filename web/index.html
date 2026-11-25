@@ -169,8 +169,9 @@
         <li>The page checks it before anything is written and shows its <em>fingerprint</em>.
           Compare it with the one published with the firmware: if they differ, do not install.</li>
         <li>Tick the box under the fingerprint, then click <em>Install</em>. If the module is connected above, it
-          switches to install mode by itself; otherwise press the small <strong>PROGRAM</strong>
-          button on the Teensy board first.</li>
+          switches to install mode by itself, and so does one whose port was picked above even when
+          it runs a firmware of another version (the page then restarts it at 134 baud); otherwise
+          press the small <strong>PROGRAM</strong> button on the Teensy board first.</li>
         <li>In install mode the module shows up as another USB device, the Teensy's installer
           (<strong>HalfKay</strong>, 16c0:0478). The first time only, Chrome asks whether this
           page may use it: pick it in Chrome's list (it is not a file). Keep the cable plugged

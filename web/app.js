@@ -34,6 +34,18 @@ function release(items) {
 
 /** The open session, or null. */
 let session = null;
+/**
+ * The module's serial port last picked, even when it did not answer in this
+ * page's protocol: what a restart at `RESTART_BAUD` can still reach.
+ */
+let knownPort = null;
+
+/**
+ * The line rate that restarts the module into its bootloader, on either of
+ * its ports: Teensyduino's gesture, honoured by every firmware of this
+ * project whatever its probe protocol (`oc_probe::port::RESTART_BAUD`).
+ */
+const RESTART_BAUD = 134;
 
 class Session {
   constructor(port) {
@@ -189,8 +201,9 @@ async function connect() {
   } catch {
     return; // the chooser was dismissed
   }
+  knownPort = port;
   try {
-    // Any rate but 134, which restarts the module into its bootloader.
+    // Any rate but RESTART_BAUD, which restarts the module into its bootloader.
     await port.open({ baudRate: 115200 });
   } catch (error) {
     setProbeStatus(`cannot open it (another program may be using it): ${error.message}`);
@@ -202,9 +215,39 @@ async function connect() {
     setProbeStatus(`connected: ${hello.text}`);
     setProbeEnabled(true);
   } catch (error) {
-    setProbeStatus(`wrong one (${error.message}): click Connect and pick the other`);
+    if (/protocol/.test(error.message)) {
+      setProbeStatus(`${error.message}; Install below still updates it`, true);
+    } else {
+      setProbeStatus(`wrong one (${error.message}): click Connect and pick the other`);
+    }
     await closeSession();
   }
+}
+
+/**
+ * Restarts the module into its bootloader by opening `port` at
+ * `RESTART_BAUD`: no session, so a firmware of another protocol restarts
+ * too. False when the port could not be opened.
+ */
+async function restartAtLineRate(port) {
+  try {
+    await port.open({ baudRate: RESTART_BAUD });
+  } catch {
+    return false; // held elsewhere, or already gone
+  }
+  try { await port.close(); } catch { /* the module left with it */ }
+  return true;
+}
+
+/** A serial port of the module this page was allowed before, if any. */
+async function grantedModulePort() {
+  const vendor = oc.probe_vendor_id();
+  const product = oc.probe_product_id();
+  const ports = await navigator.serial.getPorts();
+  return ports.find((port) => {
+    const info = port.getInfo();
+    return info.usbVendorId === vendor && info.usbProductId === product;
+  }) ?? null;
 }
 
 async function closeSession() {
@@ -280,8 +323,11 @@ function appendStream(line) {
   out.scrollTop = out.scrollHeight;
 }
 
-function setProbeStatus(text) {
-  $("probe-status").textContent = text;
+/** Says how the probe stands; `alert` marks what must not be missed. */
+function setProbeStatus(text, alert = false) {
+  const status = $("probe-status");
+  status.textContent = text;
+  status.classList.toggle("alert", alert);
 }
 
 function setProbeEnabled(connected) {
@@ -896,12 +942,24 @@ async function flash() {
   try {
     if (session) {
       status("switching the module to install mode…");
+      const port = session.port;
+      let switched = true;
       try {
         await session.ask(oc.request_reboot_to_loader());
       } catch (error) {
-        status(`the module did not switch (${error.message}): press PROGRAM on the Teensy`);
+        status(`the module did not switch (${error.message}): trying ${RESTART_BAUD} baud…`);
+        switched = false;
       }
       await closeSession();
+      if (!switched) await restartAtLineRate(port);
+    } else {
+      // No session: a module of another protocol, or not connected here. Its
+      // port, picked before or allowed earlier, still restarts it.
+      const port = knownPort ?? (await grantedModulePort());
+      if (port) {
+        status(`switching the module to install mode (${RESTART_BAUD} baud)…`);
+        await restartAtLineRate(port);
+      }
     }
     status("waiting for the module in install mode (choose HalfKay if asked)…");
     const device = await findLoader();

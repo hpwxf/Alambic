@@ -68,8 +68,6 @@ pub(crate) fn flash(args: &FlashArgs) -> Result<()> {
         validate::hex_encode(&hex_digest)
     );
 
-    warn_about_device();
-
     let loader = teensy_loader_cli_path();
     let loader_display = loader.as_ref().map_or_else(
         || "teensy_loader_cli".to_owned(),
@@ -77,6 +75,10 @@ pub(crate) fn flash(args: &FlashArgs) -> Result<()> {
     );
 
     if args.dry_run {
+        println!(
+            "dry-run: would set the module's ports to {} baud, its restart into the bootloader",
+            oc_probe::port::RESTART_BAUD
+        );
         println!(
             "dry-run: would invoke `{loader_display} --mcu=TEENSY40 -w -v {}`",
             hex.display()
@@ -100,6 +102,7 @@ pub(crate) fn flash(args: &FlashArgs) -> Result<()> {
 
     confirm_flash(args.yes)?;
 
+    restart_into_loader();
     invoke_loader(&loader, &hex)
 }
 
@@ -132,16 +135,29 @@ fn print_facts(elf: &Path, facts: &ImageFacts) {
     println!("elf sha256: {}", facts.sha256_hex());
 }
 
-/// Emits a non-fatal reminder about the `HalfKay` PROGRAM button.
-///
-/// We deliberately avoid a USB/HID dependency; without one we cannot probe for
-/// a Teensy, so the operator is always steered toward the button rather than
-/// given a false "device found" signal.
-fn warn_about_device() {
-    eprintln!(
-        "warning: cannot probe for a Teensy without a USB stack; \
-         press the PROGRAM button on the board so `HalfKay` is listening before upload"
-    );
+/// Asks a running module to restart into its bootloader, at the 134-baud
+/// line rate any version of the firmware honours, whatever its probe
+/// protocol; otherwise, or should it not restart, the loader waits for the
+/// PROGRAM button. Without a USB/HID dependency nothing here can tell that a
+/// Teensy is listening, so the operator is told what was tried, never that a
+/// device was found.
+fn restart_into_loader() {
+    match oc_probe::port::restart_into_loader(None) {
+        Ok(set) if !set.is_empty() => eprintln!(
+            "asked the module to restart into its bootloader ({} at {} baud); \
+             press PROGRAM if the upload does not start",
+            set.join(", "),
+            oc_probe::port::RESTART_BAUD
+        ),
+        Ok(_) => eprintln!(
+            "no module port to restart: press the PROGRAM button on the board \
+             so `HalfKay` is listening before upload"
+        ),
+        Err(error) => eprintln!(
+            "warning: cannot list the serial ports ({error:#}): press the PROGRAM button \
+             on the board so `HalfKay` is listening before upload"
+        ),
+    }
 }
 
 /// Resolves `teensy_loader_cli` on `PATH`, if present.

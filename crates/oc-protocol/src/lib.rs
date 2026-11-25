@@ -74,6 +74,12 @@ impl From<u8> for Target {
 }
 
 /// What the host asks.
+///
+/// A new variant goes last: `postcard` encodes a variant by its rank, and
+/// a tool of any version must still open with `Hello`, read a module's
+/// refusal of its version (`Reply::Error(Error::Version)`) and restart it
+/// with `RebootToLoader`, whatever the module's version
+/// (`tests/stable.rs`). From protocol 10 on these ranks never move.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Request {
     /// Opens a session: the module answers [`Reply::Hello`].
@@ -275,6 +281,13 @@ impl ParamKind {
 }
 
 /// What the module answers, or sends on its own.
+///
+/// A new variant goes last, after [`Reply::Error`]: `postcard` encodes a
+/// variant by its rank, and a tool of any version must read a module's
+/// refusal of its version (`tests/stable.rs`). Until protocol 10 replies were
+/// added before `Done` and `Error`, which moved them: the refusal read right
+/// only between neighbouring versions. From protocol 10 on these ranks never
+/// move.
 // No heap to box the profile into, and a reply only lives while it is
 // encoded or matched, so the size of the largest variant costs nothing.
 #[allow(clippy::large_enum_variant)]
@@ -428,6 +441,12 @@ pub struct Sample {
 }
 
 /// Why a request was refused, or a frame dropped.
+///
+/// A new variant goes last: `postcard` encodes a variant by its rank, and
+/// a tool of any version must still open with `Hello`, read a module's
+/// refusal of its version (`Reply::Error(Error::Version)`) and restart it
+/// with `RebootToLoader`, whatever the module's version
+/// (`tests/stable.rs`). From protocol 10 on these ranks never move.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Error {
     /// The frame did not decode as a request.
