@@ -33,15 +33,15 @@
 //! `deny(unsafe_code)` holds everywhere but three modules, each with its own
 //! `allow` and a `SAFETY:` comment on every block: [`flash_store`] (the boot
 //! ROM's flash driver), [`reboot`] (a fuse read and the breakpoint that
-//! hands over to the bootloader) and [`audio_irq`] (the audio interrupt's
-//! handler and NVIC line). Other register access is confined to
+//! hands over to the bootloader) and `realtime::irq` (the DMA's ring and
+//! programming, the interrupts' handlers and NVIC lines). Other register access is confined to
 //! `teensy4-bsp` and `imxrt-hal`.
 //!
 //! # The audio interrupt
 //!
 //! From the end of the start-up on, the audio path owns the SPI bus: at
 //! 47 619 Hz a DMA copy writes the DAC and an interrupt computes the next
-//! sample and sends the screen in pieces between two bursts ([`audio`],
+//! sample and sends the screen in pieces between two bursts ([`realtime`],
 //! journal/D-033). The 1 kHz loop below runs the engine
 //! and hands it what the outputs carry and what the screen shows.
 
@@ -50,8 +50,6 @@
 #![deny(unsafe_code)]
 #![warn(missing_docs)]
 
-mod audio;
-mod audio_irq;
 mod board;
 mod boot_led;
 mod clock;
@@ -59,6 +57,7 @@ mod cv_in;
 mod delay;
 mod flash_store;
 mod framed_spi;
+mod realtime;
 mod reboot;
 #[cfg(feature = "settings-stress")]
 mod stress;
@@ -112,11 +111,11 @@ static PROBE: ConstStaticCell<Server> = ConstStaticCell::new(Server::new(Identit
 /// The engine as this firmware composes it.
 type FirmwareEngine = Engine<
     CvInputs,
-    audio::MutedOutputs,
+    realtime::MutedOutputs,
     Triggers<board::TriggerPin>,
     Panel<bsp::hal::gpio::Input>,
     SystemClock,
-    audio::MailboxDisplay,
+    realtime::MailboxDisplay,
 >;
 
 /// The engine: every applet, the framebuffer, the profile (≈ 3.5 KiB). In
@@ -268,7 +267,7 @@ fn boot() -> Running {
     let dac_dma = dma[board::AUDIO_DMA_CHANNEL]
         .take()
         .unwrap_or_else(|| panic!("DMA channel {} already taken", board::AUDIO_DMA_CHANNEL));
-    audio::start(
+    realtime::start(
         spi,
         oled_cs,
         oled_dc,
@@ -279,7 +278,7 @@ fn boot() -> Running {
     );
     // Expected: interrupts and bursts at the audio rate, no chunk yet (the
     // engine has drawn nothing); anything else says which part stops.
-    let health = audio::self_check(AUDIO_CHECK_MICROS);
+    let health = realtime::self_check(AUDIO_CHECK_MICROS);
     log::info!(
         "audio at {} Hz, DAC by DMA, {} screen bytes a chunk; check over {} us: \
          {} interrupts ({}/s), {} DAC bursts ({}/s), {} chunks, {} releases; \
@@ -396,8 +395,8 @@ fn run(running: &mut Running) -> ! {
     let probe = PROBE.take();
     // The audio path's counts as the loop starts, for the report a few
     // seconds in.
-    let boot_audio = audio::totals();
-    let mut publisher = audio::Publisher::new();
+    let boot_audio = realtime::totals();
+    let mut publisher = realtime::Publisher::new();
     probe.set_can_reboot(reboot::is_supported());
 
     // The start of the current period, sampling included: pacing from the
@@ -419,13 +418,13 @@ fn run(running: &mut Running) -> ! {
         record_since(engine, Stage::Sample, mark);
         // The interrupt plays the outputs; the engine renders no voice and
         // reports what it played (journal/D-040).
-        engine.set_played(audio::played());
+        engine.set_played(realtime::played());
         let report = engine.tick();
         let mark = engine.clock().fine_count();
         publisher.publish(engine.patch(), &engine.calibration().outputs);
         record_since(engine, Stage::Publish, mark);
         if report.tick_count == AUDIO_REPORT_TICK {
-            let since = audio::totals().since(boot_audio);
+            let since = realtime::totals().since(boot_audio);
             log::info!(
                 "audio after {} ticks: {} interrupts, {} DAC bursts, {} chunks, {} releases, \
                  {} frames",
@@ -437,7 +436,7 @@ fn run(running: &mut Running) -> ! {
                 since.frames
             );
         }
-        audio::drain_stats(engine.profile_mut());
+        realtime::drain_stats(engine.profile_mut());
         probe.after_tick(&report, engine);
         if engine.take_save_request() {
             // Blocks for an erase now and then (tens of milliseconds); only
@@ -465,7 +464,7 @@ fn run(running: &mut Running) -> ! {
                     SaveOutcome::SessionOnly
                 }
             };
-            audio::resume_outputs();
+            realtime::resume_outputs();
             engine.report_save(outcome);
             usb.poll();
         }
@@ -540,7 +539,7 @@ fn restart_into_loader<A, O, D, C, K, S>(
         usb.serve(probe, engine);
         delay.delay_ms(1);
     }
-    audio::stop();
+    realtime::stop();
     reboot::to_loader();
 }
 
@@ -573,11 +572,11 @@ fn engine_in_static(
     ENGINE.init_with(|| {
         Engine::new(
             cv_inputs,
-            audio::MutedOutputs,
+            realtime::MutedOutputs,
             triggers,
             panel,
             clock,
-            audio::MailboxDisplay::new(),
+            realtime::MailboxDisplay::new(),
         )
     })
 }

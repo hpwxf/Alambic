@@ -170,7 +170,7 @@ Details per crate: `docs/agents/code-map.md`.
   module-level `#![allow(unsafe_code)]` and a `SAFETY:` comment on every
   block: `flash_store.rs` (boot ROM flash driver, journal/D-028),
   `reboot.rs` (fuse read and hand-over to the bootloader, journal/D-029),
-  `audio_irq.rs` (the DAC's DMA, its ring, the audio handlers,
+  `realtime/irq.rs` (the DAC's DMA, its ring, the interrupt handlers,
   journal/D-033). Any new `unsafe` goes in a module of its own, the same way.
 * **The firmware drives no UART**: every LPUART on pins 0–23 collides with
   the panel (`crates/oc-firmware/src/main.rs`). Diagnostics use USB CDC (a

@@ -1,7 +1,7 @@
-//! The audio path's `unsafe` (journal/D-033, lot 7e), kept apart as
+//! The real-time path's `unsafe` (journal/D-033, lot 7e), kept apart as
 //! AGENTS.md asks: the ring the DMA reads the DAC's words from, the DMA
 //! channel's programming, the two interrupt handlers and their NVIC lines.
-//! What the interrupts do is in [`crate::audio`].
+//! What the interrupts do is in [`super`].
 //!
 //! Both lines keep their reset priority, 0, the highest, so neither preempts
 //! the other: no other interrupt is enabled on the module (USB is polled),
@@ -51,7 +51,7 @@ const _: () = assert!(
 const RING_MODULO: u8 = 8;
 
 /// Writes `slot` of the ring. The caller writes slots the DMA will not read
-/// before the next interrupt ([`crate::audio`] keeps two ahead).
+/// before the next interrupt (`dac` keeps two ahead).
 pub(crate) fn write_slot(slot: usize, words: &[u32; SLOT_WORDS]) {
     let base = (slot % SLOTS) * SLOT_WORDS;
     for (offset, &word) in words.iter().enumerate() {
@@ -135,16 +135,16 @@ pub(crate) fn resume_dma(channel: &Channel) {
 /// period.
 #[interrupt]
 fn DMA0_DMA16() {
-    crate::audio::on_period();
+    super::on_period();
 }
 
 /// LPSPI4: a screen chunk's frame is complete.
 #[interrupt]
 fn LPSPI4() {
-    crate::audio::on_frame_complete();
+    super::on_frame_complete();
 }
 
-/// Lets both interrupts through; [`crate::audio::start`] has put their
+/// Lets both interrupts through; [`super::start`] has put their
 /// state in place.
 pub(crate) fn enable() {
     // SAFETY: unmasking can break a critical section built on masking these

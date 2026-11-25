@@ -307,3 +307,20 @@ fréquence jouée passe sur la ligne de titre, ce qui libère la droite des lign
 la place de l'ascenseur est tracée à gauche, vide (une seule page), pour la même mise en page que les applets qui
 défilent. Les fonctions de hauteur communes (`frequency_from`, `SET_NOTE`, l'affichage en hertz et la position sur
 C1–C8) vivent maintenant dans `apps/tone.rs`, que `SUPERSAW` reprend. Le chemin audio est inchangé.
+
+## Révision du 2026-11-25 — le chemin temps réel, en un module par côté
+
+`crates/oc-firmware/src/audio.rs` portait, sous le nom du DAC, tout ce que possèdent les deux interruptions (le DAC,
+l'écran, le bus qu'ils se partagent, le calage sur le déclencheur) et la boîte aux lettres de la boucle ; son
+`unsafe` était dans `audio_irq.rs` (remarque de l'utilisateur, nom choisi par lui : `realtime`).
+
+* **`realtime/mod.rs`** : l'état partagé (`SharedState` : `Bus`, `Timing`, et les deux côtés), la boîte aux lettres,
+  `start`, `stop`, `self_check`, `totals`, `drain_stats`, la période (`SharedState::run`) ;
+* **`realtime/dac.rs`** : le côté du DAC (`Audio` : PIT, DMA, voix, anneau), sa moitié de boîte aux lettres
+  (`DacMail`), `Publisher`, `played`, `resume_outputs`, `MutedOutputs` ;
+* **`realtime/screen.rs`** : le côté de l'écran (`Screen` : lignes de l'OLED, trame qui part), sa moitié
+  (`ScreenMail`), `MailboxDisplay` ;
+* **`realtime/irq.rs`** : l'ex-`audio_irq.rs`, seul `unsafe` du chemin (AGENTS.md mis à jour).
+* Comportement inchangé, mêmes opérations dans le même ordre à chaque période. `realtime::start` reste hors ligne
+  (`#[inline(never)]`) : plus petit, il était inliné dans `boot` avec l'état de 2 Kio qu'il bâtit, et la pile du
+  démarrage reprenait 1 904 o. Firmware : `.text` +176 o, `.rodata` +88 o, `.data` +8 o ; pile inchangée (8 968 o).

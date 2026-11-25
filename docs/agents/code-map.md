@@ -50,7 +50,7 @@ rationale behind each crate is in the journal entry cited.
 | Where the loop's time goes | `crates/oc-core/src/profile.rs` |
 | Deterministic mocks used by every `oc-core` test | `crates/oc-core/src/testing.rs` |
 | The pinout (the only file allowed to name a pin) | `crates/oc-firmware/src/board.rs` (rule test: `xtask/tests/pin_rule.rs`) |
-| The audio path and its mailboxes | `crates/oc-firmware/src/audio.rs`; DMA, ring, handlers: `audio_irq.rs` |
+| The real-time path: what the interrupts own and the loop hands them | `crates/oc-firmware/src/realtime/mod.rs` (shared state, bus, timing, mailbox, start and checks), `dac.rs` (the DAC side, `Publisher`, `MutedOutputs`), `screen.rs` (the screen side, `MailboxDisplay`); DMA, ring, handlers: `irq.rs` |
 | The two USB serial ports and the log | `crates/oc-firmware/src/usb.rs`, `usb_log.rs` |
 | The OLED's blocking initialisation bus, whose `flush` waits for the last bit | `crates/oc-firmware/src/framed_spi.rs` |
 | The Teensy's settings flash (boot ROM calls) | `crates/oc-firmware/src/flash_store.rs` |
