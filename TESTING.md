@@ -541,7 +541,9 @@ With the module running and the USB cable on the Teensy (journal/D-029):
    to restart into its bootloader (134 baud) and the upload goes through
    with no PROGRAM press, whatever the probe protocol of the firmware
    running. `cargo probe reboot` against a firmware of another protocol
-   says so, then restarts it at 134 baud.
+   says so, then restarts it at 134 baud. In the browser tool (9.1c), with a
+   firmware of another protocol on the module: *Connect* says so ("the module
+   speaks protocol N"), then *Install* restarts it at 134 baud and installs.
 
 ### 9.1c — Browser probe and flasher (journal/D-031)
 
