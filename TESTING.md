@@ -508,7 +508,7 @@ With the module running and the USB cable on the Teensy (journal/D-029):
    ratchet` hands it the outputs and the screen; `cargo probe set ratchet
    prob 50` prints `PROB 50%` and the panel shows it at once; `cargo probe
    set ratchet first 5000` prints `FIRST 2000 MS`, narrowed by `MODE FIRST`;
-   `cargo probe act ratchet burst` sends a burst on B, as `up` does;
+   `cargo probe act ratchet burst` sends a burst on B, as the left click does;
    `cargo probe get ratchet rate` reads `--` until `TR1` has had two edges.
    CV inputs (journal/D-045): `cargo probe app supersaw` shows `CV CV1 x1.00
    ...` on `NOTE`; `cargo probe assign supersaw detune input=cv2 effect=add`
@@ -517,6 +517,20 @@ With the module running and the USB cable on the Teensy (journal/D-029):
    supersaw detune --center 5` sets the scale and shift that `CENTER` would,
    and the submenu opened on the panel shows the same fields;
    `cargo probe assign supersaw stereo` says it takes no CV input.
+   Instances (journal/D-046, protocol 9): with `SUPERSAW` running,
+   `cargo probe add ratchet` prints `* @1 RATCHET` and the module shows it,
+   its marks left of the title; `cargo probe instances` lists both, `@0`
+   on `A`, `B`, `SUB -> C`, `@1` on `A -> D`, `B -> OFF`, `CLOCK <- TR1`;
+   `cargo probe route @0 sub=off` frees C, `cargo probe route @1 b=c`
+   takes it, `cargo probe route @1 a=b` is refused (`Taken`);
+   `cargo probe set @1 prob 50` reaches the second app alone; `focus @0`
+   shows `SUPERSAW` again, `remove @1` stops `RATCHET` and C and D fall to
+   0 V. On the panel, with three apps added from the menu (`ADD APP`): a
+   short `down` shows the next, from the last round to the first, `up` the
+   other way; the marks left of the title, as wide as a list's scroll bar,
+   put the one shown across the column. Hold `down` one second: the routing
+   page opens with the same marks; a short `up` or `down` there moves to the
+   next app's routes, the page staying open; hold one second to close it.
 7. `cargo probe reboot`, then `cargo xtask flash`: the flash goes through with
    no PROGRAM press.
 
@@ -627,7 +641,7 @@ For each of the four trigger jacks:
    (journal/D-019), so a mechanical push-button would count its bounces. The
    edge counter must increment by exactly one per pulse, including for a
    1 ms trigger, matching the behaviour proven on the host in Level 1.
-3. Press the left encoder: all four trigger counters must reset to zero
+3. Hold the left encoder one second: all four trigger counters must reset to zero
    (`README.md`, encoder table).
 
 Because trigger inputs accept a level on its first sample (journal/D-019),
@@ -685,7 +699,7 @@ whether it finished or failed.
 ### 9.3c — Ratchet (trigger bursts)
 
 Open `RATCHET` from the app menu (journal/D-032). Patch output A into `TR2`
-and output B into `TR3`, and a clock (or the `up` button) into `TR1`:
+and output B into `TR3`, and a clock (or the left encoder's click) into `TR1`:
 
 ```sh
 cargo probe triggers --seconds 10
@@ -702,7 +716,7 @@ both modes by ear. Then check `GATE` (repeats only while `TR1` stays high),
 their places), and an input: click the right encoder on `FIRST`, turn
 `INPUT` to `CV2`, then put a volt on `CV2`: the `CV` bar's block moves to
 +1 V, the frame's top edge shows the interval halved (and so do the repeats
-once the submenu is closed: click again, or `down`), the `VAL` bar a band
+once the submenu is closed: click again), the `VAL` bar a band
 from the panel's 100 ms to it. In the submenu, set `SCALE` to x0.50 (the
 `CV` bar's block and band shrink to +0.5 V, the reading's stroke stays at
 +1 V; the interval now about 71 ms), `MAX` to +0.5 V (a bracket on the `CV` bar; back
@@ -868,7 +882,7 @@ calibrates it with the wizard (`README.md`, *Calibration wizard*;
 journal/D-026, D-027). Measure with the red lead on the jack's tip and COM on
 its sleeve, so the sign reads directly.
 
-1. In **ZERO** mode (press `up`/`down` on the module until the mode row
+1. In **ZERO** mode (tap the left encoder on the module until the mode row
    reads `ZERO`), measure all four CV outputs with a voltmeter. They should
    read close to 0 V; note the actual offset error on each channel.
 2. In **OFFS** mode, turn the right encoder to set a known offset (the
@@ -894,7 +908,9 @@ its sleeve, so the sign reads directly.
    saturate at the output limits rather than wrapping (Level 1:
    `the_offset_saturates_at_the_output_limits`).
 3. Press the right encoder: offset returns to exactly 0 V.
-4. Press `up`/`down`: mode cycles `OFFS → RAMP → ZERO → OFFS`.
+4. Tap the left encoder: mode cycles `OFFS → RAMP → ZERO → OFFS`; hold it
+   one second instead: the trigger counters reset. `up`/`down` are counted
+   but leave the mode alone (journal/D-046).
 5. In **RAMP** mode, confirm on a scope or by ear (through a VCA/audio
    interface) that the four outputs are a saw wave roughly a quarter-period
    apart, per Level 1's `the_four_ramp_channels_are_a_quarter_period_apart`.

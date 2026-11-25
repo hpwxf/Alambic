@@ -38,16 +38,18 @@ it already, this file only points to it.
 * **The control context** is a cooperative 1 kHz loop
   (`crates/oc-firmware/src/main.rs`): each tick samples the inputs (four
   blocking ADC conversions, the trigger edge latches, the panel), runs
-  `Engine::tick`, then publishes `Engine::params` and the output
+  `Engine::tick`, then publishes `Engine::patch` and the output
   calibration (`audio::Publisher`), and waits for its deadline (previous
   deadline + 1 ms) while serving USB. The publisher compares
-  `Engine::params_revision` rather than the parameters, and builds the
-  voice's `oc_core::apps::sound::Setup` there, outside any critical section,
-  only when they changed (journal/D-040).
+  `Engine::params_revision` rather than the patch, and builds there,
+  outside any critical section, the `Setup` of each instance slot whose
+  parameters changed, handed over as `oc_core::apps::sound::Changes` with
+  every route and held level (journal/D-040, D-046).
 * **The audio path** owns the SPI bus at 47 619 Hz (PIT channel 0 on PERCLK,
   21 counts). Each timeout makes the DMA copy one slot of a ring into
   LPSPI4, so the DAC is written at instants the hardware fixes; the DMA's
-  interrupt computes the next sample with its own `Voice`, two slots ahead,
+  interrupt computes the next sample with its own `Voices` (one `Voice` per
+  slot, each lane sent where its route says), two slots ahead,
   waits for the burst's echo and sends a piece of the screen; LPSPI4's
   frame-complete interrupt releases the OLED's chip select. One sample per
   period, no blocks (journal/D-042). Step by step: the module documentation
@@ -60,7 +62,8 @@ it already, this file only points to it.
   never written; the simulator plays an `oc_core::audio::Player` once a
   tick and writes it (`Engine::write_outputs`), Rack once a sample
   (`oc_engine_audio`). The firmware's `audio::Publisher` and the
-  `Player` decide when to prepare through one `oc_core::audio::Follower`.
+  `Player` decide when to prepare through one `oc_core::audio::Follower`,
+  slot by slot.
 
 ## The screen
 

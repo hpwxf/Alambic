@@ -6,7 +6,7 @@ use oc_core::apps::param::{Kind, ParamValue, Refused, write_summary};
 use oc_core::apps::ratchet::{RatchetApp, Setting};
 use oc_core::apps::supersaw::SupersawApp;
 use oc_core::apps::tone::{Setting as ToneSetting, ToneApp};
-use oc_core::apps::{App, AppHost, AppId, InputSnapshot};
+use oc_core::apps::{App, AppId, InputSnapshot, Instance};
 use oc_core::modulation::{Assign, Effect};
 use oc_core::platform::CvChannel;
 
@@ -31,9 +31,9 @@ fn index_of(app: &dyn App, name: &str) -> usize {
 
 #[test]
 fn every_parameter_reads_a_value_of_its_kind_and_takes_it_back() {
-    let mut host = AppHost::new();
     for id in AppId::ALL {
-        let app = host.get_mut(id);
+        let mut fresh = Instance::new(id);
+        let app = fresh.app_mut();
         let specs = app.param_specs();
         for (index, spec) in specs.iter().enumerate() {
             let value = app
@@ -62,9 +62,9 @@ fn every_parameter_reads_a_value_of_its_kind_and_takes_it_back() {
 
 #[test]
 fn names_are_unique_within_an_applet() {
-    let host = AppHost::new();
     for id in AppId::ALL {
-        let app = host.get(id);
+        let fresh = Instance::new(id);
+        let app = fresh.app();
         let names: Vec<_> = app
             .param_specs()
             .iter()
@@ -224,9 +224,9 @@ fn ratchets_inactive_faces_follow_sync_and_gate() {
 
 #[test]
 fn every_assignable_parameter_and_only_those_has_an_input_and_a_sweep() {
-    let host = AppHost::new();
     for id in AppId::ALL {
-        let app = host.get(id);
+        let fresh = Instance::new(id);
+        let app = fresh.app();
         let specs = app.param_specs();
         let assignable = specs.iter().filter(|spec| spec.assignable).count();
         assert_eq!(app.assigns().len(), assignable, "{}", app.name());

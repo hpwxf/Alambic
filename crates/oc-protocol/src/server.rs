@@ -10,7 +10,7 @@
 use oc_core::Engine;
 use oc_core::TickReport;
 use oc_core::apps::param::{Kind, ParamSpec, Refused};
-use oc_core::apps::{App, AppId};
+use oc_core::apps::{App, AppHost, AppId, InputKind, Instance};
 use oc_core::platform::{
     AnalogIn, AnalogOut, CV_CHANNELS, Clock, Controls, CvChannel, DigitalIn, Display, MilliVolts,
     TriggerChannel,
@@ -19,7 +19,7 @@ use oc_core::platform::{
 use crate::queue::ByteQueue;
 use crate::{
     Assign, Error, FrameReader, Group, MAX_FRAME, ParamKind, Reply, Request, SCREEN_PAGES, Sample,
-    VERSION, decode, encode,
+    Target, VERSION, decode, encode,
 };
 
 /// Room for the frames waiting to go out: a full screen capture (eight
@@ -224,7 +224,13 @@ impl Server {
             | Request::Act { .. }
             | Request::SelectApp { .. }
             | Request::GetAssign { .. }
-            | Request::SetAssign { .. }) => match self.serve_app(request, engine) {
+            | Request::SetAssign { .. }
+            | Request::ListInstances
+            | Request::AddInstance { .. }
+            | Request::RemoveInstance { .. }
+            | Request::Focus { .. }
+            | Request::SetRoute { .. }
+            | Request::SetInput { .. }) => match self.serve_app(request, engine) {
                 Some(reply) => reply,
                 None => return,
             },
@@ -253,40 +259,35 @@ impl Server {
                 return None;
             }
             Request::DescribeApp { app } => {
-                if let Some(id) = app_id(app) {
-                    self.describe(engine.apps().get(id));
+                let mut fresh = None;
+                if let Some(app) = read_target(engine.apps(), app, &mut fresh) {
+                    self.describe(app);
                     return None;
                 }
                 Reply::Error(Error::NoSuchApp)
             }
-            Request::GetParam { app, param } => match app_id(app) {
-                Some(id) => engine
-                    .apps()
-                    .get(id)
+            Request::GetParam { app, param } => match read_target(engine.apps(), app, &mut None) {
+                Some(app) => app
                     .get(usize::from(param))
                     .map_or(Reply::Error(Error::Refused(Refused::NoSuch)), Reply::Value),
                 None => Reply::Error(Error::NoSuchApp),
             },
-            Request::SetParam { app, param, value } => match app_id(app) {
-                Some(id) => match engine.app_mut(id).set(usize::from(param), value) {
+            Request::SetParam { app, param, value } => match write_target(engine.apps_mut(), app) {
+                Some(app) => match app.set(usize::from(param), value) {
                     Ok(applied) => Reply::Value(applied),
                     Err(refused) => Reply::Error(Error::Refused(refused)),
                 },
                 None => Reply::Error(Error::NoSuchApp),
             },
-            Request::Observe { app, index } => match app_id(app) {
-                Some(id) => {
-                    let app = engine.apps().get(id);
-                    if usize::from(index) < app.observables().len() {
-                        Reply::Observed(app.observe(usize::from(index)))
-                    } else {
-                        Reply::Error(Error::Refused(Refused::NoSuch))
-                    }
+            Request::Observe { app, index } => match read_target(engine.apps(), app, &mut None) {
+                Some(app) if usize::from(index) < app.observables().len() => {
+                    Reply::Observed(app.observe(usize::from(index)))
                 }
+                Some(_) => Reply::Error(Error::Refused(Refused::NoSuch)),
                 None => Reply::Error(Error::NoSuchApp),
             },
-            Request::Act { app, action } => match app_id(app) {
-                Some(id) => match engine.app_mut(id).act(usize::from(action)) {
+            Request::Act { app, action } => match write_target(engine.apps_mut(), app) {
+                Some(app) => match app.act(usize::from(action)) {
                     Ok(()) => Reply::Done,
                     Err(refused) => Reply::Error(Error::Refused(refused)),
                 },
@@ -299,23 +300,106 @@ impl Server {
                 }
                 None => Reply::Error(Error::NoSuchApp),
             },
-            Request::GetAssign { app, param } => match app_id(app) {
-                Some(id) => input_reply(engine.apps().get(id), param),
+            Request::GetAssign { app, param } => match read_target(engine.apps(), app, &mut None) {
+                Some(app) => input_reply(app, param),
                 None => Reply::Error(Error::NoSuchApp),
             },
-            Request::SetAssign { app, param, assign } => match app_id(app) {
-                Some(id) => {
-                    let app = engine.app_mut(id);
-                    match app.set_assign(usize::from(param), assign) {
+            Request::SetAssign { app, param, assign } => {
+                match write_target(engine.apps_mut(), app) {
+                    Some(app) => match app.set_assign(usize::from(param), assign) {
                         Ok(_) => input_reply(app, param),
                         Err(refused) => Reply::Error(Error::Refused(refused)),
-                    }
+                    },
+                    None => Reply::Error(Error::NoSuchApp),
                 }
-                None => Reply::Error(Error::NoSuchApp),
-            },
+            }
+            Request::ListInstances
+            | Request::AddInstance { .. }
+            | Request::RemoveInstance { .. }
+            | Request::Focus { .. }
+            | Request::SetRoute { .. }
+            | Request::SetInput { .. } => self.serve_instances(request, engine.apps_mut()),
             _ => Reply::Error(Error::Unsupported),
         };
         Some(reply)
+    }
+
+    /// Serves a request about the instances running (journal/D-046).
+    fn serve_instances(&mut self, request: Request, apps: &mut AppHost) -> Reply<'static> {
+        match request {
+            Request::ListInstances => {
+                for position in 0..apps.len() {
+                    if let Some(reply) = instance_reply(&*apps, position) {
+                        self.send(&reply);
+                    }
+                }
+                Reply::Done
+            }
+            Request::AddInstance { app } => match app_id(app) {
+                Some(id) => match apps.add(id) {
+                    Some(position) => instance_reply(&*apps, position).unwrap_or(Reply::Done),
+                    None => Reply::Error(Error::NoSuchApp),
+                },
+                None => Reply::Error(Error::NoSuchApp),
+            },
+            Request::RemoveInstance { instance } => {
+                let focus = apps.focus();
+                if apps.set_focus(usize::from(instance)) && apps.remove() {
+                    // The focus stays where it was, as far as it can.
+                    let focus = if focus > usize::from(instance) {
+                        focus - 1
+                    } else {
+                        focus
+                    };
+                    apps.set_focus(focus.min(apps.len() - 1));
+                    Reply::Done
+                } else {
+                    apps.set_focus(focus);
+                    Reply::Error(Error::NoSuchApp)
+                }
+            }
+            Request::Focus { instance } => {
+                if apps.set_focus(usize::from(instance)) {
+                    Reply::Done
+                } else {
+                    Reply::Error(Error::NoSuchApp)
+                }
+            }
+            Request::SetRoute {
+                instance,
+                port,
+                output,
+            } => {
+                let output = match output {
+                    Some(output) => match CvChannel::from_index(usize::from(output)) {
+                        Some(channel) => Some(channel),
+                        None => return Reply::Error(Error::BadChannel),
+                    },
+                    None => None,
+                };
+                let position = usize::from(instance);
+                match apps.set_route(position, usize::from(port), output) {
+                    Ok(_) => instance_reply(&*apps, position).unwrap_or(Reply::Done),
+                    Err(Refused::NoSuch) if apps.at(position).is_none() => {
+                        Reply::Error(Error::NoSuchApp)
+                    }
+                    Err(refused) => Reply::Error(Error::Refused(refused)),
+                }
+            }
+            Request::SetInput {
+                instance,
+                port,
+                jack,
+            } => {
+                let position = usize::from(instance);
+                match apps.set_input(position, usize::from(port), usize::from(jack)) {
+                    Ok(_) => instance_reply(&*apps, position).unwrap_or(Reply::Done),
+                    Err(_) if apps.at(position).is_none() => Reply::Error(Error::NoSuchApp),
+                    Err(refused) => Reply::Error(Error::Refused(refused)),
+                }
+            }
+            _ => Reply::Error(Error::Unsupported),
+        }
     }
 
     /// One [`Reply::App`] per applet, then [`Reply::Done`].
@@ -329,11 +413,16 @@ impl Server {
         S: Display,
     {
         for id in AppId::ALL {
-            let app = engine.apps().get(id);
+            let running = engine.apps().get(id).is_some();
+            let mut fresh = None;
+            let Some(app) = read_target(engine.apps(), Target::App(count(id.index())), &mut fresh)
+            else {
+                continue;
+            };
             self.send(&Reply::App {
                 app: count(id.index()),
                 name: app.name(),
-                running: engine.current_app() == id,
+                running,
                 params: count(app.param_specs().len()),
                 observables: count(app.observables().len()),
                 actions: count(app.actions().len()),
@@ -366,6 +455,22 @@ impl Server {
             self.send(&Reply::Action {
                 index: count(index),
                 name,
+            });
+        }
+        for (index, port) in app.output_ports().iter().enumerate() {
+            self.send(&Reply::Port {
+                output: true,
+                index: count(index),
+                name: port.name,
+                trigger: false,
+            });
+        }
+        for (index, port) in app.input_ports().iter().enumerate() {
+            self.send(&Reply::Port {
+                output: false,
+                index: count(index),
+                name: port.name,
+                trigger: port.kind == InputKind::Trigger,
             });
         }
         self.send(&Reply::Done);
@@ -476,6 +581,56 @@ fn input_reply(app: &dyn App, param: u8) -> Reply<'static> {
         },
         None => Reply::Error(Error::Refused(Refused::NoSuch)),
     }
+}
+
+/// The applet `target` names: the instance at a position, or the first
+/// running instance of a kind or, while none runs, a fresh one put in
+/// `fresh`, what it would be once started (journal/D-046). One reference,
+/// not a closure per request: a closure would be compiled once per branch.
+fn read_target<'a>(
+    apps: &'a AppHost,
+    target: Target,
+    fresh: &'a mut Option<Instance>,
+) -> Option<&'a dyn App> {
+    match target {
+        Target::Instance(position) => apps.at(usize::from(position)),
+        Target::App(app) => {
+            let id = app_id(app)?;
+            match apps.get(id) {
+                Some(app) => Some(app),
+                None => Some(fresh.insert(Instance::new(id)).app()),
+            }
+        }
+    }
+}
+
+/// The running applet `target` names, to change it: a write never reaches
+/// a fresh one.
+fn write_target(apps: &mut AppHost, target: Target) -> Option<&mut dyn App> {
+    match target {
+        Target::Instance(position) => apps.at_mut(usize::from(position)),
+        Target::App(app) => apps.get_mut(app_id(app)?),
+    }
+}
+
+/// What the instance at `position` runs and where its ports go.
+fn instance_reply(apps: &AppHost, position: usize) -> Option<Reply<'static>> {
+    let app = apps.at(position)?;
+    let route = apps.route_at(position)?;
+    let inputs = apps.inputs_at(position)?;
+    let ports = app.input_ports();
+    Some(Reply::Instance {
+        position: count(position),
+        app: count(app.id().index()),
+        focused: apps.focus() == position,
+        outputs: core::array::from_fn(|lane| route.output(lane).map(|jack| count(jack.index()))),
+        inputs: core::array::from_fn(|port| {
+            ports
+                .get(port)
+                .and_then(|spec| inputs.jack(spec.kind, spec.lane))
+                .map_or(0, count)
+        }),
+    })
 }
 
 fn app_id(app: u8) -> Option<AppId> {

@@ -58,6 +58,44 @@ Architectural decisions behind each change are in `journal/` (French).
 
 ### Changed
 
+- **Up to four applets at once** (journal/D-046): the app menu's `ADD APP`
+  starts another beside the one shown, on the outputs nobody uses (an applet
+  declares the outputs it writes: `RATCHET` A and B, `SUPERSAW` A, B and
+  its sub-octave), and `REMOVE APP` stops the one shown. All run all the
+  time; `up` and `down` show the next or the previous, round the ends and
+  from the routing page too, marked by a column of dots left of the title,
+  in line with a list's scroll bar. Every applet's title moved four pixels
+  right to make room. The menu scrolls.
+- **Instances through the probe** (journal/D-046), probe protocol 9: a
+  module and a host tool must be updated together. `cargo probe add`,
+  `instances`, `route @N port=jack…`, `focus @N` and `remove @N` do what
+  the menu and the routing page do; every command that names an applet
+  takes `@N` for the instance at position N, a name still naming the first
+  instance of that applet (or a fresh one, to describe one that does not
+  run). `cargo probe app` lists the applet's ports. In the browser tool,
+  the Apps panel has a button per instance running (show it, ✕ to stop
+  it), *Add beside*, and the shown instance's routing as lists.
+- **A routing page per applet** (journal/D-046), opened and closed by a
+  long press of `up` or `down`: each output port to a jack or `OFF`, never
+  one another applet holds (`SUPERSAW`'s `SUB` turned off stops being
+  computed and frees C), and the inputs an applet reads by itself to any
+  jack of their kind (`RATCHET`'s `CLOCK`, `SCOPE`'s `IN`).
+- **`up` and `down` belong to the panel** (journal/D-046): a short press
+  moves to the applet on the left or right, a long press (one second) is
+  kept for the routing page to come. The applets moved what they did with
+  them: `RATCHET` fires a burst by hand on the left encoder's click,
+  `DIAGNOSTIC` cycles its output mode on a tap of the left encoder and
+  resets its counters when it is held one second, `GFX DEMO` moves to the
+  next knob on the left click, and a CV input submenu closes on the right
+  click only. The click that launches an applet from the menu no longer
+  reaches it.
+- **Picking another applet starts it afresh** (journal/D-046): an applet is
+  no longer kept, with its settings, while another runs. This makes room
+  for several applets at once, each on its own outputs; until the menu can
+  add them, one runs as before. The probe sets, acts on and assigns only an
+  applet that runs (`cargo probe select` it first); it still describes
+  any.
+
 - **`SUPERSAW` computes in `f32`** (journal/D-039): its bank, the same
   voices, curves and parts in single-precision floating point with integer
   phases, replaces the integer one after a trial of both on the module. A

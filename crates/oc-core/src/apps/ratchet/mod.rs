@@ -44,11 +44,11 @@ use self::burst::{
 use self::tempo::Tempo;
 use crate::apps::param::{ParamSpec, ParamValue, Refused, Unit};
 use crate::apps::sound::Params;
-use crate::apps::{App, AppId, InputSnapshot, TickContext};
+use crate::apps::{App, AppId, InputKind, InputPort, InputSnapshot, Port, TickContext};
 use crate::fixed::{self, ONE};
 use crate::fmt::TextBuf;
 use crate::framebuffer::{FrameBuffer, ROW_HEIGHT, WIDTH_I32};
-use crate::gfx::controls::{LIST_LEFT, SCROLL_WIDTH, row_highlight, scroll_bar};
+use crate::gfx::controls::{LIST_LEFT, SCROLL_WIDTH, TITLE_LEFT, row_highlight, scroll_bar};
 use crate::gfx::{self, Ink, Point};
 use crate::modulation::editor::Param;
 use crate::modulation::slots::Modulations;
@@ -432,7 +432,9 @@ impl RatchetApp {
             self.tempo.edge();
         }
         self.advance(elapsed, gate);
-        if rising || input.buttons.pressed(Button::Up) {
+        // By hand: the left switch, `up` and `down` being the panel's
+        // (journal/D-046).
+        if rising || input.buttons.pressed(Button::LeftEncoder) {
             self.start();
         }
 
@@ -666,7 +668,7 @@ impl RatchetApp {
     /// The main screen: the title bar, the page of settings, the timeline.
     fn render_main(&self, frame: &mut FrameBuffer) {
         let lit = TextStyle::lit(&FONT_5X8);
-        text::draw(frame, "RATCHET", Point::zero(), lit);
+        text::draw(frame, "RATCHET", Point::new(TITLE_LEFT, 0), lit);
         let mut rate = TextBuf::<12>::new();
         let _ = match self.tempo.bpm() {
             Some(bpm) => write!(rate, "{bpm:>3} BPM"),
@@ -917,9 +919,29 @@ fn position(setting: Setting, burst: &Burst) -> i32 {
     i32::try_from(permille.clamp(0, 1_000)).unwrap_or(0)
 }
 
+/// A copies `TR1`, B bursts: C and D stay free for another applet
+/// (journal/D-046).
+const PORTS: [Port; 2] = [Port { name: "A" }, Port { name: "B" }];
+
+/// `TR1` clocks the bursts; its routing page may plug another trigger in
+/// (journal/D-046).
+const INPUTS: [InputPort; 1] = [InputPort {
+    name: "CLOCK",
+    kind: InputKind::Trigger,
+    lane: 0,
+}];
+
 impl App for RatchetApp {
+    fn input_ports(&self) -> &'static [InputPort] {
+        &INPUTS
+    }
+
     fn id(&self) -> AppId {
         AppId::Ratchet
+    }
+
+    fn output_ports(&self) -> &'static [Port] {
+        &PORTS
     }
 
     fn update(&mut self, input: &InputSnapshot) -> Params {

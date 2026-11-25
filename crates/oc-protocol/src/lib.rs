@@ -44,7 +44,7 @@ use oc_core::platform::{CV_CHANNELS, MilliVolts};
 pub use oc_core::profile::Profile;
 
 /// Protocol version, raised on any change to a message's encoding.
-pub const VERSION: u16 = 8;
+pub const VERSION: u16 = 9;
 
 /// Longest frame either side sends or accepts, zero byte included. A
 /// screen page (128 bytes) and a profile (a few hundred) both fit with room
@@ -53,6 +53,25 @@ pub const MAX_FRAME: usize = 512;
 
 /// Pages of a framebuffer, as [`Reply::ScreenPage`] sends them.
 pub const SCREEN_PAGES: u8 = 8;
+
+/// Which applet a request is about (protocol 9, journal/D-046).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum Target {
+    /// The first running instance, left to right, of the applet with this
+    /// index in [`Request::ListApps`]; a description or a read of one that
+    /// does not run reads a fresh one, what it would be once started.
+    App(u8),
+    /// The instance at this position on the panel, left to right
+    /// ([`Request::ListInstances`]).
+    Instance(u8),
+}
+
+impl From<u8> for Target {
+    /// An applet's index: its first instance.
+    fn from(app: u8) -> Self {
+        Self::App(app)
+    }
+}
 
 /// What the host asks.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -94,14 +113,14 @@ pub enum Request {
     /// [`Reply::Assign`] after each assignable parameter, one
     /// [`Reply::Action`] per action, then [`Reply::Done`].
     DescribeApp {
-        /// The applet's index.
-        app: u8,
+        /// The applet.
+        app: Target,
     },
     /// The value parameter `param` of applet `app` holds:
     /// [`Reply::Value`].
     GetParam {
-        /// The applet's index.
-        app: u8,
+        /// The applet.
+        app: Target,
         /// The parameter's index.
         param: u8,
     },
@@ -110,8 +129,8 @@ pub enum Request {
     /// may move with it (`App::set`); a host reads them back with
     /// [`Request::DescribeApp`].
     SetParam {
-        /// The applet's index.
-        app: u8,
+        /// The applet.
+        app: Target,
         /// The parameter's index.
         param: u8,
         /// The value asked for.
@@ -119,15 +138,15 @@ pub enum Request {
     },
     /// Observable `index` of applet `app` now: [`Reply::Observed`].
     Observe {
-        /// The applet's index.
-        app: u8,
+        /// The applet.
+        app: Target,
         /// The observable's index.
         index: u8,
     },
     /// Asks applet `app` for action `action`: [`Reply::Done`].
     Act {
-        /// The applet's index.
-        app: u8,
+        /// The applet.
+        app: Target,
         /// The action's index.
         action: u8,
     },
@@ -140,8 +159,8 @@ pub enum Request {
     /// The CV input parameter `param` of applet `app` takes:
     /// [`Reply::Assign`].
     GetAssign {
-        /// The applet's index.
-        app: u8,
+        /// The applet.
+        app: Target,
         /// The parameter's index.
         param: u8,
     },
@@ -149,12 +168,56 @@ pub enum Request {
     /// the bounds the submenu stops at: [`Reply::Assign`] with what it
     /// applied.
     SetAssign {
-        /// The applet's index.
-        app: u8,
+        /// The applet.
+        app: Target,
         /// The parameter's index.
         param: u8,
         /// The input asked for.
         assign: Assign,
+    },
+    /// Every applet running: one [`Reply::Instance`] each, left to right,
+    /// then [`Reply::Done`] (journal/D-046).
+    ListInstances,
+    /// Starts applet `app` right of the one with the focus, on the free
+    /// outputs, and gives it the focus, as the menu's `ADD APP` does:
+    /// [`Reply::Instance`], or [`Error::NoSuchApp`] when no slot is free.
+    AddInstance {
+        /// The applet's index in [`Request::ListApps`].
+        app: u8,
+    },
+    /// Stops the instance at `instance`, freeing its outputs, as the menu's
+    /// `REMOVE APP` does on the one with the focus: [`Reply::Done`], or
+    /// [`Error::NoSuchApp`] for the last one.
+    RemoveInstance {
+        /// Its position.
+        instance: u8,
+    },
+    /// Gives the screen and the panel to the instance at `instance`, as
+    /// `up` and `down` do: [`Reply::Done`].
+    Focus {
+        /// Its position.
+        instance: u8,
+    },
+    /// Sends output port `port` of the instance at `instance` to output
+    /// `output` (0 for A), or nowhere: [`Reply::Instance`], or
+    /// [`Refused::Taken`] for an output another port reaches.
+    SetRoute {
+        /// Its position.
+        instance: u8,
+        /// The port's index.
+        port: u8,
+        /// The output, or `None`.
+        output: Option<u8>,
+    },
+    /// Plugs input port `port` of the instance at `instance` into jack
+    /// `jack` of its kind (0 for `CV1` or `TR1`): [`Reply::Instance`].
+    SetInput {
+        /// Its position.
+        instance: u8,
+        /// The port's index.
+        port: u8,
+        /// The jack.
+        jack: u8,
     },
 }
 
@@ -303,6 +366,34 @@ pub enum Reply<'a> {
         /// Its name.
         name: &'a str,
     },
+    /// One port, answering [`Request::DescribeApp`], after the actions:
+    /// its outputs, then the inputs it reads by itself (journal/D-046).
+    Port {
+        /// An output port, or an input one.
+        output: bool,
+        /// Its index among its kind.
+        index: u8,
+        /// Its name, as the routing page shows it.
+        name: &'a str,
+        /// For an input, whether it reads a trigger rather than a CV.
+        trigger: bool,
+    },
+    /// One running instance, answering [`Request::ListInstances`] and the
+    /// requests that start or route one.
+    Instance {
+        /// Its position, left to right.
+        position: u8,
+        /// Its applet's index in [`Request::ListApps`].
+        app: u8,
+        /// Whether it has the screen and the panel.
+        focused: bool,
+        /// The output each output port goes to (0 for A), `None` for one
+        /// routed nowhere or past its last port.
+        outputs: [Option<u8>; CV_CHANNELS],
+        /// The jack each input port reads (0 for `CV1` or `TR1`), past its
+        /// last port 0.
+        inputs: [u8; CV_CHANNELS],
+    },
     /// A parameter's value, answering [`Request::GetParam`] or
     /// [`Request::SetParam`].
     Value(ParamValue),
@@ -361,7 +452,8 @@ pub enum Error {
     BadChannel,
     /// This module cannot do it.
     Unsupported,
-    /// No applet at that index.
+    /// No applet at that index, no instance at that position, or none
+    /// running of the applet named: a write reaches only a running one.
     NoSuchApp,
     /// The applet did not take the value or the action.
     Refused(Refused),

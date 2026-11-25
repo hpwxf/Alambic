@@ -288,7 +288,7 @@ impl Simulator {
         let report = self.engine.tick();
         let levels = self
             .player
-            .play(self.engine.params_revision(), self.engine.params());
+            .play(self.engine.params_revision(), self.engine.patch());
         self.engine.write_outputs(&levels);
         if self.engine.take_save_request() {
             let saved = self.save_settings();
@@ -386,29 +386,35 @@ impl Simulator {
     ///
     /// # Panics
     ///
-    /// If the engine composes no applet of type `T`.
+    /// If no applet of type `T` runs.
     #[must_use]
     pub fn app<T: App>(&self) -> &T {
         self.engine.app::<T>()
     }
 
-    /// The applet currently driving the outputs and the screen.
+    /// The kind of applet with the focus: the screen and the panel.
     #[must_use]
-    pub const fn current_app(&self) -> AppId {
+    pub fn current_app(&self) -> AppId {
         self.engine.current_app()
     }
 
-    /// The applet currently driving the outputs and the screen, through its
-    /// trait: what the TUI's status line reads (journal/D-043).
+    /// The applet with the focus, through its trait: what the TUI's status
+    /// line reads (journal/D-043).
     #[must_use]
     pub fn current(&self) -> &dyn App {
-        self.engine.apps().get(self.engine.current_app())
+        self.engine.apps().focused()
     }
 
     /// Whether the app menu currently owns the screen.
     #[must_use]
     pub const fn menu_is_open(&self) -> bool {
         self.engine.menu_is_open()
+    }
+
+    /// Whether the routing page currently owns the screen (journal/D-046).
+    #[must_use]
+    pub const fn routing_is_open(&self) -> bool {
+        self.engine.routing_is_open()
     }
 
     /// The module's screen.

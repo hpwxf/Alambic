@@ -13,18 +13,21 @@
 //! ticks after the drawing, and the next frame waits for the last page
 //! (journal/D-023, option C+; `docs/agents/firmware.md`, "The screen").
 
-use crate::apps::sound::Params;
-use crate::apps::{App, AppHost, AppId};
+use crate::apps::sound::{Params, Patch};
+use crate::apps::{App, AppHost, AppId, MAX_INSTANCES};
 use crate::apps::{InputSnapshot, TickContext};
+use crate::audio::Route;
 use crate::buttons::{ButtonEvents, ButtonReader};
 use crate::calibration::Calibration;
 use crate::framebuffer::FrameBuffer;
+use crate::gfx::controls::instance_marks;
 use crate::menu::{Menu, MenuEntry, MenuOutcome};
 use crate::platform::{
     AnalogIn, AnalogOut, Button, CV_CHANNELS, Clock, Controls, CvChannel, DigitalIn, Display,
     MilliVolts, TRIGGER_CHANNELS, TriggerChannel,
 };
 use crate::profile::{Profile, Stage};
+use crate::routing::RoutingPage;
 use crate::settings::Settings;
 use crate::splash::SplashScreen;
 use crate::system::{Line, SystemOutcome, SystemScreen};
@@ -84,6 +87,8 @@ enum Screen {
     App,
     /// The app picker.
     Menu,
+    /// The routing page of the applet with the focus (journal/D-046).
+    Routing,
     /// The system settings; the applet is paused and the outputs rest.
     System,
     /// The calibration wizard; the applet is paused and the wizard drives
@@ -107,6 +112,7 @@ pub struct Engine<A, O, D, C, K, S> {
     /// backend sets it: drawn by the splash and the settings screens.
     build_id: &'static str,
     menu: Menu,
+    routing: RoutingPage,
     system: SystemScreen,
     wizard: CalibrationWizard,
     /// Raw ADC code of each input on the last tick, for the wizard.
@@ -127,9 +133,9 @@ pub struct Engine<A, O, D, C, K, S> {
     previous_fine: Option<u32>,
     /// Levels a host probe holds on the outputs (journal/D-029).
     forced_outputs: [Option<MilliVolts>; CV_CHANNELS],
-    /// What the outputs carry since the last tick (journal/D-033).
-    params: Params,
-    /// Moves on whenever [`Self::params`] changes.
+    /// What the outputs carry since the last tick (journal/D-033, D-046).
+    patch: Patch,
+    /// Moves on whenever [`Self::patch`] changes.
     params_revision: u32,
     /// What the outputs last played, as the backend reported it.
     played: [MilliVolts; CV_CHANNELS],
@@ -174,6 +180,7 @@ where
             splash: SplashScreen::new(),
             build_id: "",
             menu: Menu::new(),
+            routing: RoutingPage::new(),
             system: SystemScreen::new(),
             wizard: CalibrationWizard::new(),
             raw_codes: [0; CV_CHANNELS],
@@ -185,7 +192,7 @@ where
             profile,
             previous_fine: None,
             forced_outputs: [None; CV_CHANNELS],
-            params: Params::REST,
+            patch: Patch::single(Params::REST, Route::IDENTITY),
             params_revision: 0,
             played: [0; CV_CHANNELS],
             screen: Screen::Splash,
@@ -259,14 +266,22 @@ where
         if !self.owns_outputs() {
             self.reverse_encoders(&mut snapshot);
         }
+        let panel_was_taken = matches!(self.screen, Screen::Menu | Screen::Routing);
         self.route_panel(&snapshot, wired);
+        // The click that closed the menu launched the applet, or opened the
+        // settings, and the press that closed the routing page was its: it
+        // is not also the applet's, nor is its release a tap.
+        if panel_was_taken && !matches!(self.screen, Screen::Menu | Screen::Routing) {
+            snapshot.silence_controls();
+            self.buttons.swallow();
+        }
 
         // The applet keeps running while the menu is up: time advances, the
         // inputs still reach it and its outputs stay live. Only the panel
         // changes hands, so picking an app cannot also move the applet's own
         // selection behind the menu. The settings screen pauses it and rests
         // the outputs instead: it may drive them itself (calibration).
-        if self.screen == Screen::Menu {
+        if matches!(self.screen, Screen::Menu | Screen::Routing) {
             snapshot.silence_controls();
         }
         let mark = self.clock.fine_count();
@@ -288,22 +303,8 @@ where
         let rendered = !sending && self.ticks_since_render >= self.render_interval;
         if rendered {
             self.ticks_since_render = 0;
-            let context = TickContext {
-                tick_count: self.tick_count,
-                duration_micros: self.last_duration_micros,
-                cv_out: outputs,
-                outputs_forced: self.screen != Screen::Calibration
-                    && self.forced_outputs.iter().any(Option::is_some),
-            };
             let mark = self.clock.fine_count();
-            match self.screen {
-                Screen::Menu => self.menu.render(self.display.frame_mut()),
-                Screen::System => self.system.render(self.display.frame_mut(), self.build_id),
-                Screen::Calibration => self.wizard.render(self.display.frame_mut()),
-                Screen::App | Screen::Splash => {
-                    self.apps.render(self.display.frame_mut(), &context);
-                }
-            }
+            self.render_screen(&outputs);
             self.record_since(Stage::Render, mark);
             self.prepare_frame();
             if self.display.page_count() > 1 {
@@ -330,21 +331,27 @@ where
     /// What the outputs carry from this tick on, from the screen in charge,
     /// then the levels a probe holds.
     fn update_params(&mut self, snapshot: &InputSnapshot) {
-        let mut params = match self.screen {
-            Screen::System => Params::REST,
-            Screen::Calibration => Params::levels([self.wizard.output_level(); CV_CHANNELS]),
-            Screen::App | Screen::Menu | Screen::Splash => self.apps.update(snapshot),
+        let mut patch = match self.screen {
+            Screen::System => Patch::single(Params::REST, Route::IDENTITY),
+            Screen::Calibration => Patch::single(
+                Params::levels([self.wizard.output_level(); CV_CHANNELS]),
+                Route::IDENTITY,
+            ),
+            Screen::App | Screen::Menu | Screen::Routing | Screen::Splash => Patch {
+                parts: self.apps.update(snapshot),
+                held: [None; CV_CHANNELS],
+            },
         };
         // The wizard measures the outputs it drives: a forced level would
         // calibrate against the wrong voltage.
         if self.screen != Screen::Calibration {
             for (index, forced) in self.forced_outputs.into_iter().enumerate() {
                 if let Some(level) = forced {
-                    params.hold(index, level);
+                    patch.hold(index, level);
                 }
             }
         }
-        self.replace_params(params);
+        self.replace_patch(patch);
     }
 
     /// Runs one tick of the boot animation.
@@ -359,7 +366,7 @@ where
         self.splash.advance(elapsed);
 
         let outputs = self.played;
-        self.replace_params(Params::REST);
+        self.replace_patch(Patch::single(Params::REST, Route::IDENTITY));
 
         let mark = self.clock.fine_count();
         self.splash.render(self.display.frame_mut(), self.build_id);
@@ -404,7 +411,7 @@ where
         self.previous_micros = None;
         self.previous_fine = None;
         self.forced_outputs = [None; CV_CHANNELS];
-        self.replace_params(Params::REST);
+        self.replace_patch(Patch::single(Params::REST, Route::IDENTITY));
         // The backend's voice restarts at rest too (`testing::MockEngine`).
         self.played = [0; CV_CHANNELS];
         self.last_duration_micros = 0;
@@ -435,18 +442,26 @@ where
         self.forced_outputs[channel.index()] = level;
     }
 
-    /// What the outputs carry since the last tick, levels held by the probe
-    /// included: what a backend's voice renders at its own rate
-    /// ([`crate::audio::Player`], journal/D-033, D-040). The engine renders
-    /// none.
+    /// What the applet with the focus publishes for its lanes since the
+    /// last tick (journal/D-033, D-046). What the outputs carry is
+    /// [`Self::patch`].
     #[must_use]
     pub const fn params(&self) -> &Params {
-        &self.params
+        &self.patch.parts[self.apps.focused_slot()].params
     }
 
-    /// Moves on whenever [`Self::params`] changes, wrapping: a backend that
-    /// hands the parameters on compares this instead of the parameters, a
-    /// few bytes instead of a whole [`Params`] every tick.
+    /// What the outputs carry since the last tick: each slot's parameters
+    /// and route, levels held by the probe included; what a backend's
+    /// voices render at their own rate ([`crate::audio::Player`],
+    /// journal/D-040, D-046). The engine renders none.
+    #[must_use]
+    pub const fn patch(&self) -> &Patch {
+        &self.patch
+    }
+
+    /// Moves on whenever [`Self::patch`] changes, wrapping: a backend that
+    /// hands the patch on compares this instead of the patch, a few bytes
+    /// instead of a whole [`Patch`] every tick.
     #[must_use]
     pub const fn params_revision(&self) -> u32 {
         self.params_revision
@@ -459,10 +474,10 @@ where
         self.played = levels;
     }
 
-    /// Makes `params` what the outputs carry.
-    fn replace_params(&mut self, params: Params) {
-        if params != self.params {
-            self.params = params;
+    /// Makes `patch` what the outputs carry.
+    fn replace_patch(&mut self, patch: Patch) {
+        if patch != self.patch {
+            self.patch = patch;
             self.params_revision = self.params_revision.wrapping_add(1);
         }
     }
@@ -522,7 +537,7 @@ where
     fn route_panel(&mut self, snapshot: &InputSnapshot, wired: [i8; 2]) {
         if snapshot.buttons.menu_chord() {
             match self.screen {
-                Screen::Menu => self.screen = Screen::App,
+                Screen::Menu | Screen::Routing => self.screen = Screen::App,
                 Screen::System => {
                     self.settings = *self.system.original();
                     self.screen = Screen::App;
@@ -534,7 +549,9 @@ where
                     self.screen = Screen::App;
                 }
                 Screen::App | Screen::Splash => {
-                    self.menu.open(self.apps.current());
+                    let running = self.apps.len();
+                    self.menu
+                        .open(self.apps.current(), running < MAX_INSTANCES, running > 1);
                     self.screen = Screen::Menu;
                 }
             }
@@ -551,6 +568,14 @@ where
                         self.apps.select(chosen);
                         self.screen = Screen::App;
                     }
+                    Some(MenuOutcome::Add(chosen)) => {
+                        self.apps.add(chosen);
+                        self.screen = Screen::App;
+                    }
+                    Some(MenuOutcome::Remove) => {
+                        self.apps.remove();
+                        self.screen = Screen::App;
+                    }
                     Some(MenuOutcome::OpenSetup) => {
                         self.system.open(self.settings, Line::StartupApp);
                         self.screen = Screen::System;
@@ -560,8 +585,82 @@ where
             }
             Screen::System => self.route_system(&snapshot.buttons, wired),
             Screen::Calibration => self.route_wizard(&snapshot.buttons, wired),
-            Screen::App | Screen::Splash => {}
+            // A short `up` or `down` moves the focus to the applet left or
+            // right, from the last round to the first and back, on the
+            // applet's screen as on its routing page; a long one opens that
+            // page, and closes it again (journal/D-046).
+            Screen::App => {
+                self.move_focus(&snapshot.buttons);
+                if snapshot.buttons.long_pressed(Button::Up)
+                    || snapshot.buttons.long_pressed(Button::Down)
+                {
+                    self.routing.open();
+                    self.screen = Screen::Routing;
+                }
+            }
+            Screen::Routing => {
+                if snapshot.buttons.long_pressed(Button::Up)
+                    || snapshot.buttons.long_pressed(Button::Down)
+                {
+                    self.screen = Screen::App;
+                } else if self.move_focus(&snapshot.buttons) {
+                    self.routing.open();
+                } else {
+                    self.routing
+                        .update(snapshot.controls.encoder_delta, &mut self.apps);
+                }
+            }
+            Screen::Splash => {}
         }
+    }
+
+    /// Draws the screen on show into the frame: the applet with the focus,
+    /// or a page of the engine, with the instances' marks over the applet's
+    /// screen and its routing page.
+    fn render_screen(&mut self, outputs: &[MilliVolts; CV_CHANNELS]) {
+        // The applet sees its own lanes: what reached the jack each
+        // goes to, nothing for one that goes nowhere (journal/D-046).
+        let route = self.apps.route();
+        let cv_out = core::array::from_fn(|lane| {
+            route
+                .output(lane)
+                .map_or(0, |output| outputs[output.index()])
+        });
+        let context = TickContext {
+            tick_count: self.tick_count,
+            duration_micros: self.last_duration_micros,
+            cv_out,
+            outputs_forced: self.screen != Screen::Calibration
+                && self.forced_outputs.iter().any(Option::is_some),
+        };
+        match self.screen {
+            Screen::Menu => self.menu.render(self.display.frame_mut()),
+            Screen::Routing => {
+                let frame = self.display.frame_mut();
+                self.routing.render(frame, &self.apps);
+                instance_marks(frame, self.apps.len(), self.apps.focus());
+            }
+            Screen::System => self.system.render(self.display.frame_mut(), self.build_id),
+            Screen::Calibration => self.wizard.render(self.display.frame_mut()),
+            Screen::App | Screen::Splash => {
+                let frame = self.display.frame_mut();
+                self.apps.render(frame, &context);
+                instance_marks(frame, self.apps.len(), self.apps.focus());
+            }
+        }
+    }
+
+    /// Moves the focus one applet left on a short `up`, one right on a short
+    /// `down`, wrapping at both ends; whether it moved.
+    fn move_focus(&mut self, buttons: &ButtonEvents) -> bool {
+        let before = self.apps.focus();
+        if buttons.pressed(Button::Up) {
+            self.apps.step_focus(false);
+        }
+        if buttons.pressed(Button::Down) {
+            self.apps.step_focus(true);
+        }
+        self.apps.focus() != before
     }
 
     /// Drives the settings screen; the engine runs with its draft while open.
@@ -758,41 +857,52 @@ where
         &self.apps
     }
 
-    /// The applet of type `T`, running or not: its own state, for tests and
-    /// the host UIs (journal/D-043). The engine itself only ever runs an
-    /// applet through [`App`].
+    /// The first running applet of type `T`, left to right: its own state,
+    /// for tests and the host UIs (journal/D-043, D-046). The engine itself
+    /// only ever runs an applet through [`App`].
     ///
     /// # Panics
     ///
-    /// If this image composes no applet of type `T`, which is a mistake in
-    /// the caller, not a state the module can reach.
+    /// If no applet of type `T` runs, which is a mistake in the caller, not
+    /// a state the module can reach by itself.
     #[must_use]
     pub fn app<T: App>(&self) -> &T {
-        self.apps
-            .find::<T>()
-            .expect("every applet type is composed into AppHost")
+        self.apps.find::<T>().expect("an applet of that type runs")
     }
 
-    /// The applet currently driving the outputs.
+    /// The kind of applet with the focus.
     #[must_use]
-    pub const fn current_app(&self) -> AppId {
+    pub fn current_app(&self) -> AppId {
         self.apps.current()
     }
 
-    /// The applet filling slot `id`, to set its parameters or ask it for an
-    /// action as the panel would (journal/D-043): the host probe's way in.
-    pub fn app_mut(&mut self, id: AppId) -> &mut dyn App {
+    /// The first running applet of kind `id`, to set its parameters or ask
+    /// it for an action as the panel would (journal/D-043): the host
+    /// probe's way in; `None` while none runs.
+    pub fn app_mut(&mut self, id: AppId) -> Option<&mut dyn App> {
         self.apps.get_mut(id)
     }
 
-    /// Hands the outputs and the screen to `id`, as launching it from the app
-    /// menu does: an open menu closes on it. The system screen, the
-    /// calibration wizard and the boot splash stay up, and leave to it.
-    pub const fn select_app(&mut self, id: AppId) {
+    /// Every running applet, to add, remove, focus and route them as the
+    /// panel would (journal/D-046).
+    pub const fn apps_mut(&mut self) -> &mut AppHost {
+        &mut self.apps
+    }
+
+    /// Puts `id` in the place of the applet with the focus, as launching it
+    /// from the app menu does: an open menu closes on it. The system screen,
+    /// the calibration wizard and the boot splash stay up, and leave to it.
+    pub fn select_app(&mut self, id: AppId) {
         self.apps.select(id);
         if matches!(self.screen, Screen::Menu) {
             self.screen = Screen::App;
         }
+    }
+
+    /// Whether the routing page currently owns the screen.
+    #[must_use]
+    pub const fn routing_is_open(&self) -> bool {
+        matches!(self.screen, Screen::Routing)
     }
 
     /// Whether the app menu currently owns the screen.
@@ -1132,7 +1242,7 @@ mod tests {
         assert_eq!(engine.parts_mut().1.flushes, 0, "the tick writes no output");
 
         let mut player = Player::new(TICK_RATE_HZ);
-        let levels = player.play(engine.params_revision(), engine.params());
+        let levels = player.play(engine.params_revision(), engine.patch());
         assert_eq!(levels[1], adc_reading(1_500), "one sample of the params");
         engine.write_outputs(&levels);
         assert_eq!(engine.parts_mut().1.level(CvChannel::Two), levels[1]);

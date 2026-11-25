@@ -1,13 +1,13 @@
 //! The applets reached through the probe (journal/D-043): listed,
 //! described, set and asked through the model the panel uses.
 
-use oc_core::apps::AppId;
 use oc_core::apps::ratchet::RatchetApp;
+use oc_core::apps::{AppId, Instance};
 use oc_core::testing::{MockEngine, mock_engine};
 use oc_protocol::server::{Identity, Server};
 use oc_protocol::{
-    Error, FrameReader, Group, MAX_FRAME, ParamKind, ParamValue, Refused, Reply, Request, VERSION,
-    decode, encode,
+    Error, FrameReader, Group, MAX_FRAME, ParamKind, ParamValue, Refused, Reply, Request, Target,
+    VERSION, decode, encode,
 };
 
 const IDENTITY: Identity = Identity {
@@ -27,6 +27,14 @@ fn opened() -> (Server, MockEngine) {
         &mut engine,
         &Request::Hello { protocol: VERSION },
     );
+    (server, engine)
+}
+
+/// A session open on a fresh engine running `RATCHET`: an applet is set
+/// only while it runs (journal/D-046).
+fn running_ratchet() -> (Server, MockEngine) {
+    let (server, mut engine) = opened();
+    engine.select_app(AppId::Ratchet);
     (server, engine)
 }
 
@@ -64,7 +72,8 @@ fn every_applet_is_listed_with_what_it_declares() {
     let mut frames = replies(&mut server, &mut engine, &Request::ListApps);
     assert_eq!(frames.len(), AppId::ALL.len() + 1);
     for (id, frame) in AppId::ALL.into_iter().zip(&mut frames) {
-        let app = engine.apps().get(id);
+        let fresh = Instance::new(id);
+        let app = fresh.app();
         assert_eq!(
             decode::<Reply<'_>>(frame),
             Ok(Reply::App {
@@ -89,7 +98,9 @@ fn an_applet_is_described_with_its_values_and_choice_names() {
     let mut frames = replies(
         &mut server,
         &mut engine,
-        &Request::DescribeApp { app: RATCHET },
+        &Request::DescribeApp {
+            app: Target::App(RATCHET),
+        },
     );
     let decoded: Vec<Reply<'_>> = frames
         .iter_mut()
@@ -152,14 +163,14 @@ fn an_applet_is_described_with_its_values_and_choice_names() {
 
 #[test]
 fn a_parameter_set_from_afar_is_the_applets() {
-    let (mut server, mut engine) = opened();
+    let (mut server, mut engine) = running_ratchet();
     let prob = 5;
     assert_eq!(
         ask(
             &mut server,
             &mut engine,
             &Request::SetParam {
-                app: RATCHET,
+                app: Target::App(RATCHET),
                 param: prob,
                 value: ParamValue::Number(40),
             }
@@ -172,7 +183,7 @@ fn a_parameter_set_from_afar_is_the_applets() {
             &mut server,
             &mut engine,
             &Request::GetParam {
-                app: RATCHET,
+                app: Target::App(RATCHET),
                 param: prob
             }
         ),
@@ -183,7 +194,7 @@ fn a_parameter_set_from_afar_is_the_applets() {
             &mut server,
             &mut engine,
             &Request::SetParam {
-                app: RATCHET,
+                app: Target::App(RATCHET),
                 param: 2,
                 value: ParamValue::Number(5_000),
             }
@@ -195,9 +206,15 @@ fn a_parameter_set_from_afar_is_the_applets() {
 
 #[test]
 fn refusals_say_why() {
-    let (mut server, mut engine) = opened();
+    let (mut server, mut engine) = running_ratchet();
     assert_eq!(
-        ask(&mut server, &mut engine, &Request::DescribeApp { app: 99 }),
+        ask(
+            &mut server,
+            &mut engine,
+            &Request::DescribeApp {
+                app: Target::App(99)
+            }
+        ),
         Reply::Error(Error::NoSuchApp)
     );
     assert_eq!(
@@ -205,7 +222,7 @@ fn refusals_say_why() {
             &mut server,
             &mut engine,
             &Request::SetParam {
-                app: RATCHET,
+                app: Target::App(RATCHET),
                 param: 5,
                 value: ParamValue::Number(0),
             }
@@ -217,7 +234,7 @@ fn refusals_say_why() {
             &mut server,
             &mut engine,
             &Request::GetParam {
-                app: RATCHET,
+                app: Target::App(RATCHET),
                 param: 99
             }
         ),
@@ -228,7 +245,7 @@ fn refusals_say_why() {
             &mut server,
             &mut engine,
             &Request::Observe {
-                app: RATCHET,
+                app: Target::App(RATCHET),
                 index: 99
             }
         ),
@@ -253,7 +270,7 @@ fn an_action_and_a_selection_act_as_the_panel_does() {
             &mut server,
             &mut engine,
             &Request::Act {
-                app: RATCHET,
+                app: Target::App(RATCHET),
                 action: 0
             }
         ),
@@ -264,7 +281,7 @@ fn an_action_and_a_selection_act_as_the_panel_does() {
             &mut server,
             &mut engine,
             &Request::Observe {
-                app: RATCHET,
+                app: Target::App(RATCHET),
                 index: 1
             }
         ),
@@ -275,9 +292,15 @@ fn an_action_and_a_selection_act_as_the_panel_does() {
 
 #[test]
 fn a_label_follows_the_setting_that_changes_it() {
-    let (mut server, mut engine) = opened();
+    let (mut server, mut engine) = running_ratchet();
     let label_of_first = |server: &mut Server, engine: &mut MockEngine| {
-        let mut frames = replies(server, engine, &Request::DescribeApp { app: RATCHET });
+        let mut frames = replies(
+            server,
+            engine,
+            &Request::DescribeApp {
+                app: Target::App(RATCHET),
+            },
+        );
         frames
             .iter_mut()
             .find_map(|frame| match decode::<Reply<'_>>(frame).unwrap() {
@@ -300,7 +323,7 @@ fn a_label_follows_the_setting_that_changes_it() {
         &mut server,
         &mut engine,
         &Request::SetParam {
-            app: RATCHET,
+            app: Target::App(RATCHET),
             param: 8,
             value: ParamValue::Choice(1),
         },
@@ -318,7 +341,7 @@ fn an_input_is_read_and_set_from_afar_by_its_parameters_index() {
     use oc_core::platform::CvChannel;
     use oc_protocol::{Assign, Effect};
 
-    let (mut server, mut engine) = opened();
+    let (mut server, mut engine) = running_ratchet();
     let count = 0;
     let Reply::Assign {
         index,
@@ -328,7 +351,7 @@ fn an_input_is_read_and_set_from_afar_by_its_parameters_index() {
         &mut server,
         &mut engine,
         &Request::GetAssign {
-            app: RATCHET,
+            app: Target::App(RATCHET),
             param: count,
         },
     )
@@ -349,7 +372,7 @@ fn an_input_is_read_and_set_from_afar_by_its_parameters_index() {
             &mut server,
             &mut engine,
             &Request::SetAssign {
-                app: RATCHET,
+                app: Target::App(RATCHET),
                 param: count,
                 assign: wanted,
             }
@@ -364,11 +387,11 @@ fn an_input_is_read_and_set_from_afar_by_its_parameters_index() {
     let gate = 1;
     for request in [
         Request::GetAssign {
-            app: RATCHET,
+            app: Target::App(RATCHET),
             param: gate,
         },
         Request::SetAssign {
-            app: RATCHET,
+            app: Target::App(RATCHET),
             param: gate,
             assign: wanted,
         },
@@ -384,7 +407,7 @@ fn an_input_is_read_and_set_from_afar_by_its_parameters_index() {
             &mut server,
             &mut engine,
             &Request::SetAssign {
-                app: RATCHET,
+                app: Target::App(RATCHET),
                 param: count,
                 assign: Assign {
                     min_mv: 1_000,
@@ -403,7 +426,9 @@ fn a_description_gives_each_input_after_its_parameter() {
     let frames = replies(
         &mut server,
         &mut engine,
-        &Request::DescribeApp { app: RATCHET },
+        &Request::DescribeApp {
+            app: Target::App(RATCHET),
+        },
     );
     let mut last_param = None;
     let mut inputs = Vec::new();
@@ -423,4 +448,132 @@ fn a_description_gives_each_input_after_its_parameter() {
         }
     }
     assert_eq!(inputs, [0, 2, 4, 5], "COUNT, FIRST, SHAPE, PROB");
+}
+
+#[test]
+fn instances_are_listed_added_routed_focused_and_removed() {
+    let (mut server, mut engine) = running_ratchet();
+    let supersaw = u8::try_from(AppId::Supersaw.index()).unwrap();
+    let frames = replies(&mut server, &mut engine, &Request::ListInstances);
+    assert_eq!(frames.len(), 2, "one instance, then done");
+
+    // SUPERSAW beside RATCHET gets C and D; its SUB, nothing.
+    let added = ask(
+        &mut server,
+        &mut engine,
+        &Request::AddInstance { app: supersaw },
+    );
+    assert_eq!(
+        added,
+        Reply::Instance {
+            position: 1,
+            app: supersaw,
+            focused: true,
+            outputs: [Some(2), Some(3), None, None],
+            inputs: [0; 4],
+        }
+    );
+    assert_eq!(
+        ask(
+            &mut server,
+            &mut engine,
+            &Request::SetRoute {
+                instance: 1,
+                port: 2,
+                output: Some(0),
+            }
+        ),
+        Reply::Error(Error::Refused(Refused::Taken)),
+        "A is RATCHET's"
+    );
+    assert!(matches!(
+        ask(
+            &mut server,
+            &mut engine,
+            &Request::SetInput {
+                instance: 0,
+                port: 0,
+                jack: 1,
+            }
+        ),
+        Reply::Instance {
+            inputs: [1, 0, 0, 0],
+            ..
+        }
+    ));
+    // A parameter of the instance at a position, not of the first of a kind.
+    let level = 5;
+    assert_eq!(
+        ask(
+            &mut server,
+            &mut engine,
+            &Request::GetParam {
+                app: Target::Instance(1),
+                param: level,
+            }
+        ),
+        ask(
+            &mut server,
+            &mut engine,
+            &Request::GetParam {
+                app: Target::App(supersaw),
+                param: level,
+            }
+        )
+    );
+    assert_eq!(
+        ask(&mut server, &mut engine, &Request::Focus { instance: 0 }),
+        Reply::Done
+    );
+    assert_eq!(engine.current_app(), AppId::Ratchet);
+    assert_eq!(
+        ask(
+            &mut server,
+            &mut engine,
+            &Request::RemoveInstance { instance: 1 }
+        ),
+        Reply::Done
+    );
+    assert_eq!(
+        ask(
+            &mut server,
+            &mut engine,
+            &Request::RemoveInstance { instance: 0 }
+        ),
+        Reply::Error(Error::NoSuchApp),
+        "the last one stays"
+    );
+    assert_eq!(engine.apps().len(), 1);
+}
+
+#[test]
+fn a_description_ends_with_the_ports() {
+    let (mut server, mut engine) = running_ratchet();
+    let mut frames = replies(
+        &mut server,
+        &mut engine,
+        &Request::DescribeApp {
+            app: Target::Instance(0),
+        },
+    );
+    let ports: Vec<_> = frames
+        .iter_mut()
+        .filter_map(|frame| match decode::<Reply<'_>>(frame).unwrap() {
+            Reply::Port {
+                output,
+                name,
+                trigger,
+                ..
+            } => Some((output, name.to_owned(), trigger)),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(
+        ports,
+        [
+            (true, "A".to_owned(), false),
+            (true, "B".to_owned(), false),
+            (false, "CLOCK".to_owned(), true),
+        ]
+    );
 }

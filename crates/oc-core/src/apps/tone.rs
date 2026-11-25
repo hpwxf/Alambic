@@ -22,7 +22,7 @@ use crate::audio::wave::{ONE, Waveform};
 use crate::fixed;
 use crate::fmt::{TextBuf, write_volts};
 use crate::framebuffer::{FrameBuffer, ROW_HEIGHT, WIDTH_I32};
-use crate::gfx::controls::{LIST_LEFT, SCROLL_WIDTH, row_highlight, scroll_track};
+use crate::gfx::controls::{LIST_LEFT, SCROLL_WIDTH, TITLE_LEFT, row_highlight, scroll_track};
 use crate::gfx::{self, Ink, Point};
 use crate::modulation::editor::Param;
 use crate::modulation::slots::Modulations;
@@ -300,7 +300,7 @@ impl ToneApp {
         let lit = TextStyle::lit(&FONT_5X8);
         let right = lit.aligned(Alignment::Right);
         let last = WIDTH_I32 - 1;
-        text::draw(frame, "TONE", Point::zero(), lit);
+        text::draw(frame, "TONE", Point::new(TITLE_LEFT, 0), lit);
         let hertz = write_hertz(self.frequency());
         text::draw(frame, hertz.as_str(), Point::new(last, 0), right);
 

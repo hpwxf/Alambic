@@ -271,11 +271,11 @@ fn the_signal_is_scaled_shifted_and_bounded_before_its_effect() {
         500
     );
     turn_line(&mut engine, AssignLine::Min, -100);
-    press(&mut engine, Button::Down);
+    click(&mut engine);
     assert_eq!(
         engine.app::<RatchetApp>().assigning(),
         None,
-        "down closes it"
+        "a click closes it"
     );
     engine.parts_mut().0.patch(CvChannel::One, 4_000);
     let (_, b) = run(&mut engine, 1_000, pulse(10));
@@ -303,14 +303,11 @@ fn the_submenu_reads_its_input_and_the_range_seen() {
 }
 
 #[test]
-fn up_starts_a_burst_by_hand() {
+fn the_left_switch_starts_a_burst_by_hand() {
     let mut engine = ratchet();
-    engine.parts_mut().3.hold(Button::Up, true);
-    for _ in 0..10 {
-        engine.clock().advance(1_000);
-        engine.tick();
-    }
-    engine.parts_mut().3.hold(Button::Up, false);
+    // The switch acts on press, unlike `up`, which waited for its release:
+    // held through the run, it fires once, within it.
+    engine.parts_mut().3.hold(Button::LeftEncoder, true);
     let (a, b) = run(&mut engine, 1_000, |_| false);
     assert_eq!(a.len(), 1);
     assert_eq!(b.len(), 5);
@@ -606,7 +603,8 @@ fn center_is_a_click_in_the_submenu() {
     let (low, high) = (assign.shape(low), assign.shape(high));
     assert!((low + high).abs() <= 100, "{low} {high}");
     assert!((7_400..=8_100).contains(&(high - low)), "{low} {high}");
-    press(&mut engine, Button::Down);
+    turn_line(&mut engine, AssignLine::Input, 0);
+    click(&mut engine);
     assert_eq!(engine.app::<RatchetApp>().assigning(), None);
 }
 

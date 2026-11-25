@@ -10,8 +10,10 @@ use oc_core::modulation::AssignLine;
 use oc_probe::apps::{
     INPUT_FIELDS, centered, edit_text, input_text, parse_input_field, parse_value, value_text,
 };
-use oc_probe::client::{AppDescription, AppEntry, InputEntry, SpecEntry};
-use oc_protocol::{Group, ParamKind, ParamValue, Request, Sample};
+use oc_probe::client::{
+    AppDescription, AppEntry, InputEntry, InputPortEntry, InstanceEntry, SpecEntry,
+};
+use oc_protocol::{Group, ParamKind, ParamValue, Request, Sample, Target};
 use wasm_bindgen::prelude::wasm_bindgen;
 
 use crate::{Message, MessageKind, frame};
@@ -37,6 +39,18 @@ pub(crate) enum Applet {
     Observed(Option<ParamValue>),
     /// The CV input of the parameter at that index (journal/D-045).
     Input(u8, InputEntry),
+    /// One port of a description: an output, or an input the applet reads
+    /// by itself (journal/D-046).
+    Port {
+        /// An output rather than an input.
+        output: bool,
+        /// Its name.
+        name: String,
+        /// For an input, whether it reads a trigger.
+        trigger: bool,
+    },
+    /// One running instance (journal/D-046).
+    Instance(InstanceEntry),
 }
 
 /// How the page edits a parameter.
@@ -109,12 +123,134 @@ impl AppList {
     }
 }
 
+/// The instances running, from a `ListInstances` answer (journal/D-046).
+#[wasm_bindgen]
+#[derive(Debug, Clone, Default)]
+pub struct Instances {
+    instances: Vec<InstanceEntry>,
+}
+
+#[wasm_bindgen]
+impl Instances {
+    /// Nothing listed yet.
+    #[wasm_bindgen(constructor)]
+    #[must_use]
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// The request that lists them, answered by the messages
+    /// [`Self::absorb`] takes.
+    #[must_use]
+    pub fn list_request() -> Vec<u8> {
+        frame(&Request::ListInstances)
+    }
+
+    /// Takes one message of the answer; true once it is complete.
+    pub fn absorb(&mut self, message: &Message) -> bool {
+        if let Some(Applet::Instance(instance)) = &message.applet {
+            self.instances.push(*instance);
+        }
+        message.kind == MessageKind::Done
+    }
+
+    /// How many run.
+    #[wasm_bindgen(getter)]
+    #[must_use]
+    pub fn len(&self) -> usize {
+        self.instances.len()
+    }
+
+    /// Whether none was listed.
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.instances.is_empty()
+    }
+
+    /// Instance `at`'s applet index.
+    #[must_use]
+    pub fn app(&self, at: usize) -> u8 {
+        self.instances
+            .get(at)
+            .map_or(u8::MAX, |instance| instance.app)
+    }
+
+    /// Whether instance `at` has the screen and the panel.
+    #[must_use]
+    pub fn focused(&self, at: usize) -> bool {
+        self.instances
+            .get(at)
+            .is_some_and(|instance| instance.focused)
+    }
+
+    /// The output port `port` of instance `at` goes to, 0 for A, -1 for
+    /// nowhere.
+    #[must_use]
+    pub fn output(&self, at: usize, port: usize) -> i32 {
+        self.instances
+            .get(at)
+            .and_then(|instance| instance.outputs.get(port).copied().flatten())
+            .map_or(-1, i32::from)
+    }
+
+    /// The jack input port `port` of instance `at` reads, 0 for the first.
+    #[must_use]
+    pub fn input(&self, at: usize, port: usize) -> u8 {
+        self.instances
+            .get(at)
+            .and_then(|instance| instance.inputs.get(port).copied())
+            .unwrap_or(0)
+    }
+
+    /// Starts applet `app` beside the one shown.
+    #[must_use]
+    pub fn add_request(app: u8) -> Vec<u8> {
+        frame(&Request::AddInstance { app })
+    }
+
+    /// Stops the instance at `position`.
+    #[must_use]
+    pub fn remove_request(position: u8) -> Vec<u8> {
+        frame(&Request::RemoveInstance { instance: position })
+    }
+
+    /// Shows the instance at `position` on the module.
+    #[must_use]
+    pub fn focus_request(position: u8) -> Vec<u8> {
+        frame(&Request::Focus { instance: position })
+    }
+
+    /// Sends output port `port` of the instance at `position` to `output`,
+    /// 0 for A, or nowhere for a negative one.
+    #[must_use]
+    pub fn route_request(position: u8, port: u8, output: i32) -> Vec<u8> {
+        frame(&Request::SetRoute {
+            instance: position,
+            port,
+            output: u8::try_from(output).ok(),
+        })
+    }
+
+    /// Plugs input port `port` of the instance at `position` into `jack`.
+    #[must_use]
+    pub fn input_request(position: u8, port: u8, jack: u8) -> Vec<u8> {
+        frame(&Request::SetInput {
+            instance: position,
+            port,
+            jack,
+        })
+    }
+}
+
 /// One applet's parameters, observables and actions, from a `DescribeApp`
 /// answer, kept up to date by the values that come back.
 #[wasm_bindgen]
 #[derive(Debug, Clone)]
 pub struct AppView {
     app: u8,
+    /// Where its requests go: the first instance of `app`, or one instance
+    /// (journal/D-046).
+    target: Target,
     description: AppDescription,
     broken: bool,
     /// Which parameters the last refresh found changed.
@@ -133,6 +269,7 @@ impl AppView {
     pub fn new(app: u8) -> Self {
         Self {
             app,
+            target: Target::App(app),
             description: AppDescription::default(),
             broken: false,
             moved: Vec::new(),
@@ -141,11 +278,63 @@ impl AppView {
         }
     }
 
+    /// The instance at `position`, of applet `app`, nothing described yet:
+    /// its requests reach that instance alone (journal/D-046).
+    #[must_use]
+    pub fn of_instance(position: u8, app: u8) -> Self {
+        Self {
+            target: Target::Instance(position),
+            ..Self::new(app)
+        }
+    }
+
+    /// The output ports it writes, in the order of its lanes.
+    #[wasm_bindgen(getter)]
+    #[must_use]
+    pub fn output_count(&self) -> usize {
+        self.description.outputs.len()
+    }
+
+    /// Output port `at`'s name.
+    #[must_use]
+    pub fn output_name(&self, at: usize) -> String {
+        self.description
+            .outputs
+            .get(at)
+            .cloned()
+            .unwrap_or_default()
+    }
+
+    /// The inputs it reads by itself.
+    #[wasm_bindgen(getter)]
+    #[must_use]
+    pub fn input_port_count(&self) -> usize {
+        self.description.inputs.len()
+    }
+
+    /// Input port `at`'s name.
+    #[must_use]
+    pub fn input_port_name(&self, at: usize) -> String {
+        self.description
+            .inputs
+            .get(at)
+            .map_or_else(String::new, |port| port.name.clone())
+    }
+
+    /// Whether input port `at` reads a trigger rather than a CV.
+    #[must_use]
+    pub fn input_port_trigger(&self, at: usize) -> bool {
+        self.description
+            .inputs
+            .get(at)
+            .is_some_and(|port| port.trigger)
+    }
+
     /// The request that describes it, answered by the messages
     /// [`Self::absorb`] takes.
     #[must_use]
     pub fn describe_request(&self) -> Vec<u8> {
-        frame(&Request::DescribeApp { app: self.app })
+        frame(&Request::DescribeApp { app: self.target })
     }
 
     /// Takes one message of the description; true once it is complete.
@@ -165,6 +354,19 @@ impl AppView {
             Some(Applet::Input(index, input)) => {
                 self.broken |= self.description.add_input(*index, *input).is_err();
             }
+            Some(Applet::Port {
+                output: true, name, ..
+            }) => {
+                self.description.outputs.push(name.clone());
+            }
+            Some(Applet::Port {
+                output: false,
+                name,
+                trigger,
+            }) => self.description.inputs.push(InputPortEntry {
+                name: name.clone(),
+                trigger: *trigger,
+            }),
             _ => {}
         }
         message.kind == MessageKind::Done
@@ -367,7 +569,7 @@ impl AppView {
         let input = spec.input.ok_or("it takes no CV input")?;
         let assign = parse_input_field(input.assign, field, text)?;
         Ok(frame(&Request::SetAssign {
-            app: self.app,
+            app: self.target,
             param: spec.index,
             assign,
         }))
@@ -387,7 +589,7 @@ impl AppView {
         let input = spec.input.as_ref().ok_or("it takes no CV input")?;
         let assign = centered(input, &readings.samples)?;
         Ok(frame(&Request::SetAssign {
-            app: self.app,
+            app: self.target,
             param: spec.index,
             assign,
         }))
@@ -417,7 +619,7 @@ impl AppView {
         let value = parse_value(spec, text)?;
         self.requested = Some(value);
         Ok(frame(&Request::SetParam {
-            app: self.app,
+            app: self.target,
             param: spec.index,
             value,
         }))
@@ -469,7 +671,7 @@ impl AppView {
     pub fn observe_request(&self, at: usize) -> Vec<u8> {
         let index = observable(&self.description, at).map_or(u8::MAX, |spec| spec.index);
         frame(&Request::Observe {
-            app: self.app,
+            app: self.target,
             index,
         })
     }
@@ -498,7 +700,7 @@ impl AppView {
     #[must_use]
     pub fn act_request(&self, at: usize) -> Vec<u8> {
         frame(&Request::Act {
-            app: self.app,
+            app: self.target,
             action: u8::try_from(at).unwrap_or(u8::MAX),
         })
     }
@@ -639,6 +841,14 @@ mod tests {
             module
         }
 
+        /// A module running `app`: an applet is set only while it runs
+        /// (journal/D-046).
+        fn running(app: AppId) -> Self {
+            let mut module = Self::new();
+            module.engine.select_app(app);
+            module
+        }
+
         /// What the page receives for `bytes`.
         fn send(&mut self, bytes: &[u8]) -> Vec<Message> {
             self.server.receive(bytes, &mut self.engine);
@@ -678,7 +888,7 @@ mod tests {
 
     #[test]
     fn a_view_shows_edits_and_sets_as_the_command_line_does() {
-        let mut module = Module::new();
+        let mut module = Module::running(AppId::Ratchet);
         let ratchet = u8::try_from(AppId::Ratchet.index()).unwrap();
         let mut view = AppView::new(ratchet);
         for message in module.send(&view.describe_request()) {
@@ -770,7 +980,7 @@ mod tests {
         use oc_core::platform::CvChannel;
         use oc_protocol::Effect;
 
-        let mut module = Module::new();
+        let mut module = Module::running(AppId::Supersaw);
         let supersaw = u8::try_from(AppId::Supersaw.index()).unwrap();
         let mut view = AppView::new(supersaw);
         for message in module.send(&view.describe_request()) {
@@ -847,7 +1057,7 @@ mod tests {
             readings
         }
 
-        let mut module = Module::new();
+        let mut module = Module::running(AppId::Supersaw);
         let mut view = AppView::new(u8::try_from(AppId::Supersaw.index()).unwrap());
         for message in module.send(&view.describe_request()) {
             if view.absorb(&message) {
@@ -876,5 +1086,63 @@ mod tests {
         let still = listen(&mut module, |_| 2_000);
         let refused = view.center_request(detune, &still).unwrap_err();
         assert!(refused.contains("moved 0 mV"), "{refused}");
+    }
+
+    #[test]
+    fn instances_are_listed_described_and_routed_as_the_command_line_does() {
+        use super::Instances;
+        use crate::MessageKind;
+
+        let mut module = Module::running(AppId::Ratchet);
+        let supersaw = u8::try_from(AppId::Supersaw.index()).unwrap();
+        let [added] = module
+            .send(&Instances::add_request(supersaw))
+            .try_into()
+            .unwrap();
+        assert_eq!(added.kind, MessageKind::Applet);
+
+        let mut instances = Instances::new();
+        let done = module
+            .send(&Instances::list_request())
+            .iter()
+            .map(|message| instances.absorb(message))
+            .last();
+        assert_eq!((done, instances.len()), (Some(true), 2));
+        assert_eq!(instances.app(1), supersaw);
+        assert!(instances.focused(1) && !instances.focused(0));
+        assert_eq!((instances.output(1, 0), instances.output(1, 2)), (2, -1));
+
+        let mut view = AppView::of_instance(1, supersaw);
+        for message in module.send(&view.describe_request()) {
+            if view.absorb(&message) {
+                break;
+            }
+        }
+        assert_eq!(view.output_count(), 3);
+        assert_eq!(view.output_name(2), "SUB");
+        let mut ratchet = AppView::of_instance(0, u8::try_from(AppId::Ratchet.index()).unwrap());
+        for message in module.send(&ratchet.describe_request()) {
+            if ratchet.absorb(&message) {
+                break;
+            }
+        }
+        assert_eq!(
+            (
+                ratchet.input_port_count(),
+                ratchet.input_port_name(0).as_str()
+            ),
+            (1, "CLOCK")
+        );
+        assert!(ratchet.input_port_trigger(0));
+
+        // RATCHET frees B; SUPERSAW's SUB takes it.
+        module.send(&Instances::route_request(0, 1, -1));
+        let [routed] = module
+            .send(&Instances::route_request(1, 2, 1))
+            .try_into()
+            .unwrap();
+        let mut after = Instances::new();
+        after.absorb(&routed);
+        assert_eq!(after.output(0, 2), 1, "SUB on B");
     }
 }

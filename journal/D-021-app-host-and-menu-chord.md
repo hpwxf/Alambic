@@ -63,3 +63,22 @@ réattribue l'accord au menu et supprime cette remise à zéro, déjà offerte p
 
 * Le différé au relâchement n'a été éprouvé qu'au simulateur et en tests ; à vérifier sur le module (niveau 9) et
   dans Rack, où l'accord passe par un menu contextuel.
+
+## Révision du 2026-11-24 — plusieurs instances, appui long (D-046, lots 13c et 13d)
+
+* **La résidence tombe** (lot 13c) : `AppHost` n'a plus une instance de chaque app mais un pool de `MAX_INSTANCES`
+  emplacements qui tournent tous ; choisir une autre app dans le menu la démarre neuve. L'état d'une app gardé
+  pendant un coup d'œil ailleurs reviendra par la sauvegarde du patch.
+* **`up` et `down` appartiennent au panneau** (lot 13d) : un appui court passe à l'instance de gauche ou de droite,
+  un appui long (`LONG_PRESS_TICKS`, 1 s pour commencer) ouvrira la page de routage. Les apps ne s'en servent plus :
+  `RATCHET` déclenche à la main par le clic gauche, `DIAGNOSTIC` change de mode par un tap du clic gauche et remet
+  ses compteurs à zéro par son appui long, `GFX DEMO` passe au bouton suivant par le clic gauche, le sous-menu CV se
+  ferme au clic droit seul.
+* **La règle « sans minuterie » tombe** : distinguer court et long demande une durée, comptée en ticks par
+  `ButtonReader`, donc la même sur les trois backends. `up` et `down` agissent toujours au relâchement, mais
+  seulement si l'appui était court ; jamais dans l'accord. Les clics d'encodeur agissent toujours à l'appui ; une app
+  qui leur donne aussi un appui long lit leur *tap* (relâché avant le seuil).
+* **Le clic qui ferme le menu est avalé** : il lançait l'app, il ne lui parvient pas aussi, et son relâchement n'est
+  pas un tap (`ButtonReader::swallow`). Le défaut existait avant (le clic gauche remettait à zéro les compteurs de
+  `DIAGNOSTIC` lancée par lui), sans effet visible jusqu'ici.
+

@@ -148,7 +148,10 @@ fn a_click_closes_the_editor_or_centres_on_center() {
         (90, -600)
     );
     panel.press(3);
-    assert!(!panel.open, "down closes");
+    assert!(panel.open, "down is the panel's (journal/D-046)");
+    panel.turn_line(AssignLine::Input, 0);
+    panel.press(1);
+    assert!(!panel.open, "a click off CENTER closes");
     let mut panel = Panel::new();
     panel.press(1);
     assert!(!panel.open, "a click elsewhere closes");

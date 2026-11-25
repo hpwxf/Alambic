@@ -170,13 +170,13 @@ fn the_encoders_select_a_channel_and_dial_an_offset() {
 }
 
 #[test]
-fn the_up_button_walks_through_the_output_modes() {
+fn a_left_tap_walks_through_the_output_modes() {
     let mut simulator = replay("mode_cycle");
 
     assert_eq!(
         simulator.app::<DiagnosticApp>().mode(),
         OutputMode::Zero,
-        "two presses from OFFS land on ZERO"
+        "two taps from OFFS land on ZERO"
     );
     assert_eq!(
         simulator.cv_out(),
@@ -195,12 +195,9 @@ fn the_app_menu_switches_to_the_scope() {
         !simulator.menu_is_open(),
         "launching an app closes the menu"
     );
+    // SCOPE took DIAGNOSTIC's place (journal/D-046): that up and down fire
+    // nothing on the way into the menu is `tests/menu.rs`'s to check.
     assert_eq!(simulator.current_app(), AppId::Scope);
-    assert_eq!(
-        simulator.app::<DiagnosticApp>().mode(),
-        OutputMode::Offset,
-        "neither up nor down fired its own action on the way into the menu"
-    );
     assert_eq!(
         simulator.cv_out(),
         [adc_reading(1_500); 4],
@@ -249,6 +246,24 @@ fn ratchet_shows_the_input_submenu() {
         (Some(CvChannel::Two), 50)
     );
     assert_screen_matches(&mut simulator, "ratchet_inputs");
+}
+
+#[test]
+fn a_long_press_opens_the_routing_page_where_sub_goes_off() {
+    let mut simulator = replay("routing");
+    assert!(simulator.routing_is_open());
+    assert_eq!(simulator.current_app(), AppId::Supersaw);
+    assert!(
+        simulator
+            .app::<SupersawApp>()
+            .params()
+            .as_supersaw()
+            .unwrap()
+            .parts[2]
+            .is_none(),
+        "SUB routed nowhere: not prepared"
+    );
+    assert_screen_matches(&mut simulator, "routing");
 }
 
 #[test]
@@ -428,6 +443,7 @@ fn every_scenario_file_has_a_test_and_a_snapshot() {
         "supersaw",
         "supersaw_inputs",
         "supersaw_page2",
+        "routing",
     ];
 
     let mut found: Vec<String> = std::fs::read_dir(scenario_dir())

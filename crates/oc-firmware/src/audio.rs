@@ -19,13 +19,24 @@
 //! 4. LPSPI4's frame-complete interrupt, when that piece's last bit is out,
 //!    releases the OLED's chip select before the next burst.
 //!
+//! # The interrupts' side
+//!
+//! What the two handlers own is one `SharedState`: the DAC's side
+//! (`Audio`: the trigger, the DMA, the voices, steps 1 and 2) and the
+//! screen's (`Screen`: the OLED's lines and the frame going out, steps 3
+//! and 4), with what both depend on: the bus they take turns on (`Bus`,
+//! LPSPI4 and the timing in force) and where the period stands (`Timing`,
+//! on the cycle counter). Each side reaches the bus only through the
+//! borrow `SharedState` hands it.
+//!
 //! # The loop's side
 //!
 //! The engine keeps its output and display traits: [`MutedOutputs`] stands
 //! for outputs it never writes, [`MailboxDisplay`] hands its frames over;
-//! after each tick the loop's [`Publisher`] hands on [`oc_core::Engine::params`] when its
-//! revision moved, and prepares the voice's [`Setup`] there, outside any critical section: the
-//! interrupt only copies it (journal/D-040). Everything the
+//! after each tick the loop's [`Publisher`] hands on [`oc_core::Engine::patch`] when its
+//! revision moved, and prepares there, outside any critical section, the setups of the slots
+//! whose parameters changed ([`Changes`]): the interrupt only copies them (journal/D-040,
+//! D-046). Everything the
 //! contexts share sits in [`critical_section::Mutex`]es: the loop's sections
 //! are copies of a few hundred bytes (a frame: 1 KiB). They delay the
 //! interrupts a little, never the DAC.
@@ -44,8 +55,7 @@ use teensy4_bsp::hal::lpspi::{ClockConfigs, Interrupts, Lpspi, Status, Transacti
 use teensy4_bsp::hal::pit::{self, Pit};
 use teensy4_bsp::ral::lpspi::TCR;
 
-use oc_core::apps::sound::{Params, Setup, Voice};
-use oc_core::audio::Follower;
+use oc_core::apps::sound::{Changes, Follower, Patch, Voices};
 use oc_core::calibration::CvOutputCalibration;
 use oc_core::framebuffer::{FrameBuffer, LEN};
 use oc_core::platform::{AnalogOut, CV_CHANNELS, CvChannel, Display, MilliVolts};
@@ -68,10 +78,12 @@ const DAC_TCR: u32 = (23 << TCR::FRAMESZ::offset) | ((board::DAC_PCS as u32) << 
 
 /// What the loop leaves for the interrupt, and what the interrupt measured.
 struct Mailbox {
-    /// The voice prepared for the engine's last parameters.
-    setup: Setup,
+    /// What the engine's patch changed since the interrupt last took it:
+    /// the setups prepared for the slots that moved, every route and held
+    /// level.
+    changes: Changes,
     calibration: [CvOutputCalibration; CV_CHANNELS],
-    /// Set when `setup` or `calibration` changed since the interrupt took
+    /// Set when `changes` or `calibration` changed since the interrupt took
     /// them.
     fresh: bool,
     /// The levels of the last sample the interrupt computed, for the engine
@@ -116,7 +128,7 @@ impl Stats {
 }
 
 static MAILBOX: Mutex<RefCell<Mailbox>> = Mutex::new(RefCell::new(Mailbox {
-    setup: Setup::rest(board::AUDIO_RATE_HZ),
+    changes: Changes::SILENCE,
     calibration: [CvOutputCalibration::FACTORY; CV_CHANNELS],
     fresh: false,
     played: [0; CV_CHANNELS],
@@ -131,37 +143,61 @@ static MAILBOX: Mutex<RefCell<Mailbox>> = Mutex::new(RefCell::new(Mailbox {
 }));
 
 /// What the interrupts own, from [`start`] on.
-static STATE: Mutex<RefCell<Option<AudioState>>> = Mutex::new(RefCell::new(None));
+static STATE: Mutex<RefCell<Option<SharedState>>> = Mutex::new(RefCell::new(None));
 
-/// The interrupts' hardware and their signal state.
-struct AudioState {
+/// What the interrupts own: the DAC's side and the screen's, and what both
+/// share, the bus they take turns on and the period's timing.
+struct SharedState {
+    bus: Bus,
+    timing: Timing,
+    audio: Audio,
+    screen: Screen,
+}
+
+/// LPSPI4, which the DAC's bursts and the screen's pieces share, each at its
+/// own timing.
+struct Bus {
     spi: Lpspi,
-    oled_cs: Output,
-    oled_dc: Output,
-    pit: Pit,
-    dma: Channel,
     clocks: BusClocks,
     /// The timing in force on the bus.
     current_clock: ClockConfigs,
-    stream: FrameStream,
-    voice: Voice,
-    calibration: [CvOutputCalibration; CV_CHANNELS],
-    /// The ring slot the DMA reads at its next trigger.
-    dma_next: usize,
-    /// Whether a piece of the screen is on the bus, the OLED selected.
-    chunk_active: bool,
+}
+
+/// Where the interrupt stands in the period, on the cycle counter.
+struct Timing {
     /// Cycle count at the previous run, for the period.
     last_entry: Option<u32>,
-    /// Cycle count when the frame going out was taken.
-    frame_started: Option<u32>,
     /// The cycle count of the earliest run seen, carried to the current
     /// period: the closest to the DAC's trigger, which the interrupt follows
     /// by a constant. PERCLK and the core both come from the crystal, so the
     /// period is a whole number of cycles; the PIT itself is not read, every
     /// access to it waits on its 1 MHz domain for microseconds.
     reference: Option<u32>,
+}
+
+/// The DAC's side: the trigger, the DMA that copies the ring, the voices
+/// that fill it.
+struct Audio {
+    pit: Pit,
+    dma: Channel,
+    voices: Voices,
+    calibration: [CvOutputCalibration; CV_CHANNELS],
+    /// The ring slot the DMA reads at its next trigger.
+    dma_next: usize,
     /// DAC bursts whose four echoes came back, wrapping.
     completed: usize,
+}
+
+/// The screen's side: the OLED's control lines and the frame going out,
+/// piece by piece between two bursts.
+struct Screen {
+    oled_cs: Output,
+    oled_dc: Output,
+    stream: FrameStream,
+    /// Whether a piece of the screen is on the bus, the OLED selected.
+    chunk_active: bool,
+    /// Cycle count when the frame going out was taken.
+    frame_started: Option<u32>,
 }
 
 /// Core cycles in an audio period.
@@ -208,27 +244,35 @@ pub(crate) fn start(
     oled_cs.set();
     crate::audio_irq::start_dma(&mut dma, spi.tdr().cast::<u32>());
 
-    let state = AudioState {
-        spi,
-        oled_cs,
-        oled_dc,
-        pit,
-        dma,
-        clocks,
-        current_clock: clocks.dac,
-        stream: FrameStream::new(controller),
-        voice: Voice::new(board::AUDIO_RATE_HZ),
-        calibration: [CvOutputCalibration::FACTORY; CV_CHANNELS],
-        dma_next: 0,
-        chunk_active: false,
-        last_entry: None,
-        frame_started: None,
-        reference: None,
-        completed: 0,
+    let state = SharedState {
+        bus: Bus {
+            spi,
+            clocks,
+            current_clock: clocks.dac,
+        },
+        timing: Timing {
+            last_entry: None,
+            reference: None,
+        },
+        audio: Audio {
+            pit,
+            dma,
+            voices: Voices::new(board::AUDIO_RATE_HZ),
+            calibration: [CvOutputCalibration::FACTORY; CV_CHANNELS],
+            dma_next: 0,
+            completed: 0,
+        },
+        screen: Screen {
+            oled_cs,
+            oled_dc,
+            stream: FrameStream::new(controller),
+            chunk_active: false,
+            frame_started: None,
+        },
     };
     critical_section::with(|cs| {
         let mut slot = STATE.borrow_ref_mut(cs);
-        slot.insert(state).pit.enable(DAC_TIMER);
+        slot.insert(state).audio.pit.enable(DAC_TIMER);
     });
     crate::audio_irq::enable();
 }
@@ -320,7 +364,10 @@ pub(crate) fn self_check(micros: u32) -> Health {
     let in_micros = |cycles: Option<u32>| cycles.map_or(0, |cycles| cycles / CYCLES_PER_MICRO);
     let dma_error = critical_section::with(|cs| {
         STATE.borrow_ref(cs).as_ref().map_or((false, 0), |state| {
-            (state.dma.is_error(), state.dma.error_status().raw())
+            (
+                state.audio.dma.is_error(),
+                state.audio.dma.error_status().raw(),
+            )
         })
     });
     Health {
@@ -339,19 +386,19 @@ pub(crate) fn stop() {
     crate::audio_irq::disable();
     critical_section::with(|cs| {
         if let Some(state) = STATE.borrow_ref_mut(cs).as_mut() {
-            state.dma.disable();
+            state.audio.dma.disable();
         }
     });
 }
 
 /// What the loop last handed the interrupt, so that a tick where nothing
 /// changed costs a comparison of a revision and of the calibration, outside
-/// any critical section: comparing the whole [`Params`] under one cost
+/// any critical section: comparing the whole parameters under one cost
 /// 1.5 µs a tick. Owned by the loop, the only writer of the mailbox.
 #[derive(Debug)]
 pub(crate) struct Publisher {
-    /// The parameters last prepared, by their revision; forgotten when the
-    /// mailbox holds something else (the outputs at rest).
+    /// The patch last prepared, by its revision, and each slot's parameters;
+    /// forgotten when the mailbox holds something else (the outputs at rest).
     follower: Follower,
     calibration: Option<[CvOutputCalibration; CV_CHANNELS]>,
 }
@@ -372,15 +419,15 @@ impl Publisher {
     pub(crate) fn publish(
         &mut self,
         revision: u32,
-        params: &Params,
+        patch: &Patch,
         calibration: &[CvOutputCalibration; CV_CHANNELS],
     ) {
-        let setup = self.follower.setup(revision, params, board::AUDIO_RATE_HZ);
+        let changes = self.follower.follow(revision, patch, board::AUDIO_RATE_HZ);
         let new_calibration = self.calibration.as_ref() != Some(calibration);
-        if setup.is_none() && !new_calibration {
+        if changes.is_none() && !new_calibration {
             return;
         }
-        hand_over(setup.as_ref(), calibration);
+        hand_over(changes.as_ref(), calibration);
         self.calibration = Some(*calibration);
     }
 
@@ -390,7 +437,7 @@ impl Publisher {
     /// [`resume_outputs`] restarts it; the next [`Self::publish`] brings the
     /// parameters back.
     pub(crate) fn rest_outputs(&mut self, calibration: &[CvOutputCalibration; CV_CHANNELS]) {
-        hand_over(Some(&Setup::rest(board::AUDIO_RATE_HZ)), calibration);
+        hand_over(Some(&Changes::SILENCE), calibration);
         self.follower.forget();
         self.calibration = Some(*calibration);
         let running = critical_section::with(|cs| STATE.borrow_ref(cs).is_some());
@@ -405,19 +452,20 @@ impl Publisher {
         }
         critical_section::with(|cs| {
             if let Some(state) = STATE.borrow_ref_mut(cs).as_mut() {
-                state.dma.disable();
+                state.audio.dma.disable();
             }
         });
     }
 }
 
-/// Puts `setup`, when there is one, and `calibration` in the mailbox for the
-/// interrupt to take at its next period.
-fn hand_over(setup: Option<&Setup>, calibration: &[CvOutputCalibration; CV_CHANNELS]) {
+/// Puts `changes`, when there are some, and `calibration` in the mailbox
+/// for the interrupt to take at its next period; changes it has not taken
+/// yet are merged, the newer setup of a slot replacing the older.
+fn hand_over(changes: Option<&Changes>, calibration: &[CvOutputCalibration; CV_CHANNELS]) {
     critical_section::with(|cs| {
         let mut mail = MAILBOX.borrow_ref_mut(cs);
-        if let Some(setup) = setup {
-            mail.setup = *setup;
+        if let Some(changes) = changes {
+            mail.changes.merge(changes);
         }
         mail.calibration = *calibration;
         mail.fresh = true;
@@ -436,7 +484,7 @@ pub(crate) fn played() -> [MilliVolts; CV_CHANNELS] {
 pub(crate) fn resume_outputs() {
     critical_section::with(|cs| {
         if let Some(state) = STATE.borrow_ref_mut(cs).as_mut() {
-            crate::audio_irq::resume_dma(&state.dma);
+            crate::audio_irq::resume_dma(&state.audio.dma);
         }
     });
 }
@@ -477,7 +525,7 @@ pub(crate) fn on_period() {
 pub(crate) fn on_frame_complete() {
     critical_section::with(|cs| {
         if let Some(state) = STATE.borrow_ref_mut(cs).as_mut()
-            && state.release_oled()
+            && state.screen.release(&mut state.bus)
         {
             let mut mail = MAILBOX.borrow_ref_mut(cs);
             mail.chunks.1 = mail.chunks.1.wrapping_add(1);
@@ -485,90 +533,33 @@ pub(crate) fn on_frame_complete() {
     });
 }
 
-impl AudioState {
+impl SharedState {
     /// One period: see the module documentation.
     fn run(&mut self, mail: &mut Mailbox, entry: u32) {
-        self.dma.clear_interrupt();
-        self.dma.clear_complete();
-        let half_period = PERIOD_CYCLES / 2;
-        if let Some(previous) = self.last_entry {
-            let since = entry.wrapping_sub(previous);
-            // Not a new burst: the flag of the last one, seen again.
-            if since < half_period {
-                return;
-            }
-            mail.stats.period.record(since);
+        self.audio.dma.clear_interrupt();
+        self.audio.dma.clear_complete();
+        if !self.timing.enter(entry, &mut mail.stats.period) {
+            return;
         }
-        self.last_entry = Some(entry);
-        self.follow(entry);
         mail.periods = mail.periods.wrapping_add(1);
-
-        // The bursts whose echo is complete, four words each; the one just
-        // queued, if its echo is not, is in flight. The DMA has read every
-        // slot of both.
-        let received = usize::from(self.spi.fifo_status().rxcount);
-        let bursts = received / CV_CHANNELS;
-        for _ in 0..bursts * CV_CHANNELS {
-            let _ = self.spi.read_data();
-        }
-        self.completed = self.completed.wrapping_add(bursts);
-        mail.bursts = mail.bursts.wrapping_add(u32::try_from(bursts).unwrap_or(0));
-        let in_flight = usize::from(!self.burst_out());
-        self.dma_next = (self.completed + in_flight) % SLOTS;
-
-        // The next sample, two slots ahead of the DMA: the one after its
-        // next read.
-        // Timed apart from the rest (journal/D-039): within the wait for
-        // the burst's echo, `audio` cannot see them. The parameters come
-        // prepared: taking them is a copy (journal/D-040).
-        if mail.fresh {
-            let start = DWT::cycle_count();
-            self.voice.apply(&mail.setup);
-            mail.stats
-                .voice_params
-                .record(DWT::cycle_count().wrapping_sub(start));
-            self.calibration = mail.calibration;
-            mail.fresh = false;
-        }
-        let start = DWT::cycle_count();
-        let samples = self.voice.next_sample();
-        mail.stats
-            .voice
-            .record(DWT::cycle_count().wrapping_sub(start));
-        mail.played = samples;
-        let mut codes = [0; CV_CHANNELS];
-        for channel in CvChannel::ALL {
-            let index = channel.index();
-            codes[index] = self.calibration[index].to_code(samples[index]);
-        }
-        crate::audio_irq::write_slot(self.dma_next + 1, &slot_words(&codes));
-
-        // The frame to send, the contrast to set.
-        if let Some(contrast) = mail.contrast.take() {
-            self.stream.set_contrast(contrast);
-        }
-        if self.stream.is_idle() && !self.chunk_active {
-            if let Some(started) = self.frame_started.take() {
-                mail.stats.frame.record(entry.wrapping_sub(started));
-                mail.frames = mail.frames.wrapping_add(1);
-            }
-            if mail.frame_ready {
-                self.stream.start(&mail.frame);
-                mail.frame_ready = false;
-                self.frame_started = Some(entry);
-            }
-        }
+        self.audio.count_bursts(&mut self.bus, mail);
+        self.audio.write_next(mail);
+        self.screen.take_frame(mail, entry);
 
         // The burst out, a piece of the screen if the period has room for
         // it and for the release before the next burst. The wait is bounded:
         // a burst that never echoes must not hold the interrupt.
         let deadline = entry.wrapping_add(2 * board::DAC_BURST_MICROS * CYCLES_PER_MICRO);
-        while !self.burst_out() && deadline.wrapping_sub(DWT::cycle_count()).cast_signed() > 0 {
+        while !self.bus.burst_out() && deadline.wrapping_sub(DWT::cycle_count()).cast_signed() > 0 {
             core::hint::spin_loop();
         }
-        let left = board::AUDIO_PERIOD_COUNTS.saturating_sub(self.since_trigger_micros());
+        let left = board::AUDIO_PERIOD_COUNTS.saturating_sub(self.timing.since_trigger_micros());
         let fits = left >= board::OLED_CHUNK_MICROS + board::OLED_RELEASE_MICROS;
-        if !self.chunk_active && self.burst_out() && fits && self.send_chunk() {
+        if !self.screen.chunk_active
+            && self.bus.burst_out()
+            && fits
+            && self.screen.send_chunk(&mut self.bus)
+        {
             mail.chunks.0 = mail.chunks.0.wrapping_add(1);
         }
 
@@ -576,12 +567,41 @@ impl AudioState {
             .audio
             .record(DWT::cycle_count().wrapping_sub(entry));
     }
+}
 
+impl Bus {
     /// Whether every queued DAC word has been echoed: nothing left to send
     /// and the echoes a whole number of bursts.
     fn burst_out(&self) -> bool {
         let fifo = self.spi.fifo_status();
         fifo.txcount == 0 && usize::from(fifo.rxcount).is_multiple_of(CV_CHANNELS)
+    }
+
+    /// Puts `configs` in force, unless it already is; the bus is disabled
+    /// meanwhile.
+    fn use_clock(&mut self, configs: ClockConfigs) {
+        if self.current_clock != configs {
+            self.spi.disabled(|spi| spi.set_clock_configs(configs));
+            self.current_clock = configs;
+        }
+    }
+}
+
+impl Timing {
+    /// Takes a run at `entry` into the period, its length into `period`;
+    /// `false` for a run within half a period of the last: not a new burst,
+    /// the flag of the last one seen again.
+    fn enter(&mut self, entry: u32, period: &mut Stat) -> bool {
+        if let Some(previous) = self.last_entry {
+            let since = entry.wrapping_sub(previous);
+            if since < PERIOD_CYCLES / 2 {
+                return false;
+            }
+            period.record(since);
+        }
+        self.last_entry = Some(entry);
+        self.follow(entry);
+        true
     }
 
     /// Keeps [`Self::reference`] on the earliest run's phase, carried to the
@@ -606,18 +626,82 @@ impl AudioState {
         let now = DWT::cycle_count();
         now.wrapping_sub(self.reference.unwrap_or(now)) / CYCLES_PER_MICRO
     }
+}
 
-    /// Queues the next piece of the screen, if any, and arms the
+impl Audio {
+    /// Counts the bursts whose echo is complete, four words each, and finds
+    /// the slot the DMA reads next; the one just queued, if its echo is not
+    /// complete, is in flight. The DMA has read every slot of both.
+    fn count_bursts(&mut self, bus: &mut Bus, mail: &mut Mailbox) {
+        let received = usize::from(bus.spi.fifo_status().rxcount);
+        let bursts = received / CV_CHANNELS;
+        for _ in 0..bursts * CV_CHANNELS {
+            let _ = bus.spi.read_data();
+        }
+        self.completed = self.completed.wrapping_add(bursts);
+        mail.bursts = mail.bursts.wrapping_add(u32::try_from(bursts).unwrap_or(0));
+        let in_flight = usize::from(!bus.burst_out());
+        self.dma_next = (self.completed + in_flight) % SLOTS;
+    }
+
+    /// Takes what the loop left, then computes the next sample and writes it
+    /// two slots ahead of the DMA: the one after its next read.
+    fn write_next(&mut self, mail: &mut Mailbox) {
+        // Timed apart from the rest (journal/D-039): within the wait for
+        // the burst's echo, `audio` cannot see them. The parameters come
+        // prepared: taking them is a copy (journal/D-040).
+        if mail.fresh {
+            let start = DWT::cycle_count();
+            self.voices.apply(&mail.changes);
+            mail.changes.applied();
+            mail.stats
+                .voice_params
+                .record(DWT::cycle_count().wrapping_sub(start));
+            self.calibration = mail.calibration;
+            mail.fresh = false;
+        }
+        let start = DWT::cycle_count();
+        let samples = self.voices.next_sample();
+        mail.stats
+            .voice
+            .record(DWT::cycle_count().wrapping_sub(start));
+        mail.played = samples;
+        let mut codes = [0; CV_CHANNELS];
+        for channel in CvChannel::ALL {
+            let index = channel.index();
+            codes[index] = self.calibration[index].to_code(samples[index]);
+        }
+        crate::audio_irq::write_slot(self.dma_next + 1, &slot_words(&codes));
+    }
+}
+
+impl Screen {
+    /// Sets the contrast the loop asked for, and, between two frames, counts
+    /// the one sent and takes the next the loop left, at `entry`.
+    fn take_frame(&mut self, mail: &mut Mailbox, entry: u32) {
+        if let Some(contrast) = mail.contrast.take() {
+            self.stream.set_contrast(contrast);
+        }
+        if self.stream.is_idle() && !self.chunk_active {
+            if let Some(started) = self.frame_started.take() {
+                mail.stats.frame.record(entry.wrapping_sub(started));
+                mail.frames = mail.frames.wrapping_add(1);
+            }
+            if mail.frame_ready {
+                self.stream.start(&mail.frame);
+                mail.frame_ready = false;
+                self.frame_started = Some(entry);
+            }
+        }
+    }
+
+    /// Queues the next piece of the screen on `bus`, if any, and arms the
     /// frame-complete interrupt that releases the OLED; whether it did.
-    fn send_chunk(&mut self) -> bool {
+    fn send_chunk(&mut self, bus: &mut Bus) -> bool {
         let Some(chunk) = self.stream.next_chunk(board::OLED_CHUNK_BYTES) else {
             return false;
         };
-        if self.current_clock != self.clocks.oled {
-            let oled = self.clocks.oled;
-            self.spi.disabled(|spi| spi.set_clock_configs(oled));
-            self.current_clock = oled;
-        }
+        bus.use_clock(bus.clocks.oled);
         match chunk.kind {
             ChunkKind::Command => self.oled_dc.clear(),
             ChunkKind::Data => self.oled_dc.set(),
@@ -628,21 +712,21 @@ impl AudioState {
         let mut transaction = Transaction::new(bits).unwrap_or_else(|_| unreachable!());
         transaction.set_pcs(board::OLED_PCS);
         transaction.set_receive_data_mask(true);
-        self.spi.clear_status(Status::FRAME_COMPLETE);
-        self.spi.set_interrupts(Interrupts::FRAME_COMPLETE);
-        self.spi.enqueue_transaction(transaction);
+        bus.spi.clear_status(Status::FRAME_COMPLETE);
+        bus.spi.set_interrupts(Interrupts::FRAME_COMPLETE);
+        bus.spi.enqueue_transaction(transaction);
         for word in fifo::words(chunk.bytes) {
-            self.spi.enqueue_data(word);
+            bus.spi.enqueue_data(word);
         }
         self.chunk_active = true;
         true
     }
 
-    /// Releases the OLED once its piece is out, and gives the bus the DAC's
+    /// Releases the OLED once its piece is out, and gives `bus` the DAC's
     /// timing back before the next burst; whether a piece was out.
-    fn release_oled(&mut self) -> bool {
-        self.spi.clear_status(Status::FRAME_COMPLETE);
-        self.spi.set_interrupts(Interrupts::empty());
+    fn release(&mut self, bus: &mut Bus) -> bool {
+        bus.spi.clear_status(Status::FRAME_COMPLETE);
+        bus.spi.set_interrupts(Interrupts::empty());
         if !self.chunk_active {
             return false;
         }
@@ -652,11 +736,7 @@ impl AudioState {
         self.oled_cs.set();
         settle(&self.oled_cs, true);
         self.chunk_active = false;
-        if self.current_clock != self.clocks.dac {
-            let dac = self.clocks.dac;
-            self.spi.disabled(|spi| spi.set_clock_configs(dac));
-            self.current_clock = dac;
-        }
+        bus.use_clock(bus.clocks.dac);
         true
     }
 }
