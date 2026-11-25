@@ -919,9 +919,10 @@ fn position(setting: Setting, burst: &Burst) -> i32 {
     i32::try_from(permille.clamp(0, 1_000)).unwrap_or(0)
 }
 
-/// A copies `TR1`, B bursts: C and D stay free for another applet
-/// (journal/D-046).
-const PORTS: [Port; 2] = [Port { name: "A" }, Port { name: "B" }];
+/// `THRU` copies `TR1`, `BURST` bursts, on A and B by default: C and D stay
+/// free for another applet (journal/D-046). Named by what they carry, not
+/// by the jack, which their routing page sets.
+const PORTS: [Port; 2] = [Port { name: "THRU" }, Port { name: "BURST" }];
 
 /// `TR1` clocks the bursts; its routing page may plug another trigger in
 /// (journal/D-046).

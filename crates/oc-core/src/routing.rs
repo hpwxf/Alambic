@@ -29,8 +29,11 @@ const VISIBLE: usize = (ROWS - FIRST_ROW) as usize;
 /// Where a row's name starts, right of the scroll bar.
 const TEXT_INSET: i32 = LIST_LEFT + 2;
 
-/// Where a row's jack is written.
-const JACK_COLUMN: i32 = 64;
+/// The gap between a row's columns, in pixels.
+const COLUMN_GAP: i32 = 4;
+
+/// The arrow between a port and its jack.
+const ARROW_WIDTH: i32 = 10;
 
 /// The jacks' names, by kind and index.
 const OUTPUTS: [&str; CV_CHANNELS] = ["A", "B", "C", "D"];
@@ -205,6 +208,18 @@ impl RoutingPage {
         }
         let route = host.route_at(host.focus());
         let inputs = host.inputs_at(host.focus());
+        // The arrows and the jacks in two columns right of the longest
+        // name, so that every row reads the same way whatever the names.
+        let longest = app
+            .output_ports()
+            .iter()
+            .map(|port| port.name)
+            .chain(app.input_ports().iter().map(|port| port.name))
+            .map(|name| FONT_5X8.width_of(name))
+            .max()
+            .unwrap_or(0);
+        let arrow_column = TEXT_INSET + longest + COLUMN_GAP;
+        let jack_column = arrow_column + ARROW_WIDTH + COLUMN_GAP;
         for (slot, index) in (first..len).take(VISIBLE).enumerate() {
             let top = (FIRST_ROW + i32::try_from(slot).unwrap_or(0)) * ROW_HEIGHT;
             let picked = index == self.cursor;
@@ -239,8 +254,8 @@ impl RoutingPage {
                 }
             };
             text::draw(frame, name, Point::new(TEXT_INSET, top), style);
-            text::draw(frame, arrow, Point::new(JACK_COLUMN - 16, top), style);
-            text::draw(frame, jack, Point::new(JACK_COLUMN, top), style);
+            text::draw(frame, arrow, Point::new(arrow_column, top), style);
+            text::draw(frame, jack, Point::new(jack_column, top), style);
         }
     }
 }

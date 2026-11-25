@@ -154,7 +154,7 @@ enum Command {
         instance: String,
     },
     /// Prints where an instance's ports go, after routing those given, as
-    /// its routing page does: `sub=off`, `a=d`, `clock=tr2`.
+    /// its routing page does: `sub=off`, `burst=d`, `clock=tr2`.
     Route {
         /// The instance: `@N`.
         instance: String,

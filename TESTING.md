@@ -521,12 +521,12 @@ With the module running and the USB cable on the Teensy (journal/D-029):
    Slots (journal/D-046, protocol 10): with `SUPERSAW` running,
    `cargo probe add ratchet` prints `@1 RATCHET` (the first empty slot) and
    its mark appears left of the title; `cargo probe instances` lists the
-   four slots, `@0` on `A`, `B`, `SUB -> C`, `@1` on `A -> D`, `B -> OFF`,
-   `CLOCK <- TR1`, `@2` and `@3` `NOTHING`; `cargo probe select scope @3`
+   four slots, `@0` with `L/MONO -> A`, `R/MONO -> B`, `SUB -> C`, `@1` with
+   `THRU -> D`, `BURST -> OFF`, `CLOCK <- TR1`, `@2` and `@3` `NOTHING`; `cargo probe select scope @3`
    fills the last one, which gets no output (`SUPERSAW` and `RATCHET` hold
    them all);
-   `cargo probe route @0 sub=off` frees C, `cargo probe route @1 b=c`
-   takes it, `cargo probe route @1 a=b` is refused (`Taken`);
+   `cargo probe route @0 sub=off` frees C, `cargo probe route @1 burst=c`
+   takes it, `cargo probe route @1 thru=b` is refused (`Taken`);
    `cargo probe set @1 prob 50` reaches the second app alone; `focus @0`
    shows `SUPERSAW` again, `remove @1` puts `NOTHING` in its slot and C and
    D fall to 0 V. On the panel: a short `down` shows the next slot, empty
