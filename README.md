@@ -388,7 +388,7 @@ cargo probe assign supersaw detune input=cv2 effect=add  # a parameter's CV inpu
 cargo probe assign supersaw detune --center 5  # fit it to what CV2 carries, as CENTER does
 cargo probe add ratchet        # put RATCHET in the first empty slot, on the free outputs
 cargo probe instances          # the four slots, @0 to @3, where their ports go
-cargo probe route @0 sub=off   # its routing page from afar: sub=off, a=d, clock=tr2
+cargo probe route @0 sub=off   # its routing page from afar: sub=off, burst=d, clock=tr2
 cargo probe set @1 prob 50     # @N names one instance; a name, the first of that app
 cargo probe focus @1           # show it on the screen; `remove @1` empties the slot
 ```

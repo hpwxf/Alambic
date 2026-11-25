@@ -15,7 +15,7 @@ use core::fmt::Write as _;
 
 use crate::apps::param::{ParamSpec, ParamValue, Refused, Unit};
 use crate::apps::sound::Params;
-use crate::apps::{App, AppId, InputSnapshot, TickContext};
+use crate::apps::{App, AppId, InputSnapshot, Port, TickContext};
 use crate::audio::MilliHertz;
 use crate::audio::basic::{BasicParams, Channel, Tone};
 use crate::audio::wave::{ONE, Waveform};
@@ -392,9 +392,30 @@ impl ToneApp {
     }
 }
 
+/// One port per waveform, on A to D by default, named as the screen names
+/// them (journal/D-046): what each carries, not the jack.
+const PORTS: [Port; CV_CHANNELS] = [
+    Port {
+        name: WAVES[0].name(),
+    },
+    Port {
+        name: WAVES[1].name(),
+    },
+    Port {
+        name: WAVES[2].name(),
+    },
+    Port {
+        name: WAVES[3].name(),
+    },
+];
+
 impl App for ToneApp {
     fn id(&self) -> AppId {
         AppId::Tone
+    }
+
+    fn output_ports(&self) -> &'static [Port] {
+        &PORTS
     }
 
     fn param_specs(&self) -> &'static [ParamSpec] {

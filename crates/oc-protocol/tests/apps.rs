@@ -591,8 +591,8 @@ fn a_description_ends_with_the_ports() {
     assert_eq!(
         ports,
         [
-            (true, "A".to_owned(), false),
-            (true, "B".to_owned(), false),
+            (true, "THRU".to_owned(), false),
+            (true, "BURST".to_owned(), false),
             (false, "CLOCK".to_owned(), true),
         ]
     );

@@ -58,6 +58,11 @@ Architectural decisions behind each change are in `journal/` (French).
 
 ### Changed
 
+- **Ports named by what they carry** on the routing page, the probe and the
+  browser tool: `RATCHET` `THRU` and `BURST`, `SUPERSAW` `L/MONO`, `R/MONO`
+  and `SUB`, `TONE` `SIN`, `TRI`, `SAW` and `SQR`, instead of the jack each
+  goes to by default (`cargo probe route @1 burst=c`). The routing page lines
+  its arrows and jacks up in two columns right of the longest name.
 - **Four slots, always** (journal/D-046, revision of 2026-11-25): the
   module always runs four applets, an empty slot running `NOTHING`, which
   holds no output and says how to fill it. `up` and `down` visit every

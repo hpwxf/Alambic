@@ -721,9 +721,14 @@ impl SupersawApp {
     }
 }
 
-/// A and B carry the bank, C its sub-octave, which a route may turn off to
-/// free the jack (journal/D-046).
-const PORTS: [Port; 3] = [Port { name: "A" }, Port { name: "B" }, Port { name: "SUB" }];
+/// The bank's two sides, all seven voices on each with `STEREO OFF`, and its
+/// sub-octave, on A to C by default; a route may turn one off to free the
+/// jack (journal/D-046). Named by what they carry, not by the jack.
+const PORTS: [Port; 3] = [
+    Port { name: "L/MONO" },
+    Port { name: "R/MONO" },
+    Port { name: "SUB" },
+];
 
 impl App for SupersawApp {
     fn id(&self) -> AppId {
