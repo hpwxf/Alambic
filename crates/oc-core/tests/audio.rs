@@ -4,11 +4,12 @@
 use std::f64::consts::TAU;
 
 use oc_core::apps::AppId;
-use oc_core::apps::sound::{Params, Voice};
+use oc_core::apps::sound::Params;
 use oc_core::apps::tone::{REFERENCE_NOTE, frequency};
 use oc_core::audio::basic::{BasicParams, Channel, Tone};
 use oc_core::audio::wave::{ONE, Waveform, sine};
 use oc_core::platform::CvChannel;
+use oc_core::playback::Voice;
 use oc_core::settings::Settings;
 use oc_core::testing::{MockEngine, mock_engine_at_boot};
 

@@ -12,7 +12,6 @@ use std::io;
 use std::path::{Path, PathBuf};
 
 use oc_core::TickReport;
-use oc_core::apps::sound::Player;
 use oc_core::apps::{App, AppId};
 use oc_core::debounce::DEFAULT_STABLE_SAMPLES;
 use oc_core::engine::TICK_RATE_HZ;
@@ -20,6 +19,7 @@ use oc_core::framebuffer::FrameBuffer;
 use oc_core::platform::{
     BUTTONS, Button, CV_CHANNELS, CvChannel, MilliVolts, TRIGGER_CHANNELS, TriggerChannel,
 };
+use oc_core::playback::Player;
 use oc_core::settings::{LoadOutcome, SettingsStore};
 use oc_core::testing::{BareMockEngine, MEMORY_FLASH_BYTES, MemoryFlash, bare_mock_engine_at_boot};
 use oc_core::toast::SaveOutcome;

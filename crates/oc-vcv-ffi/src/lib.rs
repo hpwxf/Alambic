@@ -39,11 +39,11 @@ use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::ptr;
 
 use oc_core::Engine;
-use oc_core::apps::sound::Player;
 use oc_core::framebuffer::LEN as FRAMEBUFFER_LEN;
 use oc_core::platform::{
     BUTTONS, Button, CV_CHANNELS, CvChannel, ENCODERS, MilliVolts, TRIGGER_CHANNELS, TriggerChannel,
 };
+use oc_core::playback::Player;
 use oc_core::settings;
 use oc_core::testing::{
     MockAnalogIn, MockAnalogOut, MockControls, MockDigitalIn, MockDisplay, VirtualClock,

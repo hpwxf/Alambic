@@ -13,7 +13,7 @@
 //! ticks after the drawing, and the next frame waits for the last page
 //! (journal/D-023, option C+; `docs/agents/firmware.md`, "The screen").
 
-use crate::apps::sound::{Params, Patch};
+use crate::apps::sound::Params;
 use crate::apps::{App, AppHost, AppId, MAX_INSTANCES};
 use crate::apps::{InputSnapshot, TickContext};
 use crate::audio::Route;
@@ -26,6 +26,7 @@ use crate::platform::{
     AnalogIn, AnalogOut, Button, CV_CHANNELS, Clock, Controls, CvChannel, DigitalIn, Display,
     MilliVolts, TRIGGER_CHANNELS, TriggerChannel,
 };
+use crate::playback::Patch;
 use crate::profile::{Profile, Stage};
 use crate::routing::RoutingPage;
 use crate::settings::Settings;
@@ -1010,8 +1011,8 @@ fn clamp_duration(raw: u64) -> u32 {
 mod tests {
     use super::{MAX_REPORTED_DURATION_MICROS, TICK_RATE_HZ, clamp_duration};
     use crate::apps::diagnostic::{DiagnosticApp, OutputMode};
-    use crate::apps::sound::Player;
     use crate::platform::{CV_CHANNELS, CvChannel};
+    use crate::playback::Player;
     use crate::splash;
     use crate::testing::{adc_reading, bare_mock_engine_at_boot, mock_engine_at_boot};
 

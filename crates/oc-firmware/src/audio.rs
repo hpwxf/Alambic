@@ -55,10 +55,10 @@ use teensy4_bsp::hal::lpspi::{ClockConfigs, Interrupts, Lpspi, Status, Transacti
 use teensy4_bsp::hal::pit::{self, Pit};
 use teensy4_bsp::ral::lpspi::TCR;
 
-use oc_core::apps::sound::{Changes, Follower, Patch, Voices};
 use oc_core::calibration::CvOutputCalibration;
 use oc_core::framebuffer::{FrameBuffer, LEN};
 use oc_core::platform::{AnalogOut, CV_CHANNELS, CvChannel, Display, MilliVolts};
+use oc_core::playback::{Changes, Follower, Patch, Voices};
 use oc_core::profile::{Stage, Stat};
 use oc_drivers::dac8565::channel_word;
 use oc_drivers::fifo;

@@ -43,7 +43,7 @@ it already, this file only points to it.
   deadline + 1 ms) while serving USB. The publisher compares
   `Engine::params_revision` rather than the patch, and builds there,
   outside any critical section, the `Setup` of each instance slot whose
-  parameters changed, handed over as `oc_core::apps::sound::Changes` with
+  parameters changed, handed over as `oc_core::playback::Changes` with
   every route and held level (journal/D-040, D-046).
 * **The audio path** owns the SPI bus at 47 619 Hz (PIT channel 0 on PERCLK,
   21 counts). Each timeout makes the DMA copy one slot of a ring into

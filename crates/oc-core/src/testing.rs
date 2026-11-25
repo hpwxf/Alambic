@@ -15,7 +15,6 @@ use embedded_storage_async::nor_flash::{
     ErrorType, NorFlash, NorFlashError, NorFlashErrorKind, ReadNorFlash,
 };
 
-use crate::apps::sound::Player;
 use crate::calibration::{CvInputCalibration, CvOutputCalibration};
 use crate::engine::{Engine, TICK_RATE_HZ, TickReport};
 use crate::framebuffer::FrameBuffer;
@@ -23,6 +22,7 @@ use crate::platform::{
     AnalogIn, AnalogOut, CV_CHANNELS, Clock, ControlEvents, Controls, CvChannel, DigitalIn,
     Display, MilliVolts, TRIGGER_CHANNELS, TriggerChannel,
 };
+use crate::playback::Player;
 use crate::settings::{FLASH_BYTES, SECTOR_BYTES};
 
 /// CV inputs backed by a plain array of levels.

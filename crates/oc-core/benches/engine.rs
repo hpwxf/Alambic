@@ -13,7 +13,7 @@ use std::hint::black_box;
 use oc_core::apps::AppId;
 use oc_core::apps::diagnostic::DiagnosticApp;
 use oc_core::apps::ratchet::RatchetApp;
-use oc_core::apps::sound::{Follower, Params, Patch, Setup, Voice, Voices};
+use oc_core::apps::sound::Params;
 use oc_core::apps::supersaw::bank::{FULL, Part, SQUARE_WIDTH, Supersaw, SupersawParams};
 use oc_core::apps::tone::ToneApp;
 use oc_core::apps::{InputSnapshot, TickContext};
@@ -23,6 +23,7 @@ use oc_core::calibration::{CvInputCalibration, CvOutputCalibration};
 use oc_core::framebuffer::FrameBuffer;
 use oc_core::menu::Menu;
 use oc_core::platform::{Button, ControlEvents, CvChannel, TriggerChannel};
+use oc_core::playback::{Follower, Patch, Setup, Voice, Voices};
 use oc_core::testing::mock_engine;
 
 /// A snapshot with all four inputs and all four triggers busy.

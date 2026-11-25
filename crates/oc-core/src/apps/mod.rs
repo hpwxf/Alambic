@@ -22,7 +22,7 @@
 //! An applet's `update` returns what the outputs carry as [`Params`]: the
 //! CV applets hold levels, `TONE` asks for tones and `SUPERSAW` for parts of
 //! its bank, each through the generator of its kind that [`sound`] composes
-//! and a [`Voice`](sound::Voice) renders (journal/D-033, D-044).
+//! and a backend renders ([`crate::playback`]) (journal/D-033, D-044).
 
 pub mod diagnostic;
 pub mod gfx_demo;

@@ -135,7 +135,9 @@ Details per crate: `docs/agents/code-map.md`.
   D-046). **`oc_core::audio` names no applet**: it
   holds the `Generator` trait, the voice and the generic blocks; an
   applet's own DSP lives with the applet, and the list of generators an
-  image has is `apps/sound.rs`. **Anything that depends on the parameters
+  image has is `apps/sound.rs`. **Applets never see the playback side**:
+  what a backend plays with (`Patch`, `Voices`, `Follower`, `Player`) is
+  `oc_core::playback`, made concrete for the image there. **Anything that depends on the parameters
   alone belongs in `Generator::setup`** (through `Setup::new`), never per
   sample (journal/D-040).
 * **Internal unit: millivolts, `i32`** (`oc_core::platform::MilliVolts`).

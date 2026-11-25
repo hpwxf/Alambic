@@ -5,7 +5,7 @@
 | **Identifiant** | D-044 |
 | **Date** | 2026-11-21 |
 | **Auteur** | Pascal Havé |
-| **Statut** | adoptée |
+| **Statut** | adoptée, révisée |
 | **Commits** | ce commit (ADR seule) ; implémentation au premier lot qui l'adoptera |
 | **Relations** | étape 2 de la trajectoire de D-043 ; révisera D-033 (forme de `Params` et de `Voice`) et D-037 (où vit le banc du Supersaw) ; garde D-040 (le `Setup` préparé dans la boucle, copié par l'interruption) et D-042 (un échantillon par période) ; mesurée par D-029 (`voice`, `voice_params`, `audio`) |
 
@@ -176,3 +176,17 @@ après `Engine::tick` hors de toute étape du profil.
 
 Critères de § 4 tenus (le léger écart de `voice_params` mis à part) : **D-044 adoptée**. D-033 (forme de `Params` et de
 `Voice`) et D-037 (où vit le banc) sont révisées en conséquence.
+
+## Révision du 2026-11-25 — `apps::sound` pour les applets, `playback` pour les backends
+
+`apps/sound.rs` portait, à côté de la composition (`Sound`) et de ce qu'une applet publie (`Params`), les types
+concrets des backends ajoutés à l'étape 13 (`Patch`, `Changes`, `Voices`, `Follower`, `Player`, `Setup`, `Voice`) :
+le seul fichier qui connaissait à la fois `Sound` et `MAX_INSTANCES`. Les applets n'en lisent que `Params` ;
+`Player` y apparaissait sans les concerner (remarque de l'utilisateur).
+
+* **`oc_core::playback`**, module de premier niveau, à côté d'`audio` et d'`apps` : les alias concrets de ce que
+  joue un backend, `audio::X<Sound, MAX_INSTANCES>`. Il dépend d'`apps` (pour `Sound` et `MAX_INSTANCES`) et
+  d'`audio` ; rien dans `apps` ne dépend de lui.
+* **`apps::sound`** garde la composition de l'image et `Params`. Le moteur y prend `Params`, et `Patch` dans
+  `playback` ; les backends prennent tout dans `playback`.
+* Code produit inchangé : des alias déplacés.

@@ -1,16 +1,17 @@
 //! What this image's applets can sound like (journal/D-044): the
-//! generators it composes, the one [`Sound`] the voice runs.
+//! generators it composes, the one [`Sound`] the voice runs, and the
+//! [`Params`] an applet publishes. What a backend plays them with is
+//! [`crate::playback`].
 //!
 //! The list sits beside [`AppHost`](super::AppHost), where the image picks its
 //! applets: `audio` holds the mechanism and names none of them. Each kind of
 //! sound is one variant; the voice dispatches on it once a sample, statically,
-//! and a [`Setup`] stays a value of fixed size the audio interrupt copies
+//! and a [`Setup`](crate::playback::Setup) stays a value of fixed size the audio interrupt copies
 //! (journal/D-040): the largest of the generators' setups, not their sum.
 //!
 //! Written by hand while the list is two long; a macro would write the same
 //! three enums once it grows.
 
-use crate::apps::MAX_INSTANCES;
 use crate::apps::supersaw::bank::{SupersawBank, SupersawParams, SupersawSetup, SupersawState};
 use crate::audio::basic::{Basic, BasicParams, BasicSetup, BasicState};
 use crate::audio::{self, Generator};
@@ -18,29 +19,6 @@ use crate::platform::{CV_CHANNELS, MilliVolts};
 
 /// What the outputs carry, as the running applet publishes it.
 pub type Params = audio::Params<Sound>;
-
-/// What [`Params`] decide at a rate, prepared in the loop.
-pub type Setup = audio::Setup<Sound>;
-
-/// The voice every backend runs.
-pub type Voice = audio::Voice<Sound>;
-
-/// What every output carries: each instance slot's parameters and route,
-/// and the levels a probe holds (journal/D-046).
-pub type Patch = audio::Patch<Sound, MAX_INSTANCES>;
-
-/// What the audio context takes from the loop when the patch changed.
-pub type Changes = audio::Changes<Sound, MAX_INSTANCES>;
-
-/// The voices of every slot, routed to the outputs.
-pub type Voices = audio::Voices<Sound, MAX_INSTANCES>;
-
-/// What tells a backend's voices that the patch changed (journal/D-040).
-pub type Follower = audio::Follower<Sound, MAX_INSTANCES>;
-
-/// The voices a backend plays the engine's outputs with, following its
-/// patch (journal/D-040, D-046).
-pub type Player = audio::Player<Sound, MAX_INSTANCES>;
 
 /// Every kind of sound this image's applets make.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -191,9 +169,10 @@ impl SoundState {
 
 #[cfg(test)]
 mod tests {
-    use super::{Params, Voice};
+    use super::Params;
     use crate::apps::supersaw::bank::{Part, SupersawParams};
     use crate::audio::basic::{BasicParams, Channel};
+    use crate::playback::Voice;
 
     #[test]
     fn a_change_of_kind_starts_the_new_kind_afresh() {

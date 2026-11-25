@@ -32,7 +32,8 @@ rationale behind each crate is in the journal entry cited.
 | What an applet exposes: parameters, observables, actions (`ParamSpec`, `write_summary`) | `crates/oc-core/src/apps/param.rs` (journal/D-043) |
 | The applets | `crates/oc-core/src/apps/`: `diagnostic.rs`, `scope.rs`, `gfx_demo.rs`, `ratchet/`, `tone.rs`, `supersaw.rs` |
 | The supersaw bank, the applet's own | `crates/oc-core/src/apps/supersaw/bank.rs` (parameters, Szabo's curves, the preparation in integers, the `SupersawBank` generator), `bank/float.rs` (the bank in `f32`, integer phases, journal/D-039) |
-| The generators this image composes (`Sound`, `Params`, `Setup`, `Voice`), and the patch of its instance slots (`Patch`, `Changes`, `Voices`, `Player`, `MAX_INSTANCES` in `apps/mod.rs`) | `crates/oc-core/src/apps/sound.rs` (journal/D-044) |
+| The generators this image composes (`Sound`) and what an applet publishes (`Params`) | `crates/oc-core/src/apps/sound.rs` (journal/D-044) |
+| What a backend plays them with, for this image's instance slots (`Patch`, `Setup`, `Voice`, `Changes`, `Voices`, `Follower`, `Player`; `MAX_INSTANCES` in `apps/mod.rs`) | `crates/oc-core/src/playback.rs` (journal/D-040, D-046) |
 | The `Generator` trait, the voice, `Setup`, routes and the voices of every slot, the waveforms, levels and tones (`Basic`) | `crates/oc-core/src/audio/mod.rs`, `audio/wave.rs`, `audio/basic.rs` (journal/D-033, D-040, D-044, D-046) |
 | A parameter modulated by a CV input, and its submenu | `crates/oc-core/src/modulation/mod.rs`, `modulation/editor.rs` (journal/D-035, D-036); an applet's inputs and open submenu, a parameter's slot: `modulation/slots.rs` (`Modulations`, `slot_of`); reached by the probe through `App::assigns` and `assign` / `set_assign` on `dyn App` (journal/D-045) |
 | The app menu (`up`+`down`) | `crates/oc-core/src/menu.rs` |
