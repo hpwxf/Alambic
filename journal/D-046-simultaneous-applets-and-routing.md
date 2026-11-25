@@ -5,8 +5,8 @@
 | **Identifiant** | D-046 |
 | **Date** | 2026-11-24 |
 | **Auteur** | Pascal Havé |
-| **Statut** | proposée |
-| **Commits** | ce commit (ADR et plan) |
+| **Statut** | adoptée |
+| **Commits** | `dd8d0fd` (ADR et plan), `faee549` (13b), `e99e4c6` (13c), `527f0bc`, `f161c84` (13d), `c0fdc86` (13e), `8586de7` (13f), `8911df1`, `73739a5` (13g), adoption avec `etape-13.md` |
 | **Relations** | étape 3 de la trajectoire de D-043 ; révisera D-021 (un résident par app, `up` / `down` au relâchement sans minuterie), D-043 (`AppHost`, ce que nomme la sonde), D-044 (un `Params` pour les quatre sorties) et D-040 (un `Setup` par changement, désormais par instance) ; déplace le maintien par la sonde de D-029 après le routage ; prépare l'arena de D-038 ; rouvre D-042 si `audio` approche la moitié de la période ; la persistance du patch (D-028, D-045) vient plus tard |
 
 ## 1. Contexte
@@ -113,8 +113,8 @@ Ce que l'utilisateur a fixé le 2026-11-24 :
 
 ## 4. Ce que nous avons décidé, et pourquoi
 
-**Proposée.** Le périmètre et l'interface sont ceux fixés par l'utilisateur le 2026-11-24 (§ 1) ; le reste est la
-proposition, à confirmer lot par lot.
+**Adoptée le 2026-11-25** (section « Adoption » en fin de fichier). Le périmètre et l'interface sont ceux fixés
+par l'utilisateur le 2026-11-24 (§ 1) ; le reste était la proposition, confirmée lot par lot.
 
 Tranché par l'utilisateur le 2026-11-24, après la proposition :
 
@@ -326,3 +326,26 @@ Retenu : `MAX_INSTANCES = 4`. Ajustés à l'essai, à la demande de l'utilisateu
   les autres d'un pixel au milieu, sur la piste pointillée de la barre ; il est dessiné aussi sur la page de
   routage. Le titre passe à `LIST_LEFT` (4 px), un pixel à droite de l'indicateur et aligné sur les lignes des
   listes ; écrans de référence régénérés, seule la ligne du titre bouge (diff relu).
+
+## Adoption (2026-11-25)
+
+Critères du § 4 :
+
+* **une instance** : écrans de référence et sommes de `tests/voice_samples.rs` identiques après 13b et 13c ;
+* **plusieurs `SUPERSAW`** sur le module : quatre à N = 4, `audio` 6,37 µs au plus (sous les 10,5 µs), `tick`
+  25,4 µs en moyenne, `stack-depth` sans alerte (3 640 o libres), 21,7 Kio d'ITCM libres ; `SUPERSAW` + `RATCHET`
+  à N = 2 de même ;
+* recouvrement refusé (`Refused::Taken`) et sortie libre à 0 V : `tests/instances.rs`, `routing.rs` ;
+* coût relevé lot par lot (sections ci-dessus) et pour l'étape (`etape-13.md`).
+
+L'utilisateur clôt l'étape sur ses essais du module, « relativement fonctionnelle », à raffiner. L'écoute voix par
+voix et les gestes de `73739a5` (boucle, focus depuis la page de routage, indicateur élargi) n'ont pas de relevé
+détaillé : réserve de `etape-13.md`. La page (instances, routage) est essayée dans Chrome sur le module,
+son ergonomie à affiner.
+
+Suites notées, hors de cette décision :
+
+* les copies de `Params` dans `Setup`, `Voice`, `bank::Setup` et `Bank`, restes du moteur qui rendait sa voix
+  (D-040) : à retirer, avec une révision par emplacement à la place des `Params` gardés par `Follower`, et le
+  champ `bank` de `SupersawParams` renommé ; révision de D-040 à venir ;
+* `publish` à ≈ 9 µs par `SUPERSAW` modulée ; les `Changes` plus petits en découleraient.
