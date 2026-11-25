@@ -2,7 +2,7 @@
 //! described, set and asked through the model the panel uses.
 
 use oc_core::apps::ratchet::RatchetApp;
-use oc_core::apps::{AppId, Instance};
+use oc_core::apps::{AppId, Instance, MAX_INSTANCES};
 use oc_core::testing::{MockEngine, mock_engine};
 use oc_protocol::server::{Identity, Server};
 use oc_protocol::{
@@ -260,7 +260,10 @@ fn an_action_and_a_selection_act_as_the_panel_does() {
         ask(
             &mut server,
             &mut engine,
-            &Request::SelectApp { app: RATCHET }
+            &Request::SelectApp {
+                app: RATCHET,
+                instance: None
+            }
         ),
         Reply::Done
     );
@@ -451,28 +454,36 @@ fn a_description_gives_each_input_after_its_parameter() {
 }
 
 #[test]
-fn instances_are_listed_added_routed_focused_and_removed() {
+fn slots_are_listed_filled_routed_focused_and_emptied() {
     let (mut server, mut engine) = running_ratchet();
     let supersaw = u8::try_from(AppId::Supersaw.index()).unwrap();
     let frames = replies(&mut server, &mut engine, &Request::ListInstances);
-    assert_eq!(frames.len(), 2, "one instance, then done");
+    assert_eq!(frames.len(), MAX_INSTANCES + 1, "every slot, then done");
 
-    // SUPERSAW beside RATCHET gets C and D; its SUB, nothing.
-    let added = ask(
-        &mut server,
-        &mut engine,
-        &Request::AddInstance { app: supersaw },
-    );
+    // SUPERSAW in the second slot gets C and D; its SUB, nothing.
     assert_eq!(
-        added,
+        ask(
+            &mut server,
+            &mut engine,
+            &Request::SelectApp {
+                app: supersaw,
+                instance: Some(1)
+            }
+        ),
+        Reply::Done
+    );
+    let mut frames = replies(&mut server, &mut engine, &Request::ListInstances);
+    assert_eq!(
+        decode::<Reply<'_>>(&mut frames[1]).unwrap(),
         Reply::Instance {
             position: 1,
             app: supersaw,
-            focused: true,
+            focused: false,
             outputs: [Some(2), Some(3), None, None],
             inputs: [0; 4],
         }
     );
+
     assert_eq!(
         ask(
             &mut server,
@@ -526,24 +537,33 @@ fn instances_are_listed_added_routed_focused_and_removed() {
         Reply::Done
     );
     assert_eq!(engine.current_app(), AppId::Ratchet);
-    assert_eq!(
-        ask(
-            &mut server,
-            &mut engine,
-            &Request::RemoveInstance { instance: 1 }
+}
+
+#[test]
+fn nothing_empties_a_slot_and_a_slot_past_the_last_is_refused() {
+    let (mut server, mut engine) = running_ratchet();
+    let supersaw = u8::try_from(AppId::Supersaw.index()).unwrap();
+    let nothing = u8::try_from(AppId::Nothing.index()).unwrap();
+    for (app, instance, reply) in [
+        (supersaw, 1, Reply::Done),
+        (nothing, 1, Reply::Done),
+        (
+            supersaw,
+            u8::try_from(MAX_INSTANCES).unwrap(),
+            Reply::Error(Error::NoSuchApp),
         ),
-        Reply::Done
-    );
+    ] {
+        let request = Request::SelectApp {
+            app,
+            instance: Some(instance),
+        };
+        assert_eq!(ask(&mut server, &mut engine, &request), reply);
+    }
     assert_eq!(
-        ask(
-            &mut server,
-            &mut engine,
-            &Request::RemoveInstance { instance: 0 }
-        ),
-        Reply::Error(Error::NoSuchApp),
-        "the last one stays"
+        engine.apps().occupied(),
+        [true, false, false, false],
+        "NOTHING emptied the slot"
     );
-    assert_eq!(engine.apps().len(), 1);
 }
 
 #[test]

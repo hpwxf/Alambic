@@ -10,7 +10,7 @@
 use oc_core::Engine;
 use oc_core::TickReport;
 use oc_core::apps::param::{Kind, ParamSpec, Refused};
-use oc_core::apps::{App, AppHost, AppId, InputKind, Instance};
+use oc_core::apps::{App, AppHost, AppId, InputKind, Instance, MAX_INSTANCES};
 use oc_core::platform::{
     AnalogIn, AnalogOut, CV_CHANNELS, Clock, Controls, CvChannel, DigitalIn, Display, MilliVolts,
     TriggerChannel,
@@ -226,8 +226,6 @@ impl Server {
             | Request::GetAssign { .. }
             | Request::SetAssign { .. }
             | Request::ListInstances
-            | Request::AddInstance { .. }
-            | Request::RemoveInstance { .. }
             | Request::Focus { .. }
             | Request::SetRoute { .. }
             | Request::SetInput { .. }) => match self.serve_app(request, engine) {
@@ -293,12 +291,15 @@ impl Server {
                 },
                 None => Reply::Error(Error::NoSuchApp),
             },
-            Request::SelectApp { app } => match app_id(app) {
-                Some(id) => {
+            Request::SelectApp { app, instance } => match (app_id(app), instance) {
+                (Some(id), None) => {
                     engine.select_app(id);
                     Reply::Done
                 }
-                None => Reply::Error(Error::NoSuchApp),
+                (Some(id), Some(instance)) if engine.select_app_at(usize::from(instance), id) => {
+                    Reply::Done
+                }
+                _ => Reply::Error(Error::NoSuchApp),
             },
             Request::GetAssign { app, param } => match read_target(engine.apps(), app, &mut None) {
                 Some(app) => input_reply(app, param),
@@ -314,8 +315,6 @@ impl Server {
                 }
             }
             Request::ListInstances
-            | Request::AddInstance { .. }
-            | Request::RemoveInstance { .. }
             | Request::Focus { .. }
             | Request::SetRoute { .. }
             | Request::SetInput { .. } => self.serve_instances(request, engine.apps_mut()),
@@ -328,35 +327,12 @@ impl Server {
     fn serve_instances(&mut self, request: Request, apps: &mut AppHost) -> Reply<'static> {
         match request {
             Request::ListInstances => {
-                for position in 0..apps.len() {
+                for position in 0..MAX_INSTANCES {
                     if let Some(reply) = instance_reply(&*apps, position) {
                         self.send(&reply);
                     }
                 }
                 Reply::Done
-            }
-            Request::AddInstance { app } => match app_id(app) {
-                Some(id) => match apps.add(id) {
-                    Some(position) => instance_reply(&*apps, position).unwrap_or(Reply::Done),
-                    None => Reply::Error(Error::NoSuchApp),
-                },
-                None => Reply::Error(Error::NoSuchApp),
-            },
-            Request::RemoveInstance { instance } => {
-                let focus = apps.focus();
-                if apps.set_focus(usize::from(instance)) && apps.remove() {
-                    // The focus stays where it was, as far as it can.
-                    let focus = if focus > usize::from(instance) {
-                        focus - 1
-                    } else {
-                        focus
-                    };
-                    apps.set_focus(focus.min(apps.len() - 1));
-                    Reply::Done
-                } else {
-                    apps.set_focus(focus);
-                    Reply::Error(Error::NoSuchApp)
-                }
             }
             Request::Focus { instance } => {
                 if apps.set_focus(usize::from(instance)) {
@@ -413,7 +389,8 @@ impl Server {
         S: Display,
     {
         for id in AppId::ALL {
-            let running = engine.apps().get(id).is_some();
+            // An empty slot runs NOTHING: not an applet that runs.
+            let running = id != AppId::Nothing && engine.apps().get(id).is_some();
             let mut fresh = None;
             let Some(app) = read_target(engine.apps(), Target::App(count(id.index())), &mut fresh)
             else {

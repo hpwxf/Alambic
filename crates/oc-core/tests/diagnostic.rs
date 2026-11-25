@@ -15,6 +15,7 @@ use embedded_graphics::text::{Baseline, Text};
 
 use oc_core::apps::diagnostic::DiagnosticApp;
 use oc_core::apps::diagnostic::{OFFSET_STEP_MV, OutputMode};
+use oc_core::apps::{AppId, MAX_INSTANCES};
 use oc_core::buttons::LONG_PRESS_TICKS;
 use oc_core::calibration::{CV_OUT_MAX_MV, CV_OUT_MIN_MV};
 use oc_core::framebuffer::ROW_HEIGHT;
@@ -72,10 +73,16 @@ fn reference_row(text: &str, row: i32) -> FrameBuffer {
 }
 
 /// Asserts that one screen row of `frame` matches a reference rendering of
-/// `text`.
+/// `text`; on the title row, right of the slots' marks the engine draws
+/// (journal/D-046).
 fn assert_row_reads(frame: &FrameBuffer, row: usize, text: &str) {
     let expected = reference_row(text, i32::try_from(row).unwrap());
-    let page = row * WIDTH..(row + 1) * WIDTH;
+    let left = if row == 0 {
+        usize::try_from(TITLE_LEFT).unwrap()
+    } else {
+        0
+    };
+    let page = row * WIDTH + left..(row + 1) * WIDTH;
     assert_eq!(
         &frame.as_bytes()[page.clone()],
         &expected.as_bytes()[page],
@@ -432,15 +439,13 @@ fn a_left_tap_cycles_the_output_mode() {
         assert_eq!(engine.app::<DiagnosticApp>().mode(), expected);
     }
 
-    // `up` and `down` are the panel's (journal/D-046): still counted, they
-    // leave the mode alone.
+    // `up` and `down` are the panel's (journal/D-046): they move the focus
+    // to the last slot and back, and leave the mode alone.
     tap(&mut engine, Button::Up);
+    assert_eq!(engine.apps().focus(), MAX_INSTANCES - 1);
     tap(&mut engine, Button::Down);
+    assert_eq!(engine.current_app(), AppId::Diagnostic);
     assert_eq!(engine.app::<DiagnosticApp>().mode(), OutputMode::Offset);
-    assert_eq!(
-        engine.app::<DiagnosticApp>().button_press_count(Button::Up),
-        1
-    );
 }
 
 #[test]

@@ -85,7 +85,6 @@
           <button class="needs-probe" id="apps-list" disabled>List</button>
           <select id="apps-choice" class="needs-probe" disabled></select>
           <button class="needs-probe" id="apps-select" disabled>Run on the module</button>
-          <button class="needs-probe" id="apps-add" disabled>Add beside</button>
           <span id="apps-status" class="status"></span>
         </div>
         <div class="row" id="apps-instances"></div>
@@ -96,10 +95,10 @@
           (<em>CV</em> while none, <em>+CV2</em> as the module's screen marks it); click it to open
           (▸) or close (▾) the same fields as the module's input submenu: input, scale, shift,
           bounds, effect. Each change is sent at once; closing the panel keeps what is set.
-          <em>Run on the module</em> puts the chosen app in the place of the one shown on the
-          module; <em>Add beside</em> starts it next to it, on the outputs no app uses. The
-          buttons under them are the apps running, left to right, the one on the module's screen
-          marked ◂: click one to show it there and here, ✕ to stop it. Under its settings, where
+          The buttons under them are the module's four slots, left to right, the one on its
+          screen filled: click one to show it there and here, ✕ to empty it (NOTHING in it, its
+          outputs free). <em>Run in slot @N</em> puts the chosen app in that slot, the one shown,
+          on the outputs no other app uses; NOTHING, last in the list, empties it too. Under its settings, where
           each of its outputs goes and which jack each input it reads comes from, as its routing
           page sets them (journal/D-046).</p>
         <table class="apps"><tbody id="apps-params"></tbody></table>

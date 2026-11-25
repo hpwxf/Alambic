@@ -123,10 +123,13 @@ enum Command {
         /// The action: its name or its index.
         action: String,
     },
-    /// Hands the outputs and the screen to an applet, as the app menu does.
+    /// Puts a fresh applet in the slot shown, or in slot `@N`, as the app
+    /// menu does; `nothing` empties it (journal/D-046).
     Select {
         /// The applet: its name or its index.
         app: String,
+        /// The slot: `@N`; the one shown when left out.
+        instance: Option<String>,
     },
     /// Reads the CV input of an applet's parameter, or sets it field by
     /// field as its submenu does, and prints what it applied
@@ -135,13 +138,12 @@ enum Command {
     /// Lists the applets running, left to right, with where their ports go;
     /// the one shown is marked (journal/D-046).
     Instances,
-    /// Starts an applet beside the one shown, on the free outputs, as the
-    /// menu's `ADD APP` does.
+    /// Puts an applet in the first empty slot, on the free outputs.
     Add {
         /// The applet: its name or its index.
         app: String,
     },
-    /// Stops an instance, freeing its outputs.
+    /// Empties a slot (`NOTHING` in it), freeing its outputs.
     Remove {
         /// The instance: `@N`.
         instance: String,
@@ -289,10 +291,14 @@ fn main() -> anyhow::Result<()> {
             session.act(app.target, index)?;
             Ok(())
         }
-        Command::Select { app } => {
+        Command::Select { app, instance } => {
             let app = found(&mut session, &app)?;
-            session.select_app(app.index)?;
-            eprintln!("{} drives the outputs and the screen", app.name);
+            let instance = instance.as_deref().map(position).transpose()?;
+            session.select_app(app.index, instance)?;
+            match instance {
+                Some(position) => eprintln!("{} in slot @{position}", app.name),
+                None => eprintln!("{} in the slot shown", app.name),
+            }
             Ok(())
         }
         Command::Assign(args) => assign(&mut session, &args),

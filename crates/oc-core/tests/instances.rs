@@ -3,8 +3,8 @@
 //! kind twice with settings of its own, a removed one leaving its jacks at
 //! 0 V.
 
-use oc_core::apps::AppId;
 use oc_core::apps::ratchet::TRIGGER_MV;
+use oc_core::apps::{AppId, MAX_INSTANCES};
 use oc_core::buttons::LONG_PRESS_TICKS;
 use oc_core::platform::{Button, CvChannel, TriggerChannel};
 use oc_core::testing::{MockEngine, adc_reading, mock_engine};
@@ -15,12 +15,13 @@ fn tick(engine: &mut MockEngine) {
     engine.tick();
 }
 
-/// `RATCHET` on A and B, then `SCOPE` beside it, which only C and D are left
-/// for; `CV1` at 1.5 V.
+/// `RATCHET` on A and B in the first slot, then `SCOPE` in the second,
+/// which only C and D are left for, with the focus; `CV1` at 1.5 V.
 fn ratchet_and_scope() -> MockEngine {
     let mut engine = mock_engine(0);
     engine.select_app(AppId::Ratchet);
-    assert_eq!(engine.apps_mut().add(AppId::Scope), Some(1));
+    assert!(engine.select_app_at(1, AppId::Scope));
+    assert!(engine.apps_mut().set_focus(1));
     engine.parts_mut().0.patch(CvChannel::One, 1_500);
     tick(&mut engine);
     engine
@@ -54,12 +55,13 @@ fn two_applets_play_on_the_jacks_their_routes_give_them() {
 #[test]
 fn a_removed_applet_leaves_its_jacks_at_0_v() {
     let mut engine = ratchet_and_scope();
-    assert!(engine.apps_mut().remove(), "SCOPE, which has the focus");
+    engine.select_app(AppId::Nothing);
     tick(&mut engine);
     assert_eq!(engine.outputs()[2..], [0, 0]);
     assert_eq!(
-        (engine.apps().len(), engine.current_app()),
-        (1, AppId::Ratchet)
+        (engine.apps().occupied(), engine.current_app()),
+        ([true, false, false, false], AppId::Nothing),
+        "NOTHING in SCOPE's slot, which keeps the focus"
     );
 }
 
@@ -67,7 +69,8 @@ fn a_removed_applet_leaves_its_jacks_at_0_v() {
 fn the_same_applet_twice_keeps_two_sets_of_settings() {
     let mut engine = mock_engine(0);
     engine.select_app(AppId::Ratchet);
-    engine.apps_mut().add(AppId::Ratchet);
+    engine.select_app_at(1, AppId::Ratchet);
+    engine.apps_mut().set_focus(1);
     let shape = engine
         .apps()
         .focused()
@@ -99,13 +102,17 @@ fn hold(engine: &mut MockEngine, button: Button, ticks: usize) {
 }
 
 #[test]
-fn up_and_down_move_the_focus_round_the_ends() {
+fn up_and_down_move_the_focus_through_every_slot_round_the_ends() {
     let mut engine = ratchet_and_scope();
     assert_eq!(engine.apps().focus(), 1);
     hold(&mut engine, Button::Up, 10);
     assert_eq!(engine.current_app(), AppId::Ratchet, "up: to the left");
     hold(&mut engine, Button::Up, 10);
-    assert_eq!(engine.apps().focus(), 1, "up from the first: the last");
+    assert_eq!(
+        (engine.apps().focus(), engine.current_app()),
+        (MAX_INSTANCES - 1, AppId::Nothing),
+        "up from the first: the last, empty slots too"
+    );
     hold(&mut engine, Button::Down, 10);
     assert_eq!(engine.apps().focus(), 0, "down from the last: the first");
     hold(&mut engine, Button::Down, 10);
@@ -121,7 +128,7 @@ fn up_and_down_move_the_focus_on_the_routing_page_too() {
     let long = usize::try_from(LONG_PRESS_TICKS).unwrap() + 10;
     hold(&mut engine, Button::Down, long);
     assert!(engine.routing_is_open());
-    hold(&mut engine, Button::Down, 10);
+    hold(&mut engine, Button::Up, 10);
     assert!(engine.routing_is_open(), "a short press leaves it open");
     assert_eq!(engine.current_app(), AppId::Ratchet, "on RATCHET's routes");
     let frame = engine.frame();
@@ -130,36 +137,35 @@ fn up_and_down_move_the_focus_on_the_routing_page_too() {
         "the marks on the page, RATCHET's across"
     );
     hold(&mut engine, Button::Up, 10);
-    assert_eq!(engine.current_app(), AppId::Scope, "round the left end");
+    assert_eq!(engine.current_app(), AppId::Nothing, "round the left end");
 }
 
 #[test]
-fn the_screen_marks_the_instances_left_of_the_title() {
+fn the_screen_marks_the_slots_left_of_the_title() {
     let mut engine = mock_engine(0);
     engine.select_app(AppId::Ratchet);
     for _ in 0..40 {
         tick(&mut engine);
     }
+    let frame = engine.frame();
     assert!(
-        !engine.frame().pixel(1, 0),
-        "one applet alone: no mark, the title's place is empty"
+        frame.pixel(0, 0) && frame.pixel(2, 0),
+        "RATCHET, focused, across"
     );
-    engine.apps_mut().add(AppId::Scope);
+    assert!(
+        (2..8).all(|y| !frame.pixel(1, y)),
+        "the empty slots unmarked"
+    );
+    engine.select_app_at(1, AppId::Scope);
     for _ in 0..40 {
         tick(&mut engine);
     }
     let frame = engine.frame();
-    // SCOPE, second, has the focus: its mark across the scroll bar's width,
-    // RATCHET's a pixel on its track.
     assert!(
-        !frame.pixel(0, 0) && frame.pixel(1, 0) && !frame.pixel(2, 0),
-        "RATCHET"
+        !frame.pixel(0, 2) && frame.pixel(1, 2) && !frame.pixel(2, 2),
+        "SCOPE, running beside, a pixel on the track"
     );
-    assert!(
-        frame.pixel(0, 2) && frame.pixel(1, 2) && frame.pixel(2, 2),
-        "SCOPE, focused"
-    );
-    assert!(!frame.pixel(0, 4), "two marks for two instances");
+    assert!(!frame.pixel(1, 4), "the third slot still empty");
 }
 
 #[test]
@@ -182,14 +188,14 @@ fn a_long_press_opens_the_routing_page_where_a_port_goes_off() {
     );
     hold(&mut engine, Button::Up, long);
     assert!(!engine.routing_is_open(), "a long press closes it");
-    assert_eq!(engine.apps().len(), 1);
+    assert_eq!(engine.apps().occupied(), [true, false, false, false]);
 }
 
 #[test]
 fn an_instance_reads_the_trigger_its_map_plugs_in() {
     let mut engine = mock_engine(0);
     engine.select_app(AppId::Ratchet);
-    engine.apps_mut().add(AppId::Ratchet);
+    engine.select_app_at(1, AppId::Ratchet);
     // The second one's CLOCK from TR2; its A on C.
     engine.apps_mut().set_input(1, 0, 1).unwrap();
     let mut copies = [false; 4];

@@ -237,7 +237,11 @@ fn picking_another_app_starts_it_afresh_in_the_same_place() {
     tap(&mut engine, Button::Down);
     tap(&mut engine, Button::LeftEncoder);
     run_ticks(&mut engine, 20);
-    assert_eq!(engine.apps().len(), 1, "in the place of the one left");
+    assert_eq!(
+        (engine.apps().focus(), engine.current_app()),
+        (0, AppId::Scope),
+        "in the place of the one left"
+    );
 
     chord(&mut engine);
     tap(&mut engine, Button::Up);
@@ -289,35 +293,33 @@ fn a_reset_leaves_the_menu_and_returns_to_the_diagnostic_applet() {
 }
 
 #[test]
-fn the_menu_adds_an_applet_beside_and_removes_the_focused_one() {
+fn the_menu_fills_an_empty_slot_and_empties_one_with_nothing() {
     let mut engine = mock_engine(0);
-    // ADD APP sits right after the apps: one up from SETUP, the last.
-    chord(&mut engine);
-    tap(&mut engine, Button::Up);
-    tap(&mut engine, Button::Up);
-    assert_eq!(engine.menu_selection(), MenuEntry::Add);
-    tap(&mut engine, Button::RightEncoder);
-    assert!(engine.menu_is_open(), "the apps to add, the menu still up");
+    // The second slot, empty: NOTHING's screen, which the menu fills.
     tap(&mut engine, Button::Down);
+    assert_eq!(
+        (engine.apps().focus(), engine.current_app()),
+        (1, AppId::Nothing)
+    );
+    chord(&mut engine);
+    assert_eq!(engine.menu_selection(), MenuEntry::App(AppId::Nothing));
+    tap(&mut engine, Button::Up);
     tap(&mut engine, Button::LeftEncoder);
     assert!(!engine.menu_is_open());
-    assert_eq!(engine.apps().len(), 2);
+    assert_eq!(engine.current_app(), AppId::Supersaw, "in the second slot");
     assert_eq!(
-        (engine.current_app(), engine.apps().focus()),
-        (AppId::Scope, 1),
-        "SCOPE, right of DIAGNOSTIC, with the focus"
+        engine.apps().at(0).map(oc_core::apps::App::id),
+        Some(AppId::Diagnostic)
     );
 
-    // No slot left: no ADD APP, REMOVE APP just above SETUP. The menu
-    // opens on SCOPE: up to DIAGNOSTIC, then round to SETUP, then REMOVE.
+    // NOTHING, last of the apps, one up from SETUP, empties it again.
     chord(&mut engine);
-    tap(&mut engine, Button::Up);
-    tap(&mut engine, Button::Up);
-    tap(&mut engine, Button::Up);
-    assert_eq!(engine.menu_selection(), MenuEntry::Remove, "two of two run");
+    tap(&mut engine, Button::Down);
+    assert_eq!(engine.menu_selection(), MenuEntry::App(AppId::Nothing));
     tap(&mut engine, Button::LeftEncoder);
     assert_eq!(
-        (engine.apps().len(), engine.current_app()),
-        (1, AppId::Diagnostic)
+        engine.apps().occupied(),
+        [true, false, false, false],
+        "the slot empty, its outputs free"
     );
 }

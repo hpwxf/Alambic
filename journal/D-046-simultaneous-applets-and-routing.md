@@ -5,7 +5,7 @@
 | **Identifiant** | D-046 |
 | **Date** | 2026-11-24 |
 | **Auteur** | Pascal Havé |
-| **Statut** | adoptée |
+| **Statut** | adoptée, révisée |
 | **Commits** | `dd8d0fd` (ADR et plan), `faee549` (13b), `e99e4c6` (13c), `527f0bc`, `f161c84` (13d), `c0fdc86` (13e), `8586de7` (13f), `8911df1`, `73739a5` (13g), adoption avec `etape-13.md` |
 | **Relations** | étape 3 de la trajectoire de D-043 ; révisera D-021 (un résident par app, `up` / `down` au relâchement sans minuterie), D-043 (`AppHost`, ce que nomme la sonde), D-044 (un `Params` pour les quatre sorties) et D-040 (un `Setup` par changement, désormais par instance) ; déplace le maintien par la sonde de D-029 après le routage ; prépare l'arena de D-038 ; rouvre D-042 si `audio` approche la moitié de la période ; la persistance du patch (D-028, D-045) vient plus tard |
 
@@ -349,3 +349,39 @@ Suites notées, hors de cette décision :
   (D-040) : à retirer, avec une révision par emplacement à la place des `Params` gardés par `Follower`, et le
   champ `bank` de `SupersawParams` renommé ; révision de D-040 à venir ;
 * `publish` à ≈ 9 µs par `SUPERSAW` modulée ; les `Changes` plus petits en découleraient.
+
+## Révision du 2026-11-25 — quatre emplacements toujours occupés, `NOTHING`
+
+Après l'étape, à la demande de l'utilisateur : le pool gardait des emplacements vides (`[Option<Slot>; N]`), une
+position distincte de l'emplacement (`order`, `count`), `add` / `remove`, deux entrées de menu et deux requêtes de
+protocole. Essai : **`MAX_INSTANCES` applets en permanence**, un emplacement libre faisant tourner une applet
+`NOTHING`.
+
+Tranché par l'utilisateur :
+
+* **les emplacements vides sont visités** par `up` / `down` (écran `NOTHING` : `EMPTY SLOT`, `HOLD UP+DOWN: APPS`) ;
+* **`NOTHING` dans la liste du menu**, la dernière des apps : elle vide l'emplacement montré ; `ADD APP` et
+  `REMOVE APP` disparaissent, le menu ne fait plus que remplacer ;
+* **protocole 10** : `SelectApp` nomme un emplacement (`instance: Option<u8>`, `None` pour celui du focus) ;
+  `AddInstance` et `RemoveInstance` disparaissent ; la CLI garde `add` (le premier emplacement vide) et `remove @N`
+  (`NOTHING` dedans) au-dessus de `SelectApp`, et prend `select <app> @N` ; dans la page, *Run in slot @N* met l'app choisie dans l'emplacement montré sur le
+  module (essayée par l'utilisateur, un bouton *Put in an empty slot* n'avait pas de sens : retiré), dont le bouton
+  est plein, de la couleur d'accent ; un emplacement vide, en pointillés.
+
+Ce qui change :
+
+* **`AppHost { slots: [Slot; MAX_INSTANCES], focus }`** : la position est l'emplacement ; `select_at(position, id)`
+  remplace l'applet d'un emplacement (les sorties de l'ancienne libérées, les ports de la nouvelle sur les sorties
+  libres, dans l'ordre), `select` celle du focus ; `occupied()` dit lesquels font tourner une applet. Le pool part de
+  `Slot::EMPTY`, une constante : construit emplacement par emplacement (`array::from_fn`), il ajoutait 4 Kio au
+  chemin le plus profond de la pile.
+* **`AppId::Nothing`**, dernier (clé persistée), `apps/nothing.rs` : aucun port, aucun réglage ; exclu de l'app de
+  démarrage de `SETUP` ; jamais dit « en marche » par `ListApps`.
+* **L'indicateur toujours dessiné** : le focus sur toute la largeur, un point pour un emplacement qui fait tourner
+  une applet, rien pour un vide ; écrans de référence régénérés (la ligne du titre, la barre du menu qui défile
+  désormais toujours : huit entrées pour sept lignes).
+* Firmware (`cargo xtask size`, contre `master` `a7b8747`) : `.text` −1 876 o, `.rodata` +296 o (`Slot::EMPTY`, les
+  textes de `NOTHING`) ; pile ≈ 9 312 o (+344 o ; 7 072 o libres), le chemin le plus profond redevenu celui du
+  démarrage (`engine_in_static`, 3 368 o).
+* Calcul : les quatre emplacements tournaient déjà à chaque tick (le pool, `Patch` et `Changes` étaient de taille
+  fixe) ; `NOTHING` rend `Params::REST` sur une route `OFF`, inactive dans `Voices`.

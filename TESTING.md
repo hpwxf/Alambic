@@ -517,18 +517,23 @@ With the module running and the USB cable on the Teensy (journal/D-029):
    supersaw detune --center 5` sets the scale and shift that `CENTER` would,
    and the submenu opened on the panel shows the same fields;
    `cargo probe assign supersaw stereo` says it takes no CV input.
-   Instances (journal/D-046, protocol 9): with `SUPERSAW` running,
-   `cargo probe add ratchet` prints `* @1 RATCHET` and the module shows it,
-   its marks left of the title; `cargo probe instances` lists both, `@0`
-   on `A`, `B`, `SUB -> C`, `@1` on `A -> D`, `B -> OFF`, `CLOCK <- TR1`;
+   Slots (journal/D-046, protocol 10): with `SUPERSAW` running,
+   `cargo probe add ratchet` prints `@1 RATCHET` (the first empty slot) and
+   its mark appears left of the title; `cargo probe instances` lists the
+   four slots, `@0` on `A`, `B`, `SUB -> C`, `@1` on `A -> D`, `B -> OFF`,
+   `CLOCK <- TR1`, `@2` and `@3` `NOTHING`; `cargo probe select scope @3`
+   fills the last one, which gets no output (`SUPERSAW` and `RATCHET` hold
+   them all);
    `cargo probe route @0 sub=off` frees C, `cargo probe route @1 b=c`
    takes it, `cargo probe route @1 a=b` is refused (`Taken`);
    `cargo probe set @1 prob 50` reaches the second app alone; `focus @0`
-   shows `SUPERSAW` again, `remove @1` stops `RATCHET` and C and D fall to
-   0 V. On the panel, with three apps added from the menu (`ADD APP`): a
-   short `down` shows the next, from the last round to the first, `up` the
-   other way; the marks left of the title, as wide as a list's scroll bar,
-   put the one shown across the column. Hold `down` one second: the routing
+   shows `SUPERSAW` again, `remove @1` puts `NOTHING` in its slot and C and
+   D fall to 0 V. On the panel: a short `down` shows the next slot, empty
+   ones too (`NOTHING`'s screen, `EMPTY SLOT`), from the last round to the
+   first, `up` the other way; the menu there lists the apps, `NOTHING` last,
+   and one picked fills the slot; the marks left of the title, as wide as a
+   list's scroll bar, put the one shown across the column, a dot for each
+   slot that runs an app. Hold `down` one second: the routing
    page opens with the same marks; a short `up` or `down` there moves to the
    next app's routes, the page staying open; hold one second to close it.
 7. `cargo probe reboot`, then `cargo xtask flash`: the flash goes through with

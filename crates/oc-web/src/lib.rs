@@ -151,7 +151,10 @@ pub fn request_act(app: u8, action: u8) -> Vec<u8> {
 #[wasm_bindgen]
 #[must_use]
 pub fn request_select_app(app: u8) -> Vec<u8> {
-    frame(&Request::SelectApp { app })
+    frame(&Request::SelectApp {
+        app,
+        instance: None,
+    })
 }
 
 /// What a [`Message`] is.

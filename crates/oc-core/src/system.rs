@@ -247,8 +247,10 @@ impl SystemScreen {
         let line = self.line();
         let draft = &mut self.draft;
         match line {
+            // Every app but `NOTHING`, last: a module starting on an empty
+            // slot alone would look dead (journal/D-046).
             Line::StartupApp => {
-                let count = i32::try_from(AppId::ALL.len()).unwrap_or(1);
+                let count = i32::try_from(AppId::ALL.len() - 1).unwrap_or(1);
                 let current = i32::try_from(draft.startup_app.index()).unwrap_or(0);
                 let next = usize::try_from((current + detents).rem_euclid(count)).unwrap_or(0);
                 draft.startup_app = AppId::from_index(next).unwrap_or_default();

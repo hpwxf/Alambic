@@ -44,7 +44,7 @@ use oc_core::platform::{CV_CHANNELS, MilliVolts};
 pub use oc_core::profile::Profile;
 
 /// Protocol version, raised on any change to a message's encoding.
-pub const VERSION: u16 = 9;
+pub const VERSION: u16 = 10;
 
 /// Longest frame either side sends or accepts, zero byte included. A
 /// screen page (128 bytes) and a profile (a few hundred) both fit with room
@@ -150,11 +150,15 @@ pub enum Request {
         /// The action's index.
         action: u8,
     },
-    /// Hands the outputs and the screen to applet `app`, as the app menu
-    /// does: [`Reply::Done`].
+    /// Puts a fresh applet `app` in the slot at `instance`, or in the one
+    /// with the focus, as the app menu does; `NOTHING` empties it
+    /// (journal/D-046): [`Reply::Done`], or [`Error::NoSuchApp`] for no such
+    /// applet or slot.
     SelectApp {
         /// The applet's index.
         app: u8,
+        /// The slot's position; `None` for the one with the focus.
+        instance: Option<u8>,
     },
     /// The CV input parameter `param` of applet `app` takes:
     /// [`Reply::Assign`].
@@ -175,23 +179,9 @@ pub enum Request {
         /// The input asked for.
         assign: Assign,
     },
-    /// Every applet running: one [`Reply::Instance`] each, left to right,
-    /// then [`Reply::Done`] (journal/D-046).
+    /// Every slot, `NOTHING` in an empty one: one [`Reply::Instance`] each,
+    /// left to right, then [`Reply::Done`] (journal/D-046).
     ListInstances,
-    /// Starts applet `app` right of the one with the focus, on the free
-    /// outputs, and gives it the focus, as the menu's `ADD APP` does:
-    /// [`Reply::Instance`], or [`Error::NoSuchApp`] when no slot is free.
-    AddInstance {
-        /// The applet's index in [`Request::ListApps`].
-        app: u8,
-    },
-    /// Stops the instance at `instance`, freeing its outputs, as the menu's
-    /// `REMOVE APP` does on the one with the focus: [`Reply::Done`], or
-    /// [`Error::NoSuchApp`] for the last one.
-    RemoveInstance {
-        /// Its position.
-        instance: u8,
-    },
     /// Gives the screen and the panel to the instance at `instance`, as
     /// `up` and `down` do: [`Reply::Done`].
     Focus {

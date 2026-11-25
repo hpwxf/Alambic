@@ -186,7 +186,7 @@ fn menu(criterion: &mut Criterion) {
     // the same order of magnitude as `applet/render`.
     group.bench_function("render", |bencher| {
         let mut menu = Menu::new();
-        menu.open(AppId::Scope, true, true);
+        menu.open(AppId::Scope);
         let mut frame = FrameBuffer::new();
         bencher.iter(|| {
             menu.render(&mut frame);

@@ -16,6 +16,11 @@ use oc_protocol::{
     SCREEN_PAGES, Sample, Target, VERSION, decode, encode,
 };
 
+/// The index of `NOTHING`, what an empty slot runs (journal/D-046).
+// The apps fit a byte: the protocol names them by one.
+#[allow(clippy::cast_possible_truncation)]
+const NOTHING: u8 = oc_core::apps::AppId::Nothing.index() as u8;
+
 /// What went wrong talking to the module.
 #[derive(Debug)]
 pub enum ProbeError {
@@ -489,13 +494,14 @@ impl<T: Read + Write> Client<T> {
         })
     }
 
-    /// Hands the outputs and the screen to applet `app`.
+    /// Puts a fresh applet `app` in the slot at `instance`, or in the one
+    /// with the focus (journal/D-046).
     ///
     /// # Errors
     ///
-    /// As [`Self::describe`].
-    pub fn select_app(&mut self, app: u8) -> Result<()> {
-        self.done(&Request::SelectApp { app })
+    /// As [`Self::describe`]; no such slot.
+    pub fn select_app(&mut self, app: u8, instance: Option<u8>) -> Result<()> {
+        self.done(&Request::SelectApp { app, instance })
     }
 
     /// The CV input parameter `param` of applet `app` takes.
@@ -552,23 +558,34 @@ impl<T: Read + Write> Client<T> {
         }
     }
 
-    /// Starts applet `app` right of the one with the focus, as the menu's
-    /// `ADD APP` does: the new instance.
+    /// Puts applet `app` in the first empty slot, left to right: the
+    /// instance it now is. The slots are fixed (journal/D-046, revision of
+    /// 2026-11-25): this only finds one holding `NOTHING`.
     ///
     /// # Errors
     ///
-    /// As [`Self::hello`]; no slot free.
+    /// As [`Self::hello`]; [`ProbeError::Refused`] with
+    /// [`Error::NoSuchApp`] when no slot is empty.
     pub fn add_instance(&mut self, app: u8) -> Result<InstanceEntry> {
-        self.instance_answer(&Request::AddInstance { app })
+        let free = self
+            .instances()?
+            .into_iter()
+            .find(|instance| instance.app == NOTHING)
+            .ok_or(ProbeError::Refused(Error::NoSuchApp))?;
+        self.select_app(app, Some(free.position))?;
+        self.instances()?
+            .into_iter()
+            .find(|instance| instance.position == free.position)
+            .ok_or(ProbeError::Unexpected("an instance"))
     }
 
-    /// Stops the instance at `instance`.
+    /// Empties the slot at `instance`: `NOTHING` in it, its outputs free.
     ///
     /// # Errors
     ///
-    /// As [`Self::hello`]; no such instance, or the last one.
+    /// As [`Self::hello`]; no such slot.
     pub fn remove_instance(&mut self, instance: u8) -> Result<()> {
-        self.done(&Request::RemoveInstance { instance })
+        self.select_app(NOTHING, Some(instance))
     }
 
     /// Gives the screen and the panel to the instance at `instance`.
