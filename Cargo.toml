@@ -143,12 +143,15 @@ opt-level = 3
 [profile.release.package.oc-realtime]
 opt-level = 3
 # The firmware itself (boot, the loop, USB, settings) stays at the default
-# "s": 69 KiB of ITCM free. With fat LTO the root crate's level also sets
-# the passes shared by the whole program, so the per-sample path keeps only
-# part of its 3: four SUPERSAWs take `voice` 3.58 us against 3.18 with the
-# firmware at 3 (`audio` 5.84 against 5.43, half the period being 10.5 us),
-# for 32 KiB of ITCM. If `audio` nears its budget, uncomment the next two
-# lines first (journal/D-038, revision of 2026-11-26).
+# "s". With fat LTO the root crate's level also sets the passes shared by
+# the whole program, so the per-sample path keeps only part of its 3. Four
+# modulated SUPERSAWs (journal/D-038, revision of 2026-11-26):
+#
+#   oc-firmware at     ITCM free   voice     audio (budget 10.5 us)
+#   "s" (this)         69.2 KiB    3.58 us   5.84 us
+#   3                  37.2 KiB    3.18 us   5.43 us
+#
+# If `audio` nears its budget, uncomment the next two lines first.
 # [profile.release.package.oc-firmware]
 # opt-level = 3
 # VCV Rack's module: the same per-sample path, instantiated here, at Rack's
