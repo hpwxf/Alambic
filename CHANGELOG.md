@@ -25,6 +25,11 @@ Architectural decisions behind each change are in `journal/` (French).
 
 ### Changed
 
+- `cargo xtask size`'s `stack-depth` follows the applets reached through
+  `&dyn App` (journal/D-038, revision of 2026-11-27): a call through a
+  pointer from the workspace's crates counts as a call to the deepest
+  applet method, which the report prints. Calls through a pointer from
+  other crates are still not followed.
 - In `RATCHET`, `SUPERSAW`, `TONE` and `MELODY`, a setting that can take a
   CV input but has none shows a small ring at the right of its row, where
   an assigned input shows its name (`+CV1`): the settings an input can move

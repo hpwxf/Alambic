@@ -71,6 +71,12 @@ pub(crate) fn report_size(elf: &Path) -> Result<()> {
             stack_check::format_path("deepest interrupt", deepest, 4)
         );
     }
+    if let Some(applet) = &stack.applet {
+        println!(
+            "{}",
+            stack_check::format_path("deepest applet method, at every dyn App call", applet, 4)
+        );
+    }
 
     if report.failed() {
         let failed = report

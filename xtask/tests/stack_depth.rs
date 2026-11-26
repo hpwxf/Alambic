@@ -1,5 +1,6 @@
 //! The stack estimate over captured `llvm-objdump` text (journal/D-038):
-//! frames read from prologues, direct and tail calls followed, the panic
+//! frames read from prologues, direct and tail calls followed, calls through
+//! a pointer from the workspace taken to the deepest applet method, the panic
 //! path and the handlers that never return left out.
 
 use xtask::size_check::CheckStatus;
@@ -138,4 +139,89 @@ fn a_disassembly_without_main_or_a_table_is_refused() {
     let graph = parse_disassembly("00000000 <alone>:\n       0:      \tbx\tlr\n");
     assert!(estimate(&graph, &[0x2000_4000, 0x6000_1031]).is_err());
     assert!(parse_vector_table("Contents of section .vector_table:\n").is_err());
+}
+
+/// `main` reaches an applet only through a pointer, from the workspace's
+/// `AppHost::render`; the logger calls through one too, from another crate.
+/// `Big::render` is the deepest applet method, `Small::update` the other.
+const DYN_DISASSEMBLY: &str = "\
+00000100 <oc_firmware::__cortex_m_rt_main>:
+     100:      \tpush\t{r7, lr}
+     102:      \tbl\t0x200 <<oc_core::apps::AppHost>::render>
+     106:      \tbl\t0x300 <log::logger>
+     10a:      \tb\t0x102 <oc_firmware::__cortex_m_rt_main+0x2>
+
+00000200 <<oc_core::apps::AppHost>::render>:
+     200:      \tpush\t{r4, lr}
+     202:      \tsub\tsp, #0x20
+     204:      \tblx\tr2
+     206:      \tpop\t{r4, pc}
+
+00000300 <log::logger>:
+     300:      \tpush\t{r4, r5, r6, lr}
+     302:      \tsub\tsp, #0x10
+     304:      \tblx\tr3
+     306:      \tbx\tlr
+
+00000400 <<demo::Big as oc_core::apps::App>::render>:
+     400:      \tpush\t{r4, r5, r7, lr}
+     402:      \tsub.w\tsp, sp, #0x300
+     406:      \tbl\t0x600 <demo::draw>
+     40a:      \tpop\t{r4, r5, r7, pc}
+
+00000500 <<demo::Small as oc_core::apps::App>::update>:
+     500:      \tpush\t{r7, lr}
+     502:      \tsub\tsp, #0x40
+     504:      \tbx\tlr
+
+00000600 <demo::draw>:
+     600:      \tpush\t{r7, lr}
+     602:      \tsub\tsp, #0x80
+     604:      \tbx\tlr
+";
+
+#[test]
+fn a_call_through_a_pointer_from_the_workspace_reaches_the_deepest_applet_method() {
+    let graph = parse_disassembly(DYN_DISASSEMBLY);
+    let applet = graph.deepest_applet_method().unwrap();
+    assert_eq!(
+        applet.bytes,
+        (4 * 4 + 0x300) + (2 * 4 + 0x80),
+        "Big::render and draw"
+    );
+    assert!(
+        applet.frames[0].0.starts_with("dyn App: <demo::Big"),
+        "{:?}",
+        applet.frames
+    );
+
+    let path = graph.deepest(graph.find("__cortex_m_rt_main").unwrap());
+    let names: Vec<&str> = path.frames.iter().map(|(name, _)| name.as_str()).collect();
+    assert_eq!(
+        names,
+        [
+            "oc_firmware::__cortex_m_rt_main",
+            "<oc_core::apps::AppHost>::render",
+            "dyn App: <demo::Big as oc_core::apps::App>::render",
+            "demo::draw",
+        ],
+        "through AppHost's pointer, deeper than the logger's"
+    );
+    assert_eq!(path.bytes, 2 * 4 + (2 * 4 + 0x20) + applet.bytes);
+}
+
+#[test]
+fn a_call_through_a_pointer_from_another_crate_is_not_followed() {
+    let graph = parse_disassembly(DYN_DISASSEMBLY);
+    let logger = graph.deepest(graph.find("logger").unwrap());
+    assert_eq!(logger.bytes, 4 * 4 + 0x10, "the logger's own frame alone");
+}
+
+#[test]
+fn a_return_is_no_call_through_a_pointer() {
+    let graph = parse_disassembly(DYN_DISASSEMBLY);
+    let small = graph.deepest(graph.find("update").unwrap());
+    assert_eq!(small.bytes, 2 * 4 + 0x40, "bx lr returns");
+    let check = check_stack(&estimate(&graph, &[0x2000_4000, 0x101]).unwrap(), 16 * 1024);
+    assert!(check.detail.contains("dyn App"), "{}", check.detail);
 }

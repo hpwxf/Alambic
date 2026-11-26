@@ -385,3 +385,27 @@ Mesures (module, mêmes réglages que la révision précédente ; µs, moyenne) 
   fixe le niveau des passes communes (déroulage, vectorisation) : le code de `oc-realtime`, compilé en `3`, n'en
   garde qu'une part ; explication probable, non vérifiée.
 * La pile du démarrage redescend (`boot` 3 016 o, `engine_in_static` 3 024 o) : 6 960 o libres.
+
+## Révision (2026-11-27) — les appels `dyn App` suivis par `stack-depth`
+
+**Contexte.** `stack-depth` ne suivait pas les appels par pointeur (`blx rN`). Or toutes les applets sont appelées
+ainsi, par `&dyn App` (D-043), et certaines de leurs méthodes depuis des cadres profonds : le serveur de la sonde
+(`instance_reply`, `Server::describe`), `AppHost::select_at` au démarrage. L'estimation ne disait rien d'une applet
+dont l'`update`, le `render`, l'`act` ou le `set` serait gourmand. Mesure faite à la main (étape 14) : aucun de ces
+chemins ne dépassait encore celui du démarrage (au plus 8 360 + 908 o contre 9 464 o), mais rien ne l'aurait signalé.
+
+**Décidé (demande de l'utilisateur).** Un appel par pointeur (`blx rN`, ou `bx rN` en appel terminal) depuis une
+fonction des crates du dépôt (`oc_…`) compte comme un appel à la plus profonde des méthodes `App` des applets
+(`<_ as oc_core::apps::App>::*`, par ses appels directs) : une borne supérieure, la même à chaque tel appel, sans
+lire les vtables. Les appels par pointeur des crates tierces (le journal `log`, les wakers du stockage) restent non
+suivis : sans quoi chaque interruption, dont le seul appel par pointeur est le journal, recevrait une applet qu'elle
+n'appelle jamais. Le rapport de `cargo xtask size` imprime la méthode retenue (`deepest applet method, at every dyn
+App call`) ; la ligne `stack-depth` dit `direct calls and dyn App at its deepest method`.
+
+**Effet aujourd'hui** : aucun (≈ 10 432 o) ; la méthode retenue est `SupersawApp::render`, 908 o, appelée au plus
+profond depuis `select_at`, sous le chemin du démarrage.
+
+**Ce qu'elle ne voit toujours pas** : les autres appels par pointeur, une méthode d'applet qui appelle elle-même par
+pointeur (comptée par ses appels directs), un cadre qui grandit à l'exécution, la récursion. **Ce qui ferait
+changer d'avis** : une borne trop pessimiste qui ferait alerter à tort (une applet au `render` lourd mais jamais
+appelée profond) : lire les vtables et les méthodes réellement appelées à chaque site.
