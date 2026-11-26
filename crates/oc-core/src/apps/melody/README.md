@@ -182,7 +182,8 @@ place of the value.
 * **The sequence**, at the bottom: one column per step of the loop, as wide
   as the screen allows (4 pixels at 32 steps). Each step's mark sits as high
   as its note in the scale, scaled to `RANGE` or the highest note held. The
-  step playing is filled down to the bottom under a small playhead; in the
+  step playing is filled down to the bottom, a small playhead at the top of
+  its column in inverse video (no row is kept for it above the marks); in the
   editor, the step edited is framed. The marks show the notes as held, before
   `TRANSPOSE`.
 

@@ -83,6 +83,7 @@ l'écran et éditable pas à pas. Plan : [etape-14-melodie.md](docs/plan/etape-1
 | 14g | révision : `OUT D` retiré, la gate en port `GATE`, accord de deux tons ; reset sans saut des sorties ; guide `apps/melody/README.md` | ✅ |
 | 14h | quatre lignes de réglages par page, réglages regroupés par quatre | ✅ |
 | 14i | `TRANSPOSE` sans `CV1` au démarrage : aucune entrée par défaut | ✅ |
+| 14j | pointeur en inverse vidéo en haut de la colonne jouée, sans ligne réservée | ✅ |
 
 ## Décisions actées
 

@@ -66,12 +66,12 @@ const PAGE_ROWS: usize = 4;
 /// Pages of settings.
 const PAGES: usize = Setting::ALL.len().div_ceil(PAGE_ROWS);
 
-/// Top of the sequence, a row under the last setting: the playhead's row,
-/// the notes below it.
-const SEQUENCE_TOP: i32 = 5 * ROW_HEIGHT + 1;
+/// Top of the notes, a row under the last setting. No row is kept for the
+/// playhead: it sits at the top of its column, in inverse video.
+const NOTES_TOP: i32 = 5 * ROW_HEIGHT + 1;
 
-/// Top of the notes, under the playhead.
-const NOTES_TOP: i32 = SEQUENCE_TOP + 4;
+/// The playhead's height: a triangle of three rows, its tip down.
+const PLAYHEAD_ROWS: i32 = 3;
 
 /// A note's mark: two rows.
 const MARK_HEIGHT: i32 = 2;
@@ -808,7 +808,7 @@ impl MelodyApp {
 
     /// The steps of the loop at the bottom of the screen, side by side: each
     /// note's mark as high as its pitch, the step playing filled below its
-    /// mark under the playhead, the step edited framed.
+    /// mark, the playhead at the top of its column, the step edited framed.
     fn render_sequence(&self, frame: &mut FrameBuffer) {
         let length = usize::from(self.sequence.length());
         let scale = self.settings.scale;
@@ -833,7 +833,7 @@ impl MelodyApp {
             let y = bottom - quantised(note) * height / top_note;
             if playing == Some(step) {
                 gfx::fill_rect(frame, x, y, width, HEIGHT_I32 - y, Ink::Lit);
-                gfx::patterns::playhead(frame, Point::new(x + width / 2 - 2, SEQUENCE_TOP));
+                playhead(frame, x, width);
             } else {
                 gfx::fill_rect(frame, x, y, width, MARK_HEIGHT, Ink::Lit);
             }
@@ -871,6 +871,22 @@ impl MelodyApp {
             now_permille: rate.permille(latched.number(setting)),
         };
         self.inputs.render(frame, &param);
+    }
+}
+
+/// The playhead over the column from `x`, `width` wide: a triangle at the
+/// top of the notes, its tip down, in inverse video, so it shows over a mark
+/// that reaches the top as over nothing; cut to the column, narrow at 32
+/// steps, so its neighbours keep their marks.
+fn playhead(frame: &mut FrameBuffer, x: i32, width: i32) {
+    let centre = x + (width - 1) / 2;
+    let right = x + width - 1;
+    for row in 0..PLAYHEAD_ROWS {
+        // Rows narrow towards the tip.
+        let half = PLAYHEAD_ROWS - 1 - row;
+        let from = (centre - half).max(x);
+        let to = (centre + half).min(right);
+        gfx::hline(frame, from, NOTES_TOP + row, to - from + 1, Ink::Invert);
     }
 }
 
