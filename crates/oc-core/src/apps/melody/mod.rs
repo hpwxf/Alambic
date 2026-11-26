@@ -6,8 +6,8 @@
 //! first with the chance `PROB` ([`sequence`]); a rising edge on `TR2`
 //! (`RESET`) arms the sequence, so the next clock plays its first step. A
 //! carries the step's note, quantised to `SCALE` from `ROOT`, moved by
-//! `OCTAVE` and `TRANSPOSE` (which takes `CV1` at one volt per octave from
-//! the start); `CH1` and `CH2` carry a chord stacked in the scale on it
+//! `OCTAVE` and `TRANSPOSE` (which an input moves at one volt per octave);
+//! `CH1` and `CH2` carry a chord stacked in the scale on it
 //! ([`scale::chord`]), `GATE` a gate for `GATE` percent of the clock's
 //! period. Which of the four ports reaches which jack is the routing page's
 //! (journal/D-046), not a setting of the applet's.
@@ -42,7 +42,7 @@ use crate::gfx::{self, Ink, Point};
 use crate::modulation::editor::Param;
 use crate::modulation::slots::Modulations;
 use crate::modulation::{Assign, Effect, multiplied};
-use crate::platform::{Button, CV_CHANNELS, CvChannel, MilliVolts};
+use crate::platform::{Button, CV_CHANNELS, MilliVolts};
 use crate::tempo::Tempo;
 use crate::text::fonts::FONT_5X8;
 use crate::text::{self, Alignment, TextStyle};
@@ -408,20 +408,6 @@ pub const OBSERVABLES: [ParamSpec; 2] = [
 /// `REROLL` does; arm it, as `RESET` does.
 pub const ACTIONS: [&str; 2] = ["REROLL", "RESET"];
 
-/// What each setting takes at start: `CV1` added to `TRANSPOSE`, the V/oct
-/// a sequencer is transposed by; nothing for the others.
-const DEFAULT_ASSIGNS: [Assign; 6] = [
-    Assign::NONE,
-    Assign::NONE,
-    Assign {
-        input: Some(CvChannel::One),
-        ..Assign::NONE
-    },
-    Assign::NONE,
-    Assign::NONE,
-    Assign::NONE,
-];
-
 /// Semitones from C4 as millivolts at one volt per octave, rounded to the
 /// nearest (journal/D-041 leaves the half millivolt).
 fn millivolts(semitones: i32) -> MilliVolts {
@@ -464,7 +450,9 @@ impl MelodyApp {
             transpose: 0,
             playing: 0,
             tempo: Tempo::new(),
-            inputs: Modulations::new(DEFAULT_ASSIGNS),
+            // No input at start, `TRANSPOSE` included: one is given in the
+            // submenu, as to any other setting.
+            inputs: Modulations::new([Assign::NONE; 6]),
             selected: 0,
             editing: None,
             clock: false,

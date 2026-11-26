@@ -5,6 +5,7 @@
 use oc_core::apps::melody::scale::{Chord, Scale, chord};
 use oc_core::apps::melody::{GATE_MV, MelodyApp, Setting, UNKNOWN_GATE_MICROS};
 use oc_core::apps::{App, AppId};
+use oc_core::modulation::Assign;
 use oc_core::platform::{Button, CvChannel, MilliVolts, TriggerChannel};
 use oc_core::settings::Settings;
 use oc_core::testing::{MockEngine, mock_engine_at_boot};
@@ -260,11 +261,42 @@ fn the_length_changes_the_loop_at_once() {
 }
 
 #[test]
-fn cv1_transposes_a_volt_an_octave_at_the_next_clock() {
+fn an_input_given_to_transpose_moves_it_a_volt_an_octave() {
     let mut engine = melody();
     clock(&mut engine, 5);
     let untransposed = engine.outputs()[0];
     engine.parts_mut().0.patch(CvChannel::One, 1_000);
+    for _ in 0..8 {
+        clock(&mut engine, 5);
+    }
+    assert_eq!(
+        engine.outputs()[0],
+        untransposed,
+        "no input at start: CV1 moves nothing"
+    );
+    assert!(
+        app(&engine)
+            .assign(Setting::Transpose)
+            .unwrap()
+            .input
+            .is_none()
+    );
+    let transpose = Setting::ALL
+        .iter()
+        .position(|&setting| setting == Setting::Transpose)
+        .unwrap();
+    engine
+        .apps_mut()
+        .at_mut(0)
+        .unwrap()
+        .set_assign(
+            transpose,
+            Assign {
+                input: Some(CvChannel::One),
+                ..Assign::NONE
+            },
+        )
+        .unwrap();
     for _ in 0..8 {
         clock(&mut engine, 5);
     }

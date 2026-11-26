@@ -19,7 +19,6 @@ and C a chord built on it in the same scale, D a gate.
 | `CH1` | B | the chord's lower tone, 1 V/octave |
 | `CH2` | C | the chord's upper tone, 1 V/octave |
 | `GATE` | D | 5 V for `GATE` percent of the clock's period, then 0 V |
-| `CV1` | — | added to `TRANSPOSE` at 1 V/octave from the start (see *CV inputs*) |
 
 Every port goes through the app's **routing page** (a long press of `up` or
 `down`; README, *Apps and the app menu*). To free D for another app, set
@@ -166,9 +165,10 @@ started.
 | `RANGE` | 1 octave a volt | 1 octave |
 | `SPREAD`, `BIAS` | 20 % a volt | 0 % |
 
-`MUL` multiplies the panel's value by the input over 5 V. At start,
-`TRANSPOSE` takes `CV1` with `ADD`: a keyboard's or a sequencer's V/oct on
-`CV1` transposes the melody, which stays in the scale. The screen marks an
+`MUL` multiplies the panel's value by the input over 5 V. No setting has
+an input at start, `TRANSPOSE` included. Give `TRANSPOSE` a `CV` with `ADD`
+and a keyboard's or a sequencer's V/oct on it transposes the melody, which
+stays in the scale. The screen marks an
 assigned setting with its input (`+CV1`), and with `SET` shows `=CV1` in
 place of the value.
 

@@ -910,8 +910,9 @@ each setting does: `crates/oc-core/src/apps/melody/README.md`.
    `GATE` to `C`: the gate on C.
 6. `TR2`: a trigger arms the sequence (`--` in the title, the note held),
    the next clock plays step 01.
-7. `CV1` at +1 V: from the next clock A plays an octave up (`+CV1` on
-   `TRANSPOSE`).
+7. `CV1` at +1 V: A does not move (no input at start). Give `TRANSPOSE`
+   `CV1` in its submenu (right click, `INPUT` to `CV1`, `ADD`): from the
+   next clock A plays an octave up, `+CV1` beside `TRANSPOSE`.
 8. Left encoder click: `EDIT`; turn the left encoder to a step, the right
    one: its mark moves and, when it plays, A follows.
 

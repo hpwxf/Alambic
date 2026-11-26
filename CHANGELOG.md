@@ -14,7 +14,8 @@ Architectural decisions behind each change are in `journal/` (French).
   clocked by `TR1` and armed by `TR2`, each step drawn anew with the chance
   `PROB` over `RANGE` octaves (`SPREAD`, `BIAS`, `REPEAT`) or by a walk
   (`JUMP`), `REROLL` on demand. A carries the note quantised to `SCALE` from
-  `ROOT`, moved by `OCTAVE` and `TRANSPOSE` (`CV1` at one volt per octave);
+  `ROOT`, moved by `OCTAVE` and `TRANSPOSE` (one volt per octave from an
+  input, none at start);
   B and C a chord of two tones stacked in the scale (`CHORD`, `INVERT`), D a
   gate, each port routed like any other. The loop shows at the bottom of
   the screen; a click on the left encoder edits its steps there. Its own

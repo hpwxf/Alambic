@@ -63,7 +63,7 @@ Les propositions, avec toutes les options (réponses de l'utilisateur, 2026-11-2
   marche de ±1 à `JUMP` degrés depuis le pas précédent, jamais nulle, réfléchie aux bords. `REROLL` (panneau et
   sonde) retire toute la séquence. Générateur xorshift à graine fixe, comme Ratchet : un rejeu est identique.
 * **Gamme** : `SCALE` parmi treize (chromatique, majeur, mineur, les modes, mineur harmonique, pentatoniques, blues,
-  par tons), `ROOT` de C à B, `OCTAVE`, et `TRANSPOSE` en demi-tons assignable, qui prend `CV1` en `ADD` au démarrage
+  par tons), `ROOT` de C à B, `OCTAVE`, et `TRANSPOSE` en demi-tons assignable, qui prenait `CV1` en `ADD` au démarrage (retiré, voir la révision)
   (1 V = 12 demi-tons), comme `NOTE` de `SUPERSAW`.
 * **Accords** : B, C, D portent des tierces empilées dans la gamme depuis le degré de A, de type `CHORD`, renversées
   par `INVERT` ; la gamme chromatique emprunte les degrés de la gamme majeure, sans quoi ses « tierces » seraient des
@@ -115,3 +115,7 @@ les sorties sautaient au premier pas dès le reset) ; l'applet a son guide, `cra
 
 **Ce qui ferait changer d'avis.** Un accord à trois tons réclamé avec la gate : plus de voies que de prises, la
 deuxième option, à décider comme une révision de D-046.
+
+Toujours le 2026-11-26, à la relecture : **aucune entrée au démarrage**. `TRANSPOSE` prenait `CV1` en `ADD`, comme
+`NOTE` de `SUPERSAW` ; l'utilisateur veut un réglage modulable comme les autres, sans entrée tant que le sous-menu
+ne lui en donne pas. Un `CV1` branché pour une autre app ne transpose donc pas `MELODY` par surprise.
