@@ -2,8 +2,18 @@
 
 use super::Point;
 use super::trig::{TURN, polar};
-use super::{Ink, circle, fill_circle, fill_rect, rect, vline};
+use super::{Ink, circle, fill_circle, fill_rect, hline, rect, vline};
 use crate::framebuffer::FrameBuffer;
+
+/// A playhead: a five-column, three-row triangle at `at`, its tip down, over
+/// the step or the instant under way.
+pub fn playhead(frame: &mut FrameBuffer, at: Point) {
+    for row in 0..3 {
+        // Rows narrow towards the tip.
+        let half = 2 - row;
+        hline(frame, at.x + 2 - half, at.y + row, 2 * half + 1, Ink::Lit);
+    }
+}
 
 /// A row of `size`-pixel squares, `gap` apart: filled for a set step, hollow
 /// otherwise; the `current` one gets a second outline around it.

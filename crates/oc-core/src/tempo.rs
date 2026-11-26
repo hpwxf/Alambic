@@ -1,6 +1,7 @@
-//! The rate of the triggers on `TR1`, as the ratchet shows it and syncs to
-//! (journal/D-032): the mean of the last few intervals between rising edges,
-//! one trigger counted as one beat.
+//! The rate of a clock on a trigger input, as `RATCHET` shows it and syncs
+//! to (journal/D-032) and `MELODY` sizes its gate by (journal/D-047): the
+//! mean of the last few intervals between rising edges, one trigger counted
+//! as one beat. Shared here rather than imported from one applet by another.
 
 /// Intervals averaged.
 const INTERVALS: usize = 4;

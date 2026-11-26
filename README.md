@@ -62,7 +62,7 @@ column.
 **Holding `up` and `down` together** opens the app menu, in two columns,
 each with its scroll bar: the categories on the left (`TOOLS`: `DIAGNOSTIC`,
 `SCOPE`, `GFX DEMO`; `TRIGGERS`: `RATCHET`; `SOUND`: `TONE`, `SUPERSAW`;
-`SYSTEM`: `NOTHING`, `SETUP`), the apps of the highlighted one on the right.
+`SEQUENCE`: `MELODY`; `SYSTEM`: `NOTHING`, `SETUP`), the apps of the highlighted one on the right.
 The left encoder picks the category, the right one the app in it; `up`/`down`
 step to the previous or next app across the categories. The slots' marks stay left of the title, showing which
 slot the app picked will take. The right encoder
@@ -83,6 +83,7 @@ the chord is unreachable with a mouse, so right-click the module and choose
 | `RATCHET`    | bursts of triggers on B after each rising edge on `TR1` (below) |
 | `TONE`       | a test tone at one pitch on the four outputs, a sine on A, a triangle on B, a sawtooth on C and a square on D (the last two alias, as a test tone may); the left encoder picks `NOTE` (C1 to C8, A4 = 440 Hz at start) or `LEVEL` (the peak level, 0 to 3 V around 0 V), the right one changes it, its click opens the setting's input submenu as in `SUPERSAW`; no input at start, so the tone stays clean; the pitch played is in the title row. The module plays it at 47 619 Hz, the DAC written by DMA (journal/D-033), VCV Rack at its own sample rate |
 | `SUPERSAW`   | seven detuned band-limited sawtooths around one pitch (below) |
+| `MELODY`     | a looping sequence of random but controllable notes on A, quantised to a scale, a chord on B to D (below) |
 | `GFX DEMO`   | the graphics primitives on five pages (fonts, knobs, curves, sequencer, meters); left encoder turns the pages, its click moves to the next knob, right encoder the value; outputs A–D carry the simulated LFO, gate, knob and needle |
 
 Because holding both buttons is a deliberate gesture, `up` and `down` fire
@@ -136,9 +137,50 @@ over 0–5 V, `MUL` on it a VCA. The screen shows the pitch played, each
 setting's input (`+CV1`) and the seven voices: where each sits in pitch and
 how loud.
 
+### `MELODY`
+
+A looping sequence of random but controllable notes, in the spirit of the
+meloDICER, Mimetic Digitalis and Marbles (journal/D-047). Each rising edge on
+`TR1` (`CLOCK`) plays the next step; a rising edge on `TR2` (`RESET`) arms the
+sequence, so the next clock plays the first step. A carries the step's note
+at one volt per octave (C4 at 0 V), quantised to the scale; B, C and D a
+chord stacked in the scale on it, or D a gate. The outputs hold between
+clocks. The bottom of the screen shows the loop: one mark per step, as high
+as its note, the step playing filled under a playhead; the title shows the
+step, the loop's length and the note A plays.
+
+The left encoder picks a setting over six pages, the right one changes it:
+
+* `LENGTH`, 1 to 32 steps; `PROB`, the chance a step is drawn anew as the
+  clock reaches it (0 %: the loop repeats, 100 %: every note is new);
+* `SCALE` (chromatic, major, minor, the modes, harmonic minor, the
+  pentatonics, blues, whole tone), `ROOT` (C to B), `OCTAVE` (±3) and
+  `TRANSPOSE` (±24 semitones, before the scale quantises);
+* `RANGE`, the octaves a drawn note spans above the root (1 to 4);
+  `SPREAD`, 100 % even over the range, less gathered round `BIAS` (where in
+  the range, 0 to 100 %), 0 % always on it; `REPEAT OFF` redraws a note equal
+  to the step before's;
+* `JUMP`, `OFF` or 1 to 7: a walk of up to so many degrees of the scale from
+  the step before, never none (`SPREAD`, `BIAS` and `REPEAT` then rest);
+* `CHORD` (`TRIAD`, `7TH`, `SUS2`, `SUS4`, `OCT`), its thirds stacked in the
+  scale (the chromatic scale borrows the major's), `INVERT` 0 to 2 raising its
+  lowest tones an octave; `OUT D` `CHORD` or `GATE`, and `GATE`, its length
+  in percent of the clock's period (10 ms until the rate is known);
+* `REROLL`: a click on the right encoder draws the whole sequence anew.
+
+`LENGTH`, `PROB`, `TRANSPOSE`, `RANGE`, `SPREAD` and `BIAS` take an input
+(*Assigning an input*, below), read at each clock; `TRANSPOSE` takes `CV1`
+at start, added at one volt per octave. Steps hold their notes unquantised:
+a scale changed and changed back plays the same melody.
+
+**Editing the steps**: a click on the left encoder enters the sequence
+(`EDIT` in the title): the left encoder picks a step, framed, the right one
+moves its note through the scale, the right encoder's click draws that step
+anew; another left click leaves.
+
 ### Assigning an input
 
-In `RATCHET` and `SUPERSAW`, a click on the right encoder opens, over the main
+In `RATCHET`, `SUPERSAW` and `MELODY`, a click on the right encoder opens, over the main
 screen, the input of the highlighted setting (journal/D-035, D-036): which
 `CV`, a `SCALE` (−200 to +200 %) and a `SHIFT` (±10 V) applied to it,
 `MIN` / `MAX` bounds, and its `EFFECT` on the panel's value: `SET` (follows

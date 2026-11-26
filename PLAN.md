@@ -22,6 +22,7 @@ ne recharge que ce dont elle a besoin (journal/D-001).
 | `docs/plan/etape-8-supersaw.md` | plan de l'étape 8 : applet Supersaw, premier oscillateur (D-037) |
 | `docs/plan/etape-12-assignation-sonde.md` | plan de l'étape 12 : assignation des CV par le trait `App` et la sonde, sous-panneau commun (D-045) |
 | `docs/plan/etape-13-applets-simultanees.md` | plan de l'étape 13 : plusieurs applets à la fois, ports routés (D-046) |
+| `docs/plan/etape-14-melodie.md` | plan de l'étape 14 : applet `MELODY`, mélodies aléatoires contrôlables (D-047) |
 | `docs/hardware.md` | le matériel du module : principes, ce que disent les fiches, ce module et ses mesures ; glossaire |
 | `docs/plan/rapport-etape-7-chemin-audio.md` | rapport détaillé de l'étape 7 : essais, échecs, analyses et correctifs, du DAC à 1 kHz au DAC en DMA |
 | `docs/plan/panique-persistante.md` | préparé, non décidé : garder le message d'une panique à travers un redémarrage (D-018) |
@@ -65,6 +66,21 @@ comportemental (`oc-core`, D-002). Les applets musicaux sont la suite.
 | **12** — assignation des CV par la sonde (2026-11-22 → 11-24) | ✅ état du sous-menu commun (`modulation::slots::Modulations`), assignation au trait `App` (`assigns` / `assigns_mut` / `assign_sweep`, `assign` / `set_assign` sur `dyn App`) ; protocole 8 (`GetAssign`, `SetAssign`) ; `cargo probe assign`, `CENTER` côté hôte ; un seul sous-panneau CV dans la page, `CENTER` compris ; pile de `DescribeApp` ramenée sous `.stack` (14 628 o), surveillée par `cargo xtask size` ; écrans de référence identiques ; essayé sur le module (CLI et page) (D-045). Réserves : `CENTER` de la page pas essayé sur le module, assignations non sauvegardées | [etape-12.md](docs/plan/avancement/etape-12.md), [plan](docs/plan/etape-12-assignation-sonde.md) |
 | **13** — plusieurs applets à la fois, ports routés (2026-11-24 → 11-25) | ✅ pool de `MAX_INSTANCES` = 4 instances (deux fois la même app possible), focus au panneau (`up` / `down` court, en boucle), page de routage (appui long, 1 s) : sorties vers `A`–`D` / `OFF` sans recouvrement, entrées propres à l'app ; `Patch`, `Route`, `Voices`, un `Setup` par emplacement changé ; menu `ADD APP` / `REMOVE APP`, indicateur ; protocole 9 par instance (CLI `@N`, page) ; sur le module, quatre `SUPERSAW` : `audio` 6,4 µs au plus ; `.text` ≈ +14 Kio (21,7 Kio d'ITCM libres), pile 12,7 Kio (D-046). page essayée dans Chrome. Réserves : écoute et gestes finaux sans relevé détaillé, ergonomie de la page, copies de `Params` redondantes, patch non sauvegardé. Version **0.7.0** (plugin Rack 2.7.0, avec les étapes 9 à 12 et les suites hors étape : emplacements fixes, `s` par défaut, `oc-dsp` / `oc-realtime` / `oc-board`) | [etape-13.md](docs/plan/avancement/etape-13.md), [plan](docs/plan/etape-13-applets-simultanees.md) |
 
+## Étape en cours : 14 — applet `MELODY` (D-047)
+
+Séquence cyclique de notes aléatoires mais contrôlables (meloDICER, Mimetic Digitalis, Marbles) : `TR1` horloge,
+`TR2` reset, A la note quantifiée sur une gamme, B–D un accord diatonique (ou D en gate), séquence affichée en bas de
+l'écran et éditable pas à pas. Plan : [etape-14-melodie.md](docs/plan/etape-14-melodie.md).
+
+| Lot | Contenu | État |
+|---|---|---|
+| 14a | ADR D-047, plan, `PLAN.md` | ✅ |
+| 14b | `tempo` et `arrow_down` partagés ; gammes (`scale.rs`) et leurs tests | ✅ |
+| 14c | séquence (`sequence.rs`) : horloge, reset, longueur, remplacement, `SPREAD` / `BIAS`, `JUMP`, `REPEAT`, `REROLL` | ✅ |
+| 14d | `MelodyApp`, registre, panneau, sorties, trait `App` ; tests d'intégration | ✅ |
+| 14e | rendu ; scénarios du simulateur et écrans de référence | ✅ |
+| 14f | docs, `cargo xtask size` (`.text` +7,9 Kio, 60,5 Kio d'ITCM libres), essai sur le module, avancement ([etape-14.md](docs/plan/avancement/etape-14.md)) | ⏳ module (TESTING 9.3i) |
+
 ## Décisions actées
 
 Valeurs seules ; le raisonnement est dans `journal/`.
@@ -91,7 +107,7 @@ Valeurs seules ; le raisonnement est dans `journal/`.
 | profil | release LTO fat, `overflow-checks = true` ; panique → journal USB + SOS | D-018 |
 | entrées | anti-rebond 3 échantillons (boutons), front sur 1 échantillon (triggers) ; activité CV par crête-à-crête (256 éch., 40 mV), aucune présence de câble sur aucun backend | D-019 |
 | démarrage | écran 1,5 s, sorties à 0 V, rendu à chaque tick | D-020 |
-| applets | `AppHost` : quatre emplacements, `NOTHING` dans un vide (D-046), menu par accord haut + bas, en deux colonnes (catégories `TOOLS`, `TRIGGERS`, `SOUND`, `SYSTEM` à gauche, leurs apps à droite ; encodeur gauche : catégorie, droit : app, clic droit : lancer), haut / bas au panneau (court : instance voisine, long : routage, 1 s) ; `DIAGNOSTIC`, `SCOPE`, `GFX DEMO`, `RATCHET`, `TONE`, `SUPERSAW`, `NOTHING` ; trait `App` et registre (`&dyn App`), modèle de paramètres, d'observables et d'actions partagé par le panneau, la sonde (protocole 10, assignations des CV et emplacements compris, D-045, D-046) et le simulateur ; écran et navigation propres à chaque app | D-021, D-030, D-032, D-033, D-037, D-043 |
+| applets | `AppHost` : quatre emplacements, `NOTHING` dans un vide (D-046), menu par accord haut + bas, en deux colonnes (catégories `TOOLS`, `TRIGGERS`, `SOUND`, `SEQUENCE`, `SYSTEM` à gauche, leurs apps à droite ; encodeur gauche : catégorie, droit : app, clic droit : lancer), haut / bas au panneau (court : instance voisine, long : routage, 1 s) ; `DIAGNOSTIC`, `SCOPE`, `GFX DEMO`, `RATCHET`, `TONE`, `SUPERSAW`, `NOTHING`, `MELODY` ; trait `App` et registre (`&dyn App`), modèle de paramètres, d'observables et d'actions partagé par le panneau, la sonde (protocole 10, assignations des CV et emplacements compris, D-045, D-046) et le simulateur ; écran et navigation propres à chaque app | D-021, D-030, D-032, D-033, D-037, D-043, D-047 |
 | licence | `MIT OR Apache-2.0` (workspace) | D-022 |
 | présence d'entrée | déduite dans `oc-core` (activité récente + maintien) : CV 50 mV / 300 ms, trigger verrou ou horloge 2 s ; jamais fournie par un backend | D-024 |
 | identifiant de build | hash court + `-dirty` sous la version, écran de démarrage des trois backends ; version et hash dans le titre de `SETUP` ; calculé par `oc-buildinfo` (vergen-gix, sans binaire `git`), jamais dans `oc-core` | D-025 |
@@ -108,4 +124,5 @@ Valeurs seules ; le raisonnement est dans `journal/`.
 | assignation des CV | une entrée par paramètre assignable, nommée par l'index du paramètre (son rang parmi les `assignable`) ; état du sous-menu commun (`modulation::slots::Modulations`) ; trait `assigns` / `assigns_mut` / `assign_sweep`, `assign` / `set_assign` sur `dyn App` ; sonde : `GetAssign`, `SetAssign` (protocole 8), CLI `cargo probe assign`, `CENTER` côté hôte (CLI et page, même `Assign::center`) ; un seul sous-panneau web | D-045 |
 | applets simultanées | `MAX_INSTANCES` = 4 emplacements toujours occupés, `NOTHING` dans un vide (révision du 2026-11-25), `AppId` = espèce ; ports de sortie routés vers `A` à `D` sans recouvrement, ou désactivés ; carte d'entrées par instance ; une `Voice` et un `Setup` par instance ; focus au panneau (`up` / `down` court), page de routage (appui long), indicateur ; protocole 10 par emplacement | D-046 |
 | applet Supersaw | sept scies PolyBLEP en `f32` (phases entières), désaccord et mix de Szabo, passe-haut sur la fondamentale ; banc dans l'app (générateur `SupersawBank`) partagé par les sorties : A / B mono ou stéréo, C sub-octave ; entrées assignables par `oc_core::modulation` sauf `STEREO`, CV1 en V/oct sur `NOTE` au démarrage ; ×4 non nécessaire (repliement mesuré) ; forme de la scie au carré (`SHAPE`) ; scies descendantes, `LEVEL` à 3 V au plus | D-037, D-044 |
+| applet Melody | jusqu'à 32 pas en demi-tons au-dessus de la tonique, quantifiés à la sortie (`SCALE`, `ROOT`, `OCTAVE`, `TRANSPOSE` sur CV1 en `ADD`) ; `TR1` horloge, `TR2` reset armé (ports routables) ; remplacement au passage avec `PROB`, tirage dans `RANGE` (`SPREAD` / `BIAS`, `REPEAT`) ou marche `JUMP`, `REROLL` ; A note, B–D tierces empilées (`CHORD`, `INVERT`), D en gate au choix ; niveaux tenus ; catégorie `SEQUENCE`, `AppId` 7 | D-047 |
 | budget mémoire | disposition de `teensy4-bsp`, reprise dans le `build.rs` d'`oc-firmware` (sans la feature `rt`) : code en ITCM, bancs 6 / 10 (192 + 320 Kio) ; coût d'une applet par différence de `xtask size` ; budgets lus dans l'ELF (`__flexram_config`), alerte sous 16 Kio d'ITCM libres ; profil `release` en `opt-level = "s"` par défaut, `3` pour `oc-dsp` (DSP), `oc-realtime` (interruption, chemin par échantillon) et `oc-vcv-ffi`, le firmware en `s`, justifié dans `Cargo.toml` ; ITCM à court : bancs repartagés, puis code en flash ; tampon de mesure : feature de test, `.uninit` en OCRAM ; arena dans `oc-core` au premier grand usage d'applet ; tampons du DMA en DTCM ; profondeur de la pile estimée par `cargo xtask size` (`stack-depth` : `FAIL` au-delà de `.stack`, `warn` sous 2 Kio) | D-038 |

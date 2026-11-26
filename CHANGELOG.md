@@ -5,6 +5,25 @@ plugin, which Rack 2 requires to have major version 2, ships as
 `2.<minor>.<patch>` of the same release (checked by `xtask/tests/versions.rs`).
 Architectural decisions behind each change are in `journal/` (French).
 
+## Unreleased
+
+### Added
+
+- **`MELODY`** (journal/D-047), in a new `SEQUENCE` column of the app
+  menu: a looping sequence of up to 32 random but controllable notes,
+  clocked by `TR1` and armed by `TR2`, each step drawn anew with the chance
+  `PROB` over `RANGE` octaves (`SPREAD`, `BIAS`, `REPEAT`) or by a walk
+  (`JUMP`), `REROLL` on demand. A carries the note quantised to `SCALE` from
+  `ROOT`, moved by `OCTAVE` and `TRANSPOSE` (`CV1` at one volt per octave);
+  B to D a chord stacked in the scale (`CHORD`, `INVERT`), or D a gate. The
+  loop shows at the bottom of the screen; a click on the left encoder edits
+  its steps there.
+
+### Changed
+
+- The clock's tempo, which `RATCHET` measured, is `oc_core::tempo`, shared
+  with `MELODY`; the playhead is `gfx::patterns::playhead`.
+
 ## 0.7.0 — 2026-11-25 (Rack plugin 2.7.0)
 
 ### Added

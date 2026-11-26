@@ -17,6 +17,7 @@ use oc_core::apps::AppId;
 use oc_core::apps::diagnostic::DiagnosticApp;
 use oc_core::apps::diagnostic::OutputMode;
 use oc_core::apps::gfx_demo::GfxDemoApp;
+use oc_core::apps::melody::MelodyApp;
 use oc_core::apps::ratchet::RatchetApp;
 use oc_core::apps::supersaw::SupersawApp;
 use oc_core::apps::tone::ToneApp;
@@ -213,6 +214,25 @@ fn the_app_menu_lists_the_apps_right_of_the_scroll_track() {
 
     assert!(simulator.menu_is_open(), "nothing was launched");
     assert_screen_matches(&mut simulator, "app_menu_open");
+}
+
+#[test]
+fn melody_plays_its_sixth_step_of_sixteen() {
+    let mut simulator = replay("melody");
+    assert_eq!(simulator.current_app(), AppId::Melody);
+    let melody = simulator.app::<MelodyApp>();
+    assert_eq!(melody.sequence().length(), 16);
+    assert_eq!(melody.sequence().position(), Some(5));
+    assert_screen_matches(&mut simulator, "melody");
+}
+
+#[test]
+fn melody_edits_a_step_on_the_screen() {
+    let mut simulator = replay("melody_edit");
+    let melody = simulator.app::<MelodyApp>();
+    assert_eq!(melody.editing(), Some(4), "the fifth step");
+    assert_eq!(melody.sequence().position(), Some(2), "the clock's own");
+    assert_screen_matches(&mut simulator, "melody_edit");
 }
 
 #[test]
@@ -444,6 +464,8 @@ fn every_scenario_file_has_a_test_and_a_snapshot() {
         "supersaw_inputs",
         "supersaw_page2",
         "routing",
+        "melody",
+        "melody_edit",
     ];
 
     let mut found: Vec<String> = std::fs::read_dir(scenario_dir())
