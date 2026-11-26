@@ -46,9 +46,10 @@ The module has four slots, each running an app on its own outputs
 (journal/D-046), one of them on the screen and the panel at a time; a slot
 nobody uses runs `NOTHING`, which holds no output and says how to fill it. A
 short press of `up` or `down` moves to the slot on the left or right, empty
-ones too, from the last round to the first, on the routing page too; their
-long press (one second)
-opens the shown app's **routing page**, and closes it again: the left encoder
+ones too, from the last round to the first, on the routing page too. A
+long press of `up` (one second) opens the shown app's **routing page**, and
+closes it again; a long press of `down` does nothing yet, kept for later
+(journal/D-046, revision of 2026-11-26). On the page, the left encoder
 picks a row, the right one turns it. An output (`A`, `B`, `SUB` for
 `SUPERSAW`) steps through the jacks `A` to `D` and `OFF`, skipping those
 another app holds; an input the app reads by itself (`RATCHET`'s `CLOCK`,

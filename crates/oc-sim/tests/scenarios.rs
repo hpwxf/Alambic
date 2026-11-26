@@ -269,7 +269,7 @@ fn ratchet_shows_the_input_submenu() {
 }
 
 #[test]
-fn a_long_press_opens_the_routing_page_where_sub_goes_off() {
+fn a_long_up_opens_the_routing_page_where_sub_goes_off() {
     let mut simulator = replay("routing");
     assert!(simulator.routing_is_open());
     assert_eq!(simulator.current_app(), AppId::Supersaw);

@@ -20,8 +20,8 @@ and C a chord built on it in the same scale, D a gate.
 | `CH2` | C | the chord's upper tone, 1 V/octave |
 | `GATE` | D | 5 V for `GATE` percent of the clock's period, then 0 V |
 
-Every port goes through the app's **routing page** (a long press of `up` or
-`down`; README, *Apps and the app menu*). To free D for another app, set
+Every port goes through the app's **routing page** (a long press of `up`;
+README, *Apps and the app menu*). To free D for another app, set
 `GATE` to `OFF`. To have the gate on C, set `CH2` to `OFF` and `GATE` to `C`.
 `CLOCK` and `RESET` can read any trigger jack, shared with other apps: a
 `RATCHET` in another slot can clock `MELODY` from the same `TR1`.

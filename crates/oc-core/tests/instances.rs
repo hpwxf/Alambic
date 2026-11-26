@@ -126,7 +126,7 @@ fn up_and_down_move_the_focus_through_every_slot_round_the_ends() {
 fn up_and_down_move_the_focus_on_the_routing_page_too() {
     let mut engine = ratchet_and_scope();
     let long = usize::try_from(LONG_PRESS_TICKS).unwrap() + 10;
-    hold(&mut engine, Button::Down, long);
+    hold(&mut engine, Button::Up, long);
     assert!(engine.routing_is_open());
     hold(&mut engine, Button::Up, 10);
     assert!(engine.routing_is_open(), "a short press leaves it open");
@@ -169,11 +169,17 @@ fn the_screen_marks_the_slots_left_of_the_title() {
 }
 
 #[test]
-fn a_long_press_opens_the_routing_page_where_a_port_goes_off() {
+fn a_long_up_opens_the_routing_page_where_a_port_goes_off() {
     let mut engine = mock_engine(0);
     engine.select_app(AppId::Supersaw);
     let long = usize::try_from(LONG_PRESS_TICKS).unwrap() + 10;
     hold(&mut engine, Button::Down, long);
+    assert!(
+        !engine.routing_is_open(),
+        "a long down is kept for later (journal/D-046, revision of 2026-11-26)"
+    );
+    assert_eq!(engine.apps().focus(), 0, "nor a move");
+    hold(&mut engine, Button::Up, long);
     assert!(engine.routing_is_open());
     // SUB is the third row: two detents of the left encoder, one of the
     // right turns it from C to D, the next to OFF.

@@ -385,3 +385,20 @@ Ce qui change :
   démarrage (`engine_in_static`, 3 368 o).
 * Calcul : les quatre emplacements tournaient déjà à chaque tick (le pool, `Patch` et `Changes` étaient de taille
   fixe) ; `NOTHING` rend `Params::REST` sur une route `OFF`, inactive dans `Voices`.
+
+## Révision du 2026-11-26 : la page de routage au seul appui long de `up`
+
+**Contexte.** L'appui long de `up` ou de `down` ouvrait la page de routage, et la refermait. L'utilisateur garde
+l'appui long de `down` pour un autre usage, à venir.
+
+**Décidé (par l'utilisateur).** Seul l'appui long de `up` ouvre et ferme la page de routage. L'appui long de `down`
+ne fait rien, ni sur l'écran d'une applet ni sur la page de routage ; ce n'est pas non plus un changement
+d'instance (un appui long n'est jamais un appui court). L'appui court de `up` ou de `down` ne change pas : instance
+voisine, sur les deux écrans. Le menu (accord `up` + `down`) reste tel quel.
+
+**Ce qui change.** `Engine` (`Screen::App`, `Screen::Routing`) ne lit plus que `long_pressed(Button::Up)` ; le
+scénario `routing` tient `up` au lieu de `down` ; `tests/instances.rs` vérifie qu'un appui long de `down` n'ouvre
+rien et ne bouge pas le focus ; README, guide de `MELODY`, `CHANGELOG`.
+
+**Ce qui ferait changer d'avis.** L'usage réservé à `down` qui n'arrive pas, ou un `up` long confondu à l'usage avec
+le début de l'accord : rendre l'appui long aux deux boutons.

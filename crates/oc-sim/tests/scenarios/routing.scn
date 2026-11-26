@@ -1,6 +1,6 @@
 # oc-sim scenario v1
 # The routing page (journal/D-046): launch SUPERSAW from the app menu as in
-# supersaw.scn, hold down for over a second to open its routing page, pick
+# supersaw.scn, hold up for over a second to open its routing page, pick
 # SUB (two detents of the left encoder) and turn it twice with the right one:
 # C to D, then OFF. The snapshot shows the title with the app's name, A and B
 # on their jacks, SUB picked and going nowhere.
@@ -21,7 +21,7 @@ ticks 1500
 176 button down up
 190 button right down
 196 button right up
-300 button down down
-1400 button down up
+300 button up down
+1400 button up up
 1420 encoder 1 +2
 1440 encoder 2 +2

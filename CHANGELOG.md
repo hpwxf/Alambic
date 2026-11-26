@@ -23,6 +23,10 @@ Architectural decisions behind each change are in `journal/` (French).
 
 ### Changed
 
+- The routing page opens and closes on a long press of `up` only
+  (journal/D-046, revision of 2026-11-26); a long press of `down` does
+  nothing, kept for a later use. Short presses of either still move to the
+  slot on the left or right.
 - The clock's tempo, which `RATCHET` measured, is `oc_core::tempo`, shared
   with `MELODY`; the playhead is `gfx::patterns::playhead`.
 
