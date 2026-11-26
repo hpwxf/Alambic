@@ -16,8 +16,8 @@ ticks 700
 120 button down up
 130 button down down
 140 button down up
-160 button left down
-166 button left up
+160 button right down
+166 button right up
 200 trigger 1 high
 202 trigger 1 low
 400 trigger 1 high

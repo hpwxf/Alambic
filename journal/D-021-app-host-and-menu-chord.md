@@ -82,3 +82,29 @@ réattribue l'accord au menu et supprime cette remise à zéro, déjà offerte p
   pas un tap (`ButtonReader::swallow`). Le défaut existait avant (le clic gauche remettait à zéro les compteurs de
   `DIAGNOSTIC` lancée par lui), sans effet visible jusqu'ici.
 
+
+## Révision du 2026-11-26 — menu par catégories
+
+À sept apps et `SETUP`, la liste unique dépasse l'écran (sept lignes sous le titre) et grandira avec chaque applet.
+Le menu passe en **deux colonnes**, chacune avec son ascenseur : les catégories sur la moitié gauche de l'écran, les
+entrées de la catégorie surlignée sur la droite.
+
+* **Catégories** : `TOOLS` (`DIAGNOSTIC`, `SCOPE`, `GFX DEMO`), `TRIGGERS` (`RATCHET`), `SOUND` (`TONE`,
+  `SUPERSAW`), `SYSTEM` (`NOTHING`, `SETUP`). La catégorie est une propriété de l'app (`AppId::category`), déclarée
+  avec elle ; `SETUP`, qui n'est pas une app, est rangée par le menu dans `SYSTEM`. Choix de l'utilisateur.
+* **Ordre** : catégorie après catégorie, chacune dans l'ordre d'`AppId::ALL`. `TOOLS` vient en premier pour que
+  l'ordre aplati reste celui de la liste unique (`DIAGNOSTIC` en tête, `SETUP` en dernier) : les scénarios du
+  simulateur et les gestes appris (`down` deux fois pour `GFX DEMO`) ne changent pas. L'ordre des catégories demandé
+  au départ (`SOUND`, `TRIGGERS`, `TOOLS`, `SYSTEM`) aurait tout décalé sans rien apporter à l'écran.
+* **Gestes** : l'encodeur gauche change de catégorie (en boucle) et surligne sa première entrée ; l'encodeur droit
+  parcourt la catégorie (en boucle, sans en sortir) ; `up` / `down` passent à l'entrée précédente ou suivante à
+  travers les catégories, comme dans la liste unique. **Seul le clic droit lance** : le clic gauche, qui lançait
+  aussi, ne fait plus rien, chaque encodeur restant à sa colonne. Choix de l'utilisateur.
+* **Les marques des emplacements restent** en haut à gauche, comme sur l'écran d'une app et sa page de routage
+  (D-046), le titre décalé à droite d'elles : le menu montre quel emplacement l'app choisie remplacera, même une fois
+  le surlignage parti de l'app courante. Demande de l'utilisateur.
+* **Options écartées** : une colonne active à la fois (clic gauche pour entrer dans la catégorie, clic droit pour
+  lancer) ; elle double les gestes pour atteindre une app, alors que le panneau a deux encodeurs pour deux colonnes.
+  `NOTHING` et `SETUP` hors catégorie, en lignes fixes sous les catégories : une colonne droite vide à expliquer.
+* **Ce qui ferait changer d'avis** : une catégorie qui dépasse sept entrées (l'ascenseur suffit, mais l'encodeur
+  droit en boucle devient long), ou un clic gauche réclamé par l'usage pour lancer.

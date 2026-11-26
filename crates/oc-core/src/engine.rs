@@ -546,7 +546,7 @@ where
             Screen::Menu => {
                 match self
                     .menu
-                    .update(&snapshot.buttons, snapshot.controls.delta(0))
+                    .update(&snapshot.buttons, snapshot.controls.encoder_delta)
                 {
                     Some(MenuOutcome::Launch(chosen)) => {
                         self.apps.select(chosen);
@@ -592,7 +592,7 @@ where
 
     /// Draws the screen on show into the frame: the applet with the focus,
     /// or a page of the engine, with the instances' marks over the applet's
-    /// screen and its routing page.
+    /// screen, its routing page and the app menu.
     fn render_screen(&mut self, outputs: &[MilliVolts; CV_CHANNELS]) {
         // The applet sees its own lanes: what reached the jack each
         // goes to, nothing for one that goes nowhere (journal/D-046).
@@ -610,7 +610,14 @@ where
                 && self.forced_outputs.iter().any(Option::is_some),
         };
         match self.screen {
-            Screen::Menu => self.menu.render(self.display.frame_mut()),
+            // The marks stay over the menu, so that it shows which slot
+            // the app picked will take (journal/D-021, revision of
+            // 2026-11-26).
+            Screen::Menu => {
+                let frame = self.display.frame_mut();
+                self.menu.render(frame);
+                instance_marks(frame, self.apps.occupied(), self.apps.focus());
+            }
             Screen::Routing => {
                 let frame = self.display.frame_mut();
                 self.routing.render(frame, &self.apps);

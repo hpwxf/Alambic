@@ -831,7 +831,7 @@ mod tests {
         press_and_settle(&mut tui, 'm');
         tui.on_key(KeyEvent::new(KeyCode::Down, KeyModifiers::NONE));
         tui.simulator.step_many(u64::from(SETTLE_TICKS));
-        press_and_settle(&mut tui, 'a');
+        press_and_settle(&mut tui, 'y');
 
         assert!(!tui.simulator.menu_is_open());
         assert_eq!(tui.simulator.current_app(), AppId::Scope);
