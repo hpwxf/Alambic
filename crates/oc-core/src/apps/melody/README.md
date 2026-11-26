@@ -113,26 +113,26 @@ note and the gate, two are left for the chord (journal/D-047, revision of
 
 ## Settings
 
-The left encoder picks a setting, the right one changes it. Five pages of
-three; the scroll bar left of the list shows which page is on screen.
+The left encoder picks a setting, the right one changes it. Four pages of
+four; the scroll bar left of the list shows which page is on screen.
 
 | Page | Setting | Range | Default | What it does |
 |---|---|---|---|---|
 | 1 | `LENGTH` | 1–32 | 8 | steps in the loop; a shorter loop wraps at once, steps past the end keep their notes |
 | 1 | `PROB` | 0–100 % | 0 % | the chance a step is redrawn as the clock reaches it |
 | 1 | `SCALE` | 13 scales | `MAJOR` | `CHROMATIC`, `MAJOR`, `MINOR`, `DORIAN`, `PHRYGIAN`, `LYDIAN`, `MIXOLYD`, `LOCRIAN`, `HARM MIN`, `PENTA MAJ`, `PENTA MIN`, `BLUES`, `WHOLE`; wraps round |
-| 2 | `ROOT` | C–B | C | the scale's root; wraps round |
+| 1 | `ROOT` | C–B | C | the scale's root; wraps round |
 | 2 | `OCTAVE` | −3 to +3 | 0 | octaves the whole moves by |
 | 2 | `TRANSPOSE` | −24 to +24 | 0 | semitones added before quantising, so the melody moves within the scale |
+| 2 | `CHORD` | 5 chords | `TRIAD` | the chord on `CH1` and `CH2` |
+| 2 | `INVERT` | 0–1 | 0 | raises the chord's lower tone an octave |
 | 3 | `RANGE` | 1–4 oct | 2 oct | the octaves a drawn note spans above the root |
 | 3 | `SPREAD` | 0–100 % | 100 % | how widely draws spread round `BIAS`; 100 % even |
 | 3 | `BIAS` | 0–100 % | 50 % | where in the range draws gather |
-| 4 | `JUMP` | `OFF`, 1–7 | `OFF` | a walk of up to so many degrees from the step before |
+| 3 | `JUMP` | `OFF`, 1–7 | `OFF` | a walk of up to so many degrees from the step before |
 | 4 | `REPEAT` | `ON` / `OFF` | `ON` | whether a draw may repeat the step before |
-| 4 | `CHORD` | 5 chords | `TRIAD` | the chord on `CH1` and `CH2` |
-| 5 | `INVERT` | 0–1 | 0 | raises the chord's lower tone an octave |
-| 5 | `GATE` | 1–99 % | 50 % | the gate's length, in percent of the clock's period (10 ms until two clocks give the rate) |
-| 5 | `REROLL` | — | — | the right encoder's click draws the whole sequence anew |
+| 4 | `GATE` | 1–99 % | 50 % | the gate's length, in percent of the clock's period (10 ms until two clocks give the rate) |
+| 4 | `REROLL` | — | — | the right encoder's click draws the whole sequence anew |
 
 ## Editing the steps
 
@@ -177,7 +177,7 @@ place of the value.
 * **Title bar**: `MELODY` (or `EDIT`), the step playing (or edited) out of
   the loop's length (`06/16`; `--/16` while armed), and the name of the note
   A plays (or the edited step plays) on the right.
-* **Three rows of settings**, the selected one highlighted, an assigned
+* **Four rows of settings**, the selected one highlighted, an assigned
   input on the right.
 * **The sequence**, at the bottom: one column per step of the loop, as wide
   as the screen allows (4 pixels at 32 steps). Each step's mark sits as high

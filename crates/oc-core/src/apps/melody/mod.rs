@@ -59,14 +59,16 @@ const MIN_GATE_MICROS: u32 = 1_000;
 /// The MIDI note at 0 V: C4, as `SUPERSAW` and `TONE` read their `NOTE`.
 const ZERO_VOLT_NOTE: i32 = 60;
 
-/// Settings shown per page, under the title bar and above the sequence.
-const PAGE_ROWS: usize = 3;
+/// Settings shown per page, under the title bar and above the sequence:
+/// four, as `RATCHET` shows, the sequence keeping the bottom third.
+const PAGE_ROWS: usize = 4;
 
 /// Pages of settings.
 const PAGES: usize = Setting::ALL.len().div_ceil(PAGE_ROWS);
 
-/// Top of the sequence: the playhead's row, the notes below it.
-const SEQUENCE_TOP: i32 = 34;
+/// Top of the sequence, a row under the last setting: the playhead's row,
+/// the notes below it.
+const SEQUENCE_TOP: i32 = 5 * ROW_HEIGHT + 1;
 
 /// Top of the notes, under the playhead.
 const NOTES_TOP: i32 = SEQUENCE_TOP + 4;
@@ -87,8 +89,9 @@ fn wrapped(index: usize, len: usize, turns: i32) -> usize {
     usize::try_from(moved.rem_euclid(len)).unwrap_or(0)
 }
 
-/// The settings the panel walks through, in the order of the screen; the
-/// index of each but `REROLL` is its parameter's.
+/// The settings the panel walks through, in the order of the screen, four
+/// a page: the loop and its key, the pitch and the chord, the draws, the
+/// rest. The index of each but `REROLL` is its parameter's.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Setting {
     /// Steps in the loop.
@@ -103,6 +106,10 @@ pub enum Setting {
     Octave,
     /// Semitones the notes move by before they are quantised.
     Transpose,
+    /// The chord on `CH1` and `CH2`.
+    Chord,
+    /// Whether its lower tone goes up an octave.
+    Invert,
     /// Octaves a drawn note spans above the root.
     Range,
     /// How evenly drawn notes spread over the range.
@@ -113,10 +120,6 @@ pub enum Setting {
     Jump,
     /// Whether a drawn note may repeat the one before.
     Repeat,
-    /// The chord on `CH1` and `CH2`.
-    Chord,
-    /// Whether its lower tone goes up an octave.
-    Invert,
     /// The gate's length, in percent of the clock's period.
     Gate,
     /// Draws the whole sequence anew.
@@ -132,13 +135,13 @@ impl Setting {
         Self::Root,
         Self::Octave,
         Self::Transpose,
+        Self::Chord,
+        Self::Invert,
         Self::Range,
         Self::Spread,
         Self::Bias,
         Self::Jump,
         Self::Repeat,
-        Self::Chord,
-        Self::Invert,
         Self::Gate,
         Self::Reroll,
     ];
@@ -382,13 +385,13 @@ pub const PARAM_SPECS: [ParamSpec; 14] = [
         Unit::None,
     )
     .assignable(),
+    ParamSpec::choice("CHORD", &CHORD_NAMES),
+    ParamSpec::number("INVERT", (0, MAX_INVERSION as i32), 1, 0, Unit::None),
     ParamSpec::number("RANGE", (1, MAX_RANGE as i32), 1, 0, Unit::Octaves).assignable(),
     ParamSpec::number("SPREAD", (0, 100), 1, 0, Unit::Percent).assignable(),
     ParamSpec::number("BIAS", (0, 100), 1, 0, Unit::Percent).assignable(),
     ParamSpec::number("JUMP", (0, MAX_JUMP as i32), 1, 0, Unit::None),
     ParamSpec::toggle("REPEAT"),
-    ParamSpec::choice("CHORD", &CHORD_NAMES),
-    ParamSpec::number("INVERT", (0, MAX_INVERSION as i32), 1, 0, Unit::None),
     ParamSpec::number("GATE", (1, 99), 1, 0, Unit::Percent),
 ];
 
@@ -760,7 +763,7 @@ impl MelodyApp {
     /// A page of settings under the title bar.
     fn render_settings(&self, frame: &mut FrameBuffer) {
         let lit = TextStyle::lit(&FONT_5X8);
-        let rows = i32::try_from(PAGE_ROWS).unwrap_or(3);
+        let rows = i32::try_from(PAGE_ROWS).unwrap_or(4);
         scroll_bar(
             frame,
             0,

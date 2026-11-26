@@ -81,6 +81,7 @@ l'écran et éditable pas à pas. Plan : [etape-14-melodie.md](docs/plan/etape-1
 | 14e | rendu ; scénarios du simulateur et écrans de référence | ✅ |
 | 14f | docs, `cargo xtask size` (`.text` +7,9 Kio, 60,5 Kio d'ITCM libres), essai sur le module, avancement ([etape-14.md](docs/plan/avancement/etape-14.md)) | ⏳ module (TESTING 9.3i) |
 | 14g | révision : `OUT D` retiré, la gate en port `GATE`, accord de deux tons ; reset sans saut des sorties ; guide `apps/melody/README.md` | ✅ |
+| 14h | quatre lignes de réglages par page, réglages regroupés par quatre | ✅ |
 
 ## Décisions actées
 
