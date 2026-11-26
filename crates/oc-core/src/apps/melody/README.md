@@ -20,11 +20,8 @@ and C a chord built on it in the same scale, D a gate.
 | `CH2` | C | the chord's upper tone, 1 V/octave |
 | `GATE` | D | 5 V for `GATE` percent of the clock's period, then 0 V |
 
-Every port goes through the app's **routing page** (a long press of `up`;
-README, *Apps and the app menu*). To free D for another app, set
-`GATE` to `OFF`. To have the gate on C, set `CH2` to `OFF` and `GATE` to `C`.
-`CLOCK` and `RESET` can read any trigger jack, shared with other apps: a
-`RATCHET` in another slot can clock `MELODY` from the same `TR1`.
+The jacks are the defaults; the routing page moves each port as for any app
+(README, *Apps and the app menu*).
 
 Reset arms rather than jumps: a reset and a clock arriving together, or a
 reset followed by a clock, both play step 1. A reset alone changes nothing
@@ -198,7 +195,6 @@ cargo probe app melody            # its parameters, values, what it plays
 cargo probe set melody prob 25
 cargo probe get melody note
 cargo probe act melody reroll
-cargo probe route @0 gate=off     # D free for another app
 ```
 
 The steps' notes are not visible to the probe, and are not saved: the
