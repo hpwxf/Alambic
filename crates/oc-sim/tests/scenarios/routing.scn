@@ -19,8 +19,8 @@ ticks 1500
 160 button down up
 170 button down down
 176 button down up
-190 button left down
-196 button left up
+190 button right down
+196 button right up
 300 button down down
 1400 button down up
 1420 encoder 1 +2

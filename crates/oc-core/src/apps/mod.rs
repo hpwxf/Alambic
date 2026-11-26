@@ -449,6 +449,58 @@ impl AppId {
             Self::Nothing => "NOTHING",
         }
     }
+
+    /// The column of the app menu it is listed under.
+    #[must_use]
+    pub const fn category(self) -> Category {
+        match self {
+            Self::Diagnostic | Self::Scope | Self::Gfx => Category::Tools,
+            Self::Ratchet => Category::Triggers,
+            Self::Tone | Self::Supersaw => Category::Sound,
+            Self::Nothing => Category::System,
+        }
+    }
+}
+
+/// A group of the app menu, which lists the categories on the left and the
+/// apps of the highlighted one on the right.
+///
+/// A property of the app, not of the menu, so that an app added to the image
+/// says where it goes where it is declared.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Category {
+    /// What helps look at the module and its signals: the boot applet, so
+    /// listed first, which keeps the menu's order that of [`AppId::ALL`].
+    Tools,
+    /// Applets that read and write triggers.
+    Triggers,
+    /// Oscillators.
+    Sound,
+    /// What is not an applet that makes or reads a signal: an empty slot and
+    /// the system settings.
+    System,
+}
+
+impl Category {
+    /// Every category, in the order the menu lists them.
+    pub const ALL: [Self; 4] = [Self::Tools, Self::Triggers, Self::Sound, Self::System];
+
+    /// Zero-based index of this category.
+    #[must_use]
+    pub const fn index(self) -> usize {
+        self as usize
+    }
+
+    /// Name shown in the left column of the app menu.
+    #[must_use]
+    pub const fn name(self) -> &'static str {
+        match self {
+            Self::Tools => "TOOLS",
+            Self::Triggers => "TRIGGERS",
+            Self::Sound => "SOUND",
+            Self::System => "SYSTEM",
+        }
+    }
 }
 
 /// One applet in a slot, of whichever kind this image composes: what the

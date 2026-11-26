@@ -59,9 +59,14 @@ bar, shows the slots on the app's screen and its routing page: a dot for
 each that runs an app, nothing for an empty one, the one shown across the
 column.
 
-**Holding `up` and `down` together** opens the app menu; `up`/`down` or the
-left encoder move the highlight (the list scrolls), either encoder press
-launches the highlighted app in the place of the one shown, which starts
+**Holding `up` and `down` together** opens the app menu, in two columns,
+each with its scroll bar: the categories on the left (`TOOLS`: `DIAGNOSTIC`,
+`SCOPE`, `GFX DEMO`; `TRIGGERS`: `RATCHET`; `SOUND`: `TONE`, `SUPERSAW`;
+`SYSTEM`: `NOTHING`, `SETUP`), the apps of the highlighted one on the right.
+The left encoder picks the category, the right one the app in it; `up`/`down`
+step to the previous or next app across the categories. The slots' marks stay left of the title, showing which
+slot the app picked will take. The right encoder
+press launches the highlighted app in the place of the one shown, which starts
 afresh, and holding both again closes the menu without changing anything.
 An app put in a slot takes the outputs no app uses, in order (`RATCHET`
 beside `SUPERSAW` gets D); `NOTHING`, last of the apps, empties the slot shown

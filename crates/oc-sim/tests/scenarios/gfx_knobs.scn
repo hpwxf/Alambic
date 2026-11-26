@@ -1,6 +1,6 @@
 # oc-sim scenario v1
 # The graphics demonstration (journal/D-030), page 2 of five: open the app
-# menu, move the highlight down twice to GFX DEMO, launch it with the left
+# menu, move the highlight down twice to GFX DEMO, launch it with the right
 # encoder, then turn the left encoder to the page. The animations run from the
 # ticks' elapsed time, so the snapshot is the same on every run.
 ticks 700
@@ -12,6 +12,6 @@ ticks 700
 100 button down up
 110 button down down
 120 button down up
-140 button left down
-146 button left up
+140 button right down
+146 button right up
 200 encoder 1 +1

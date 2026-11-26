@@ -17,7 +17,7 @@ ticks 300
 160 button down up
 170 button down down
 176 button down up
-190 button left down
-196 button left up
+190 button right down
+196 button right up
 210 encoder 1 +6
 220 encoder 2 +1

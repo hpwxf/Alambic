@@ -70,8 +70,9 @@ Covers, from `crates/oc-core/tests/`:
   sequence.
 * `menu.rs` — behavioural tests of the app menu, likewise through
   `Engine::tick`: the `up`+`down` chord opens and closes it without either
-  button firing its own action, navigation with the buttons and with the left
-  encoder, launching from either encoder press, the running applet keeping its
+  button firing its own action, navigation with the buttons (across the
+  categories), the left encoder (the category) and the right one (the app in
+  it), launching from the right encoder press only, the running applet keeping its
   outputs live while the menu is up, menu input never reaching that applet, and
   app state surviving a switch away and back.
 * `splash.rs` — the boot animation and the gate that holds the outputs at rest

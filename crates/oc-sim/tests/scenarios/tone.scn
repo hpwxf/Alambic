@@ -18,8 +18,8 @@ ticks 340
 140 button down up
 150 button down down
 160 button down up
-180 button left down
-186 button left up
+180 button right down
+186 button right up
 200 encoder 2 +3
 210 encoder 1 +1
 220 encoder 2 +5

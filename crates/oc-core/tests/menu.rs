@@ -32,6 +32,15 @@ fn tap(engine: &mut MockEngine, button: Button) {
     run_ticks(engine, 5);
 }
 
+/// Turns `encoder` by `detents` and runs a tick.
+fn turn(engine: &mut MockEngine, encoder: usize, detents: i8) {
+    {
+        let (_, _, _, controls, _) = engine.parts_mut();
+        controls.turn(encoder, detents);
+    }
+    run_ticks(engine, 1);
+}
+
 /// Holds `up` and `down` together, then releases both: the menu gesture.
 ///
 /// The two presses land forty ticks apart on purpose — that is what a human
@@ -108,7 +117,7 @@ fn the_menu_launches_the_highlighted_app() {
     tap(&mut engine, Button::Down);
     assert_eq!(engine.menu_selection(), MenuEntry::App(AppId::Scope));
 
-    tap(&mut engine, Button::LeftEncoder);
+    tap(&mut engine, Button::RightEncoder);
 
     assert!(!engine.menu_is_open(), "launching closes the menu");
     assert_eq!(engine.current_app(), AppId::Scope);
@@ -123,32 +132,35 @@ fn the_menu_launches_the_highlighted_app() {
 }
 
 #[test]
-fn either_encoder_press_launches_the_highlighted_app() {
-    for button in [Button::LeftEncoder, Button::RightEncoder] {
-        let mut engine = mock_engine(0);
-        chord(&mut engine);
-        tap(&mut engine, Button::Down);
-        tap(&mut engine, button);
+fn only_the_right_encoder_press_launches_the_highlighted_app() {
+    let mut engine = mock_engine(0);
+    chord(&mut engine);
+    tap(&mut engine, Button::Down);
+    tap(&mut engine, Button::LeftEncoder);
+    assert!(engine.menu_is_open(), "the left click confirms nothing");
+    assert_eq!(engine.current_app(), AppId::Diagnostic);
 
-        assert_eq!(
-            engine.current_app(),
-            AppId::Scope,
-            "{button:?} must confirm the highlighted app"
-        );
-    }
+    tap(&mut engine, Button::RightEncoder);
+    assert_eq!(engine.current_app(), AppId::Scope);
 }
 
 #[test]
-fn the_left_encoder_also_moves_the_highlight() {
+fn the_encoders_pick_the_category_then_the_app_in_it() {
     let mut engine = mock_engine(0);
     chord(&mut engine);
-    {
-        let (_, _, _, controls, _) = engine.parts_mut();
-        controls.turn(0, 1);
-    }
-    run_ticks(&mut engine, 1);
-
-    assert_eq!(engine.menu_selection(), MenuEntry::App(AppId::Scope));
+    turn(&mut engine, 0, 2);
+    assert_eq!(engine.menu_selection(), MenuEntry::App(AppId::Tone));
+    turn(&mut engine, 1, 1);
+    assert_eq!(engine.menu_selection(), MenuEntry::App(AppId::Supersaw));
+    turn(&mut engine, 1, 1);
+    assert_eq!(
+        engine.menu_selection(),
+        MenuEntry::App(AppId::Tone),
+        "the right encoder stays in SOUND"
+    );
+    turn(&mut engine, 1, -1);
+    tap(&mut engine, Button::RightEncoder);
+    assert_eq!(engine.current_app(), AppId::Supersaw);
 }
 
 #[test]
@@ -235,7 +247,7 @@ fn picking_another_app_starts_it_afresh_in_the_same_place() {
 
     chord(&mut engine);
     tap(&mut engine, Button::Down);
-    tap(&mut engine, Button::LeftEncoder);
+    tap(&mut engine, Button::RightEncoder);
     run_ticks(&mut engine, 20);
     assert_eq!(
         (engine.apps().focus(), engine.current_app()),
@@ -245,7 +257,7 @@ fn picking_another_app_starts_it_afresh_in_the_same_place() {
 
     chord(&mut engine);
     tap(&mut engine, Button::Up);
-    tap(&mut engine, Button::LeftEncoder);
+    tap(&mut engine, Button::RightEncoder);
 
     assert_eq!(engine.current_app(), AppId::Diagnostic);
     assert_eq!(
@@ -282,7 +294,7 @@ fn a_reset_leaves_the_menu_and_returns_to_the_diagnostic_applet() {
     let mut engine = mock_engine(0);
     chord(&mut engine);
     tap(&mut engine, Button::Down);
-    tap(&mut engine, Button::LeftEncoder);
+    tap(&mut engine, Button::RightEncoder);
     assert_eq!(engine.current_app(), AppId::Scope);
 
     chord(&mut engine);
@@ -304,7 +316,7 @@ fn the_menu_fills_an_empty_slot_and_empties_one_with_nothing() {
     chord(&mut engine);
     assert_eq!(engine.menu_selection(), MenuEntry::App(AppId::Nothing));
     tap(&mut engine, Button::Up);
-    tap(&mut engine, Button::LeftEncoder);
+    tap(&mut engine, Button::RightEncoder);
     assert!(!engine.menu_is_open());
     assert_eq!(engine.current_app(), AppId::Supersaw, "in the second slot");
     assert_eq!(
@@ -316,10 +328,31 @@ fn the_menu_fills_an_empty_slot_and_empties_one_with_nothing() {
     chord(&mut engine);
     tap(&mut engine, Button::Down);
     assert_eq!(engine.menu_selection(), MenuEntry::App(AppId::Nothing));
-    tap(&mut engine, Button::LeftEncoder);
+    tap(&mut engine, Button::RightEncoder);
     assert_eq!(
         engine.apps().occupied(),
         [true, false, false, false],
         "the slot empty, its outputs free"
     );
+}
+
+#[test]
+fn the_menu_keeps_the_slot_marks_left_of_its_title() {
+    let mut engine = mock_engine(0);
+    // The second slot, empty, takes the focus; the first runs DIAGNOSTIC.
+    tap(&mut engine, Button::Down);
+    chord(&mut engine);
+    assert!(engine.menu_is_open());
+    run_ticks(&mut engine, 40);
+
+    let frame = engine.frame();
+    assert!(
+        !frame.pixel(0, 0) && frame.pixel(1, 0) && !frame.pixel(2, 0),
+        "DIAGNOSTIC, running in the first slot, a pixel on the track"
+    );
+    assert!(
+        frame.pixel(0, 2) && frame.pixel(2, 2),
+        "the slot the app picked will take, across"
+    );
+    assert!((0..8).all(|y| !frame.pixel(3, y)), "a gap before the title");
 }

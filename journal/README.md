@@ -89,7 +89,7 @@ une section datée en fin de fichier) au lieu d'en ouvrir une nouvelle. Les num�
 | [D-018](D-018-release-profile-and-panic.md) | profil release : LTO, `overflow-checks` actifs ; une panique arrête le module (SOS) | adoptée (rétrospective) |
 | [D-019](D-019-debounce-and-activity-detection.md) | anti-rebond 3 échantillons pour les boutons, front pur pour les triggers ; activité par crête-à-crête, aucune présence de câble | adoptée (rétrospective), révisée |
 | [D-020](D-020-boot-splash.md) | écran de démarrage : 1,5 s, sorties au repos, rendu à chaque tick | adoptée (rétrospective) |
-| [D-021](D-021-app-host-and-menu-chord.md) | plusieurs applets résidents, menu par accord haut + bas, haut / bas agissent au relâchement ; depuis D-046 : instances, haut / bas au panneau (court : instance, long : routage) | adoptée (rétrospective), révisée |
+| [D-021](D-021-app-host-and-menu-chord.md) | plusieurs applets résidents, menu par accord haut + bas, haut / bas agissent au relâchement ; depuis D-046 : instances, haut / bas au panneau (court : instance, long : routage) ; menu en deux colonnes, catégories à gauche (2026-11-26) | adoptée (rétrospective), révisée |
 | [D-022](D-022-license.md) | licence `MIT OR Apache-2.0`, jamais écrite comme décision | adoptée (rétrospective) |
 | [D-023](D-023-dual-rate-signal-isr.md) | double cadence : ISR signal (GPT2, 16 666 Hz) et boucle UI 1 kHz — ou audio 48 kHz + DMA ; **C+ adoptée** : 1 kHz sans trous (capture des fronts, écran par pages) | adoptée, révisée |
 | [D-024](D-024-derived-input-presence.md) | présence d'une entrée déduite du signal : activité récente avec maintien, réglages CV / trigger (verrou, horloge) | adoptée, révisée |
