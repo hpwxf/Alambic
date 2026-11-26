@@ -29,7 +29,7 @@ pub mod sequence;
 
 use core::fmt::Write as _;
 
-use self::scale::{CHORD_NAMES, Chord, MAX_INVERSION, ROOT_NAMES, SCALE_NAMES, Scale, chord};
+use self::scale::{CHORD_NAMES, Chord, ROOT_NAMES, SCALE_NAMES, Scale, chord};
 use self::sequence::{Draw, MAX_JUMP, MAX_NOTE, MAX_RANGE, MAX_STEPS, Sequence};
 use crate::apps::param::{ParamSpec, ParamValue, Refused, Unit};
 use crate::apps::sound::Params;
@@ -64,7 +64,7 @@ const ZERO_VOLT_NOTE: i32 = 60;
 const PAGE_ROWS: usize = 4;
 
 /// Pages of settings.
-const PAGES: usize = Setting::ALL.len().div_ceil(PAGE_ROWS);
+const PAGES: usize = ROWS.len().div_ceil(PAGE_ROWS);
 
 /// Top of the notes, a row under the last setting. No row is kept for the
 /// playhead: it sits at the top of its column, in inverse video.
@@ -82,6 +82,12 @@ const VALUE_RIGHT: i32 = 98;
 /// Steps at start.
 const DEFAULT_LENGTH: u8 = 8;
 
+/// Pixels between the two fields of a row.
+const FIELD_GAP: i32 = 6;
+
+/// The inversion's arrow: five columns.
+const ARROW_WIDTH: i32 = 5;
+
 /// `index` moved by `turns` among `len`, wrapping round.
 fn wrapped(index: usize, len: usize, turns: i32) -> usize {
     let len = i32::try_from(len).unwrap_or(1).max(1);
@@ -89,60 +95,60 @@ fn wrapped(index: usize, len: usize, turns: i32) -> usize {
     usize::try_from(moved.rem_euclid(len)).unwrap_or(0)
 }
 
-/// The settings the panel walks through, in the order of the screen, four
-/// a page: the loop and its key, the pitch and the chord, the draws, the
-/// rest. The index of each but `REROLL` is its parameter's.
+/// What the panel sets, one field each, in the order of the parameters: the
+/// index of each but `REROLL` is its parameter's. The screen lays them out
+/// in [`ROWS`], some two to a row, and the left encoder walks them in
+/// [`FIELDS`]' order.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Setting {
     /// Steps in the loop.
     Length,
     /// The chance a step is redrawn as the clock reaches it.
     Chance,
-    /// The scale the notes are quantised to.
-    Scale,
     /// The scale's root.
     Root,
+    /// The scale the notes are quantised to.
+    Scale,
+    /// The chord on `CH1` and `CH2`.
+    Chord,
+    /// Its inversion: the lower tone up an octave, the upper one down, or
+    /// neither.
+    Invert,
     /// Octaves the whole moves by.
     Octave,
     /// Semitones the notes move by before they are quantised.
     Transpose,
-    /// The chord on `CH1` and `CH2`.
-    Chord,
-    /// Whether its lower tone goes up an octave.
-    Invert,
+    /// The gate's length, in percent of the clock's period.
+    Gate,
+    /// How a note is drawn: over the range, without repeating the step
+    /// before, or by a walk of up to so many degrees from it.
+    Jump,
     /// Octaves a drawn note spans above the root.
     Range,
     /// How evenly drawn notes spread over the range.
     Spread,
     /// Where in the range they gather.
     Bias,
-    /// A walk of up to so many degrees from the step before, or off.
-    Jump,
-    /// Whether a drawn note may repeat the one before.
-    Repeat,
-    /// The gate's length, in percent of the clock's period.
-    Gate,
     /// Draws the whole sequence anew.
     Reroll,
 }
 
 impl Setting {
-    /// Every setting, top to bottom.
-    pub const ALL: [Self; 15] = [
+    /// Every setting, in the order of the parameters, `REROLL` last.
+    pub const ALL: [Self; 14] = [
         Self::Length,
         Self::Chance,
-        Self::Scale,
         Self::Root,
-        Self::Octave,
-        Self::Transpose,
+        Self::Scale,
         Self::Chord,
         Self::Invert,
+        Self::Octave,
+        Self::Transpose,
+        Self::Gate,
+        Self::Jump,
         Self::Range,
         Self::Spread,
         Self::Bias,
-        Self::Jump,
-        Self::Repeat,
-        Self::Gate,
         Self::Reroll,
     ];
 
@@ -198,7 +204,6 @@ impl Setting {
             Self::Spread => "SPREAD",
             Self::Bias => "BIAS",
             Self::Jump => "JUMP",
-            Self::Repeat => "REPEAT",
             Self::Chord => "CHORD",
             Self::Invert => "INVERT",
             Self::Gate => "GATE",
@@ -206,6 +211,71 @@ impl Setting {
         }
     }
 }
+
+/// The fields in the order the left encoder walks them: [`ROWS`] read
+/// left to right, top to bottom.
+pub const FIELDS: [Setting; 14] = [
+    Setting::Length,
+    Setting::Chance,
+    Setting::Root,
+    Setting::Scale,
+    Setting::Chord,
+    Setting::Invert,
+    Setting::Octave,
+    Setting::Transpose,
+    Setting::Gate,
+    Setting::Reroll,
+    Setting::Jump,
+    Setting::Range,
+    Setting::Spread,
+    Setting::Bias,
+];
+
+/// The rows of the screen, four a page, three pages: the loop, its key and
+/// its chord; the pitch, the gate and the action; how notes are drawn,
+/// `JUMP` first, for it decides whether `SPREAD` and `BIAS` act. A row of
+/// two fields shows both values, the root before the scale, the chord
+/// before its inversion's arrow.
+pub const ROWS: [&[Setting]; 12] = [
+    &[Setting::Length],
+    &[Setting::Chance],
+    &[Setting::Root, Setting::Scale],
+    &[Setting::Chord, Setting::Invert],
+    &[Setting::Octave],
+    &[Setting::Transpose],
+    &[Setting::Gate],
+    &[Setting::Reroll],
+    &[Setting::Jump],
+    &[Setting::Range],
+    &[Setting::Spread],
+    &[Setting::Bias],
+];
+
+/// The row `setting` is on.
+fn row_of(setting: Setting) -> usize {
+    ROWS.iter()
+        .position(|row| row.contains(&setting))
+        .unwrap_or(0)
+}
+
+/// How the screen labels a row: its field's name, or for two, what they
+/// make together.
+fn row_label(row: &[Setting]) -> &'static str {
+    match row {
+        [Setting::Root, Setting::Scale] => "KEY",
+        [first, ..] => first.label(),
+        [] => "",
+    }
+}
+
+/// [`Setting::Jump`]'s values: a free draw, one that never repeats the
+/// step before, a walk of 1 to 7 degrees.
+pub const JUMP_NAMES: [&str; 2 + MAX_JUMP as usize] =
+    ["OFF", "NO REP", "1", "2", "3", "4", "5", "6", "7"];
+
+/// [`Setting::Invert`]'s range: the upper tone down an octave (−1), the
+/// chord as stacked (0), the lower tone up an octave (+1).
+pub const MAX_INVERSION: i32 = 1;
 
 /// The most semitones `TRANSPOSE` moves the notes by, either way.
 pub const MAX_TRANSPOSE: i32 = 24;
@@ -298,12 +368,12 @@ pub struct Settings {
     pub bias_percent: u8,
     /// See [`Draw::jump`].
     pub jump: u8,
-    /// See [`Draw::repeat`].
+    /// See [`Draw::repeat`]; `JUMP`'s `NO REP` when `false` without a walk.
     pub repeat: bool,
     /// The chord on `CH1` and `CH2`.
     pub chord: Chord,
-    /// How many of its lowest tones go up an octave.
-    pub inversion: u8,
+    /// Its inversion, −1 to +1 ([`MAX_INVERSION`]).
+    pub inversion: i8,
     /// The gate's length, in percent of the clock's period.
     pub gate_percent: u8,
 }
@@ -371,11 +441,13 @@ impl Settings {
 /// What `MELODY` is set by (journal/D-043), in the order of the screen.
 // Every bound here is below a hundred; `From` is not `const`.
 #[allow(clippy::cast_possible_wrap, clippy::cast_possible_truncation)]
-pub const PARAM_SPECS: [ParamSpec; 14] = [
+pub const PARAM_SPECS: [ParamSpec; 13] = [
     ParamSpec::number("LENGTH", (1, MAX_STEPS as i32), 1, 0, Unit::None).assignable(),
     ParamSpec::number("PROB", (0, 100), 1, 0, Unit::Percent).assignable(),
-    ParamSpec::choice("SCALE", &SCALE_NAMES),
     ParamSpec::choice("ROOT", &ROOT_NAMES),
+    ParamSpec::choice("SCALE", &SCALE_NAMES),
+    ParamSpec::choice("CHORD", &CHORD_NAMES),
+    ParamSpec::number("INVERT", (-MAX_INVERSION, MAX_INVERSION), 1, 0, Unit::None),
     ParamSpec::number("OCTAVE", (-MAX_OCTAVE, MAX_OCTAVE), 1, 0, Unit::None),
     ParamSpec::number(
         "TRANSPOSE",
@@ -385,14 +457,11 @@ pub const PARAM_SPECS: [ParamSpec; 14] = [
         Unit::None,
     )
     .assignable(),
-    ParamSpec::choice("CHORD", &CHORD_NAMES),
-    ParamSpec::number("INVERT", (0, MAX_INVERSION as i32), 1, 0, Unit::None),
+    ParamSpec::number("GATE", (1, 99), 1, 0, Unit::Percent),
+    ParamSpec::choice("JUMP", &JUMP_NAMES),
     ParamSpec::number("RANGE", (1, MAX_RANGE as i32), 1, 0, Unit::Octaves).assignable(),
     ParamSpec::number("SPREAD", (0, 100), 1, 0, Unit::Percent).assignable(),
     ParamSpec::number("BIAS", (0, 100), 1, 0, Unit::Percent).assignable(),
-    ParamSpec::number("JUMP", (0, MAX_JUMP as i32), 1, 0, Unit::None),
-    ParamSpec::toggle("REPEAT"),
-    ParamSpec::number("GATE", (1, 99), 1, 0, Unit::Percent),
 ];
 
 /// What `MELODY` can be read for: the step playing (from 1) and the note A
@@ -479,13 +548,13 @@ impl MelodyApp {
     /// The setting the right encoder changes.
     #[must_use]
     pub const fn selected(&self) -> Setting {
-        Setting::ALL[self.selected]
+        FIELDS[self.selected]
     }
 
     /// The page of settings on screen, from 0: the selected setting's.
     #[must_use]
-    pub const fn page(&self) -> usize {
-        self.selected / PAGE_ROWS
+    pub fn page(&self) -> usize {
+        row_of(self.selected()) / PAGE_ROWS
     }
 
     /// The step the panel edits, `None` outside the sequence.
@@ -641,7 +710,7 @@ impl MelodyApp {
         }
         let picks = i32::from(input.controls.delta(0));
         if picks != 0 {
-            self.selected = wrapped(self.selected, Setting::ALL.len(), picks);
+            self.selected = wrapped(self.selected, FIELDS.len(), picks);
         }
         if input.buttons.pressed(Button::RightEncoder) {
             match self.selected() {
@@ -660,7 +729,7 @@ impl MelodyApp {
     }
 
     /// Turns `setting` by `turns` detents, within its bounds; a choice
-    /// wraps round.
+    /// wraps round, but `JUMP`, an amount, stops at its ends.
     fn change(&mut self, setting: Setting, turns: i32) {
         let Some(index) = setting.param() else {
             return;
@@ -671,7 +740,13 @@ impl MelodyApp {
                     crate::apps::param::Kind::Choice(names) => names.len(),
                     _ => 1,
                 };
-                let next = wrapped(usize::from(choice), count, turns);
+                let next = if setting == Setting::Jump {
+                    let last = i32::try_from(count).unwrap_or(1) - 1;
+                    let moved = (i32::from(choice) + turns).clamp(0, last);
+                    usize::try_from(moved).unwrap_or(0)
+                } else {
+                    wrapped(usize::from(choice), count, turns)
+                };
                 let _ = self.set(index, ParamValue::Choice(u8::try_from(next).unwrap_or(0)));
             } else if let Some(ParamValue::Toggle(on)) = self.get(index) {
                 let _ = self.set(index, ParamValue::Toggle(!on));
@@ -686,7 +761,6 @@ impl MelodyApp {
 
     /// The value of `setting` in `settings`, as the screen shows it.
     fn write_value(setting: Setting, settings: &Settings, out: &mut TextBuf<16>) {
-        let on_off = |on: bool| if on { "ON" } else { "OFF" };
         let _ = match setting {
             Setting::Length => write!(out, "{}", settings.length),
             Setting::Chance => write!(out, "{}%", settings.chance_percent),
@@ -697,15 +771,12 @@ impl MelodyApp {
             Setting::Range => write!(out, "{} OCT", settings.range_octaves),
             Setting::Spread => write!(out, "{}%", settings.spread_percent),
             Setting::Bias => write!(out, "{}%", settings.bias_percent),
-            Setting::Jump => match settings.jump {
-                0 => write!(out, "OFF"),
-                jump => write!(out, "{jump}"),
-            },
-            Setting::Repeat => write!(out, "{}", on_off(settings.repeat)),
+            Setting::Jump => write!(out, "{}", JUMP_NAMES[jump_choice(settings)]),
             Setting::Chord => write!(out, "{}", CHORD_NAMES[settings.chord.index()]),
-            Setting::Invert => write!(out, "{}", settings.inversion),
             Setting::Gate => write!(out, "{}%", settings.gate_percent),
-            Setting::Reroll => Ok(()),
+            // An action; the inversion is an arrow, drawn rather than
+            // written ([`invert_arrow`]).
+            Setting::Reroll | Setting::Invert => Ok(()),
         };
     }
 
@@ -748,7 +819,8 @@ impl MelodyApp {
         );
     }
 
-    /// A page of settings under the title bar.
+    /// A page of settings under the title bar: a row of one field is
+    /// highlighted whole when picked; in a row of two, only the field picked.
     fn render_settings(&self, frame: &mut FrameBuffer) {
         let lit = TextStyle::lit(&FONT_5X8);
         let rows = i32::try_from(PAGE_ROWS).unwrap_or(4);
@@ -762,41 +834,104 @@ impl MelodyApp {
             PAGES,
         );
         let first = self.page() * PAGE_ROWS;
-        let shown = &Setting::ALL[first..(first + PAGE_ROWS).min(Setting::ALL.len())];
-        for (row, &setting) in (1..).zip(shown) {
+        let shown = &ROWS[first..(first + PAGE_ROWS).min(ROWS.len())];
+        // In the sequence, the panel is the steps': no setting stands out.
+        let picked = self.editing.is_none().then(|| self.selected());
+        for (row, &fields) in (1..).zip(shown) {
             let top = row * ROW_HEIGHT;
-            // In the sequence, the panel is the steps': no setting stands out.
-            let highlighted = setting == self.selected() && self.editing.is_none();
-            if highlighted {
+            let whole = fields.len() == 1 && picked.is_some_and(|picked| fields.contains(&picked));
+            if whole {
                 row_highlight(frame, top, ROW_HEIGHT, Ink::Lit);
             }
-            let style = if highlighted {
+            let style = if whole {
                 TextStyle::dark(&FONT_5X8)
             } else {
                 lit
             };
             text::draw(
                 frame,
-                setting.label(),
+                row_label(fields),
                 Point::new(LIST_LEFT + 2, top),
                 style,
             );
-            // A setting that follows its input has no use for the panel's
-            // value: its input stands in its place.
-            if !self.assign(setting).is_some_and(Assign::sets) {
-                let mut value = TextBuf::<16>::new();
-                Self::write_value(setting, &self.settings, &mut value);
-                text::draw(
-                    frame,
-                    value.as_str(),
-                    Point::new(VALUE_RIGHT, top),
-                    style.aligned(Alignment::Right),
-                );
+            // The fields right to left, each ending a gap left of the next.
+            let mut right = VALUE_RIGHT;
+            for &setting in fields.iter().rev() {
+                let boxed = fields.len() > 1 && picked == Some(setting);
+                let width = self.draw_field(frame, setting, right, top, style, boxed);
+                right -= width + FIELD_GAP;
             }
-            if let Some(assign) = self.assign(setting) {
+            if let [setting] = fields
+                && let Some(assign) = self.assign(*setting)
+            {
                 crate::modulation::draw_input(frame, assign, WIDTH_I32 - 3, top, style);
             }
         }
+    }
+
+    /// Draws `setting`'s value ending at `right` on the row from `top`, in a
+    /// lit box when `boxed`: its width, for the field left of it.
+    fn draw_field(
+        &self,
+        frame: &mut FrameBuffer,
+        setting: Setting,
+        right: i32,
+        top: i32,
+        style: TextStyle,
+        boxed: bool,
+    ) -> i32 {
+        let style = if boxed {
+            TextStyle::dark(&FONT_5X8)
+        } else {
+            style
+        };
+        let width = if setting == Setting::Invert {
+            ARROW_WIDTH
+        } else if self.hidden(setting) {
+            0
+        } else {
+            let mut value = TextBuf::<16>::new();
+            Self::write_value(setting, &self.settings, &mut value);
+            FONT_5X8.width_of(value.as_str())
+        };
+        if boxed {
+            gfx::fill_rect(
+                frame,
+                right - width - 1,
+                top,
+                width + 2,
+                ROW_HEIGHT,
+                Ink::Lit,
+            );
+        }
+        if setting == Setting::Invert {
+            invert_arrow(
+                frame,
+                right - ARROW_WIDTH,
+                top,
+                self.settings.inversion,
+                style.color,
+            );
+        } else if !self.hidden(setting) {
+            let mut value = TextBuf::<16>::new();
+            Self::write_value(setting, &self.settings, &mut value);
+            text::draw(
+                frame,
+                value.as_str(),
+                Point::new(right, top),
+                style.aligned(Alignment::Right),
+            );
+        }
+        width
+    }
+
+    /// Whether the screen leaves `setting`'s value out: one that follows its
+    /// input, which stands in its place; `SPREAD` and `BIAS` during a walk,
+    /// which does not use them.
+    fn hidden(&self, setting: Setting) -> bool {
+        let walking = self.settings.jump > 0;
+        self.assign(setting).is_some_and(Assign::sets)
+            || (walking && matches!(setting, Setting::Spread | Setting::Bias))
     }
 
     /// The steps of the loop at the bottom of the screen, side by side: each
@@ -883,6 +1018,34 @@ fn playhead(frame: &mut FrameBuffer, x: i32, width: i32) {
     }
 }
 
+/// `JUMP`'s value among [`JUMP_NAMES`]: `OFF`, `NO REP`, or the walk.
+fn jump_choice(settings: &Settings) -> usize {
+    match (settings.jump, settings.repeat) {
+        (0, true) => 0,
+        (0, false) => 1,
+        (jump, _) => 1 + usize::from(jump),
+    }
+}
+
+/// The inversion as an arrow in the five columns from `x` on the row from
+/// `top`: up for the lower tone raised, down for the upper one lowered, a
+/// dash for neither.
+fn invert_arrow(frame: &mut FrameBuffer, x: i32, top: i32, inversion: i8, ink: Ink) {
+    if inversion == 0 {
+        gfx::hline(frame, x + 1, top + 3, ARROW_WIDTH - 2, ink);
+        return;
+    }
+    // From the tip, rows widen away from where it points.
+    for row in 0..3 {
+        let y = if inversion > 0 {
+            top + 1 + row
+        } else {
+            top + 5 - row
+        };
+        gfx::hline(frame, x + 2 - row, y, 2 * row + 1, ink);
+    }
+}
+
 /// `value` with its sign, `0` without.
 fn write_signed(out: &mut TextBuf<16>, value: i32) -> core::fmt::Result {
     if value > 0 {
@@ -948,7 +1111,7 @@ impl App for MelodyApp {
         let walking = self.settings.jump > 0;
         match Setting::ALL.get(index) {
             // A walk draws from the step before, not over the range.
-            Some(Setting::Spread | Setting::Bias | Setting::Repeat) => !walking,
+            Some(Setting::Spread | Setting::Bias) => !walking,
             _ => true,
         }
     }
@@ -967,8 +1130,7 @@ impl App for MelodyApp {
             Setting::Range => number(i32::from(settings.range_octaves)),
             Setting::Spread => number(i32::from(settings.spread_percent)),
             Setting::Bias => number(i32::from(settings.bias_percent)),
-            Setting::Jump => number(i32::from(settings.jump)),
-            Setting::Repeat => Some(ParamValue::Toggle(settings.repeat)),
+            Setting::Jump => choice(jump_choice(settings)),
             Setting::Chord => choice(settings.chord.index()),
             Setting::Invert => number(i32::from(settings.inversion)),
             Setting::Gate => number(i32::from(settings.gate_percent)),
@@ -1000,13 +1162,16 @@ impl App for MelodyApp {
             (Setting::Range, ParamValue::Number(octaves)) => settings.range_octaves = byte(octaves),
             (Setting::Spread, ParamValue::Number(spread)) => settings.spread_percent = byte(spread),
             (Setting::Bias, ParamValue::Number(bias)) => settings.bias_percent = byte(bias),
-            (Setting::Jump, ParamValue::Number(jump)) => settings.jump = byte(jump),
-            (Setting::Repeat, ParamValue::Toggle(on)) => settings.repeat = on,
+            (Setting::Jump, ParamValue::Choice(choice)) => {
+                // `OFF` and `NO REP` draw over the range; past them, a walk.
+                settings.repeat = choice != 1;
+                settings.jump = choice.saturating_sub(1);
+            }
             (Setting::Chord, ParamValue::Choice(chord)) => {
                 settings.chord = Chord::from_index(usize::from(chord));
             }
             (Setting::Invert, ParamValue::Number(inversion)) => {
-                settings.inversion = byte(inversion);
+                settings.inversion = signed(inversion);
             }
             (Setting::Gate, ParamValue::Number(gate)) => settings.gate_percent = byte(gate),
             _ => {}
@@ -1064,7 +1229,12 @@ impl Default for MelodyApp {
 
 #[cfg(test)]
 mod tests {
-    use super::{MelodyApp, PARAM_SPECS, Setting, Settings, millivolts, sweep};
+    use super::{
+        FIELDS, MelodyApp, PAGES, PARAM_SPECS, ROWS, Setting, Settings, millivolts, row_label,
+        sweep,
+    };
+    use crate::apps::App;
+    use crate::apps::param::ParamValue;
     use crate::fmt::TextBuf;
     use crate::modulation::slots::slot_of;
 
@@ -1093,6 +1263,41 @@ mod tests {
         }
         assert_eq!(Setting::Reroll.param(), None);
         assert_eq!(Setting::ALL.len(), PARAM_SPECS.len() + 1);
+    }
+
+    #[test]
+    fn the_rows_hold_every_field_once_in_three_pages() {
+        let mut walked = ROWS.iter().flat_map(|row| row.iter().copied());
+        for field in FIELDS {
+            assert_eq!(walked.next(), Some(field), "the rows read in FIELDS' order");
+        }
+        assert_eq!(walked.next(), None);
+        for setting in Setting::ALL {
+            assert!(FIELDS.contains(&setting), "{setting:?}");
+        }
+        assert_eq!(PAGES, 3);
+        assert_eq!(row_label(ROWS[2]), "KEY");
+        assert_eq!(row_label(ROWS[3]), "CHORD");
+    }
+
+    #[test]
+    fn jump_holds_the_free_draw_no_repeat_and_the_walk() {
+        let mut app = MelodyApp::new();
+        let jump = Setting::Jump.param().unwrap();
+        app.set(jump, ParamValue::Choice(1)).unwrap();
+        assert_eq!(
+            (app.settings.jump, app.settings.repeat),
+            (0, false),
+            "NO REP"
+        );
+        app.set(jump, ParamValue::Choice(4)).unwrap();
+        assert_eq!(app.settings.jump, 3, "a walk of three");
+        assert!(app.hidden(Setting::Spread) && app.hidden(Setting::Bias));
+        app.set(jump, ParamValue::Choice(0)).unwrap();
+        assert_eq!((app.settings.jump, app.settings.repeat), (0, true), "OFF");
+        assert!(!app.hidden(Setting::Spread));
+        app.change(Setting::Jump, -3);
+        assert_eq!(app.get(jump), Some(ParamValue::Choice(0)), "stops at OFF");
     }
 
     #[test]

@@ -28,7 +28,7 @@ reset followed by a clock, both play step 1. A reset alone changes nothing
 on the outputs. Before the first clock, the outputs carry step 1.
 
 The outputs hold their levels between clocks. Settings that change the pitch
-(`SCALE`, `ROOT`, `OCTAVE`, `CHORD`, `INVERT`, an edited note) take effect at
+(`ROOT`, `SCALE`, `OCTAVE`, `CHORD`, `INVERT`, an edited note) take effect at
 once, without waiting for a clock.
 
 ## What a step holds, and how it plays
@@ -61,19 +61,19 @@ chance `PROB`:
 
 How a new note is drawn depends on `JUMP`:
 
-* **`JUMP OFF`**: the note is drawn from the scale's notes between the root
-  and `RANGE` octaves above it.
+* **`JUMP OFF`** or **`NO REP`**: the note is drawn from the scale's notes
+  between the root and `RANGE` octaves above it.
   * `SPREAD 100%` gives every note the same chance.
   * Below that, notes gather round `BIAS` (0% the bottom of the range, 100%
     the top), within `SPREAD` percent of the range either side, in a
     triangle: those nearest the bias come most often.
   * `SPREAD 0%` always gives the note at `BIAS`.
-  * `REPEAT OFF` redraws a note equal to the step before's, up to four
-    times; with a narrow spread, a repeat may still happen.
+  * `NO REP` redraws a note equal to the step before's, up to four times;
+    with a narrow spread, a repeat may still happen. `OFF` allows repeats.
 * **`JUMP 1` to `7`**: a walk from the step before. The note moves up or
   down by 1 to `JUMP` degrees of the scale, never by none. A move that would
-  leave the range goes the other way. `SPREAD`, `BIAS` and `REPEAT` have no
-  effect: the probe reports them inactive.
+  leave the range goes the other way. `SPREAD` and `BIAS` have no effect:
+  the screen leaves their values out and the probe reports them inactive.
 
 `REROLL` draws the whole sequence anew by the same rule, all 32 steps, so a
 loop lengthened later also has fresh notes. In the editor, the right click
@@ -100,7 +100,11 @@ G gives G major (B, D).
 "Third" means two degrees of the scale up, so a pentatonic or whole-tone
 scale gives its own flavour of chord. The chromatic scale has no thirds of
 its own (two semitones up would be a second), so it borrows the major
-scale's intervals from the note. `INVERT 1` raises the lower tone an octave.
+scale's intervals from the note.
+
+The inversion is an arrow beside the chord's name: ↑ raises the lower tone
+an octave, ↓ lowers the upper one, a dash leaves the chord as stacked. In C
+major on C, `TRIAD` gives E and G, ↑ G and the E above, ↓ the G below and E.
 `CH1` always carries the lower tone and `CH2` the upper.
 
 There are two tones because a route has four lanes, one per jack: with the
@@ -109,26 +113,32 @@ note and the gate, two are left for the chord (journal/D-047, revision of
 
 ## Settings
 
-The left encoder picks a setting, the right one changes it. Four pages of
-four; the scroll bar left of the list shows which page is on screen.
+Three pages of four rows; the scroll bar left of the list shows which page
+is on screen. Two rows hold two fields each: `KEY`, the root then the scale
+(`C MAJOR`), and `CHORD`, the chord then its inversion's arrow. The left
+encoder walks the fields one by one, left to right and row by row; the right
+encoder changes the one picked. A row of one field is highlighted whole when
+picked; in a row of two, only the field picked is boxed.
 
-| Page | Setting | Range | Default | What it does |
-|---|---|---|---|---|
-| 1 | `LENGTH` | 1–32 | 8 | steps in the loop; a shorter loop wraps at once, steps past the end keep their notes |
-| 1 | `PROB` | 0–100 % | 0 % | the chance a step is redrawn as the clock reaches it |
-| 1 | `SCALE` | 13 scales | `MAJOR` | `CHROMATIC`, `MAJOR`, `MINOR`, `DORIAN`, `PHRYGIAN`, `LYDIAN`, `MIXOLYD`, `LOCRIAN`, `HARM MIN`, `PENTA MAJ`, `PENTA MIN`, `BLUES`, `WHOLE`; wraps round |
-| 1 | `ROOT` | C–B | C | the scale's root; wraps round |
-| 2 | `OCTAVE` | −3 to +3 | 0 | octaves the whole moves by |
-| 2 | `TRANSPOSE` | −24 to +24 | 0 | semitones added before quantising, so the melody moves within the scale |
-| 2 | `CHORD` | 5 chords | `TRIAD` | the chord on `CH1` and `CH2` |
-| 2 | `INVERT` | 0–1 | 0 | raises the chord's lower tone an octave |
-| 3 | `RANGE` | 1–4 oct | 2 oct | the octaves a drawn note spans above the root |
-| 3 | `SPREAD` | 0–100 % | 100 % | how widely draws spread round `BIAS`; 100 % even |
-| 3 | `BIAS` | 0–100 % | 50 % | where in the range draws gather |
-| 3 | `JUMP` | `OFF`, 1–7 | `OFF` | a walk of up to so many degrees from the step before |
-| 4 | `REPEAT` | `ON` / `OFF` | `ON` | whether a draw may repeat the step before |
-| 4 | `GATE` | 1–99 % | 50 % | the gate's length, in percent of the clock's period (10 ms until two clocks give the rate) |
-| 4 | `REROLL` | — | — | the right encoder's click draws the whole sequence anew |
+| Page | Row | Field | Range | Default | What it does |
+|---|---|---|---|---|---|
+| 1 | `LENGTH` | | 1–32 | 8 | steps in the loop; a shorter loop wraps at once, steps past the end keep their notes |
+| 1 | `PROB` | | 0–100 % | 0 % | the chance a step is redrawn as the clock reaches it |
+| 1 | `KEY` | `ROOT` | C–B | C | the scale's root; wraps round |
+| 1 | `KEY` | `SCALE` | 13 scales | `MAJOR` | `CHROMATIC`, `MAJOR`, `MINOR`, `DORIAN`, `PHRYGIAN`, `LYDIAN`, `MIXOLYD`, `LOCRIAN`, `HARM MIN`, `PENTA MAJ`, `PENTA MIN`, `BLUES`, `WHOLE`; wraps round |
+| 1 | `CHORD` | `CHORD` | 5 chords | `TRIAD` | the chord on `CH1` and `CH2`; wraps round |
+| 1 | `CHORD` | `INVERT` | ↓, –, ↑ | – | the inversion (*Chords*) |
+| 2 | `OCTAVE` | | −3 to +3 | 0 | octaves the whole moves by |
+| 2 | `TRANSPOSE` | | −24 to +24 | 0 | semitones added before quantising, so the melody moves within the scale |
+| 2 | `GATE` | | 1–99 % | 50 % | the gate's length, in percent of the clock's period (10 ms until two clocks give the rate) |
+| 2 | `REROLL` | | — | — | the right encoder's click draws the whole sequence anew |
+| 3 | `JUMP` | | `OFF`, `NO REP`, 1–7 | `OFF` | how a note is drawn: freely, never repeating the step before, or by a walk of up to so many degrees (*Chance and draws*) |
+| 3 | `RANGE` | | 1–4 oct | 2 oct | the octaves a drawn note spans above the root |
+| 3 | `SPREAD` | | 0–100 % | 100 % | how widely draws spread round `BIAS`; 100 % even; hidden during a walk |
+| 3 | `BIAS` | | 0–100 % | 50 % | where in the range draws gather; hidden during a walk |
+
+The probe names each field as its own parameter (`ROOT`, `SCALE`, `CHORD`,
+`INVERT` from −1 to +1, `JUMP` by its names).
 
 ## Editing the steps
 

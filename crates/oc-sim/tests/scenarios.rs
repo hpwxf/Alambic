@@ -236,6 +236,16 @@ fn melody_edits_a_step_on_the_screen() {
 }
 
 #[test]
+fn melody_boxes_one_field_of_a_two_field_row() {
+    use oc_core::apps::melody::Setting;
+    let mut simulator = replay("melody_chord");
+    let melody = simulator.app::<MelodyApp>();
+    assert_eq!(melody.selected(), Setting::Invert);
+    assert_eq!(melody.settings().inversion, 1, "the lower tone up");
+    assert_screen_matches(&mut simulator, "melody_chord");
+}
+
+#[test]
 fn ratchet_bursts_a_trigger_onto_b() {
     let mut simulator = replay("ratchet");
     assert_eq!(simulator.current_app(), AppId::Ratchet);
@@ -466,6 +476,7 @@ fn every_scenario_file_has_a_test_and_a_snapshot() {
         "routing",
         "melody",
         "melody_edit",
+        "melody_chord",
     ];
 
     let mut found: Vec<String> = std::fs::read_dir(scenario_dir())

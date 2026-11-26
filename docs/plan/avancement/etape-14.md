@@ -18,6 +18,7 @@ Décision : D-047, adoptée le 2026-11-26 (choix tranchés avec l'utilisateur). 
 | 14i | aucune entrée assignée au démarrage, `TRANSPOSE` compris : un réglage modulable comme les autres (demande de l'utilisateur) ; test : `CV1` ne bouge rien avant l'assignation |
 | 14j | plus de ligne réservée au pointeur : triangle en inverse vidéo en haut de la colonne jouée, rogné à sa largeur ; 4 px de plus pour les hauteurs des notes ; écrans régénérés |
 | 14k | un petit rond à droite des réglages modulables sans entrée (`modulation::draw_input`, partagé par `RATCHET`, `SUPERSAW`, `TONE`, `MELODY`) ; écrans régénérés |
+| 14l | douze lignes sur trois pages : `REPEAT` fondu dans `JUMP` (`OFF`, `NO REP`, 1–7), `KEY` (tonique, gamme) et `CHORD` (accord, inversion) à deux champs, encodeur gauche sur les champs, champ choisi seul encadré ; inversion −1 / 0 / +1 en flèche ; `SPREAD` et `BIAS` masqués pendant une marche ; scénario `melody_chord` ; révision de D-047 |
 
 ## Mesures
 

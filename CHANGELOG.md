@@ -12,14 +12,16 @@ Architectural decisions behind each change are in `journal/` (French).
 - **`MELODY`** (journal/D-047), in a new `SEQUENCE` column of the app
   menu: a looping sequence of up to 32 random but controllable notes,
   clocked by `TR1` and armed by `TR2`, each step drawn anew with the chance
-  `PROB` over `RANGE` octaves (`SPREAD`, `BIAS`, `REPEAT`) or by a walk
-  (`JUMP`), `REROLL` on demand. A carries the note quantised to `SCALE` from
-  `ROOT`, moved by `OCTAVE` and `TRANSPOSE` (one volt per octave from an
-  input, none at start);
-  B and C a chord of two tones stacked in the scale (`CHORD`, `INVERT`), D a
-  gate, each port routed like any other. The loop shows at the bottom of
-  the screen; a click on the left encoder edits its steps there. Its own
-  guide: `crates/oc-core/src/apps/melody/README.md`.
+  `PROB` over `RANGE` octaves (`SPREAD`, `BIAS`, `JUMP NO REP`) or by a walk
+  (`JUMP`), `REROLL` on demand. A carries the note quantised to the scale
+  of `KEY` (root and scale), moved by `OCTAVE` and `TRANSPOSE` (one volt
+  per octave from an input, none at start); B and C a chord of two tones
+  stacked in the scale (`CHORD`, its inversion an arrow ↓ / – / ↑), D a
+  gate, each port routed like any other. Its settings fit three pages of
+  four rows, `KEY` and `CHORD` holding two fields each, which the left
+  encoder walks one by one. The loop shows at the bottom of the screen; a
+  click on the left encoder edits its steps there. Its own guide:
+  `crates/oc-core/src/apps/melody/README.md`.
 
 ### Changed
 

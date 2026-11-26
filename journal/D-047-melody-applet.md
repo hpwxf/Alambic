@@ -119,3 +119,18 @@ deuxième option, à décider comme une révision de D-046.
 Toujours le 2026-11-26, à la relecture : **aucune entrée au démarrage**. `TRANSPOSE` prenait `CV1` en `ADD`, comme
 `NOTE` de `SUPERSAW` ; l'utilisateur veut un réglage modulable comme les autres, sans entrée tant que le sous-menu
 ne lui en donne pas. Un `CV1` branché pour une autre app ne transpose donc pas `MELODY` par surprise.
+
+Puis, le même jour, **trois pages de réglages au plus**, demandées par l'utilisateur. Quinze lignes sur quatre pages
+deviennent douze sur trois :
+
+* **`REPEAT` dans `JUMP`** : `JUMP` vaut `OFF` (tirage libre), `NO REP` (tirage sans répétition du pas précédent)
+  ou 1 à 7 (marche, qui ne répète jamais) ; `REPEAT` n'avait de sens que sans marche. Pendant une marche, les
+  valeurs de `SPREAD` et `BIAS` sont masquées ; `JUMP` passe devant eux, sur leur page.
+* **Deux lignes à deux champs** : `KEY` (la tonique puis la gamme) et `CHORD` (l'accord puis son inversion).
+  L'encodeur gauche parcourt les champs un à un, même sur une même ligne ; l'encodeur droit change le champ choisi,
+  seul encadré (choix de l'utilisateur, contre un clic droit qui changerait de champ).
+* **L'inversion en flèche, à trois états** : ↑ monte le ton grave d'une octave, ↓ descend le ton aigu, un tiret
+  laisse l'accord serré (`INVERT` de −1 à +1 pour la sonde).
+
+Les paramètres de la sonde restent un par champ (`ROOT`, `SCALE`, `CHORD`, `INVERT`, `JUMP` par ses noms), dans
+l'ordre des champs ; les emplacements des entrées CV ne bougent pas.

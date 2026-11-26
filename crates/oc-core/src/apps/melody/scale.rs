@@ -259,17 +259,15 @@ pub const CHORD_NAMES: [&str; Chord::ALL.len()] = ["TRIAD", "7TH", "SUS2", "SUS4
 /// The tones of a chord beside its note.
 pub const CHORD_TONES: usize = 2;
 
-/// The most tones [`chord`] raises an octave: the lower of the two.
-pub const MAX_INVERSION: u8 = 1;
-
 /// The tones of `chord` on `note` (semitones above the root, in `scale`),
-/// lowest first once the `inversion` lowest are raised an octave.
+/// lowest first, once inverted: `inversion` above 0 raises the lower tone an
+/// octave, below 0 lowers the upper one, 0 leaves them as stacked.
 ///
 /// The thirds are stacked in the scale, so the chord is the scale's own; the
 /// chromatic scale, whose thirds would be seconds, borrows the major scale's
 /// from the note.
 #[must_use]
-pub fn chord(scale: Scale, note: i32, chord: Chord, inversion: u8) -> [i32; CHORD_TONES] {
+pub fn chord(scale: Scale, note: i32, chord: Chord, inversion: i8) -> [i32; CHORD_TONES] {
     let (harmony, base) = match scale {
         Scale::Chromatic => (Scale::Major, 0),
         _ => (scale, note),
@@ -280,11 +278,10 @@ pub fn chord(scale: Scale, note: i32, chord: Chord, inversion: u8) -> [i32; CHOR
         Tone::Octaves(octaves) => note + 12 * octaves,
     });
     tones.sort_unstable();
-    for tone in tones
-        .iter_mut()
-        .take(usize::from(inversion.min(MAX_INVERSION)))
-    {
-        *tone += 12;
+    match inversion.signum() {
+        1 => tones[0] += 12,
+        -1 => tones[CHORD_TONES - 1] -= 12,
+        _ => {}
     }
     tones.sort_unstable();
     tones
@@ -356,12 +353,13 @@ mod tests {
     }
 
     #[test]
-    fn an_inversion_raises_the_lowest_tones() {
-        assert_eq!(chord(Scale::Major, 0, Chord::Triad, 1), [7, 16]);
+    fn an_inversion_raises_the_lower_tone_or_lowers_the_upper() {
+        assert_eq!(chord(Scale::Major, 0, Chord::Triad, 1), [7, 16], "E up");
+        assert_eq!(chord(Scale::Major, 0, Chord::Triad, -1), [-5, 4], "G down");
         assert_eq!(
             chord(Scale::Major, 0, Chord::Triad, 9),
             [7, 16],
-            "the lower at most"
+            "one tone at most"
         );
     }
 }
