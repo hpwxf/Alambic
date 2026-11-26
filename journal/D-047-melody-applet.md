@@ -5,8 +5,8 @@
 | **Identifiant** | D-047 |
 | **Date** | 2026-11-26 |
 | **Auteur** | Pascal Havé |
-| **Statut** | adoptée |
-| **Commits** | ce commit (ADR, plan `docs/plan/etape-14-melodie.md`) ; implémentation dans les commits suivants |
+| **Statut** | adoptée, révisée |
+| **Commits** | `af6ee37` (ADR, plan `docs/plan/etape-14-melodie.md`) ; implémentation `ee8914c` ; révision du 2026-11-26 : ce commit |
 | **Relations** | ajoute une applet au registre de D-043 et une catégorie au menu de D-021 ; entrées et sorties routées par D-046 ; entrées CV par `oc_core::modulation` (D-036, D-045) ; sorties en millivolts tenus (D-005, D-033) ; arrondi au millivolt de la CV de hauteur laissé à D-041 ; tempo de l'horloge repris de Ratchet (D-032) |
 
 ## 1. Contexte
@@ -89,3 +89,29 @@ gammes ; des niveaux tenus ne coûtent rien au chemin audio ; tout vit dans `oc-
 * Le besoin de silences ou d'une densité de gates (meloDICER) : une sortie gate par pas, au prix d'un accord à deux
   sons.
 * Le coût en ITCM (`cargo xtask size`) sous l'alerte de 16 Kio : code des applets en flash (D-038).
+
+## Révision du 2026-11-26 : la gate est un port, l'accord a deux tons
+
+**Contexte.** `OUT D` choisissait dans l'applet ce que portait D (le troisième ton de l'accord ou la gate).
+L'utilisateur l'a refusé à la relecture : décider de ce qui atteint une prise est le rôle de la page de routage
+(D-046), pas d'un réglage de l'applet.
+
+**Options.** Une route a quatre voies, une par prise (`Route`, `BasicParams`, les voix en `CV_CHANNELS`, D-044,
+D-046) : la note, trois tons et une gate font cinq ports.
+
+* quatre ports, `NOTE`, `CH1`, `CH2`, `GATE`, l'accord réduit à deux tons ;
+* plus de voies que de prises (jusqu'à huit ports, la page de routage choisissant lesquels atteignent A–D) : révise
+  D-044 et D-046 (`Route`, `Params`, `Voices`, `Setup`, protocole, page de routage), coût du chemin audio à mesurer ;
+* pas de gate, quatre ports de hauteur.
+
+**Proposé et décidé.** L'assistant a recommandé, et l'utilisateur a retenu, **quatre ports** : `NOTE` (A), `CH1`
+(B), `CH2` (C), `GATE` (D) par défaut, chacun routable ou coupé ; `OUT D` retiré. L'accord a deux tons :
+`TRIAD` tierce et quinte, `7TH` tierce et septième (sans la quinte), `SUS2` seconde et quinte, `SUS4` quarte et
+quinte, `OCT` une octave en dessous et une au-dessus ; `INVERT` 0 ou 1 (le ton grave à l'octave). `GATE` règle
+toujours la longueur. Aucun changement d'architecture.
+
+Dans le même temps : un reset arme sans toucher aux sorties, la note jouée tient jusqu'à l'horloge suivante (avant,
+les sorties sautaient au premier pas dès le reset) ; l'applet a son guide, `crates/oc-core/src/apps/melody/README.md`.
+
+**Ce qui ferait changer d'avis.** Un accord à trois tons réclamé avec la gate : plus de voies que de prises, la
+deuxième option, à décider comme une révision de D-046.

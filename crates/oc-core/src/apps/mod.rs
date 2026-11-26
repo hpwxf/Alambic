@@ -409,8 +409,8 @@ pub enum AppId {
     /// 2026-11-25). Last in the menu, which sorts by category, and puts it
     /// in a slot to empty it.
     Nothing,
-    /// A looping melody of random but controllable notes on A, a chord or a
-    /// gate on B to D (journal/D-047). After [`Self::Nothing`]: an index
+    /// A looping melody of random but controllable notes on A, a chord of
+    /// two tones on B and C, a gate on D (journal/D-047). After [`Self::Nothing`]: an index
     /// once persisted never changes.
     Melody,
 }

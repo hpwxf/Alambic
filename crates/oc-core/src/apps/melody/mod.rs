@@ -7,8 +7,10 @@
 //! (`RESET`) arms the sequence, so the next clock plays its first step. A
 //! carries the step's note, quantised to `SCALE` from `ROOT`, moved by
 //! `OCTAVE` and `TRANSPOSE` (which takes `CV1` at one volt per octave from
-//! the start); B, C and D carry a chord stacked in the scale on it
-//! ([`scale::chord`]), or D a gate for `GATE` percent of the clock's period.
+//! the start); `CH1` and `CH2` carry a chord stacked in the scale on it
+//! ([`scale::chord`]), `GATE` a gate for `GATE` percent of the clock's
+//! period. Which of the four ports reaches which jack is the routing page's
+//! (journal/D-046), not a setting of the applet's.
 //! The outputs hold their levels between clocks: one change a step, nothing
 //! per sample.
 //!
@@ -111,12 +113,10 @@ pub enum Setting {
     Jump,
     /// Whether a drawn note may repeat the one before.
     Repeat,
-    /// The chord on B, C and D.
+    /// The chord on `CH1` and `CH2`.
     Chord,
-    /// How many of its lowest tones go up an octave.
+    /// Whether its lower tone goes up an octave.
     Invert,
-    /// What D carries: the chord's third tone or a gate.
-    OutD,
     /// The gate's length, in percent of the clock's period.
     Gate,
     /// Draws the whole sequence anew.
@@ -125,7 +125,7 @@ pub enum Setting {
 
 impl Setting {
     /// Every setting, top to bottom.
-    pub const ALL: [Self; 16] = [
+    pub const ALL: [Self; 15] = [
         Self::Length,
         Self::Chance,
         Self::Scale,
@@ -139,7 +139,6 @@ impl Setting {
         Self::Repeat,
         Self::Chord,
         Self::Invert,
-        Self::OutD,
         Self::Gate,
         Self::Reroll,
     ];
@@ -199,7 +198,6 @@ impl Setting {
             Self::Repeat => "REPEAT",
             Self::Chord => "CHORD",
             Self::Invert => "INVERT",
-            Self::OutD => "OUT D",
             Self::Gate => "GATE",
             Self::Reroll => "REROLL",
         }
@@ -299,12 +297,10 @@ pub struct Settings {
     pub jump: u8,
     /// See [`Draw::repeat`].
     pub repeat: bool,
-    /// The chord on B, C and D.
+    /// The chord on `CH1` and `CH2`.
     pub chord: Chord,
     /// How many of its lowest tones go up an octave.
     pub inversion: u8,
-    /// Whether D carries a gate rather than the chord's third tone.
-    pub gate_on_d: bool,
     /// The gate's length, in percent of the clock's period.
     pub gate_percent: u8,
 }
@@ -325,7 +321,6 @@ impl Settings {
         repeat: Draw::DEFAULT.repeat,
         chord: Chord::Triad,
         inversion: 0,
-        gate_on_d: false,
         gate_percent: 50,
     };
 
@@ -373,7 +368,7 @@ impl Settings {
 /// What `MELODY` is set by (journal/D-043), in the order of the screen.
 // Every bound here is below a hundred; `From` is not `const`.
 #[allow(clippy::cast_possible_wrap, clippy::cast_possible_truncation)]
-pub const PARAM_SPECS: [ParamSpec; 15] = [
+pub const PARAM_SPECS: [ParamSpec; 14] = [
     ParamSpec::number("LENGTH", (1, MAX_STEPS as i32), 1, 0, Unit::None).assignable(),
     ParamSpec::number("PROB", (0, 100), 1, 0, Unit::Percent).assignable(),
     ParamSpec::choice("SCALE", &SCALE_NAMES),
@@ -394,7 +389,6 @@ pub const PARAM_SPECS: [ParamSpec; 15] = [
     ParamSpec::toggle("REPEAT"),
     ParamSpec::choice("CHORD", &CHORD_NAMES),
     ParamSpec::number("INVERT", (0, MAX_INVERSION as i32), 1, 0, Unit::None),
-    ParamSpec::choice("OUT D", &["CHORD", "GATE"]),
     ParamSpec::number("GATE", (1, 99), 1, 0, Unit::Percent),
 ];
 
@@ -432,14 +426,17 @@ fn millivolts(semitones: i32) -> MilliVolts {
     (product + product.signum() * 6) / 12
 }
 
-/// A looping melody of random but controllable notes on A, a chord or a
-/// gate on B to D.
+/// A looping melody of random but controllable notes, its chord's two tones
+/// and a gate.
 #[derive(Debug, Clone)]
 pub struct MelodyApp {
     settings: Settings,
     sequence: Sequence,
     /// The transposition the step playing started with, inputs included.
     transpose: i32,
+    /// The step the outputs carry: the last the clock played, which a
+    /// reset leaves until the next clock; the first before any.
+    playing: usize,
     /// The rate of `CLOCK`, which the gate is a fraction of.
     tempo: Tempo,
     /// The input of each setting that takes one, and the submenu.
@@ -462,6 +459,7 @@ impl MelodyApp {
             settings,
             sequence: Sequence::new(settings.length, settings.draw()),
             transpose: 0,
+            playing: 0,
             tempo: Tempo::new(),
             inputs: Modulations::new(DEFAULT_ASSIGNS),
             selected: 0,
@@ -568,7 +566,7 @@ impl MelodyApp {
         let latched = self.with_inputs();
         self.transpose = i32::from(latched.transpose);
         self.sequence.set_length(latched.length);
-        self.sequence.clock(latched.chance_percent, latched.draw());
+        self.playing = self.sequence.clock(latched.chance_percent, latched.draw());
         let gate = self
             .tempo
             .period_micros()
@@ -599,27 +597,22 @@ impl MelodyApp {
 
     /// The MIDI note A carries.
     fn midi_note(&self) -> i32 {
-        let step = self.sequence.position().unwrap_or(0);
+        let step = self.playing;
         ZERO_VOLT_NOTE + self.above_c4(self.played(step, self.transpose))
     }
 
-    /// What A to D carry: the step playing (the first while armed), its
-    /// chord, or the gate on D.
+    /// What the four ports carry: the step playing, its chord, the gate.
     fn levels(&self) -> [MilliVolts; CV_CHANNELS] {
         let settings = &self.settings;
-        let step = self.sequence.position().unwrap_or(0);
+        let step = self.playing;
         let note = self.played(step, self.transpose);
-        let tones = chord(settings.scale, note, settings.chord, settings.inversion);
-        let mut levels = [
+        let [low, high] = chord(settings.scale, note, settings.chord, settings.inversion);
+        [
             millivolts(self.above_c4(note)),
-            millivolts(self.above_c4(tones[0])),
-            millivolts(self.above_c4(tones[1])),
-            millivolts(self.above_c4(tones[2])),
-        ];
-        if settings.gate_on_d {
-            levels[3] = if self.gate_micros > 0 { GATE_MV } else { 0 };
-        }
-        levels
+            millivolts(self.above_c4(low)),
+            millivolts(self.above_c4(high)),
+            if self.gate_micros > 0 { GATE_MV } else { 0 },
+        ]
     }
 
     fn follow_panel(&mut self, input: &InputSnapshot) {
@@ -629,7 +622,7 @@ impl MelodyApp {
         if input.buttons.pressed(Button::LeftEncoder) {
             self.editing = match self.editing {
                 Some(_) => None,
-                None => Some(self.sequence.position().unwrap_or(0)),
+                None => Some(self.playing.min(usize::from(self.sequence.length()) - 1)),
             };
         }
         let length = usize::from(self.sequence.length());
@@ -720,7 +713,6 @@ impl MelodyApp {
             Setting::Repeat => write!(out, "{}", on_off(settings.repeat)),
             Setting::Chord => write!(out, "{}", CHORD_NAMES[settings.chord.index()]),
             Setting::Invert => write!(out, "{}", settings.inversion),
-            Setting::OutD => write!(out, "{}", if settings.gate_on_d { "GATE" } else { "CHORD" }),
             Setting::Gate => write!(out, "{}%", settings.gate_percent),
             Setting::Reroll => Ok(()),
         };
@@ -900,13 +892,16 @@ fn write_signed(out: &mut TextBuf<16>, value: i32) -> core::fmt::Result {
     }
 }
 
-/// The note, then the chord, D a gate if set; named by what they carry, the
-/// routing page setting the jack (journal/D-046).
+/// The note, the chord's two tones and the gate, on A to D by default;
+/// named by what they carry, the routing page setting the jack, or none
+/// (journal/D-046). Four, as many as a route has lanes: the chord has two
+/// tones so that the gate has a port (journal/D-047, revision of
+/// 2026-11-26).
 const PORTS: [Port; 4] = [
     Port { name: "NOTE" },
     Port { name: "CH1" },
     Port { name: "CH2" },
-    Port { name: "CH3/G" },
+    Port { name: "GATE" },
 ];
 
 /// `TR1` clocks the steps, `TR2` arms the first; the routing page may plug
@@ -954,7 +949,6 @@ impl App for MelodyApp {
         match Setting::ALL.get(index) {
             // A walk draws from the step before, not over the range.
             Some(Setting::Spread | Setting::Bias | Setting::Repeat) => !walking,
-            Some(Setting::Gate) => self.settings.gate_on_d,
             _ => true,
         }
     }
@@ -977,7 +971,6 @@ impl App for MelodyApp {
             Setting::Repeat => Some(ParamValue::Toggle(settings.repeat)),
             Setting::Chord => choice(settings.chord.index()),
             Setting::Invert => number(i32::from(settings.inversion)),
-            Setting::OutD => choice(usize::from(settings.gate_on_d)),
             Setting::Gate => number(i32::from(settings.gate_percent)),
             Setting::Reroll => None,
         }
@@ -1015,7 +1008,6 @@ impl App for MelodyApp {
             (Setting::Invert, ParamValue::Number(inversion)) => {
                 settings.inversion = byte(inversion);
             }
-            (Setting::OutD, ParamValue::Choice(out)) => settings.gate_on_d = out == 1,
             (Setting::Gate, ParamValue::Number(gate)) => settings.gate_percent = byte(gate),
             _ => {}
         }

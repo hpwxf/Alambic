@@ -198,18 +198,21 @@ enum Tone {
     Octaves(i32),
 }
 
-/// The chords B, C and D carry, in the order `CHORD` turns through them.
+/// The chords `CH1` and `CH2` carry beside the note, in the order `CHORD`
+/// turns through them: two tones, a fourth port being the gate's
+/// (journal/D-047, revision of 2026-11-26).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Chord {
-    /// The third, the fifth and the octave.
+    /// The third and the fifth.
     Triad,
-    /// The third, the fifth and the seventh.
+    /// The third and the seventh, the fifth left out as a shell voicing
+    /// leaves it.
     Seventh,
-    /// The second, the fifth and the octave.
+    /// The second and the fifth.
     Sus2,
-    /// The fourth, the fifth and the octave.
+    /// The fourth and the fifth.
     Sus4,
-    /// An octave up, two up, one down.
+    /// An octave up and one down.
     Octaves,
 }
 
@@ -239,13 +242,13 @@ impl Chord {
         }
     }
 
-    const fn tones(self) -> [Tone; 3] {
+    const fn tones(self) -> [Tone; CHORD_TONES] {
         match self {
-            Self::Triad => [Tone::Degrees(2), Tone::Degrees(4), Tone::Octaves(1)],
-            Self::Seventh => [Tone::Degrees(2), Tone::Degrees(4), Tone::Degrees(6)],
-            Self::Sus2 => [Tone::Degrees(1), Tone::Degrees(4), Tone::Octaves(1)],
-            Self::Sus4 => [Tone::Degrees(3), Tone::Degrees(4), Tone::Octaves(1)],
-            Self::Octaves => [Tone::Octaves(1), Tone::Octaves(2), Tone::Octaves(-1)],
+            Self::Triad => [Tone::Degrees(2), Tone::Degrees(4)],
+            Self::Seventh => [Tone::Degrees(2), Tone::Degrees(6)],
+            Self::Sus2 => [Tone::Degrees(1), Tone::Degrees(4)],
+            Self::Sus4 => [Tone::Degrees(3), Tone::Degrees(4)],
+            Self::Octaves => [Tone::Octaves(1), Tone::Octaves(-1)],
         }
     }
 }
@@ -253,17 +256,20 @@ impl Chord {
 /// [`Chord::ALL`] as the screen writes them.
 pub const CHORD_NAMES: [&str; Chord::ALL.len()] = ["TRIAD", "7TH", "SUS2", "SUS4", "OCT"];
 
-/// The most tones [`chord`] raises an octave.
-pub const MAX_INVERSION: u8 = 2;
+/// The tones of a chord beside its note.
+pub const CHORD_TONES: usize = 2;
 
-/// The three tones of `chord` on `note` (semitones above the root, in
-/// `scale`), lowest first once the `inversion` lowest are raised an octave.
+/// The most tones [`chord`] raises an octave: the lower of the two.
+pub const MAX_INVERSION: u8 = 1;
+
+/// The tones of `chord` on `note` (semitones above the root, in `scale`),
+/// lowest first once the `inversion` lowest are raised an octave.
 ///
 /// The thirds are stacked in the scale, so the chord is the scale's own; the
 /// chromatic scale, whose thirds would be seconds, borrows the major scale's
 /// from the note.
 #[must_use]
-pub fn chord(scale: Scale, note: i32, chord: Chord, inversion: u8) -> [i32; 3] {
+pub fn chord(scale: Scale, note: i32, chord: Chord, inversion: u8) -> [i32; CHORD_TONES] {
     let (harmony, base) = match scale {
         Scale::Chromatic => (Scale::Major, 0),
         _ => (scale, note),
@@ -335,36 +341,27 @@ mod tests {
 
     #[test]
     fn chords_stack_thirds_in_the_scale() {
-        assert_eq!(
-            chord(Scale::Major, 0, Chord::Triad, 0),
-            [4, 7, 12],
-            "C E G C"
-        );
-        assert_eq!(
-            chord(Scale::Major, 2, Chord::Triad, 0),
-            [5, 9, 14],
-            "D minor"
-        );
-        assert_eq!(chord(Scale::Major, 0, Chord::Seventh, 0), [4, 7, 11]);
-        assert_eq!(chord(Scale::Major, 0, Chord::Sus2, 0), [2, 7, 12]);
-        assert_eq!(chord(Scale::Major, 0, Chord::Sus4, 0), [5, 7, 12]);
-        assert_eq!(chord(Scale::Minor, 0, Chord::Triad, 0), [3, 7, 12]);
-        assert_eq!(chord(Scale::Major, 0, Chord::Octaves, 0), [-12, 12, 24]);
+        assert_eq!(chord(Scale::Major, 0, Chord::Triad, 0), [4, 7], "C: E G");
+        assert_eq!(chord(Scale::Major, 2, Chord::Triad, 0), [5, 9], "D minor");
+        assert_eq!(chord(Scale::Major, 0, Chord::Seventh, 0), [4, 11]);
+        assert_eq!(chord(Scale::Major, 0, Chord::Sus2, 0), [2, 7]);
+        assert_eq!(chord(Scale::Major, 0, Chord::Sus4, 0), [5, 7]);
+        assert_eq!(chord(Scale::Minor, 0, Chord::Triad, 0), [3, 7]);
+        assert_eq!(chord(Scale::Major, 0, Chord::Octaves, 0), [-12, 12]);
     }
 
     #[test]
     fn the_chromatic_scale_borrows_major_thirds() {
-        assert_eq!(chord(Scale::Chromatic, 1, Chord::Triad, 0), [5, 8, 13]);
+        assert_eq!(chord(Scale::Chromatic, 1, Chord::Triad, 0), [5, 8]);
     }
 
     #[test]
     fn an_inversion_raises_the_lowest_tones() {
-        assert_eq!(chord(Scale::Major, 0, Chord::Triad, 1), [7, 12, 16]);
-        assert_eq!(chord(Scale::Major, 0, Chord::Triad, 2), [12, 16, 19]);
+        assert_eq!(chord(Scale::Major, 0, Chord::Triad, 1), [7, 16]);
         assert_eq!(
             chord(Scale::Major, 0, Chord::Triad, 9),
-            [12, 16, 19],
-            "two at most"
+            [7, 16],
+            "the lower at most"
         );
     }
 }

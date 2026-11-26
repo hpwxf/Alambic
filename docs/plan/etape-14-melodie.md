@@ -1,6 +1,8 @@
 # Étape 14 — applet `MELODY` : mélodies aléatoires contrôlables
 
 > Plan de l'étape 14, suivi par git (journal/D-047).
+> Révisé le 2026-11-26 (D-047, révision) : `OUT D` retiré, ports `NOTE`, `CH1`, `CH2`, `GATE`, accord de deux tons ;
+> ce qui suit sur `OUT D`, les trois tons et `CH3/G` est l'état d'avant.
 
 ## Contexte
 

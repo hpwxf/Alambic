@@ -15,9 +15,10 @@ Architectural decisions behind each change are in `journal/` (French).
   `PROB` over `RANGE` octaves (`SPREAD`, `BIAS`, `REPEAT`) or by a walk
   (`JUMP`), `REROLL` on demand. A carries the note quantised to `SCALE` from
   `ROOT`, moved by `OCTAVE` and `TRANSPOSE` (`CV1` at one volt per octave);
-  B to D a chord stacked in the scale (`CHORD`, `INVERT`), or D a gate. The
-  loop shows at the bottom of the screen; a click on the left encoder edits
-  its steps there.
+  B and C a chord of two tones stacked in the scale (`CHORD`, `INVERT`), D a
+  gate, each port routed like any other. The loop shows at the bottom of
+  the screen; a click on the left encoder edits its steps there. Its own
+  guide: `crates/oc-core/src/apps/melody/README.md`.
 
 ### Changed
 

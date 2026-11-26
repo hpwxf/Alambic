@@ -69,7 +69,7 @@ comportemental (`oc-core`, D-002). Les applets musicaux sont la suite.
 ## Étape en cours : 14 — applet `MELODY` (D-047)
 
 Séquence cyclique de notes aléatoires mais contrôlables (meloDICER, Mimetic Digitalis, Marbles) : `TR1` horloge,
-`TR2` reset, A la note quantifiée sur une gamme, B–D un accord diatonique (ou D en gate), séquence affichée en bas de
+`TR2` reset, A la note quantifiée sur une gamme, B et C un accord diatonique de deux tons, D une gate, séquence affichée en bas de
 l'écran et éditable pas à pas. Plan : [etape-14-melodie.md](docs/plan/etape-14-melodie.md).
 
 | Lot | Contenu | État |
@@ -80,6 +80,7 @@ l'écran et éditable pas à pas. Plan : [etape-14-melodie.md](docs/plan/etape-1
 | 14d | `MelodyApp`, registre, panneau, sorties, trait `App` ; tests d'intégration | ✅ |
 | 14e | rendu ; scénarios du simulateur et écrans de référence | ✅ |
 | 14f | docs, `cargo xtask size` (`.text` +7,9 Kio, 60,5 Kio d'ITCM libres), essai sur le module, avancement ([etape-14.md](docs/plan/avancement/etape-14.md)) | ⏳ module (TESTING 9.3i) |
+| 14g | révision : `OUT D` retiré, la gate en port `GATE`, accord de deux tons ; reset sans saut des sorties ; guide `apps/melody/README.md` | ✅ |
 
 ## Décisions actées
 
@@ -124,5 +125,5 @@ Valeurs seules ; le raisonnement est dans `journal/`.
 | assignation des CV | une entrée par paramètre assignable, nommée par l'index du paramètre (son rang parmi les `assignable`) ; état du sous-menu commun (`modulation::slots::Modulations`) ; trait `assigns` / `assigns_mut` / `assign_sweep`, `assign` / `set_assign` sur `dyn App` ; sonde : `GetAssign`, `SetAssign` (protocole 8), CLI `cargo probe assign`, `CENTER` côté hôte (CLI et page, même `Assign::center`) ; un seul sous-panneau web | D-045 |
 | applets simultanées | `MAX_INSTANCES` = 4 emplacements toujours occupés, `NOTHING` dans un vide (révision du 2026-11-25), `AppId` = espèce ; ports de sortie routés vers `A` à `D` sans recouvrement, ou désactivés ; carte d'entrées par instance ; une `Voice` et un `Setup` par instance ; focus au panneau (`up` / `down` court), page de routage (appui long), indicateur ; protocole 10 par emplacement | D-046 |
 | applet Supersaw | sept scies PolyBLEP en `f32` (phases entières), désaccord et mix de Szabo, passe-haut sur la fondamentale ; banc dans l'app (générateur `SupersawBank`) partagé par les sorties : A / B mono ou stéréo, C sub-octave ; entrées assignables par `oc_core::modulation` sauf `STEREO`, CV1 en V/oct sur `NOTE` au démarrage ; ×4 non nécessaire (repliement mesuré) ; forme de la scie au carré (`SHAPE`) ; scies descendantes, `LEVEL` à 3 V au plus | D-037, D-044 |
-| applet Melody | jusqu'à 32 pas en demi-tons au-dessus de la tonique, quantifiés à la sortie (`SCALE`, `ROOT`, `OCTAVE`, `TRANSPOSE` sur CV1 en `ADD`) ; `TR1` horloge, `TR2` reset armé (ports routables) ; remplacement au passage avec `PROB`, tirage dans `RANGE` (`SPREAD` / `BIAS`, `REPEAT`) ou marche `JUMP`, `REROLL` ; A note, B–D tierces empilées (`CHORD`, `INVERT`), D en gate au choix ; niveaux tenus ; catégorie `SEQUENCE`, `AppId` 7 | D-047 |
+| applet Melody | jusqu'à 32 pas en demi-tons au-dessus de la tonique, quantifiés à la sortie (`SCALE`, `ROOT`, `OCTAVE`, `TRANSPOSE` sur CV1 en `ADD`) ; `TR1` horloge, `TR2` reset armé (ports routables) ; remplacement au passage avec `PROB`, tirage dans `RANGE` (`SPREAD` / `BIAS`, `REPEAT`) ou marche `JUMP`, `REROLL` ; ports `NOTE`, `CH1`, `CH2`, `GATE` (accord de deux tons empilés, `CHORD`, `INVERT` ; prises choisies par le routage, révision du 2026-11-26) ; niveaux tenus ; catégorie `SEQUENCE`, `AppId` 7 | D-047 |
 | budget mémoire | disposition de `teensy4-bsp`, reprise dans le `build.rs` d'`oc-firmware` (sans la feature `rt`) : code en ITCM, bancs 6 / 10 (192 + 320 Kio) ; coût d'une applet par différence de `xtask size` ; budgets lus dans l'ELF (`__flexram_config`), alerte sous 16 Kio d'ITCM libres ; profil `release` en `opt-level = "s"` par défaut, `3` pour `oc-dsp` (DSP), `oc-realtime` (interruption, chemin par échantillon) et `oc-vcv-ffi`, le firmware en `s`, justifié dans `Cargo.toml` ; ITCM à court : bancs repartagés, puis code en flash ; tampon de mesure : feature de test, `.uninit` en OCRAM ; arena dans `oc-core` au premier grand usage d'applet ; tampons du DMA en DTCM ; profondeur de la pile estimée par `cargo xtask size` (`stack-depth` : `FAIL` au-delà de `.stack`, `warn` sous 2 Kio) | D-038 |

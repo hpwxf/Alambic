@@ -2,9 +2,9 @@
 //! outputs for the clocks and resets it receives, and what the panel does to
 //! its settings and its steps.
 
-use oc_core::apps::AppId;
 use oc_core::apps::melody::scale::{Chord, Scale, chord};
 use oc_core::apps::melody::{GATE_MV, MelodyApp, Setting, UNKNOWN_GATE_MICROS};
+use oc_core::apps::{App, AppId};
 use oc_core::platform::{Button, CvChannel, MilliVolts, TriggerChannel};
 use oc_core::settings::Settings;
 use oc_core::testing::{MockEngine, mock_engine_at_boot};
@@ -109,8 +109,14 @@ fn a_reset_arms_the_first_step_for_the_next_clock() {
     for _ in 0..5 {
         clock(&mut engine, 20);
     }
+    let playing = engine.outputs();
     reset(&mut engine);
     assert_eq!(app(&engine).sequence().position(), None, "armed, not moved");
+    assert_eq!(
+        engine.outputs()[..3],
+        playing[..3],
+        "the note held until the clock"
+    );
     clock(&mut engine, 20);
     assert_eq!(app(&engine).sequence().position(), Some(0));
 
@@ -121,25 +127,24 @@ fn a_reset_arms_the_first_step_for_the_next_clock() {
 }
 
 #[test]
-fn b_to_d_carry_the_chord_stacked_in_the_scale() {
+fn b_and_c_carry_the_chord_stacked_in_the_scale() {
     let mut engine = melody();
     clock(&mut engine, 20);
     let note = played(&engine, 0);
     let tones = chord(Scale::Major, note, Chord::Triad, 0);
     assert_eq!(
-        engine.outputs()[1..],
+        engine.outputs()[1..3],
         tones.map(millivolts),
-        "the third, the fifth, the octave"
+        "the third and the fifth"
     );
     set(&mut engine, Setting::Chord, 1);
     let tones = chord(Scale::Major, note, Chord::Seventh, 0);
-    assert_eq!(engine.outputs()[1..], tones.map(millivolts), "at once");
+    assert_eq!(engine.outputs()[1..3], tones.map(millivolts), "at once");
 }
 
 #[test]
-fn d_can_carry_a_gate_of_the_clocks_period() {
+fn d_carries_a_gate_of_the_clocks_period() {
     let mut engine = melody();
-    set(&mut engine, Setting::OutD, 1);
     let high = |engine: &MockEngine| engine.outputs()[3] == GATE_MV;
     // Before the rate is known: the default length, closed well before the
     // next clock.
@@ -160,6 +165,36 @@ fn d_can_carry_a_gate_of_the_clocks_period() {
         (50..=51).contains(&ticks),
         "half the period, within a tick: {ticks}"
     );
+}
+
+#[test]
+fn the_routing_page_sends_the_gate_elsewhere_or_nowhere() {
+    let mut engine = melody();
+    let ports: Vec<&str> = app(&engine)
+        .output_ports()
+        .iter()
+        .map(|port| port.name)
+        .collect();
+    assert_eq!(
+        ports,
+        ["NOTE", "CH1", "CH2", "GATE"],
+        "no setting picks D's"
+    );
+    // The gate nowhere: D free, at 0 V while the clock runs.
+    engine.apps_mut().set_route(0, 3, None).unwrap();
+    tick(&mut engine, true, false);
+    assert_eq!(engine.outputs()[3], 0);
+    // CH2 nowhere, the gate on C.
+    engine.apps_mut().set_route(0, 2, None).unwrap();
+    engine
+        .apps_mut()
+        .set_route(0, 3, Some(CvChannel::Three))
+        .unwrap();
+    for _ in 0..30 {
+        tick(&mut engine, false, false);
+    }
+    clock(&mut engine, 0);
+    assert_eq!(engine.outputs()[2], GATE_MV, "the gate on C");
 }
 
 #[test]

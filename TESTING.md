@@ -891,8 +891,9 @@ clearly higher is the analog stage's: the millivolt is enough for audio.
 
 Open `MELODY` from the app menu (`SEQUENCE`). Patch a clock into `TR1` (a
 second slot running `RATCHET` routed to a free jack and patched back, or an
-external clock), output A into a tuner or an oscillator's V/oct, and B to D
-into three more oscillators or a multimeter.
+external clock), output A into a tuner or an oscillator's V/oct, B and C
+into two more oscillators or a multimeter, D into an envelope's gate. What
+each setting does: `crates/oc-core/src/apps/melody/README.md`.
 
 1. With `SCALE CHROMATIC` and `PROB 0%`, `LENGTH 4`: the same four notes
    loop; on a tuner each is in tune with the note the title shows (within a
@@ -902,11 +903,13 @@ into three more oscillators or a multimeter.
 3. `PROB 100%`: every step changes as the clock reaches it; `SPREAD 0%`: the
    notes stay on `BIAS`; `JUMP 2`: steps never repeat and move by one or two
    degrees.
-4. B, C and D: with `CHORD TRIAD` on C, about +333, +583 and +1 000 mV
-   above A (E, G, C); `INVERT 1` raises the lowest an octave.
-5. `OUT D GATE`, `GATE 50%`, a clock every 500 ms: D high 250 ms a step,
-   at 5 V.
-6. `TR2`: a trigger arms the sequence, the next clock plays step 01.
+4. B and C: with `CHORD TRIAD` on C, about +333 and +583 mV above A
+   (E, G); `INVERT 1` raises the lower an octave (G, E above).
+5. `GATE 50%`, a clock every 500 ms: D high 250 ms a step, at 5 V. On the
+   routing page, `GATE` to `OFF`: D free and at 0 V; `CH2` to `OFF` and
+   `GATE` to `C`: the gate on C.
+6. `TR2`: a trigger arms the sequence (`--` in the title, the note held),
+   the next clock plays step 01.
 7. `CV1` at +1 V: from the next clock A plays an octave up (`+CV1` on
    `TRANSPOSE`).
 8. Left encoder click: `EDIT`; turn the left encoder to a step, the right
