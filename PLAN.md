@@ -79,13 +79,14 @@ l'écran et éditable pas à pas. Plan : [etape-14-melodie.md](docs/plan/etape-1
 | 14c | séquence (`sequence.rs`) : horloge, reset, longueur, remplacement, `SPREAD` / `BIAS`, `JUMP`, `REPEAT`, `REROLL` | ✅ |
 | 14d | `MelodyApp`, registre, panneau, sorties, trait `App` ; tests d'intégration | ✅ |
 | 14e | rendu ; scénarios du simulateur et écrans de référence | ✅ |
-| 14f | docs, `cargo xtask size` (`.text` +7,9 Kio, 60,5 Kio d'ITCM libres), essai sur le module, avancement ([etape-14.md](docs/plan/avancement/etape-14.md)) | ⏳ module (TESTING 9.3i) |
+| 14f | docs, `cargo xtask size` (`.text` +8,5 Kio en fin d'étape, 59,9 Kio d'ITCM libres), essai sur le module, avancement ([etape-14.md](docs/plan/avancement/etape-14.md)) | ⏳ module (TESTING 9.3i) |
 | 14g | révision : `OUT D` retiré, la gate en port `GATE`, accord de deux tons ; reset sans saut des sorties ; guide `apps/melody/README.md` | ✅ |
 | 14h | quatre lignes de réglages par page, réglages regroupés par quatre | ✅ |
 | 14i | `TRANSPOSE` sans `CV1` au démarrage : aucune entrée par défaut | ✅ |
 | 14j | pointeur en inverse vidéo en haut de la colonne jouée, sans ligne réservée | ✅ |
 | 14k | rond à droite des réglages modulables sans entrée, dans les quatre apps qui en ont | ✅ |
 | 14l | trois pages : `REPEAT` dans `JUMP` (`OFF` / `NO REP` / 1–7), lignes `KEY` et `CHORD` à deux champs parcourus par l'encodeur gauche, inversion en flèche ↓ / – / ↑, `SPREAD` / `BIAS` masqués pendant une marche | ✅ |
+| 14m | mesures de l'étape corrigées ; construction en place essayée puis écartée (forme simple gardée, commentaire) | ✅ |
 
 ## Décisions actées
 

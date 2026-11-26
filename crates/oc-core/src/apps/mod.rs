@@ -550,6 +550,17 @@ pub enum Instance {
 impl Instance {
     /// A fresh applet of kind `id`, as it starts.
     // One copy for every caller: inlined, each would build all six applets.
+    //
+    // Each arm builds its applet as a temporary, then moves it into the
+    // instance, and the instance into the caller's: a `const fn` called here
+    // is an ordinary call, which Rust does not promise to build in place.
+    // Those copies take stack, on the boot path, the firmware's deepest:
+    // 968 bytes in this frame with `MELODY`, the largest applet, against 536
+    // without it. That is below the critical level (`cargo xtask size`,
+    // about 6 KiB of the 16 KiB stack left); should it not be, a
+    // `const { .. }` arm, or a constant then drawn through a reference for
+    // what runs at start, took 600 bytes off when tried
+    // (docs/plan/avancement/etape-14.md, journal/D-038).
     #[inline(never)]
     #[must_use]
     pub fn new(id: AppId) -> Self {

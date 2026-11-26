@@ -19,17 +19,53 @@ Décision : D-047, adoptée le 2026-11-26 (choix tranchés avec l'utilisateur). 
 | 14j | plus de ligne réservée au pointeur : triangle en inverse vidéo en haut de la colonne jouée, rogné à sa largeur ; 4 px de plus pour les hauteurs des notes ; écrans régénérés |
 | 14k | un petit rond à droite des réglages modulables sans entrée (`modulation::draw_input`, partagé par `RATCHET`, `SUPERSAW`, `TONE`, `MELODY`) ; écrans régénérés |
 | 14l | douze lignes sur trois pages : `REPEAT` fondu dans `JUMP` (`OFF`, `NO REP`, 1–7), `KEY` (tonique, gamme) et `CHORD` (accord, inversion) à deux champs, encodeur gauche sur les champs, champ choisi seul encadré ; inversion −1 / 0 / +1 en flèche ; `SPREAD` et `BIAS` masqués pendant une marche ; scénario `melody_chord` ; révision de D-047 |
+| 14m | mesures de l'étape refaites et corrigées ; construction de `MELODY` en place essayée (`MelodyApp::EMPTY` puis `start` par référence : `Instance::new` 968 → 696 o ; avec des bras `const { … }` pour toutes les apps, 352 o), puis écartée au profit de la forme simple `Self::App(App::new())`, le coût restant loin du seuil ; commentaire dans `Instance::new` |
 
 ## Mesures
 
-`cargo xtask size`, contre `master` (`937c61f`) compilé dans un worktree :
+`cargo xtask size` et `llvm-nm`, contre `master` (`937c61f`) compilé dans un worktree, à la fin de l'étape
+(14m) ; tailles des types lues sur la cible (`thumbv7em-none-eabihf`, `size_of` en erreur de compilation) :
 
 | | `master` | étape 14 | écart |
 |---|---|---|---|
-| `.text` (ITCM) | 0x1ee34 (68,4 Kio libres) | 0x20dd8 (60,5 Kio libres) | +8 100 o (≈ 7,9 Kio) |
-| `.rodata` | 0x8f08 | 0x9904 | +2 556 o |
-| `.bss` | 0x6208 | 0x6208 | 0 (un emplacement reste de la taille de la plus grande applet) |
-| pile estimée | 9 424 o | 10 344 o | +920 o (`Instance::new` de `MelodyApp`), 6 040 o libres |
+| `.text` (ITCM) | 0x1ee34 (68,4 Kio libres) | 0x21038 (59,9 Kio libres) | +8 708 o (≈ 8,5 Kio) |
+| `.rodata` | 0x8f08 | 0x9974 | +2 668 o |
+| `.bss` | 0x6208 | 0x6208 | 0 en apparence (voir ci-dessous) |
+| `ENGINE` (statique) | 3 920 o | 4 112 o | +192 o |
+| pile estimée (main + 3 interruptions) | 9 424 o | 10 432 o | +1 008 o, 5 952 o libres |
+| interruption la plus profonde | 728 o | 728 o | 0 |
+
+* **`MELODY` est la plus grande applet** : 300 o (`Modulations<6>` 172 o, `Sequence` 40 o, le tempo, les réglages,
+  les sorties), contre 256 o pour `RatchetApp`, la plus grande jusque-là. Un emplacement (`Instance`) passe de 256 à
+  304 o, `AppHost` (quatre emplacements) de 1 096 à 1 288 o.
+* **`.bss` ne bouge pas par hasard** : l'`Engine` statique grandit de 192 o, mais finit à 0x2000_8010 et la
+  variable suivante, `usb::ENDPOINT_STATE`, est alignée à 0x2000_9000 ; les 192 o tombent dans le bourrage. Ce
+  n'est pas, comme écrit d'abord, qu'un emplacement garderait la taille d'une applet plus grande.
+* **Pile** : le chemin le plus profond est, comme sur `master`, celui du démarrage
+  (`main → boot → engine_in_static → AppHost::select_at → Instance::new`) ; ses cadres grandissent avec les
+  emplacements :
+
+  | Cadre | `master` | étape 14 |
+  |---|---|---|
+  | `engine_in_static` | 3 024 o | 3 408 o |
+  | `AppHost::select_at` | 840 o | 984 o |
+  | `Instance::new` | 536 o | 968 o |
+  | main | 8 456 o | 9 464 o |
+
+  `engine_in_static` (+384 o, deux `AppHost`) et `select_at` (+144 o, trois `Instance`) suivent la taille des
+  emplacements. `Instance::new` garde à la fois l'applet construite et l'`Instance` qui l'emballe : un `const fn`
+  appelé à l'exécution est un appel ordinaire, que Rust ne promet pas de construire en place.
+* **Construction en place, essayée et écartée** (14m), mesures de `Instance::new` / main :
+
+  | Variante | `Instance::new` | main |
+  |---|---|---|
+  | forme simple, `Self::App(App::new())` (retenue) | 968 o | 9 464 o |
+  | `MELODY` : constante `EMPTY` écrite dans l'instance, puis `start` par référence | 696 o | 9 192 o |
+  | + bras `const { … }` pour les autres apps | 368 o | 8 864 o |
+  | + `DIAGNOSTIC` rendue `const` (`.text` −512 o, `.rodata` +1 968 o) | 352 o | 8 848 o |
+
+  Gain réel (jusqu'à −616 o) mais coût loin du seuil (alerte sous 2 Kio libres, 5,9 Kio libres) : l'utilisateur
+  garde la forme simple, partout la même ; un commentaire dans `Instance::new` le dit et renvoie ici.
 
 Définition de fini passée localement : `cargo fmt --check`, les deux `clippy`, `cargo test --all-features`,
 `cargo xtask build && cargo xtask size`.
