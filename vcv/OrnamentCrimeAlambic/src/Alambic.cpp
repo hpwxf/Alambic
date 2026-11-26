@@ -26,15 +26,18 @@ constexpr float kTriggerHighVolts = 1.f;
 // rate, matching the firmware's own 1 kHz main loop (`oc-firmware`).
 constexpr double kTickIntervalMicros = 1000.0;
 
-// Rack's knob widgets are bounded, not infinite like a physical rotary
-// encoder, so a knob's *movement* between two process() calls -- not its
-// absolute position -- stands in for encoder detents. `kDetentsPerFullSwing`
-// sets how many detents a full excursion from one end of the knob to the
-// other is worth; this is a display/interaction choice, not a behavioural
-// one, since every actual detent still goes through the same
-// `oc_engine_encoder()` call the real hardware's quadrature decoder would
-// produce.
-constexpr float kDetentsPerFullSwing = 32.f;
+// A physical rotary encoder has no end stop, so each encoder is a knob whose
+// parameter has infinite bounds: Rack then lets it turn for ever (the knob
+// widget wraps its drawn angle), where a bounded knob would stop at one end
+// and leave the applet unable to go further. Only the knob's *movement*
+// between two process() calls stands in for detents, never its absolute
+// position. `kDetentsPerUnit` sets how many detents one unit of parameter
+// value is worth; Rack moves an unbounded knob one unit per 2 pi of drag, so
+// 40 keeps about the feel the bounded knob had (32 detents over its 2.4-unit
+// equivalent turn). It is an interaction choice, not a behavioural one: every
+// detent still goes through the same `oc_engine_encoder()` call the
+// hardware's quadrature decoder makes.
+constexpr float kDetentsPerUnit = 40.f;
 
 // Framebuffer geometry, mirrored from `oc_core::framebuffer` (128x64, 1bpp,
 // 8-row pages) purely to know how to unpack the bytes `oc_engine_framebuffer`
@@ -80,8 +83,12 @@ struct Alambic : Module {
     uint64_t totalMicros = 0;
 
     // Previous knob reading for each encoder, to turn absolute knob position
-    // into a delta since the last process() call.
+    // into a delta since the last process() call. Unprimed until the first
+    // reading: an endless knob keeps whatever value it reached in the saved
+    // patch, so measuring the first move from zero would replay that whole
+    // distance as a burst of detents.
     float encoderPrev[kEncoders] = {};
+    bool encoderPrimed = false;
     // Fractional part of the detent count not yet reported, carried over so
     // slow turns still eventually produce a detent instead of always
     // rounding to zero.
@@ -111,8 +118,9 @@ struct Alambic : Module {
         assert(oc_engine_buttons() == kButtons);
 
         config(PARAMS_LEN, INPUTS_LEN, OUTPUTS_LEN, LIGHTS_LEN);
-        configParam(LEFT_ENCODER_PARAM, -1.f, 1.f, 0.f, "Left encoder (channel select)");
-        configParam(RIGHT_ENCODER_PARAM, -1.f, 1.f, 0.f, "Right encoder (offset)");
+        // Infinite bounds make the knobs endless (see `kDetentsPerUnit`).
+        configParam(LEFT_ENCODER_PARAM, -INFINITY, INFINITY, 0.f, "Left encoder (channel select)");
+        configParam(RIGHT_ENCODER_PARAM, -INFINITY, INFINITY, 0.f, "Right encoder (offset)");
         configButton(LEFT_BUTTON_PARAM, "Left encoder switch (reset trigger counters)");
         configButton(RIGHT_BUTTON_PARAM, "Right encoder switch (zero the offset)");
         configButton(UP_PARAM, "Up (next output mode)");
@@ -157,10 +165,7 @@ struct Alambic : Module {
         // stale, the next process() call would see a jump from the old knob
         // reading to its just-reset default and report a spurious detent
         // burst.
-        for (int index = 0; index < kEncoders; ++index) {
-            encoderPrev[index] = 0.f;
-            encoderRemainder[index] = 0.f;
-        }
+        encoderPrimed = false;
     }
 
     // The module's settings (calibration, preferences) live in the patch:
@@ -195,7 +200,7 @@ struct Alambic : Module {
     int8_t encoderDelta(int index, float value) {
         const float moved = value - encoderPrev[index];
         encoderPrev[index] = value;
-        encoderRemainder[index] += moved * kDetentsPerFullSwing / 2.f;
+        encoderRemainder[index] += moved * kDetentsPerUnit;
 
         const float whole = std::trunc(encoderRemainder[index]);
         encoderRemainder[index] -= whole;
@@ -222,6 +227,13 @@ struct Alambic : Module {
             oc_engine_set_trigger(engine, static_cast<uint8_t>(channel), high);
         }
 
+        if (!encoderPrimed) {
+            for (int index = 0; index < kEncoders; ++index) {
+                encoderPrev[index] = params[LEFT_ENCODER_PARAM + index].getValue();
+                encoderRemainder[index] = 0.f;
+            }
+            encoderPrimed = true;
+        }
         oc_engine_encoder(engine, 0, encoderDelta(0, params[LEFT_ENCODER_PARAM].getValue()),
                            params[LEFT_BUTTON_PARAM].getValue() > 0.5f);
         oc_engine_encoder(engine, 1, encoderDelta(1, params[RIGHT_ENCODER_PARAM].getValue()),
