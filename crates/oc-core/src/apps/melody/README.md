@@ -174,8 +174,9 @@ place of the value.
 * **Title bar**: `MELODY` (or `EDIT`), the step playing (or edited) out of
   the loop's length (`06/16`; `--/16` while armed), and the name of the note
   A plays (or the edited step plays) on the right.
-* **Four rows of settings**, the selected one highlighted, an assigned
-  input on the right.
+* **Four rows of settings**, the selected one highlighted; at the right of
+  a row, its input (`+CV1`), or a small ring for a setting that can take one
+  and has none.
 * **The sequence**, at the bottom: one column per step of the loop, as wide
   as the screen allows (4 pixels at 32 steps). Each step's mark sits as high
   as its note in the scale, scaled to `RANGE` or the highest note held. The

@@ -162,7 +162,9 @@ it, `=CVn` in place of the value), `ADD` (`+CVn`) or `MUL` (multiplies it,
 5 V leaving it unchanged, `*CVn`). A bar shows the input's signal (live, and
 the range seen), another the setting it moves; `CENTER` sets the scale and
 shift that carry the range seen onto the setting's usable range. The right
-encoder's click closes it.
+encoder's click closes it. On the main screen, a setting that can take an
+input shows it at the right of its row (`+CV2`), or a small ring while it
+has none, so those an input can move stand out at a glance.
 
 ## System settings
 

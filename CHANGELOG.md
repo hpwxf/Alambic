@@ -23,6 +23,10 @@ Architectural decisions behind each change are in `journal/` (French).
 
 ### Changed
 
+- In `RATCHET`, `SUPERSAW`, `TONE` and `MELODY`, a setting that can take a
+  CV input but has none shows a small ring at the right of its row, where
+  an assigned input shows its name (`+CV1`): the settings an input can move
+  stand out at a glance (`modulation::draw_input`, shared by the four).
 - The routing page opens and closes on a long press of `up` only
   (journal/D-046, revision of 2026-11-26); a long press of `down` does
   nothing, kept for a later use. Short presses of either still move to the

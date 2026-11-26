@@ -565,9 +565,7 @@ impl SupersawApp {
                 text::draw(frame, value.as_str(), Point::new(VALUE_RIGHT, top), right);
             }
             if let Some(assign) = assign {
-                let mut name = TextBuf::<8>::new();
-                assign.write(&mut name);
-                text::draw(frame, name.as_str(), Point::new(last - 1, top), right);
+                crate::modulation::draw_input(frame, assign, last - 1, top, lit);
             }
             if setting == Setting::Shape {
                 self.draw_shape(frame, top);

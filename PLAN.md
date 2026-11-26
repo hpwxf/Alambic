@@ -84,6 +84,7 @@ l'écran et éditable pas à pas. Plan : [etape-14-melodie.md](docs/plan/etape-1
 | 14h | quatre lignes de réglages par page, réglages regroupés par quatre | ✅ |
 | 14i | `TRANSPOSE` sans `CV1` au démarrage : aucune entrée par défaut | ✅ |
 | 14j | pointeur en inverse vidéo en haut de la colonne jouée, sans ligne réservée | ✅ |
+| 14k | rond à droite des réglages modulables sans entrée, dans les quatre apps qui en ont | ✅ |
 
 ## Décisions actées
 

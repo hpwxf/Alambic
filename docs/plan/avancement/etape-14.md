@@ -17,6 +17,7 @@ Décision : D-047, adoptée le 2026-11-26 (choix tranchés avec l'utilisateur). 
 | 14h | quatre lignes de réglages par page au lieu de trois (quatre pages : la boucle et sa tonalité, la hauteur et l'accord, le tirage, le reste), séquence sous la quatrième ; écrans `melody` et `melody_edit` régénérés |
 | 14i | aucune entrée assignée au démarrage, `TRANSPOSE` compris : un réglage modulable comme les autres (demande de l'utilisateur) ; test : `CV1` ne bouge rien avant l'assignation |
 | 14j | plus de ligne réservée au pointeur : triangle en inverse vidéo en haut de la colonne jouée, rogné à sa largeur ; 4 px de plus pour les hauteurs des notes ; écrans régénérés |
+| 14k | un petit rond à droite des réglages modulables sans entrée (`modulation::draw_input`, partagé par `RATCHET`, `SUPERSAW`, `TONE`, `MELODY`) ; écrans régénérés |
 
 ## Mesures
 

@@ -710,14 +710,7 @@ impl RatchetApp {
                 );
             }
             if let Some(assign) = self.assign(setting) {
-                let mut name = TextBuf::<8>::new();
-                assign.write(&mut name);
-                text::draw(
-                    frame,
-                    name.as_str(),
-                    Point::new(WIDTH_I32 - 3, top),
-                    style.aligned(Alignment::Right),
-                );
+                crate::modulation::draw_input(frame, assign, WIDTH_I32 - 3, top, style);
             }
         }
 
