@@ -1,0 +1,35 @@
+# oc-sim scenario v1
+# MELODY's steps edited on the screen (journal/D-047): launched as in
+# melody.scn, three clocks on TR1, then the left switch enters the sequence
+# (EDIT in the title), the left encoder moves to the fifth step, framed, and
+# the right encoder raises its note three degrees of the scale, which the
+# title names.
+ticks 800
+20  button up down
+60  button down down
+70  button up up
+70  button down up
+90  button down down
+100 button down up
+110 button down down
+120 button down up
+130 button down down
+140 button down up
+150 button down down
+160 button down up
+170 button down down
+180 button down up
+190 button down down
+200 button down up
+220 button right down
+226 button right up
+300 trigger 1 high
+305 trigger 1 low
+400 trigger 1 high
+405 trigger 1 low
+500 trigger 1 high
+505 trigger 1 low
+600 button left down
+606 button left up
+650 encoder 1 +2
+700 encoder 2 +3

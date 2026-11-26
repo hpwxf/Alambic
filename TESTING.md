@@ -887,6 +887,37 @@ Reading: a floor about 68 dB under the 1 V sine, the same in volts at
 100 mV, is the rounding: B or C of D-041 gain up to about 17 dB. A floor
 clearly higher is the analog stage's: the millivolt is enough for audio.
 
+### 9.3i — Melody (journal/D-047)
+
+Open `MELODY` from the app menu (`SEQUENCE`). Patch a clock into `TR1` (a
+second slot running `RATCHET` routed to a free jack and patched back, or an
+external clock), output A into a tuner or an oscillator's V/oct, B and C
+into two more oscillators or a multimeter, D into an envelope's gate. What
+each setting does: `crates/oc-core/src/apps/melody/README.md`.
+
+1. With `SCALE CHROMATIC` and `PROB 0%`, `LENGTH 4`: the same four notes
+   loop; on a tuner each is in tune with the note the title shows (within a
+   cent: the output rounds to the millivolt, journal/D-041).
+2. `SCALE MAJOR`, `ROOT C`: every note A plays is a white key; `ROOT D`: the
+   same melody moved into D major. Back to `CHROMATIC`: the first melody.
+3. `PROB 100%`: every step changes as the clock reaches it; `SPREAD 0%`: the
+   notes stay on `BIAS`; `JUMP NO REP`: no step repeats the one before;
+   `JUMP 2`: steps never repeat and move by one or two
+   degrees.
+4. B and C: with `CHORD TRIAD` on C, about +333 and +583 mV above A
+   (E, G); the inversion's arrow ↑ raises the lower an octave (G, E above),
+   ↓ lowers the upper (G below, E).
+5. `GATE 50%`, a clock every 500 ms: D high 250 ms a step, at 5 V. On the
+   routing page, `GATE` to `OFF`: D free and at 0 V; `CH2` to `OFF` and
+   `GATE` to `C`: the gate on C.
+6. `TR2`: a trigger arms the sequence (`--` in the title, the note held),
+   the next clock plays step 01.
+7. `CV1` at +1 V: A does not move (no input at start). Give `TRANSPOSE`
+   `CV1` in its submenu (right click, `INPUT` to `CV1`, `ADD`): from the
+   next clock A plays an octave up, `+CV1` beside `TRANSPOSE`.
+8. Left encoder click: `EDIT`; turn the left encoder to a step, the right
+   one: its mark moves and, when it plays, A follows.
+
 ### 9.4 — Calibration
 
 This step measures how far the module is from the factory calibration, then
@@ -1007,8 +1038,8 @@ under Eurorack power-supply noise; none of that is in scope for this plan.
   records the alternatives (USB CDC banner, semihosting, or observing SPI
   writes); none is implemented.
 * **Parts of Level 9.** The DAC8565's simultaneous update has no step yet;
-  the input assignment submenu of 9.3c (lot 6e) and 9.3h (journal/D-041)
-  have not been run on the module. The other sections have been, on the TLM
+  the input assignment submenu of 9.3c (lot 6e), 9.3h (journal/D-041)
+  and 9.3i (journal/D-047) have not been run on the module. The other sections have been, on the TLM
   module; their results are in the progress files of steps 3 to 8 and in
   `PLAN.md` for the step in progress.
 

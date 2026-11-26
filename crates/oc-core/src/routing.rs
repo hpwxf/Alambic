@@ -1,7 +1,8 @@
 //! The routing page of the applet with the focus (journal/D-046): where each
 //! of its output ports goes, and which jack each input it reads by itself
-//! comes from. Opened by a long press of `up` or `down`, closed the same way
-//! or by the menu chord; a short press moves to the next applet's page.
+//! comes from. Opened by a long press of `up`, closed the same way or by
+//! the menu chord; a short press of `up` or `down` moves to the next
+//! applet's page. A long press of `down` is kept for another page.
 //!
 //! Like the menu, a screen of the engine that owns the display without
 //! owning the outputs: every applet keeps running behind it. The left

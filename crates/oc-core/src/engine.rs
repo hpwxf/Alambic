@@ -563,21 +563,18 @@ where
             Screen::Calibration => self.route_wizard(&snapshot.buttons, wired),
             // A short `up` or `down` moves the focus to the applet left or
             // right, from the last round to the first and back, on the
-            // applet's screen as on its routing page; a long one opens that
-            // page, and closes it again (journal/D-046).
+            // applet's screen as on its routing page; a long `up` opens that
+            // page, and closes it again. A long `down` does nothing: kept for
+            // another page (journal/D-046, revision of 2026-11-26).
             Screen::App => {
                 self.move_focus(&snapshot.buttons);
-                if snapshot.buttons.long_pressed(Button::Up)
-                    || snapshot.buttons.long_pressed(Button::Down)
-                {
+                if snapshot.buttons.long_pressed(Button::Up) {
                     self.routing.open();
                     self.screen = Screen::Routing;
                 }
             }
             Screen::Routing => {
-                if snapshot.buttons.long_pressed(Button::Up)
-                    || snapshot.buttons.long_pressed(Button::Down)
-                {
+                if snapshot.buttons.long_pressed(Button::Up) {
                     self.screen = Screen::App;
                 } else if self.move_focus(&snapshot.buttons) {
                     self.routing.open();

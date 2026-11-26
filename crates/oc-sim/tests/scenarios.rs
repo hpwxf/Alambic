@@ -17,6 +17,7 @@ use oc_core::apps::AppId;
 use oc_core::apps::diagnostic::DiagnosticApp;
 use oc_core::apps::diagnostic::OutputMode;
 use oc_core::apps::gfx_demo::GfxDemoApp;
+use oc_core::apps::melody::MelodyApp;
 use oc_core::apps::ratchet::RatchetApp;
 use oc_core::apps::supersaw::SupersawApp;
 use oc_core::apps::tone::ToneApp;
@@ -216,6 +217,35 @@ fn the_app_menu_lists_the_apps_right_of_the_scroll_track() {
 }
 
 #[test]
+fn melody_plays_its_sixth_step_of_sixteen() {
+    let mut simulator = replay("melody");
+    assert_eq!(simulator.current_app(), AppId::Melody);
+    let melody = simulator.app::<MelodyApp>();
+    assert_eq!(melody.sequence().length(), 16);
+    assert_eq!(melody.sequence().position(), Some(5));
+    assert_screen_matches(&mut simulator, "melody");
+}
+
+#[test]
+fn melody_edits_a_step_on_the_screen() {
+    let mut simulator = replay("melody_edit");
+    let melody = simulator.app::<MelodyApp>();
+    assert_eq!(melody.editing(), Some(4), "the fifth step");
+    assert_eq!(melody.sequence().position(), Some(2), "the clock's own");
+    assert_screen_matches(&mut simulator, "melody_edit");
+}
+
+#[test]
+fn melody_boxes_one_field_of_a_two_field_row() {
+    use oc_core::apps::melody::Setting;
+    let mut simulator = replay("melody_chord");
+    let melody = simulator.app::<MelodyApp>();
+    assert_eq!(melody.selected(), Setting::Invert);
+    assert_eq!(melody.settings().inversion, 1, "the lower tone up");
+    assert_screen_matches(&mut simulator, "melody_chord");
+}
+
+#[test]
 fn ratchet_bursts_a_trigger_onto_b() {
     let mut simulator = replay("ratchet");
     assert_eq!(simulator.current_app(), AppId::Ratchet);
@@ -249,7 +279,7 @@ fn ratchet_shows_the_input_submenu() {
 }
 
 #[test]
-fn a_long_press_opens_the_routing_page_where_sub_goes_off() {
+fn a_long_up_opens_the_routing_page_where_sub_goes_off() {
     let mut simulator = replay("routing");
     assert!(simulator.routing_is_open());
     assert_eq!(simulator.current_app(), AppId::Supersaw);
@@ -444,6 +474,9 @@ fn every_scenario_file_has_a_test_and_a_snapshot() {
         "supersaw_inputs",
         "supersaw_page2",
         "routing",
+        "melody",
+        "melody_edit",
+        "melody_chord",
     ];
 
     let mut found: Vec<String> = std::fs::read_dir(scenario_dir())

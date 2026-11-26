@@ -46,9 +46,10 @@ The module has four slots, each running an app on its own outputs
 (journal/D-046), one of them on the screen and the panel at a time; a slot
 nobody uses runs `NOTHING`, which holds no output and says how to fill it. A
 short press of `up` or `down` moves to the slot on the left or right, empty
-ones too, from the last round to the first, on the routing page too; their
-long press (one second)
-opens the shown app's **routing page**, and closes it again: the left encoder
+ones too, from the last round to the first, on the routing page too. A
+long press of `up` (one second) opens the shown app's **routing page**, and
+closes it again; a long press of `down` does nothing yet, kept for later
+(journal/D-046, revision of 2026-11-26). On the page, the left encoder
 picks a row, the right one turns it. An output (`A`, `B`, `SUB` for
 `SUPERSAW`) steps through the jacks `A` to `D` and `OFF`, skipping those
 another app holds; an input the app reads by itself (`RATCHET`'s `CLOCK`,
@@ -62,7 +63,7 @@ column.
 **Holding `up` and `down` together** opens the app menu, in two columns,
 each with its scroll bar: the categories on the left (`TOOLS`: `DIAGNOSTIC`,
 `SCOPE`, `GFX DEMO`; `TRIGGERS`: `RATCHET`; `SOUND`: `TONE`, `SUPERSAW`;
-`SYSTEM`: `NOTHING`, `SETUP`), the apps of the highlighted one on the right.
+`SEQUENCE`: `MELODY`; `SYSTEM`: `NOTHING`, `SETUP`), the apps of the highlighted one on the right.
 The left encoder picks the category, the right one the app in it; `up`/`down`
 step to the previous or next app across the categories. The slots' marks stay left of the title, showing which
 slot the app picked will take. The right encoder
@@ -83,6 +84,7 @@ the chord is unreachable with a mouse, so right-click the module and choose
 | `RATCHET`    | bursts of triggers on B after each rising edge on `TR1` (below) |
 | `TONE`       | a test tone at one pitch on the four outputs, a sine on A, a triangle on B, a sawtooth on C and a square on D (the last two alias, as a test tone may); the left encoder picks `NOTE` (C1 to C8, A4 = 440 Hz at start) or `LEVEL` (the peak level, 0 to 3 V around 0 V), the right one changes it, its click opens the setting's input submenu as in `SUPERSAW`; no input at start, so the tone stays clean; the pitch played is in the title row. The module plays it at 47 619 Hz, the DAC written by DMA (journal/D-033), VCV Rack at its own sample rate |
 | `SUPERSAW`   | seven detuned band-limited sawtooths around one pitch (below) |
+| `MELODY`     | a looping sequence of random but controllable notes on A, quantised to a scale, a two-tone chord on B and C, a gate on D (below) |
 | `GFX DEMO`   | the graphics primitives on five pages (fonts, knobs, curves, sequencer, meters); left encoder turns the pages, its click moves to the next knob, right encoder the value; outputs A–D carry the simulated LFO, gate, knob and needle |
 
 Because holding both buttons is a deliberate gesture, `up` and `down` fire
@@ -136,9 +138,23 @@ over 0–5 V, `MUL` on it a VCA. The screen shows the pitch played, each
 setting's input (`+CV1`) and the seven voices: where each sits in pitch and
 how loud.
 
+### `MELODY`
+
+A looping sequence of random but controllable notes, in the spirit of the
+meloDICER, Mimetic Digitalis and Marbles (journal/D-047). `TR1` clocks it,
+`TR2` arms its first step; each step reached is redrawn with the chance
+`PROB`, from a scale over a range or by a walk from the step before. A
+carries the note at one volt per octave (C4 at 0 V), B and C a chord stacked
+in the scale, D a gate; the routing page sends each where it should go. The
+bottom of the screen shows the loop with a playhead, and a click on the left
+encoder edits its steps there.
+
+How it plays, every setting and its input:
+[`crates/oc-core/src/apps/melody/README.md`](crates/oc-core/src/apps/melody/README.md).
+
 ### Assigning an input
 
-In `RATCHET` and `SUPERSAW`, a click on the right encoder opens, over the main
+In `RATCHET`, `SUPERSAW` and `MELODY`, a click on the right encoder opens, over the main
 screen, the input of the highlighted setting (journal/D-035, D-036): which
 `CV`, a `SCALE` (−200 to +200 %) and a `SHIFT` (±10 V) applied to it,
 `MIN` / `MAX` bounds, and its `EFFECT` on the panel's value: `SET` (follows
@@ -146,7 +162,9 @@ it, `=CVn` in place of the value), `ADD` (`+CVn`) or `MUL` (multiplies it,
 5 V leaving it unchanged, `*CVn`). A bar shows the input's signal (live, and
 the range seen), another the setting it moves; `CENTER` sets the scale and
 shift that carry the range seen onto the setting's usable range. The right
-encoder's click closes it.
+encoder's click closes it. On the main screen, a setting that can take an
+input shows it at the right of its row (`+CV2`), or a small ring while it
+has none, so those an input can move stand out at a glance.
 
 ## System settings
 

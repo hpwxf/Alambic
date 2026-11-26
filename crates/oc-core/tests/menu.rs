@@ -318,7 +318,11 @@ fn the_menu_fills_an_empty_slot_and_empties_one_with_nothing() {
     tap(&mut engine, Button::Up);
     tap(&mut engine, Button::RightEncoder);
     assert!(!engine.menu_is_open());
-    assert_eq!(engine.current_app(), AppId::Supersaw, "in the second slot");
+    assert_eq!(
+        engine.current_app(),
+        AppId::Melody,
+        "the entry above NOTHING, in the second slot"
+    );
     assert_eq!(
         engine.apps().at(0).map(oc_core::apps::App::id),
         Some(AppId::Diagnostic)

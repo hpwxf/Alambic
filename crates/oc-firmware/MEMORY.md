@@ -96,7 +96,10 @@ interrupt share this one stack, and nothing else watches how deep it gets.
 each function's frame read from its prologue in the disassembly, the direct
 calls followed, the deepest path from `main` plus that of every handler in
 the vector table, each with its exception frame. It fails past `.stack` and
-warns under 2 KiB of room, and prints the deepest path. It does not follow
-calls through a pointer (trait objects), which is what the margin is for.
+warns under 2 KiB of room, and prints the deepest path. A call through a
+pointer from this workspace's crates counts as a call to the deepest of the
+applets' `App` methods, which it prints too: the applets are reached through
+`&dyn App`. Other calls through a pointer (the logger, the storage's wakers)
+are not followed, which is what the margin is for.
 The engine and the probe's server live in statics (`ENGINE`, `PROBE` in
 `src/main.rs`) rather than on this stack.

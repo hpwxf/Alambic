@@ -33,7 +33,8 @@ rationale behind each crate is in the journal entry cited.
 | The tick every backend calls | `crates/oc-core/src/engine.rs` |
 | The `App` trait, the registry and dispatch (`AppId`, `AppHost`) | `crates/oc-core/src/apps/mod.rs` (journal/D-043) |
 | What an applet exposes: parameters, observables, actions (`ParamSpec`, `write_summary`) | `crates/oc-core/src/apps/param.rs` (journal/D-043) |
-| The applets | `crates/oc-core/src/apps/`: `diagnostic.rs`, `scope.rs`, `gfx_demo.rs`, `ratchet/`, `tone.rs`, `supersaw.rs` |
+| The applets | `crates/oc-core/src/apps/`: `diagnostic.rs`, `scope.rs`, `gfx_demo.rs`, `ratchet/`, `tone.rs`, `supersaw/`, `melody/` (`scale.rs`: scales, quantisation, chords; `sequence.rs`: steps, clock, draws; `README.md`: its user guide; journal/D-047) |
+| A clock's tempo on a trigger input (`Tempo`), shared by `RATCHET` and `MELODY` | `crates/oc-core/src/tempo.rs` |
 | The supersaw's DSP, compiled for speed | `crates/oc-dsp/src/supersaw/mod.rs` (the sound's parameters `Supersaw`, parts, Szabo's curves, `Coefficients::new`: the preparation in integers), `supersaw/oscillator.rs` (`Oscillator`: the seven voices in `f32`, integer phases, journal/D-039); re-exported as `oc_core::apps::supersaw::dsp` |
 | Fixed-point helpers (`log2`, `exp2`, `div_wide`) and `phase_step` | `crates/oc-dsp/src/fixed.rs`, `lib.rs`; re-exported as `oc_core::fixed`, `oc_core::audio::phase_step` |
 | The supersaw as a generator | `crates/oc-core/src/apps/supersaw/generator.rs` (`SupersawGenerator`: `SupersawParams`, `SupersawSetup`, `SupersawState`, journal/D-044) |

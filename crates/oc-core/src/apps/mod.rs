@@ -17,7 +17,7 @@
 //! nothing outside [`AppHost`] has to name an applet to run it
 //! (journal/D-043). Each applet itself lives in its own submodule
 //! ([`diagnostic`], [`scope`], [`gfx_demo`], [`ratchet`], [`tone`],
-//! [`supersaw`]).
+//! [`supersaw`], [`melody`]).
 //!
 //! An applet's `update` returns what the outputs carry as [`Params`]: the
 //! CV applets hold levels, `TONE` asks for tones and `SUPERSAW` for parts of
@@ -26,6 +26,7 @@
 
 pub mod diagnostic;
 pub mod gfx_demo;
+pub mod melody;
 pub mod nothing;
 pub mod param;
 pub mod ratchet;
@@ -40,6 +41,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::apps::diagnostic::DiagnosticApp;
 use crate::apps::gfx_demo::GfxDemoApp;
+use crate::apps::melody::MelodyApp;
 use crate::apps::nothing::NothingApp;
 use crate::apps::param::{ParamSpec, ParamValue, Refused};
 use crate::apps::ratchet::RatchetApp;
@@ -404,13 +406,18 @@ pub enum AppId {
     /// (journal/D-037).
     Supersaw,
     /// An empty slot: no port, no setting (journal/D-046, revision of
-    /// 2026-11-25). Last in the menu, which puts it in a slot to empty it.
+    /// 2026-11-25). Last in the menu, which sorts by category, and puts it
+    /// in a slot to empty it.
     Nothing,
+    /// A looping melody of random but controllable notes on A, a chord of
+    /// two tones on B and C, a gate on D (journal/D-047). After [`Self::Nothing`]: an index
+    /// once persisted never changes.
+    Melody,
 }
 
 impl AppId {
     /// Every app, in the order the menu lists them.
-    pub const ALL: [Self; 7] = [
+    pub const ALL: [Self; 8] = [
         Self::Diagnostic,
         Self::Scope,
         Self::Gfx,
@@ -418,6 +425,7 @@ impl AppId {
         Self::Tone,
         Self::Supersaw,
         Self::Nothing,
+        Self::Melody,
     ];
 
     /// Zero-based index of this app.
@@ -447,6 +455,7 @@ impl AppId {
             Self::Tone => "TONE",
             Self::Supersaw => "SUPERSAW",
             Self::Nothing => "NOTHING",
+            Self::Melody => "MELODY",
         }
     }
 
@@ -457,6 +466,7 @@ impl AppId {
             Self::Diagnostic | Self::Scope | Self::Gfx => Category::Tools,
             Self::Ratchet => Category::Triggers,
             Self::Tone | Self::Supersaw => Category::Sound,
+            Self::Melody => Category::Sequence,
             Self::Nothing => Category::System,
         }
     }
@@ -476,6 +486,8 @@ pub enum Category {
     Triggers,
     /// Oscillators.
     Sound,
+    /// Applets that play notes in turn on a clock.
+    Sequence,
     /// What is not an applet that makes or reads a signal: an empty slot and
     /// the system settings.
     System,
@@ -483,7 +495,13 @@ pub enum Category {
 
 impl Category {
     /// Every category, in the order the menu lists them.
-    pub const ALL: [Self; 4] = [Self::Tools, Self::Triggers, Self::Sound, Self::System];
+    pub const ALL: [Self; 5] = [
+        Self::Tools,
+        Self::Triggers,
+        Self::Sound,
+        Self::Sequence,
+        Self::System,
+    ];
 
     /// Zero-based index of this category.
     #[must_use]
@@ -498,6 +516,7 @@ impl Category {
             Self::Tools => "TOOLS",
             Self::Triggers => "TRIGGERS",
             Self::Sound => "SOUND",
+            Self::Sequence => "SEQUENCE",
             Self::System => "SYSTEM",
         }
     }
@@ -524,11 +543,24 @@ pub enum Instance {
     Supersaw(SupersawApp),
     /// See [`AppId::Nothing`].
     Nothing(NothingApp),
+    /// See [`AppId::Melody`].
+    Melody(MelodyApp),
 }
 
 impl Instance {
     /// A fresh applet of kind `id`, as it starts.
     // One copy for every caller: inlined, each would build all six applets.
+    //
+    // Each arm builds its applet as a temporary, then moves it into the
+    // instance, and the instance into the caller's: a `const fn` called here
+    // is an ordinary call, which Rust does not promise to build in place.
+    // Those copies take stack, on the boot path, the firmware's deepest:
+    // 968 bytes in this frame with `MELODY`, the largest applet, against 536
+    // without it. That is below the critical level (`cargo xtask size`,
+    // about 6 KiB of the 16 KiB stack left); should it not be, a
+    // `const { .. }` arm, or a constant then drawn through a reference for
+    // what runs at start, took 600 bytes off when tried
+    // (docs/plan/avancement/etape-14.md, journal/D-038).
     #[inline(never)]
     #[must_use]
     pub fn new(id: AppId) -> Self {
@@ -540,6 +572,7 @@ impl Instance {
             AppId::Tone => Self::Tone(ToneApp::new()),
             AppId::Supersaw => Self::Supersaw(SupersawApp::new()),
             AppId::Nothing => Self::Nothing(NothingApp::new()),
+            AppId::Melody => Self::Melody(MelodyApp::new()),
         }
     }
 
@@ -556,6 +589,7 @@ impl Instance {
             Self::Tone(app) => app,
             Self::Supersaw(app) => app,
             Self::Nothing(app) => app,
+            Self::Melody(app) => app,
         }
     }
 
@@ -570,6 +604,7 @@ impl Instance {
             Self::Tone(app) => app,
             Self::Supersaw(app) => app,
             Self::Nothing(app) => app,
+            Self::Melody(app) => app,
         }
     }
 }

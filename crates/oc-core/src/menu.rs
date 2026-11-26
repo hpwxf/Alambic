@@ -476,8 +476,16 @@ mod tests {
         assert_eq!(menu.selected(), MenuEntry::App(AppId::Ratchet));
 
         menu.update(&ButtonEvents::default(), [2, 0]);
+        assert_eq!(menu.category(), Category::Sequence);
+        assert_eq!(menu.selected(), MenuEntry::App(AppId::Melody));
+
+        menu.update(&ButtonEvents::default(), [1, 0]);
         assert_eq!(menu.category(), Category::System);
-        assert_eq!(menu.selected(), MenuEntry::App(AppId::Nothing));
+        assert_eq!(
+            menu.selected(),
+            MenuEntry::App(AppId::Nothing),
+            "MELODY's index is past NOTHING's, its place in the menu before"
+        );
 
         menu.update(&ButtonEvents::default(), [1, 0]);
         assert_eq!(menu.category(), Category::Tools, "it wraps");

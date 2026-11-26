@@ -25,7 +25,8 @@ it already, this file only points to it.
   puts `.stack` at the bottom of DTCM, so an overflow faults; `cargo xtask
   size` checks it, and estimates how deep the stack gets (`stack-depth`,
   journal/D-038): a big local inlined into the probe server once overflowed
-  it. Layout, reserved flash and the checklist:
+  it. Calls through `&dyn App` count as the deepest applet method; other
+  calls through a pointer are not followed. Layout, reserved flash and the checklist:
   `crates/oc-firmware/MEMORY.md`.
 * **Never set `RUSTFLAGS` in the environment**: it replaces
   `target.thumbv7em-none-eabihf.rustflags` and silently drops `-Tt4link.x`.

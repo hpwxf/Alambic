@@ -11,10 +11,20 @@
 //! deepest path from `main` to the deepest path of every interrupt handler,
 //! as if each one nested over the others.
 //!
+//! A call through a pointer (`blx rN`, or `bx rN` as a tail call) has no
+//! address to follow. The applets are reached that way, through `&dyn App`
+//! (journal/D-043), and some of their methods are called deep, from the
+//! probe's server or while a slot is filled: so a call through a pointer
+//! from a function of this workspace's crates (`oc_…`) is taken as a call to
+//! the deepest of every applet's `App` methods, whichever it really reaches.
+//! That bounds the applets from above, the same bound at every such call.
+//!
 //! What it cannot see, and the margin of the check is there for:
 //!
-//! * calls through a pointer (`blx rN`: trait objects, function pointers),
-//!   which it does not follow;
+//! * the other calls through a pointer, from the crates it depends on (the
+//!   logger, the storage's wakers), which it does not follow;
+//! * an applet method that itself calls through a pointer, counted with its
+//!   direct calls only;
 //! * a frame that grows at run time (`sub sp, sp, rN`), which it ignores;
 //! * recursion, which it breaks at the first repeat.
 //!
@@ -52,6 +62,14 @@ const NO_RETURN_HANDLERS: [&str; 2] = ["HardFault", "DefaultHandler"];
 /// documentation).
 const PANIC_PATH: [&str; 2] = ["panic", "rust_begin_unwind"];
 
+/// What names a method of the applets' trait, `<X as oc_core::apps::App>::`,
+/// which a call through a pointer may reach (see the module's documentation).
+const DYN_TRAIT_METHOD: &str = " as oc_core::apps::App>::";
+
+/// The prefix of this workspace's crates, whose calls through a pointer may
+/// be calls to an applet.
+const WORKSPACE_CRATE: &str = "oc_";
+
 /// Names the main function may have: `cortex-m-rt`'s `#[entry]`, or a bare
 /// `main`.
 const MAIN_NAMES: [&str; 2] = ["__cortex_m_rt_main", "main"];
@@ -65,6 +83,19 @@ pub struct Function {
     pub frame: u64,
     /// The addresses it branches to with a link, or tail-calls.
     calls: BTreeSet<u64>,
+    /// Whether it calls through a pointer (`blx rN`, `bx rN`).
+    indirect: bool,
+}
+
+impl Function {
+    /// Whether its calls through a pointer may reach an applet: it belongs
+    /// to one of this workspace's crates (`oc_core::…`, `<oc_core::…>`,
+    /// `<dyn oc_core::…>`).
+    fn may_call_an_applet(&self) -> bool {
+        let name = self.name.trim_start_matches('<');
+        let name = name.strip_prefix("dyn ").unwrap_or(name);
+        self.indirect && name.starts_with(WORKSPACE_CRATE)
+    }
 }
 
 /// Every function by its start address, with its frame and direct calls.
@@ -90,6 +121,9 @@ pub struct StackEstimate {
     /// The deepest path of each interrupt handler, its exception frame
     /// included.
     pub interrupts: Vec<StackPath>,
+    /// The deepest applet method, counted at every call through a pointer
+    /// from this workspace's crates; `None` without applets.
+    pub applet: Option<StackPath>,
 }
 
 impl StackEstimate {
@@ -118,6 +152,7 @@ pub fn parse_disassembly(text: &str) -> CallGraph {
                     name: name.to_owned(),
                     frame: 0,
                     calls: BTreeSet::new(),
+                    indirect: false,
                 },
             ));
             continue;
@@ -129,6 +164,9 @@ pub fn parse_disassembly(text: &str) -> CallGraph {
             continue;
         };
         function.frame += frame_bytes(mnemonic, operands);
+        if is_indirect_call(mnemonic, operands) {
+            function.indirect = true;
+        }
         if let Some(target) = branch_target(operands) {
             match mnemonic {
                 "bl" | "blx" => {
@@ -245,6 +283,19 @@ fn immediate(text: &str) -> Option<u64> {
     }
 }
 
+/// Whether the instruction calls through a register: `blx r3`, or `bx r3`
+/// as a tail call (`bx lr` is a return).
+fn is_indirect_call(mnemonic: &str, operands: &str) -> bool {
+    let register = operands.split_whitespace().next().unwrap_or("");
+    let is_register = register.starts_with('r') && register[1..].parse::<u8>().is_ok()
+        || matches!(register, "ip" | "sb" | "sl" | "fp");
+    match mnemonic {
+        "blx" => is_register || register == "lr",
+        "bx" => is_register,
+        _ => false,
+    }
+}
+
 /// The address of `0x13744 <name>` at the start of a branch's operands.
 fn branch_target(operands: &str) -> Option<u64> {
     let token = operands.split_whitespace().next()?;
@@ -269,17 +320,39 @@ impl CallGraph {
         self.functions.get(&address)
     }
 
-    /// The deepest chain of direct calls from `root`, the panic path left
-    /// out, recursion broken at its first repeat.
+    /// The deepest chain of calls from `root`, the panic path left out,
+    /// recursion broken at its first repeat: the direct calls, and a call
+    /// through a pointer from this workspace's crates as a call to the
+    /// deepest applet method ([`Self::deepest_applet_method`]).
     #[must_use]
     pub fn deepest(&self, root: u64) -> StackPath {
+        let applet = self.deepest_applet_method();
         let mut memo = BTreeMap::new();
-        self.deepest_from(root, &mut Vec::new(), &mut memo)
+        self.deepest_from(root, applet.as_ref(), &mut Vec::new(), &mut memo)
+    }
+
+    /// The deepest of every applet's `App` methods, by its direct calls,
+    /// its first frame named as reached through `dyn App`; `None` in an
+    /// image without applets.
+    #[must_use]
+    pub fn deepest_applet_method(&self) -> Option<StackPath> {
+        let mut memo = BTreeMap::new();
+        let mut path = self
+            .functions
+            .iter()
+            .filter(|(_, function)| function.name.contains(DYN_TRAIT_METHOD))
+            .map(|(&address, _)| self.deepest_from(address, None, &mut Vec::new(), &mut memo))
+            .max_by_key(|path| path.bytes)?;
+        if let Some((name, _)) = path.frames.first_mut() {
+            *name = format!("dyn App: {name}");
+        }
+        Some(path)
     }
 
     fn deepest_from(
         &self,
         address: u64,
+        applet: Option<&StackPath>,
         on_path: &mut Vec<u64>,
         memo: &mut BTreeMap<u64, StackPath>,
     ) -> StackPath {
@@ -294,10 +367,12 @@ impl CallGraph {
             return StackPath::default();
         }
         on_path.push(address);
+        let through_pointer = applet.filter(|_| function.may_call_an_applet()).cloned();
         let deepest_call = function
             .calls
             .iter()
-            .map(|&callee| self.deepest_from(callee, on_path, memo))
+            .map(|&callee| self.deepest_from(callee, applet, on_path, memo))
+            .chain(through_pointer)
             .max_by_key(|path| path.bytes)
             .unwrap_or_default();
         on_path.pop();
@@ -390,6 +465,7 @@ pub fn estimate(graph: &CallGraph, vectors: &[u32]) -> Result<StackEstimate, Str
     Ok(StackEstimate {
         main: graph.deepest(main),
         interrupts,
+        applet: graph.deepest_applet_method(),
     })
 }
 
@@ -416,7 +492,7 @@ pub fn check_stack(estimate: &StackEstimate, stack_size: u64) -> CheckItem {
         id: "stack-depth",
         status,
         detail: format!(
-            "≈ {total} B of .stack {stack_size} (main {} + {} handlers {interrupts}, direct calls only); {room}; journal/D-038",
+            "≈ {total} B of .stack {stack_size} (main {} + {} handlers {interrupts}, direct calls and dyn App at its deepest method); {room}; journal/D-038",
             estimate.main.bytes,
             estimate.interrupts.len(),
         ),

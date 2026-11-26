@@ -33,7 +33,6 @@
 //! starts a burst by hand.
 
 pub mod burst;
-pub mod tempo;
 
 use core::fmt::Write as _;
 
@@ -41,7 +40,6 @@ use self::burst::{
     Burst, CURVE_TENTHS, Count, MAX_INTERVAL_MICROS, MAX_REPEATS, MAX_SPAN_MICROS,
     MIN_INTERVAL_MICROS, Model, chance_from, count_from, curve_from, follow_time_micros, time_from,
 };
-use self::tempo::Tempo;
 use crate::apps::param::{ParamSpec, ParamValue, Refused, Unit};
 use crate::apps::sound::Params;
 use crate::apps::{App, AppId, InputKind, InputPort, InputSnapshot, Port, TickContext};
@@ -54,6 +52,7 @@ use crate::modulation::editor::Param;
 use crate::modulation::slots::Modulations;
 use crate::modulation::{Assign, AssignLine};
 use crate::platform::{Button, CV_CHANNELS, MilliVolts};
+use crate::tempo::Tempo;
 use crate::text::fonts::FONT_5X8;
 use crate::text::{self, Alignment, TextStyle};
 
@@ -73,15 +72,6 @@ const PAGES: usize = Setting::ALL.len().div_ceil(PAGE_ROWS);
 /// Top of the burst's timeline, under its playhead; it runs to the bottom
 /// of the screen.
 const TIMELINE_TOP: i32 = 48;
-
-/// A five-column, three-row triangle at `at`, its tip down.
-fn arrow_down(frame: &mut FrameBuffer, at: Point) {
-    for row in 0..3 {
-        // Rows narrow towards the tip.
-        let half = 2 - row;
-        gfx::hline(frame, at.x + 2 - half, at.y + row, 2 * half + 1, Ink::Lit);
-    }
-}
 
 /// Right edge of the value column, left of the input column.
 const VALUE_RIGHT: i32 = 98;
@@ -720,14 +710,7 @@ impl RatchetApp {
                 );
             }
             if let Some(assign) = self.assign(setting) {
-                let mut name = TextBuf::<8>::new();
-                assign.write(&mut name);
-                text::draw(
-                    frame,
-                    name.as_str(),
-                    Point::new(WIDTH_I32 - 3, top),
-                    style.aligned(Alignment::Right),
-                );
+                crate::modulation::draw_input(frame, assign, WIDTH_I32 - 3, top, style);
             }
         }
 
@@ -887,7 +870,7 @@ impl RatchetApp {
         }
         if let Some(running) = self.running {
             let x = x_of(running.elapsed_micros());
-            arrow_down(frame, Point::new(x - 2, top - 4));
+            gfx::patterns::playhead(frame, Point::new(x - 2, top - 4));
         }
     }
 }

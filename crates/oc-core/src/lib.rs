@@ -55,6 +55,7 @@ pub mod settings;
 pub mod signal;
 pub mod splash;
 pub mod system;
+pub mod tempo;
 pub mod testing;
 pub mod text;
 pub mod toast;

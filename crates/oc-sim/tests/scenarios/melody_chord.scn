@@ -1,0 +1,26 @@
+# oc-sim scenario v1
+# MELODY's two-field rows (journal/D-047): launched as in melody.scn, the left
+# encoder walks five fields to INVERT, on the CHORD row beside TRIAD, and the
+# right encoder turns it up: only that field is boxed, its arrow pointing up
+# (the lower tone raised an octave); KEY shows C and MAJOR side by side.
+ticks 400
+20  button up down
+60  button down down
+70  button up up
+70  button down up
+90  button down down
+100 button down up
+110 button down down
+120 button down up
+130 button down down
+140 button down up
+150 button down down
+160 button down up
+170 button down down
+180 button down up
+190 button down down
+200 button down up
+220 button right down
+226 button right up
+300 encoder 1 +5
+350 encoder 2 +1

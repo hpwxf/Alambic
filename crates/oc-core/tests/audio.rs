@@ -115,7 +115,13 @@ fn every_cv_applet_publishes_held_levels() {
     let mut engine = tone();
     engine.clock().advance(1_000);
     engine.tick();
-    for app in [AppId::Diagnostic, AppId::Scope, AppId::Gfx, AppId::Ratchet] {
+    for app in [
+        AppId::Diagnostic,
+        AppId::Scope,
+        AppId::Gfx,
+        AppId::Ratchet,
+        AppId::Melody,
+    ] {
         let mut settings = *engine.settings();
         settings.startup_app = app;
         engine.apply_settings(settings);

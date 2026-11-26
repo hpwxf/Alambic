@@ -18,7 +18,10 @@ use serde::{Deserialize, Serialize};
 
 use crate::apps::param::Refused;
 use crate::fmt::TextBuf;
+use crate::framebuffer::FrameBuffer;
+use crate::gfx::{self, Point};
 use crate::platform::{CV_CHANNELS, CvChannel, MilliVolts};
+use crate::text::{self, Alignment, TextStyle};
 
 /// What an input does to the value its parameter has on the panel
 /// (journal/D-035).
@@ -140,6 +143,36 @@ pub const fn usable_range(
             (-half, half)
         }
         Effect::Mul => (0, 2 * UNIT_MV),
+    }
+}
+
+/// Radius of the mark of a setting that can take an input and has none.
+const INPUT_MARK_RADIUS: i32 = 2;
+
+/// Draws, at the right of a setting's row from `top` up to `right`, what its
+/// input is (journal/D-036): its name and effect (`+CV1`), or, for a setting
+/// that could take one and has none, a small ring, as a jack would show, so
+/// that the settings an input can move stand out at a glance. In `style`'s
+/// ink, so it reads on a highlighted row as on the others.
+pub fn draw_input(
+    frame: &mut FrameBuffer,
+    assign: &Assign,
+    right: i32,
+    top: i32,
+    style: TextStyle,
+) {
+    if assign.input.is_some() {
+        let mut name = TextBuf::<8>::new();
+        assign.write(&mut name);
+        text::draw(
+            frame,
+            name.as_str(),
+            Point::new(right, top),
+            style.aligned(Alignment::Right),
+        );
+    } else {
+        let centre = Point::new(right - INPUT_MARK_RADIUS - 1, top + 3);
+        gfx::circle(frame, centre, INPUT_MARK_RADIUS, style.color);
     }
 }
 
