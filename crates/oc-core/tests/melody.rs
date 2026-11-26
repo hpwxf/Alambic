@@ -250,6 +250,25 @@ fn the_left_switch_edits_the_steps_on_the_screen() {
 }
 
 #[test]
+fn the_editor_frames_the_first_and_the_last_step_on_the_screen() {
+    let mut engine = melody();
+    press(&mut engine, Button::LeftEncoder);
+    for _ in 0..30 {
+        tick(&mut engine, false, false);
+    }
+    // The first step's frame: its left edge on the first column.
+    let left_edge = (41..63).all(|y| engine.frame().pixel(0, y));
+    assert!(left_edge, "the first step's frame starts on the screen");
+    turn(&mut engine, 0, -1);
+    for _ in 0..30 {
+        tick(&mut engine, false, false);
+    }
+    assert_eq!(app(&engine).editing(), Some(7));
+    let right_edge = (41..63).all(|y| engine.frame().pixel(127, y));
+    assert!(right_edge, "the last step's frame ends on the screen");
+}
+
+#[test]
 fn the_length_changes_the_loop_at_once() {
     let mut engine = melody();
     set(&mut engine, Setting::Length, -5);

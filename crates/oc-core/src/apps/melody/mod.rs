@@ -956,8 +956,12 @@ impl MelodyApp {
         let playing = self.sequence.position();
         for (index, &note) in (0..).zip(notes) {
             let step = usize::try_from(index).unwrap_or(0);
-            let x = index * WIDTH_I32 / count;
-            let width = ((index + 1) * WIDTH_I32 / count - x - 1).max(1);
+            // Columns from x = 1, a pixel left of the first and one right of
+            // each for the editor's frame, which so stays on the screen at
+            // both ends.
+            let span = WIDTH_I32 - 1;
+            let x = 1 + index * span / count;
+            let width = (1 + (index + 1) * span / count - x - 1).max(1);
             let y = bottom - quantised(note) * height / top_note;
             if playing == Some(step) {
                 gfx::fill_rect(frame, x, y, width, HEIGHT_I32 - y, Ink::Lit);
