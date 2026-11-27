@@ -390,6 +390,14 @@ impl Simulator {
         self.engine.app::<T>()
     }
 
+    /// The first running applet of type `T`, `None` when none runs: what
+    /// the TUI shows of an applet the panel may have replaced
+    /// (journal/D-046).
+    #[must_use]
+    pub fn find_app<T: App>(&self) -> Option<&T> {
+        self.engine.apps().find::<T>()
+    }
+
     /// The kind of applet with the focus: the screen and the panel.
     #[must_use]
     pub fn current_app(&self) -> AppId {

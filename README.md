@@ -48,13 +48,15 @@ nobody uses runs `NOTHING`, which holds no output and says how to fill it. A
 short press of `up` or `down` moves to the slot on the left or right, empty
 ones too, from the last round to the first, on the routing page too. A
 long press of `up` (one second) opens the shown app's **routing page**, and
-closes it again; a long press of `down` does nothing yet, kept for later
-(journal/D-046, revision of 2026-11-26). On the page, the left encoder
+closes it again; a long press of `down` does nothing yet, kept for the app's
+options page to come (journal/D-046, revision of 2026-11-26). On the page, the left encoder
 picks a row, the right one turns it. An output (`A`, `B`, `SUB` for
-`SUPERSAW`) steps through the jacks `A` to `D` and `OFF`, skipping those
+`SUPERSAW`) steps through `OFF` and the jacks `A` to `D`, skipping those
 another app holds; an input the app reads by itself (`RATCHET`'s `CLOCK`,
 `SCOPE`'s `IN`) steps through the four jacks of its kind, which apps may
-share. An app's CV inputs are set in their own submenu, on the physical jacks. Apps no longer use `up` and `down`
+share. The right encoder stops at the ends instead of wrapping round: a
+quick turn down lands on `OFF`, the first place, and one up on the last free
+jack. An app's CV inputs are set in their own submenu, on the physical jacks. Apps no longer use `up` and `down`
 themselves. A column of marks left of the title, as wide as a list's scroll
 bar, shows the slots on the app's screen and its routing page: a dot for
 each that runs an app, nothing for an empty one, the one shown across the
@@ -322,9 +324,9 @@ one:
 | `Home`         | selected CV input to 0 V                          |
 | `x` `c` `v`    | pulse triggers 2 to 4                             |
 | `X` `C` `V`    | hold triggers 2 to 4 high or low                  |
-| `↑` / `↓`      | the module's up / down buttons                    |
-| `m`            | press up and down together: the app menu          |
-| `Shift+↑` / `Shift+↓` | hold up / down until pressed again (see below) |
+| `↑` / `↓`      | the module's up / down: the slot on the left / right (on release) |
+| `m`            | press up and down together: open or close the app menu |
+| `Shift+↑` / `Shift+↓` | hold up / down, again to release: held a second, a long press (see below) |
 | `a`            | press the left encoder                            |
 | `e`            | turn the left encoder clockwise (`Shift` for ten detents) |
 | `r` / `t`      | turn the right encoder anticlockwise / clockwise (`Shift` for ten detents) |
@@ -342,6 +344,12 @@ reactions on their own, but **up and down held together** opens the app menu,
 which needs a real overlap. `m` presses both in the same tick, which is the
 one-keystroke way to do it; to hold them by hand instead, press `Shift+↑` then
 `Shift+↓` (in either order), and `Shift+↑`/`Shift+↓` again to release them.
+A long press is formed the same way, as a terminal sends no key release and
+holding a key down would only repeat it: `Shift+↑`, a second of real time,
+then `Shift+↑` again opens the shown app's routing page, and closes it. In
+the app menu, `m` closes it; the routing page has no meaning there. The encoders' presses and turns do
+what each app gives them; the panel's gestures are under *Apps and the app
+menu*.
 
 ### Settings
 

@@ -134,3 +134,114 @@ deviennent douze sur trois :
 
 Les paramètres de la sonde restent un par champ (`ROOT`, `SCALE`, `CHORD`, `INVERT`, `JUMP` par ses noms), dans
 l'ordre des champs ; les emplacements des entrées CV ne bougent pas.
+
+## Révision du 2026-11-27 : une boucle qui se déforme sans se perdre
+
+**Statut de cette révision** : décidée le 2026-11-27, implémentée dans le commit qui suit celui de cette section
+(`melody/window.rs`, `melody/sequence.rs`).
+
+**Contexte.** La comparaison avec le Gamut Repetitor de Noise Engineering (manuel officiel, relu le 2026-11-27) a
+montré la différence qui compte le plus : sur le GR, une boucle verrouillée se resserre, s'étire ou glisse quand on
+tourne `Spread` ou `Down/Up`, en direct, sans perdre sa forme. Dans `MELODY`, un pas garde des demi-tons fixes au-dessus
+de la tonique : `RANGE`, `SPREAD` et `BIAS` ne jouent que sur les tirages suivants, à retardement, et l'étendue se règle
+à l'octave, au-dessus de la tonique seulement. Le centrage du GR (`Spread` 24, `Down/Up` au milieu) ne se reproduit
+qu'à peu près (`RANGE 2`, `OCTAVE −1`, `BIAS 50 %`), à l'octave près, et pas pour une étendue impaire.
+
+**Options.**
+
+* garder le modèle en demi-tons et ajouter un décalage de fenêtre en demi-tons : le centrage, mais toujours rien en
+  direct sur la boucle ;
+* **garder par pas une position normalisée dans une fenêtre**, projetée à la sortie : tout réglage de la fenêtre agit
+  en direct, et une projection monotone garde le contour ;
+* en plus de la fenêtre en direct, garder une concentration au tirage (l'actuel `SPREAD`, façon Marbles).
+
+**Proposé par l'assistant et décidé par l'utilisateur : la position normalisée, sans concentration au tirage.**
+
+* **Ce qu'un pas garde** : `u`, une position de 0 à 1 dans la fenêtre (16 bits), tirée une fois, uniformément ; elle
+  ne change qu'à un remplacement (`PROB`), un `REROLL` ou une édition. Les 32 pas prennent 64 o au lieu de 32
+  (`MelodyApp` ≈ 330 o, chaque emplacement grandit d'autant ; à remesurer, D-038).
+* **La projection, à la sortie**, réglage par réglage, chacun en direct et monotone, si bien qu'une note plus haute
+  qu'une autre le reste et que le contour de la mélodie survit à tout réglage :
+  1. `BIAS` courbe `u` ;
+  2. `SPREAD` et `CENTER` placent le résultat dans une fenêtre de hauteurs autour de la tonique ;
+  3. `TRANSPOSE`, puis la quantification dans la gamme ; `ROOT` et `OCTAVE` placent le tout.
+* **`SPREAD`, la largeur** : de 0 à 48 demi-tons, la taille de la fenêtre ; la mélodie s'étire ou se resserre, à 0
+  elle tient sur une seule note. C'est le `Spread` du GR (0 à 24), au demi-ton près. Il remplace `RANGE`, qui
+  disparaît. Par défaut 24 (deux octaves, comme `RANGE 2`), `CENTER` et `BIAS` à 0.
+* **`CENTER`, la position** : de −100 % à +100 %, où la fenêtre se place par rapport à la tonique : à −100 % elle
+  finit sur la tonique, à 0 elle est centrée dessus, à +100 % elle commence dessus. La mélodie glisse sans changer de
+  forme ; c'est le `Down/Up` du GR. La tonique au centre de la fenêtre devient le réglage par défaut.
+* **`BIAS`, l'inclinaison** : de −100 % à +100 %, une courbe appliquée à `u`, `u' = u^(2^(−k·b))`, `b` de −1 à +1,
+  `k` de l'ordre de 2 (exposant de 1/4 à 4), sur le modèle du `SHAPE` signé de `RATCHET` (D-032). À 0 la projection
+  est linéaire ; vers + les notes se tassent vers le haut de la fenêtre, la mélodie passe plus de temps dans l'aigu ;
+  vers − dans le grave. Les bornes restent fixes (0 → 0, 1 → 1) : `BIAS` ne rétrécit jamais l'étendue, il redistribue
+  les notes à l'intérieur, ce qui le distingue de `SPREAD` et de `CENTER`. Son sens change donc : il ne dit plus où
+  tombent les prochains tirages, il déforme toutes les notes en direct.
+* **L'ancien `SPREAD`, la concentration au tirage, disparaît** : il recréait le comportement à retardement qu'on
+  supprime, et resserrer autour du centre est désormais réduire la largeur ; les tirages sont uniformes en `u`, comme
+  sur le GR.
+* **`JUMP`** : une marche de ±1 à 7 degrés depuis la note *jouée* du pas précédent, convertie en `u` par la
+  projection courante, inversée (la courbe de `BIAS` est inversible, la quantification par le milieu de la note
+  d'arrivée), réfléchie aux bords de la fenêtre. Tant qu'on ne touche pas à la fenêtre, c'est une marche en degrés ; si
+  on la resserre ensuite, les pas se resserrent avec elle, comme les autres. `NO REP` compare les notes jouées.
+* **L'édition au panneau** : l'encodeur droit monte ou descend d'un degré la note *affichée*, et le `u` du pas est
+  recalculé par la projection inversée ; à `SPREAD 0`, où toute la fenêtre est une note, l'édition ne fait rien.
+* **Plusieurs pas sur une même note** : en resserrant la fenêtre, des pas voisins en hauteur tombent sur la même
+  note de la gamme ; en la ré-étirant, ils se séparent de nouveau, `u` n'ayant rien perdu. C'est voulu, comme sur le
+  GR.
+* **Ce qui ne change pas** : `ROOT`, `SCALE`, `OCTAVE`, les accords (empilés sur la note jouée), la gate, l'horloge,
+  le reset armé, `PROB`, `REROLL`, `LENGTH`. Les sorties restent des niveaux tenus ; la projection se calcule à
+  chaque tick pour le pas joué, pas par échantillon, et les marques de l'écran suivent la projection (les hauteurs
+  jouées).
+* **Entrées CV** : `SPREAD` (12 demi-tons par volt), `CENTER` et `BIAS` (20 % par volt) sont assignables, comme
+  `RANGE`, `SPREAD` et `BIAS` l'étaient ; ils agissent en direct sur la boucle, plus seulement à l'horloge. Les
+  emplacements des entrées gardent leur rang (`SPREAD` prend celui de `RANGE`, `CENTER` celui de l'ancien `SPREAD`).
+* **Pages de réglages** : le compte de lignes ne change pas (`SPREAD`, `CENTER`, `BIAS` à la place de `RANGE`,
+  `SPREAD`, `BIAS`). Le dépassement des pages qui viendrait d'autres ajouts sera traité à part : les réglages
+  secondaires passeront sur une page d'options de l'app, ouverte par un appui long sur `down` ou sur l'encodeur
+  droit (précisé par l'utilisateur le 2026-11-27 ; à faire, hors de cette révision).
+
+**Ce qui ferait changer d'avis.**
+
+* Des boucles qui sonnent pauvres une fois resserrées (trop de pas sur la même note) : garder aussi une
+  concentration au tirage, la troisième option.
+* Une marche (`JUMP`) qui dérive en degrés après des réglages de fenêtre et gêne à l'usage : la garder en degrés
+  absolus, hors de la projection.
+* Le surcoût de 32 o par pas (×4 emplacements) qui compterait dans le budget de D-038 : `u` sur 8 bits (256 positions,
+  ≈ 0,19 demi-ton à 48 demi-tons de largeur).
+
+## Révision du 2026-11-27 (suite) : un rythme aléatoire qui boucle
+
+**Contexte.** `MELODY` déclenche une gate à chaque pas d'horloge. Le Gamut Repetitor génère des rythmes aléatoires
+répétés sur ses sorties de triggers ; le meloDICER a une section rythme (silences, liaisons) tirée à part de la
+mélodie (manuels relus le 2026-11-27). C'était le premier manque relevé face aux deux.
+
+**Décidé (réponses de l'utilisateur, détails proposés par l'assistant).**
+
+* **Ce qu'un pas garde en plus** : deux valeurs de 16 bits tirées une fois, comme sa place : `r`, son rang de jeu, et
+  `l`, son rang de liaison. Elles bouclent avec la séquence.
+* **`DENSITY`** (0 à 100 %, 100 % par défaut, le comportement d'avant) : un pas joue si `r` est sous le seuil de la
+  densité. Le seuil se compare en direct, comme la fenêtre : monter la densité ajoute des pas, la baisser en retire,
+  toujours les mêmes et dans le même ordre ; assignable à une entrée CV (20 % par volt), qui agit tout de suite.
+* **`LEGATO`** (0 à 100 %, 0 par défaut) : un pas joué dont `l` est sous le seuil se lie au pas joué qui le précède :
+  sa note change sans nouvelle gate, la gate de l'autre tenue jusqu'à lui. Un pas lié après un silence joue
+  normalement. Une gate qui suit une gate tenue sans liaison commence par un tick bas, pour que l'enveloppe voie le
+  front.
+* **Un pas silencieux** : la gate ne s'ouvre pas, et `NOTE` et l'accord gardent la dernière note jouée, qui suit
+  toujours la fenêtre en direct ; le pointeur, lui, avance.
+* **Un tirage à part, comme le meloDICER** : `PROB` et `REROLL` ne tirent plus que les places ; le rythme a les
+  siens, une chance de nouveau tirage au passage (`R PROB`, 0 % par défaut) et un `R REROLL` du rythme seul. Un
+  rythme figé sous une mélodie qui change, ou l'inverse. L'action de sonde `REROLL` reste celle des notes ; une
+  action `R REROLL` tire le rythme.
+* **L'éditeur des pas** : un clic droit court bascule la gate du pas encadré (son `r` à 0, joué dès que la densité
+  dépasse 0 %, ou au plus haut, silencieux même à 100 %) ; un appui long sur l'encodeur droit tire une nouvelle note
+  au hasard pour ce seul pas, comme le clic droit le faisait. Hors de l'éditeur, l'appui long droit reste réservé à
+  la future page d'options, que l'appui long de `down` ouvrira aussi.
+* **L'écran** : un pas silencieux garde sa marque de hauteur, en pointillés ; un pas lié est relié à la marque du
+  précédent.
+* **Pages** : `DENSITY`, `LEGATO`, `R PROB` et `R REROLL` ajoutent une quatrième page ; le dépassement des trois
+  pages sera repris par la page d'options (hors de cette révision).
+
+**Ce qui ferait changer d'avis.** Une liaison qui sonne mal avec des gates courtes (`GATE` bas) : la tenir à la
+longueur de `GATE` au lieu de l'étendre au pas suivant. Un rythme manuel écrasé par `DENSITY 0 %` qui gêne : un
+verrou par pas, hors des seuils.

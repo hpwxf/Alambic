@@ -12,19 +12,38 @@ Architectural decisions behind each change are in `journal/` (French).
 - **`MELODY`** (journal/D-047), in a new `SEQUENCE` column of the app
   menu: a looping sequence of up to 32 random but controllable notes,
   clocked by `TR1` and armed by `TR2`, each step drawn anew with the chance
-  `PROB` over `RANGE` octaves (`SPREAD`, `BIAS`, `JUMP NO REP`) or by a walk
-  (`JUMP`), `REROLL` on demand. A carries the note quantised to the scale
+  `PROB` (an even place, `JUMP NO REP`, or a walk with `JUMP`), `REROLL` on
+  demand. Each step keeps a place in a window that bends the whole loop at
+  once without losing it (journal/D-047, revision of 2026-11-27): `SPREAD`
+  its width (0–48 semitones), `CENTER` its place round the root, `BIAS` a
+  curve with fixed ends. A carries the note quantised to the scale
   of `KEY` (root and scale), moved by `OCTAVE` and `TRANSPOSE` (one volt
   per octave from an input, none at start); B and C a chord of two tones
   stacked in the scale (`CHORD`, its inversion an arrow ↓ / – / ↑), D a
   gate, each port routed like any other. Its settings fit three pages of
   four rows, `KEY` and `CHORD` holding two fields each, which the left
   encoder walks one by one. The loop shows at the bottom of the screen; a
-  click on the left encoder edits its steps there. Its own guide:
+  click on the left encoder edits its steps there. A looping random
+  rhythm, drawn apart from the melody (journal/D-047, revision of
+  2026-11-27): `DENSITY` (the steps that play, assignable, at once),
+  `LEGATO` (ties without a new gate), `R PROB` and `R REROLL`; a silent
+  step holds the last note, and in the editor a short right click toggles
+  a step's gate, a long press draws it a new note. `REROLL`, an action,
+  reads `PRESS`, then `DONE` for half a second once fired. Its own guide:
   `crates/oc-core/src/apps/melody/README.md`.
 
 ### Changed
 
+- On the routing page, the right encoder stops at the ends instead of
+  wrapping round, and an output's `OFF` comes first, before `A`
+  (journal/D-046, revision of 2026-11-27): a quick turn down lands on
+  `OFF`, one up on the last free jack.
+- The firmware builds its engine without an applet and lets the settings'
+  `START APP` choose it once the engine is in its static
+  (`Engine::without_apps`; `Engine::new` applies the default settings): the
+  start-up no longer builds `DIAGNOSTIC` under the engine's temporary
+  value, and the estimated stack drops from 12,408 to 10,056 bytes
+  (journal/D-038, revision of 2026-11-27).
 - `cargo xtask size`'s `stack-depth` follows the applets reached through
   `&dyn App` (journal/D-038, revision of 2026-11-27): a call through a
   pointer from the workspace's crates counts as a call to the deepest
@@ -36,10 +55,16 @@ Architectural decisions behind each change are in `journal/` (French).
   stand out at a glance (`modulation::draw_input`, shared by the four).
 - The routing page opens and closes on a long press of `up` only
   (journal/D-046, revision of 2026-11-26); a long press of `down` does
-  nothing, kept for a later use. Short presses of either still move to the
+  nothing, kept for the app's options page to come. Short presses of either still move to the
   slot on the left or right.
 - The clock's tempo, which `RATCHET` measured, is `oc_core::tempo`, shared
   with `MELODY`; the playhead is `gfx::patterns::playhead`.
+
+### Fixed
+
+- The simulator's TUI and `cargo sim -- replay` no longer panic once an
+  applet has replaced `DIAGNOSTIC` in its slot: they read its counters,
+  mode and offset only while it runs, and show dashes otherwise.
 
 ## 0.7.0 — 2026-11-25 (Rack plugin 2.7.0)
 

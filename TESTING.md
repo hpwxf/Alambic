@@ -900,10 +900,14 @@ each setting does: `crates/oc-core/src/apps/melody/README.md`.
    cent: the output rounds to the millivolt, journal/D-041).
 2. `SCALE MAJOR`, `ROOT C`: every note A plays is a white key; `ROOT D`: the
    same melody moved into D major. Back to `CHROMATIC`: the first melody.
-3. `PROB 100%`: every step changes as the clock reaches it; `SPREAD 0%`: the
-   notes stay on `BIAS`; `JUMP NO REP`: no step repeats the one before;
-   `JUMP 2`: steps never repeat and move by one or two
-   degrees.
+3. `PROB 100%`: every step changes as the clock reaches it; `JUMP NO REP`:
+   no step repeats the one before; `JUMP 2`: steps never repeat and move by
+   one or two degrees. Back to `PROB 0%` and `JUMP OFF`, then the window,
+   each heard at once without a clock: `SPREAD` down to 0, the loop narrows
+   onto the root, and back up to 24, the same melody again; `CENTER +100%`,
+   every note at or above the root; `BIAS +100%`, the notes crowd towards
+   the top of the window, its lowest and highest notes unchanged; an LFO
+   assigned to `SPREAD` breathes the melody while it plays.
 4. B and C: with `CHORD TRIAD` on C, about +333 and +583 mV above A
    (E, G); the inversion's arrow ↑ raises the lower an octave (G, E above),
    ↓ lowers the upper (G below, E).
@@ -917,6 +921,16 @@ each setting does: `crates/oc-core/src/apps/melody/README.md`.
    next clock A plays an octave up, `+CV1` beside `TRANSPOSE`.
 8. Left encoder click: `EDIT`; turn the left encoder to a step, the right
    one: its mark moves and, when it plays, A follows.
+   A short right click silences the framed step (its mark dotted, no gate
+   on D when it comes round) and back; a long right press (a second) gives
+   it a new note, its gate unchanged.
+9. Rhythm: `DENSITY 50%`, about half the steps open D's gate, A holding the
+   last note through the others; down to 20 %, the steps still playing are
+   among those that played at 50 %. `LEGATO 100%`: D stays high across the clocks, A still moving;
+   back to 0 %, the next gate starts after a 1 ms drop an envelope
+   retriggers on. `R PROB 100%` with `PROB 0%`: the rhythm changes each time
+   round under the same melody; `R REROLL` and `REROLL` each draw only their
+   own.
 
 ### 9.4 — Calibration
 

@@ -102,12 +102,15 @@ fn help_lines(layout: KeyLayout) -> Vec<String> {
         (format!("{gate1} X C V"), "hold triggers 1-4".to_owned()),
         (
             "up/down".to_owned(),
-            "cycle the output mode (on release)".to_owned(),
+            "slot on the left / right (on release)".to_owned(),
         ),
-        ("m".to_owned(), "up+down together: the app menu".to_owned()),
+        (
+            "m".to_owned(),
+            "up+down together: open / close the app menu".to_owned(),
+        ),
         (
             "Shift+up/down".to_owned(),
-            "hold (both held = the app menu)".to_owned(),
+            "hold, again to release (1 s: long press)".to_owned(),
         ),
         (
             format!("a,{turn_left_ccw}/e"),
@@ -505,32 +508,20 @@ impl Tui {
             .collect();
         lines.push(Line::raw(format!("  TR 1234  {gates}")));
 
+        // DIAGNOSTIC counts the edges and the presses: once the panel has
+        // put another applet in its slot, there is nothing to count from.
+        let diagnostic = self.simulator.find_app::<DiagnosticApp>();
         let counts: Vec<String> = TriggerChannel::ALL
             .into_iter()
             .map(|channel| {
-                self.simulator
-                    .app::<DiagnosticApp>()
-                    .trigger_count(channel)
-                    .to_string()
+                diagnostic.map_or_else(
+                    || "-".to_owned(),
+                    |app| app.trigger_count(channel).to_string(),
+                )
             })
             .collect();
         lines.push(Line::raw(format!("  edges    {}", counts.join(" "))));
-
-        lines.push(Line::raw(format!(
-            "  presses  L{} R{} up{} dn{}",
-            self.simulator
-                .app::<DiagnosticApp>()
-                .button_press_count(Button::LeftEncoder),
-            self.simulator
-                .app::<DiagnosticApp>()
-                .button_press_count(Button::RightEncoder),
-            self.simulator
-                .app::<DiagnosticApp>()
-                .button_press_count(Button::Up),
-            self.simulator
-                .app::<DiagnosticApp>()
-                .button_press_count(Button::Down),
-        )));
+        lines.push(Line::raw(format!("  presses  {}", presses(diagnostic))));
 
         frame.render_widget(
             Paragraph::new(lines).block(Block::default().borders(Borders::ALL).title(" inputs ")),
@@ -657,6 +648,24 @@ fn bar(millivolts: MilliVolts) -> String {
 
 /// Replays a scenario without opening a terminal, and reports the result.
 ///
+/// The presses `diagnostic` counted, button by button, or dashes when no
+/// `DIAGNOSTIC` runs.
+fn presses(diagnostic: Option<&DiagnosticApp>) -> String {
+    let count = |button| {
+        diagnostic.map_or_else(
+            || "-".to_owned(),
+            |app| app.button_press_count(button).to_string(),
+        )
+    };
+    format!(
+        "L{} R{} up{} dn{}",
+        count(Button::LeftEncoder),
+        count(Button::RightEncoder),
+        count(Button::Up),
+        count(Button::Down)
+    )
+}
+
 /// # Errors
 ///
 /// Fails if the scenario file cannot be read or parsed.
@@ -670,9 +679,15 @@ pub fn replay_headless(path: &std::path::Path) -> Result<String> {
     let mut simulator = Simulator::new();
     simulator.replay(&scenario);
 
-    let counts: Vec<u32> = TriggerChannel::ALL
+    let diagnostic = simulator.find_app::<DiagnosticApp>();
+    let counts: Vec<String> = TriggerChannel::ALL
         .into_iter()
-        .map(|channel| simulator.app::<DiagnosticApp>().trigger_count(channel))
+        .map(|channel| {
+            diagnostic.map_or_else(
+                || "-".to_owned(),
+                |app| app.trigger_count(channel).to_string(),
+            )
+        })
         .collect();
 
     let mut report = String::new();
@@ -687,35 +702,27 @@ pub fn replay_headless(path: &std::path::Path) -> Result<String> {
             "closed"
         }
     );
+    // What DIAGNOSTIC and SCOPE hold, when they still run.
     let _ = writeln!(
         report,
         "mode    {}",
-        simulator.app::<DiagnosticApp>().mode().label()
+        diagnostic.map_or("-", |app| app.mode().label())
     );
     let _ = writeln!(
         report,
-        "offset  {}mV",
-        simulator.app::<DiagnosticApp>().offset()
+        "offset  {}",
+        diagnostic.map_or_else(|| "-".to_owned(), |app| format!("{}mV", app.offset()))
     );
+    let _ = writeln!(report, "presses {}", presses(diagnostic));
     let _ = writeln!(
         report,
-        "presses L{} R{} up{} dn{}",
+        "scope   {}",
         simulator
-            .app::<DiagnosticApp>()
-            .button_press_count(Button::LeftEncoder),
-        simulator
-            .app::<DiagnosticApp>()
-            .button_press_count(Button::RightEncoder),
-        simulator
-            .app::<DiagnosticApp>()
-            .button_press_count(Button::Up),
-        simulator
-            .app::<DiagnosticApp>()
-            .button_press_count(Button::Down),
+            .find_app::<ScopeApp>()
+            .map_or_else(|| "-".to_owned(), |app| format!("{}mV", app.level()))
     );
-    let _ = writeln!(report, "scope   {}mV", simulator.app::<ScopeApp>().level());
     let _ = writeln!(report, "cv out  {:?}", simulator.cv_out());
-    let _ = writeln!(report, "edges   {counts:?}");
+    let _ = writeln!(report, "edges   {}", counts.join(" "));
     report.push_str("screen\n");
     for line in braille::render(simulator.frame()) {
         let _ = writeln!(report, "  {line}");
@@ -734,7 +741,7 @@ mod tests {
     use oc_core::calibration::{CV_IN_MAX_MV, CV_IN_MIN_MV};
     use oc_core::platform::{Button, TriggerChannel};
 
-    use super::{KeyLayout, Tui, bar};
+    use super::{KeyLayout, Tui, bar, help_lines};
     use crate::braille;
     use crate::simulator::{PRESS_TICKS, SETTLE_TICKS};
 
@@ -835,6 +842,30 @@ mod tests {
 
         assert!(!tui.simulator.menu_is_open());
         assert_eq!(tui.simulator.current_app(), AppId::Scope);
+    }
+
+    #[test]
+    fn the_panels_draw_once_diagnostic_is_replaced() {
+        let mut tui = Tui::new();
+        tui.simulator.skip_splash();
+
+        // MELODY, six entries down, in DIAGNOSTIC's slot: the inputs panel
+        // used to read DIAGNOSTIC's counters and panicked.
+        press_and_settle(&mut tui, 'm');
+        for _ in 0..6 {
+            tui.on_key(KeyEvent::new(KeyCode::Down, KeyModifiers::NONE));
+            tui.simulator.step_many(u64::from(SETTLE_TICKS));
+        }
+        press_and_settle(&mut tui, 'y');
+        assert_eq!(tui.simulator.current_app(), AppId::Melody);
+        assert!(tui.simulator.find_app::<DiagnosticApp>().is_none());
+
+        let rendered = rendered_text(&mut tui, 120, 50);
+        assert!(rendered.contains("MELODY"), "the app named");
+        assert!(
+            rendered.contains("edges    - - - -"),
+            "nothing to count from"
+        );
     }
 
     #[test]
@@ -945,6 +976,27 @@ mod tests {
             .iter()
             .map(ratatui::buffer::Cell::symbol)
             .collect()
+    }
+
+    #[test]
+    fn the_help_names_the_panels_gestures_not_an_apps() {
+        let help = help_lines(KeyLayout::Azerty).join("\n");
+        assert!(help.contains("slot on the left / right"), "{help}");
+        assert!(help.contains("1 s: long press"), "{help}");
+        assert!(
+            !help.contains("output mode"),
+            "DIAGNOSTIC's own gesture: {help}"
+        );
+
+        // As it says: Shift+up, a second, Shift+up again is a long press,
+        // which opens the routing page.
+        let mut tui = Tui::new();
+        tui.simulator.skip_splash();
+        tui.on_key(KeyEvent::new(KeyCode::Up, KeyModifiers::SHIFT));
+        tui.simulator.step_many(1_100);
+        tui.on_key(KeyEvent::new(KeyCode::Up, KeyModifiers::SHIFT));
+        tui.simulator.step_many(u64::from(SETTLE_TICKS));
+        assert!(tui.simulator.routing_is_open());
     }
 
     #[test]

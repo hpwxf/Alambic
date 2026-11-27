@@ -2,13 +2,16 @@
 //! of its output ports goes, and which jack each input it reads by itself
 //! comes from. Opened by a long press of `up`, closed the same way or by
 //! the menu chord; a short press of `up` or `down` moves to the next
-//! applet's page. A long press of `down` is kept for another page.
+//! applet's page. A long press of `down` is kept for the applet's
+//! options page, to come.
 //!
 //! Like the menu, a screen of the engine that owns the display without
 //! owning the outputs: every applet keeps running behind it. The left
 //! encoder picks a row, the right one turns it: an output steps through
-//! `A` to `D` and `OFF`, skipping the jacks another port holds, an input
-//! through the four jacks of its kind, which any applet may share.
+//! `OFF` and `A` to `D`, skipping the jacks another port holds, an input
+//! through the four jacks of its kind, which any applet may share. The
+//! right encoder stops at the ends rather than wrapping round, so a quick
+//! turn down always lands on `OFF`, first, and one up on the last free jack.
 
 use crate::apps::{AppHost, InputKind};
 use crate::fmt::TextBuf;
@@ -119,28 +122,32 @@ impl RoutingPage {
     }
 
     /// Moves output port `port` to the next jack in `step`'s direction
-    /// through `A` to `D` and `OFF`, skipping the jacks others hold.
+    /// through `OFF` and `A` to `D`, skipping the jacks others hold, and
+    /// stays put at either end: `OFF`, first, is always free.
     fn step_output(host: &mut AppHost, port: usize, step: i32) {
         let position = host.focus();
         let Some(route) = host.route_at(position) else {
             return;
         };
-        // `A` to `D`, then `OFF` as a fifth place.
+        // `OFF` first, then `A` to `D`.
         let places = i32::try_from(CV_CHANNELS).unwrap_or(4) + 1;
         let current = route
             .output(port)
-            .map_or(places - 1, |jack| i32::try_from(jack.index()).unwrap_or(0));
-        let mut place = current;
-        for _ in 1..places {
-            place = (place + step).rem_euclid(places);
-            let output = usize::try_from(place).ok().and_then(CvChannel::from_index);
+            .map_or(0, |jack| i32::try_from(jack.index()).unwrap_or(0) + 1);
+        let mut place = current + step;
+        while (0..places).contains(&place) {
+            let output = usize::try_from(place - 1)
+                .ok()
+                .and_then(CvChannel::from_index);
             if host.set_route(position, port, output).is_ok() {
                 return;
             }
+            place += step;
         }
     }
 
-    /// Moves input port `port` to the next jack of its kind.
+    /// Moves input port `port` to the next jack of its kind, staying put at
+    /// the first and the last.
     fn step_input(host: &mut AppHost, port: usize, step: i32) {
         let position = host.focus();
         let Some(spec) = host.focused().input_ports().get(port).copied() else {
@@ -154,7 +161,7 @@ impl RoutingPage {
             .jack(spec.kind, spec.lane)
             .and_then(|jack| i32::try_from(jack).ok())
             .unwrap_or(0);
-        let next = usize::try_from((current + step).rem_euclid(jacks)).unwrap_or(0);
+        let next = usize::try_from((current + step).clamp(0, jacks - 1)).unwrap_or(0);
         let _ = host.set_input(position, port, next);
     }
 
@@ -293,16 +300,26 @@ mod tests {
     fn an_output_steps_past_the_jacks_others_hold() {
         let mut host = supersaw_and_ratchet();
         let mut page = RoutingPage::new();
-        // SUB on C: one step up skips D, RATCHET's, to OFF; one more skips
-        // A and B, SUPERSAW's own, back to C.
-        page.update([2, 1], &mut host);
+        // SUB on C: one step down skips B and A, SUPERSAW's own, to OFF;
+        // one more stays there; one up skips them again, back to C.
+        page.update([2, -1], &mut host);
         assert_eq!(host.route().output(2), None, "C -> OFF");
+        page.update([0, -1], &mut host);
+        assert_eq!(host.route().output(2), None, "OFF is the end");
         page.update([0, 1], &mut host);
         assert_eq!(host.route().output(2), Some(CvChannel::Three), "OFF -> C");
+        // Up again: D is RATCHET's, so C is the last free.
+        page.update([0, 3], &mut host);
+        assert_eq!(
+            host.route().output(2),
+            Some(CvChannel::Three),
+            "C, the last free"
+        );
+        // Down again: SUB back to OFF, which frees C.
         page.update([0, -1], &mut host);
         assert_eq!(host.route().output(2), None);
-        // RATCHET's B, on nothing (SUPERSAW held A to C, its A took D),
-        // takes C, now free.
+        // RATCHET's B, on nothing (SUPERSAW held A to C, its A took D): a
+        // step up from OFF skips A and B, SUPERSAW's, to C, now free.
         host.set_focus(1);
         page.open();
         page.update([1, 1], &mut host);
@@ -312,6 +329,22 @@ mod tests {
             "OFF -> A, B taken: C"
         );
         assert_ne!(host.route(), Route::OFF);
+    }
+
+    #[test]
+    fn a_quick_turn_down_lands_on_off() {
+        let mut host = AppHost::new();
+        host.select(AppId::Supersaw);
+        let mut page = RoutingPage::new();
+        assert_eq!(host.route().output(0), Some(CvChannel::One), "A on A");
+        page.update([0, -20], &mut host);
+        assert_eq!(host.route().output(0), None, "past every jack: OFF");
+        page.update([0, 20], &mut host);
+        assert_eq!(
+            host.route().output(0),
+            Some(CvChannel::Four),
+            "back up: the last free jack"
+        );
     }
 
     #[test]
@@ -331,8 +364,15 @@ mod tests {
         let inputs = host.inputs_at(1).unwrap();
         assert_eq!(
             inputs.jack(crate::apps::InputKind::Trigger, 0),
+            Some(0),
+            "TR1, the first: no wrapping round"
+        );
+        page.update([0, 9], &mut host);
+        let inputs = host.inputs_at(1).unwrap();
+        assert_eq!(
+            inputs.jack(crate::apps::InputKind::Trigger, 0),
             Some(3),
-            "TR4"
+            "TR4, the last"
         );
     }
 
