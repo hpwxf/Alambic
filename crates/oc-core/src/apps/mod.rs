@@ -139,8 +139,10 @@ pub struct InputPort {
 pub const INTERNAL_TRIGGER_MV: MilliVolts = 1_000;
 
 /// What an input port reads (journal/D-046, D-048): a jack of its kind, by
-/// its index (0 for `CV1` or `TR1`), or output port `port` of the instance in
-/// slot `slot`, which must carry a level and belong to another instance.
+/// its index (0 for `CV1` or `TR1`), output port `port` of the instance in
+/// slot `slot`, which must carry a level and belong to another instance, or
+/// nothing: `OFF`, so that a port the patch does not use (a `RESET`) leaves
+/// every jack to the others.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum InputSource {
     /// A jack of the port's kind, from 0.
@@ -152,6 +154,8 @@ pub enum InputSource {
         /// The port's rank among the instance's output ports.
         port: u8,
     },
+    /// Nothing: a CV input at 0 V, a trigger input low.
+    Off,
 }
 
 impl InputSource {
@@ -179,6 +183,7 @@ impl InputSource {
         match self {
             Self::Jack(jack) => input.cv.get(usize::from(jack)).copied().unwrap_or(0),
             Self::Lane { slot, port } => input.bus.level(usize::from(slot), usize::from(port)),
+            Self::Off => 0,
         }
     }
 
@@ -192,6 +197,7 @@ impl InputSource {
                 .copied()
                 .unwrap_or(false),
             Self::Lane { .. } => self.level(input) >= INTERNAL_TRIGGER_MV,
+            Self::Off => false,
         }
     }
 }
@@ -230,12 +236,12 @@ impl InputRoute {
     }
 
     /// The jack lane `lane` of `kind` reads, as its index; `None` for a
-    /// port of another instance.
+    /// port of another instance, or nothing.
     #[must_use]
     pub fn jack(&self, kind: InputKind, lane: usize) -> Option<usize> {
         match self.source(kind, lane)? {
             InputSource::Jack(jack) => Some(usize::from(jack)),
-            InputSource::Lane { .. } => None,
+            InputSource::Lane { .. } | InputSource::Off => None,
         }
     }
 
@@ -248,6 +254,7 @@ impl InputRoute {
             InputSource::Lane { slot, port } => {
                 InputSource::lane(usize::from(slot), usize::from(port)).is_some()
             }
+            InputSource::Off => true,
         };
         let lanes = match kind {
             InputKind::Cv => &mut self.cv,

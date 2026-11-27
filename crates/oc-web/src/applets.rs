@@ -203,13 +203,20 @@ impl Instances {
     }
 
     /// What input port `port` of instance `at` reads, as a code: a jack,
-    /// 0 to 3, or a port of another instance (see [`source_code`]).
+    /// 0 to 3, a port of another instance, or nothing (see [`source_code`]).
     #[must_use]
     pub fn input(&self, at: usize, port: usize) -> u8 {
         self.instances
             .get(at)
             .and_then(|instance| instance.inputs.get(port).copied())
             .map_or(0, source_code)
+    }
+
+    /// The code of `OFF`, an input that reads nothing: the first of an
+    /// input's choices.
+    #[must_use]
+    pub fn off_code() -> u8 {
+        OFF_CODE
     }
 
     /// The codes of the ports an input of the instance at `own` (-1: none)
@@ -321,17 +328,25 @@ impl Instances {
     }
 }
 
+/// The code of `OFF` (see [`source_code`]).
+const OFF_CODE: u8 = u8::MAX;
+
 /// How the page names an input's source to the script, in one number: a
-/// jack 0 to 3, a port of another instance 4 and up, four per slot.
+/// jack 0 to 3, a port of another instance 4 and up, four per slot,
+/// [`OFF_CODE`] for nothing.
 fn source_code(source: InputSource) -> u8 {
     match source {
         InputSource::Jack(jack) => jack,
         InputSource::Lane { slot, port } => 4 + slot * 4 + port,
+        InputSource::Off => OFF_CODE,
     }
 }
 
 /// The source `code` names (see [`source_code`]), `None` past the last.
 fn code_source(code: u8) -> Option<InputSource> {
+    if code == OFF_CODE {
+        return Some(InputSource::Off);
+    }
     match code.checked_sub(4) {
         None => Some(InputSource::Jack(code)),
         Some(lane) => InputSource::lane(usize::from(lane / 4), usize::from(lane % 4)),

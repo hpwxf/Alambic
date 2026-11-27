@@ -150,8 +150,8 @@ impl RoutingPage {
     }
 
     /// Moves input port `port` to the next of what it can read, staying put
-    /// at the first and the last: the four jacks of its kind, then the ports
-    /// the other instances offer, slot by slot (journal/D-048).
+    /// at the first and the last: `OFF`, the four jacks of its kind, then the
+    /// ports the other instances offer, slot by slot (journal/D-048).
     fn step_input(host: &mut AppHost, port: usize, step: i32) {
         let position = host.focus();
         let Some(spec) = host.focused().input_ports().get(port).copied() else {
@@ -268,15 +268,16 @@ impl RoutingPage {
     }
 }
 
-/// The most an input port can read: the four jacks of its kind, and every
-/// lane of the other instances.
-const MAX_CHOICES: usize = CV_CHANNELS + (MAX_INSTANCES - 1) * CV_CHANNELS;
+/// The most an input port can read: nothing, the four jacks of its kind,
+/// and every lane of the other instances.
+const MAX_CHOICES: usize = 1 + CV_CHANNELS + (MAX_INSTANCES - 1) * CV_CHANNELS;
 
 /// What an input of the instance at `position` can read, in the order the
 /// right encoder turns them, and how many.
 fn input_choices(host: &AppHost, position: usize) -> ([InputSource; MAX_CHOICES], usize) {
-    let mut choices = [InputSource::Jack(0); MAX_CHOICES];
-    let mut count = 0;
+    let mut choices = [InputSource::Off; MAX_CHOICES];
+    // `OFF` first, as an output's: a quick turn down frees every jack.
+    let mut count = 1;
     let jacks = (0..CV_CHANNELS).filter_map(InputSource::jack);
     let bus = host.bus(Some(position));
     let lanes = bus.sources().filter_map(|source| match source {
@@ -292,8 +293,8 @@ fn input_choices(host: &AppHost, position: usize) -> ([InputSource; MAX_CHOICES]
     (choices, count)
 }
 
-/// What an input of `kind` reading `source` shows: its jack (`TR2`), or the
-/// slot and name of the port it reads (`1:BURST`, journal/D-048).
+/// What an input of `kind` reading `source` shows: its jack (`TR2`), the
+/// slot and name of the port it reads (`1:BURST`, journal/D-048), or `OFF`.
 fn source_text(host: &AppHost, kind: InputKind, source: Option<InputSource>) -> TextBuf<16> {
     let mut out = TextBuf::<16>::new();
     let names = match kind {
@@ -311,6 +312,7 @@ fn source_text(host: &AppHost, kind: InputKind, source: Option<InputSource>) -> 
                 .map(|port| port.name);
             Source::Lane { slot, port }.write_name(&mut out, name, PORT_LETTERS);
         }
+        Some(InputSource::Off) => return text_of("OFF"),
         None => return text_of("--"),
     }
     out
@@ -406,7 +408,7 @@ mod tests {
     }
 
     #[test]
-    fn an_input_steps_through_the_jacks_of_its_kind() {
+    fn an_input_steps_through_off_and_the_jacks_of_its_kind() {
         let mut host = supersaw_and_ratchet();
         host.set_focus(1);
         let mut page = RoutingPage::new();
@@ -418,12 +420,19 @@ mod tests {
             Some(1),
             "TR2"
         );
-        page.update([0, -2], &mut host);
+        page.update([0, -1], &mut host);
         let inputs = host.inputs_at(1).unwrap();
         assert_eq!(
             inputs.jack(crate::apps::InputKind::Trigger, 0),
             Some(0),
-            "TR1, the first: no wrapping round"
+            "TR1"
+        );
+        page.update([0, -5], &mut host);
+        let inputs = host.inputs_at(1).unwrap();
+        assert_eq!(
+            inputs.source(crate::apps::InputKind::Trigger, 0),
+            Some(crate::apps::InputSource::Off),
+            "OFF, the first: no wrapping round"
         );
         page.update([0, 9], &mut host);
         let inputs = host.inputs_at(1).unwrap();

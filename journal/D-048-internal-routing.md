@@ -123,8 +123,10 @@ seuil réglable par port, ou le front montant du niveau seul.
   `INTERNAL_TRIGGER_MV` (1 V : sous les 5 V des triggers et gates des applets, près du basculement des transistors
   d'entrée) ; le niveau est celui du tick précédent, comme pour les assignations, donc une horloge interne arrive
   avec 1 ms de retard ;
-* page de routage : l'encodeur droit passe des quatre prises (`TR1`–`TR4`, `CV1`–`CV4`) aux ports offerts
-  (`1:THRU`, `1:BURST`…) et s'arrête aux bouts ; la ligne écrit `CLOCK <- 1:THRU` ;
+* page de routage : l'encodeur droit passe de `OFF` aux quatre prises (`TR1`–`TR4`, `CV1`–`CV4`) puis aux ports
+  offerts (`1:THRU`, `1:BURST`…) et s'arrête aux bouts ; la ligne écrit `CLOCK <- 1:THRU` ;
+* `OFF` (`InputSource::Off`), demandé par l'utilisateur à l'essai : un port qui ne lit rien, CV à 0 V, trigger bas ;
+  un `RESET` dont le patch n'a pas besoin laisse ainsi toutes les prises `TR` aux autres apps sans rien bloquer ;
 * protocole 11 (non publié) : `Request::SetInput` porte une `InputSource`, `Reply::Instance::inputs` aussi ; sonde
   `cargo probe route @1 clock=1:thru` (ou `1:#1`) ; la page propose les ports dans la liste de l'entrée.
 

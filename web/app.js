@@ -398,10 +398,13 @@ function activeSlot() {
 }
 
 function drawInstances() {
+  // Slots are numbered 1 to 4, as the module names another app's port
+  // (`1:NOTE`, journal/D-048); the protocol counts them from 0.
+  const label = (at) => String(at + 1);
   const row = $("apps-instances");
   row.replaceChildren();
   const active = activeSlot();
-  $("apps-select").textContent = active < 0 ? "Run on the module" : `Run in slot @${active}`;
+  $("apps-select").textContent = active < 0 ? "Run on the module" : `Run in slot ${label(active)}`;
   for (let at = 0; at < instances.len; at += 1) {
     const show = document.createElement("button");
     const empty = instances.is_empty_slot(at);
@@ -410,13 +413,15 @@ function drawInstances() {
     show.classList.toggle("empty", empty);
     show.setAttribute("aria-pressed", String(at === active));
     show.title = at === active ? "shown on the module" : "show it on the module";
-    show.textContent = empty ? `@${at} empty` : `@${at} ${appNames.get(instances.app(at)) ?? "?"}`;
+    show.textContent = empty
+      ? `${label(at)} empty`
+      : `${label(at)} ${appNames.get(instances.app(at)) ?? "?"}`;
     show.addEventListener("click", (event) => request(
       event.currentTarget, "apps-status", "showing…", async (probe) => {
         await probe.ask(oc.Instances.focus_request(at));
         await listInstances(probe);
         await showInstance(probe, at);
-        return `@${at} shown`;
+        return `slot ${label(at)} shown`;
       },
     ));
     row.append(show);
@@ -424,7 +429,7 @@ function drawInstances() {
       const remove = document.createElement("button");
       remove.className = "needs-probe";
       remove.textContent = "✕";
-      remove.title = `empty @${at}`;
+      remove.title = `empty slot ${label(at)}`;
       remove.addEventListener("click", (event) => request(
         event.currentTarget, "apps-status", "emptying…", async (probe) => {
           await probe.ask(oc.Instances.remove_request(at));
@@ -499,9 +504,10 @@ function drawRouting() {
   }
   for (let port = 0; port < appView.input_port_count; port += 1) {
     const kind = appView.input_port_trigger(port) ? "TR" : "CV";
-    // The four jacks of its kind, then the ports of the other instances that
-    // carry a level (`1:BURST`, journal/D-048).
-    const jacks = [0, 1, 2, 3].map((jack) => [`${kind}${jack + 1}`, jack])
+    // OFF, the four jacks of its kind, then the ports of the other instances
+    // that carry a level (`1:BURST`, journal/D-048).
+    const jacks = [["OFF", oc.Instances.off_code()]]
+      .concat([0, 1, 2, 3].map((jack) => [`${kind}${jack + 1}`, jack]))
       .concat(Array.from(instances.lane_codes(at), (code) => [instances.source_label(code), code]));
     line(appView.input_port_name(port), "←", jacks, instances.input(at, port),
       (jack) => oc.Instances.input_request(at, port, jack));

@@ -208,3 +208,25 @@ fn melody_steps_on_ratchets_thru_once_its_clock_reads_it() {
     clock(&mut engine);
     assert_eq!(position(&engine), held, "the port reads 0 V, low");
 }
+
+#[test]
+fn an_input_off_reads_nothing_and_leaves_its_jack_to_others() {
+    use oc_core::apps::InputSource;
+
+    let mut engine = mock_engine(0);
+    engine.select_app(AppId::Melody);
+    tick(&mut engine, false);
+    for _ in 0..3 {
+        clock(&mut engine);
+    }
+    let position = |engine: &MockEngine| engine.app::<MelodyApp>().sequence().position();
+    let played = position(&engine);
+    // RESET, its second input, on OFF: TR2, high, arms nothing.
+    engine.apps_mut().set_input(0, 1, InputSource::Off).unwrap();
+    engine.parts_mut().2.set(TriggerChannel::Two, true);
+    tick(&mut engine, false);
+    engine.parts_mut().2.set(TriggerChannel::Two, false);
+    clock(&mut engine);
+    assert_ne!(position(&engine), Some(0), "no reset: the loop goes on");
+    assert_ne!(position(&engine), played, "a step further");
+}

@@ -94,8 +94,8 @@ enum Command {
     /// what it can be read for, what it can be asked to do, its ports.
     App {
         /// The applet: its name (`ratchet`, `gfx-demo`) or its index, its
-        /// first instance then; or `@N`, the instance at position N
-        /// (journal/D-046). The same for every command below.
+        /// first instance then; or `@N`, the instance in slot N, 1 to 4 left
+        /// to right (journal/D-046). The same for every command below.
         app: String,
     },
     /// Reads one parameter or observable of an applet.
@@ -128,7 +128,7 @@ enum Command {
     Select {
         /// The applet: its name or its index.
         app: String,
-        /// The slot: `@N`; the one shown when left out.
+        /// The slot: `@1` to `@4`; the one shown when left out.
         instance: Option<String>,
     },
     /// Reads the CV input of an applet's parameter, or sets it field by
@@ -145,18 +145,18 @@ enum Command {
     },
     /// Empties a slot (`NOTHING` in it), freeing its outputs.
     Remove {
-        /// The instance: `@N`.
+        /// The instance: `@1` to `@4`.
         instance: String,
     },
     /// Shows an instance on the screen and gives it the panel.
     Focus {
-        /// The instance: `@N`.
+        /// The instance: `@1` to `@4`.
         instance: String,
     },
     /// Prints where an instance's ports go, after routing those given, as
     /// its routing page does: `sub=off`, `burst=d`, `clock=tr2`.
     Route {
-        /// The instance: `@N`.
+        /// The instance: `@1` to `@4`.
         instance: String,
         /// Ports to route, as `port=jack`.
         #[arg(value_name = "PORT=JACK")]
@@ -301,7 +301,9 @@ fn main() -> anyhow::Result<()> {
             let instance = instance.as_deref().map(position).transpose()?;
             session.select_app(app.index, instance)?;
             match instance {
-                Some(position) => eprintln!("{} in slot @{position}", app.name),
+                Some(position) => {
+                    eprintln!("{} in slot {}", app.name, apps::slot_label(position));
+                }
                 None => eprintln!("{} in the slot shown", app.name),
             }
             Ok(())
@@ -390,7 +392,7 @@ fn reboot(path: Option<&str>) -> anyhow::Result<()> {
 }
 
 fn position(query: &str) -> anyhow::Result<u8> {
-    apps::instance_position(query).with_context(|| format!("{query}: an instance is @N"))
+    apps::instance_position(query).with_context(|| format!("{query}: an instance is @1 to @4"))
 }
 
 /// The applet `query` names: `@N`, an instance, or a name or an index, the
@@ -405,7 +407,13 @@ fn addressed(session: &mut Session, query: &str) -> anyhow::Result<Addressed> {
     let instance = instances
         .iter()
         .find(|instance| instance.position == position)
-        .with_context(|| format!("no instance @{position}; {} run", instances.len()))?;
+        .with_context(|| {
+            format!(
+                "no instance {}; {} run",
+                apps::slot_label(position),
+                instances.len()
+            )
+        })?;
     let entry = found(session, &instance.app.to_string())?;
     Ok(Addressed {
         entry,
@@ -420,13 +428,13 @@ fn described(session: &mut Session, query: &str) -> anyhow::Result<(Addressed, A
     Ok((app, description))
 }
 
-/// One line for an instance: `* @1 RATCHET`, the one shown marked.
+/// One line for an instance: `* @2 RATCHET`, the one shown marked.
 fn instance_line(session: &mut Session, instance: &InstanceEntry) -> anyhow::Result<String> {
     let entry = found(session, &instance.app.to_string())?;
     Ok(format!(
-        "{} @{} {}",
+        "{} {} {}",
         if instance.focused { '*' } else { ' ' },
-        instance.position,
+        apps::slot_label(instance.position),
         entry.name
     ))
 }
@@ -441,7 +449,7 @@ fn route(session: &mut Session, query: &str, routes: &[String]) -> anyhow::Resul
     let mut instance = instances
         .into_iter()
         .find(|instance| instance.position == position)
-        .with_context(|| format!("no instance @{position}"))?;
+        .with_context(|| format!("no instance {}", apps::slot_label(position)))?;
     for route in routes {
         let (port, jack) = route
             .split_once('=')

@@ -455,8 +455,9 @@ fn a_scroll_bar_left_of_the_settings_shows_the_page() {
     set(&mut engine, Setting::Mode, 0);
     let frame = engine.parts_mut().4.frame_mut().clone();
     assert!(!frame.pixel(0, 8) && !frame.pixel(2, 23) && frame.pixel(0, 24) && frame.pixel(2, 39));
-    // Nothing left of the rows in the title bar's place of the old cursor.
-    assert!((80..90).all(|x| (0..8).all(|y| !frame.pixel(x, y))));
+    // Nothing in the title bar right of the clock's mark (80 to 84, past the
+    // tempo), where an old cursor once sat.
+    assert!((86..oc_core::framebuffer::WIDTH_I32).all(|x| (0..8).all(|y| !frame.pixel(x, y))));
 }
 
 #[test]

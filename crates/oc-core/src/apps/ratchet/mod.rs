@@ -73,6 +73,15 @@ const PAGES: usize = Setting::ALL.len().div_ceil(PAGE_ROWS);
 /// of the screen.
 const TIMELINE_TOP: i32 = 48;
 
+/// Left edge of the tempo in the title bar.
+const RATE_LEFT: i32 = 42;
+
+/// The gap between the tempo and the clock's state.
+const CLOCK_GAP: i32 = 3;
+
+/// Radius of the clock's state.
+const CLOCK_RADIUS: i32 = 2;
+
 /// Right edge of the value column, left of the input column.
 const VALUE_RIGHT: i32 = 98;
 
@@ -646,7 +655,7 @@ impl RatchetApp {
     }
 
     /// Draws the settings, a timeline of the burst they make now, and the
-    /// state of `TR1`, A and B.
+    /// tempo of the clock with its state.
     pub fn render(&self, frame: &mut FrameBuffer, _context: &TickContext) {
         frame.clear();
         self.render_main(frame);
@@ -664,8 +673,11 @@ impl RatchetApp {
             Some(bpm) => write!(rate, "{bpm:>3} BPM"),
             None => write!(rate, "--- BPM"),
         };
-        text::draw(frame, rate.as_str(), Point::new(42, 0), lit);
-        self.render_lights(frame);
+        text::draw(frame, rate.as_str(), Point::new(RATE_LEFT, 0), lit);
+        self.render_clock(
+            frame,
+            RATE_LEFT + FONT_5X8.width_of(rate.as_str()) + CLOCK_GAP,
+        );
 
         let rows = i32::try_from(PAGE_ROWS).unwrap_or(4);
         // Left of the settings, under the title bar.
@@ -727,21 +739,16 @@ impl RatchetApp {
         }
     }
 
-    /// The lights of `TR1`, A and B at the right of the title bar.
-    fn render_lights(&self, frame: &mut FrameBuffer) {
-        let lights = [
-            ("1", self.gate),
-            ("A", self.pulse_a_micros > 0),
-            ("B", self.pulse_b_micros > 0),
-        ];
-        for (index, (name, on)) in (0..).zip(lights) {
-            let x = WIDTH_I32 - 30 + index * 10;
-            if on {
-                gfx::fill_rect(frame, x - 1, 0, 7, ROW_HEIGHT, Ink::Lit);
-                text::draw(frame, name, Point::new(x, 0), TextStyle::dark(&FONT_5X8));
-            } else {
-                text::draw(frame, name, Point::new(x, 0), TextStyle::lit(&FONT_5X8));
-            }
+    /// The clock's state, right of its tempo from `left`: a disc while it
+    /// is high, a ring while it is low. Not named after a jack: the clock
+    /// may come from any trigger input, or another app's port
+    /// (journal/D-048).
+    fn render_clock(&self, frame: &mut FrameBuffer, left: i32) {
+        let centre = Point::new(left + CLOCK_RADIUS, ROW_HEIGHT / 2 - 1);
+        if self.gate {
+            gfx::fill_circle(frame, centre, CLOCK_RADIUS, Ink::Lit);
+        } else {
+            gfx::circle(frame, centre, CLOCK_RADIUS, Ink::Lit);
         }
     }
 

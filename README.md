@@ -55,7 +55,8 @@ picks a row, the right one turns it. An output (`A`, `B`, `SUB` for
 another app holds; an input the app reads by itself (`RATCHET`'s `CLOCK`,
 `SCOPE`'s `IN`) steps through the four jacks of its kind, which apps may
 share, then the ports of the other apps that carry a level (`1:THRU`,
-journal/D-048): `MELODY`'s `CLOCK <- 1:THRU` steps on `RATCHET`'s copy of
+journal/D-048), after `OFF`, which reads nothing (a `RESET` the patch does
+not need, leaving every `TR` jack to the others): `MELODY`'s `CLOCK <- 1:THRU` steps on `RATCHET`'s copy of
 `TR1`, one tick late, a trigger input being high from 1 V. The right encoder stops at the ends instead of wrapping round: a
 quick turn down lands on `OFF`, the first place, and one up on the last free
 jack. An app's CV inputs are set in their own submenu: one of the four
@@ -120,8 +121,9 @@ the left encoder's click fires a burst by hand.
     the repeats spread; `SHAPE` crowds them towards its end or its start.
 * `FIRST` or `SPAN`, the time setting: a duration in milliseconds, or with
   `SYNC ON` a fraction of `TR1`'s period (×2, ×1.5, ×4/3, ×1, ×3/4, ×2/3,
-  /2 … /32; for a span, ×1 fills the step). The rate of `TR1` shows in BPM,
-  and a dotted line on the timeline marks where the next trigger is due.
+  /2 … /32; for a span, ×1 fills the step). The rate of the clock shows in
+  BPM in the title bar, a disc right of it while the clock is high, a ring
+  while it is low, whichever input it reads; a dotted line on the timeline marks where the next trigger is due.
 * `SHAPE`, −3.0 to +3.0, an abstract curve rather than a unit: from an
   exponential one at −3.0, through a straight line at 0 (even repeats), to a
   logarithmic one at +3.0. Below 0 the burst accelerates, above 0 it slows
@@ -425,15 +427,15 @@ cargo probe app ratchet        # its parameters and values, observables, actions
 cargo probe set ratchet prob 50  # as the panel would, within its bounds
 cargo probe get supersaw freq  # a parameter or what it plays now
 cargo probe act ratchet burst  # an action, here a burst as the left click starts one
-cargo probe select tone        # put it in the slot shown; `select tone @2` in slot 2
+cargo probe select tone        # put it in the slot shown; `select tone @2` in slot 2 (slots count from 1)
 cargo probe assign supersaw detune input=cv2 effect=add  # a parameter's CV input, field by field
 cargo probe assign supersaw detune --center 5  # fit it to what CV2 carries, as CENTER does
-cargo probe assign @1 note input=1:note  # another app's port, as the submenu names it: slot 1 (@0), NOTE
+cargo probe assign @2 note input=1:note  # another app's port, as the submenu names it: slot 1, NOTE
 cargo probe add ratchet        # put RATCHET in the first empty slot, on the free outputs
-cargo probe instances          # the four slots, @0 to @3, where their ports go
-cargo probe route @0 sub=off   # its routing page from afar: sub=off, burst=d, clock=tr2, clock=1:thru
-cargo probe set @1 prob 50     # @N names one instance; a name, the first of that app
-cargo probe focus @1           # show it on the screen; `remove @1` empties the slot
+cargo probe instances          # the four slots, @1 to @4, where their ports go
+cargo probe route @1 sub=off   # its routing page from afar: sub=off, burst=d, clock=tr2, clock=1:thru, reset=off
+cargo probe set @2 prob 50     # @N names the instance in slot N; a name, the first of that app
+cargo probe focus @2           # show it on the screen; `remove @2` empties the slot
 ```
 
 `cargo probe` is an alias of `cargo run -q -p oc-probe --`. The tool finds the

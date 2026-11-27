@@ -7,6 +7,15 @@ Architectural decisions behind each change are in `journal/` (French).
 
 ## Unreleased
 
+### Changed
+
+- `RATCHET`'s title bar: the `1 A B` lights give way to a mark right of the
+  tempo, a disc while the clock is high, a ring while it is low; its clock
+  may come from any input now (journal/D-048).
+- Slots count from 1 to 4 everywhere, as the module names another app's
+  port (`1:NOTE`): the browser page's buttons, and the probe's `@N`
+  (`@1` is the first slot; it was `@0`). The protocol still counts from 0.
+
 ### Added
 
 - **Internal routing** (journal/D-048): an input submenu offers, past
@@ -20,7 +29,8 @@ Architectural decisions behind each change are in `journal/` (French).
   … input=1:note`, the browser page's input list. An input port on the
   routing page reads such a port too: `MELODY`'s `CLOCK <- 1:THRU` steps
   on `RATCHET`'s copy of `TR1`, a trigger being high from 1 V (`cargo
-  probe route @1 clock=1:thru`).
+  probe route @2 clock=1:thru`); `OFF` reads nothing, so an input the patch
+  does not need (a `RESET`) leaves every jack to the other apps.
 - **`MELODY`** (journal/D-047), in a new `SEQUENCE` column of the app
   menu: a looping sequence of up to 32 random but controllable notes,
   clocked by `TR1` and armed by `TR2`, each step drawn anew with the chance

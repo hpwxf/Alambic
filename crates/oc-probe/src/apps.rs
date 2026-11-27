@@ -10,6 +10,7 @@
 
 use std::fmt::Write as _;
 
+use oc_core::apps::MAX_INSTANCES;
 use oc_core::apps::param::{Unit, write_number};
 use oc_core::modulation::{AssignLine, CENTER_MIN_SPAN_MV, Source, usable_range};
 use oc_core::platform::CvChannel;
@@ -63,11 +64,22 @@ pub fn find_action(actions: &[String], query: &str) -> Option<u8> {
         .and_then(|index| u8::try_from(index).ok())
 }
 
-/// The instance position `query` names when it is written `@N`
-/// (journal/D-046); `None` for an applet's name or index.
+/// The instance position `query` names when it is written `@N`, the slot
+/// from 1 to 4 as the module and the browser page number them (`1:NOTE`,
+/// journal/D-046, D-048); the position from 0 the protocol takes, `None`
+/// for `@0`, past the last slot, or an applet's name or index.
 #[must_use]
 pub fn instance_position(query: &str) -> Option<u8> {
-    query.strip_prefix('@')?.parse().ok()
+    let slot: u8 = query.strip_prefix('@')?.parse().ok()?;
+    (1..=u8::try_from(MAX_INSTANCES).unwrap_or(u8::MAX))
+        .contains(&slot)
+        .then(|| slot - 1)
+}
+
+/// How a command writes the instance at `position` (from 0): `@1` to `@4`.
+#[must_use]
+pub fn slot_label(position: u8) -> String {
+    format!("@{}", u32::from(position) + 1)
 }
 
 /// What a port of an instance is: an output, or an input.
@@ -118,9 +130,9 @@ pub fn parse_output(text: &str) -> Result<Option<u8>, String> {
 }
 
 /// What `text` plugs an input port into: a jack of its kind, `cv1` to
-/// `cv4` or `tr1` to `tr4` for a trigger, or a port of another instance by
+/// `cv4` or `tr1` to `tr4` for a trigger, a port of another instance by
 /// its slot and the name `ports` gives it, `1:burst`, or its rank, `1:#2`
-/// (journal/D-048).
+/// (journal/D-048), or nothing, `off`.
 ///
 /// # Errors
 ///
@@ -130,6 +142,9 @@ pub fn parse_input_source(
     trigger: bool,
     ports: &PortNames,
 ) -> Result<InputSource, String> {
+    if matches!(folded(text).as_str(), "off" | "none") {
+        return Ok(InputSource::Off);
+    }
     if text.contains(':') {
         let (slot, port) = parse_lane(&text.to_ascii_lowercase(), ports)
             .ok_or_else(|| format!("{text}: a slot and a port's name, as 1:burst"))?;
@@ -195,8 +210,8 @@ pub fn routing_text(
     text
 }
 
-/// What an input port reading `source` shows: its jack (`TR2`, `CV1`), or
-/// the slot and name of the port it reads, `1:BURST` (journal/D-048).
+/// What an input port reading `source` shows: its jack (`TR2`, `CV1`), the
+/// slot and name of the port it reads, `1:BURST` (journal/D-048), or `OFF`.
 #[must_use]
 pub fn input_source_text(source: InputSource, trigger: bool, ports: &PortNames) -> String {
     match source {
@@ -208,6 +223,7 @@ pub fn input_source_text(source: InputSource, trigger: bool, ports: &PortNames) 
             )
         }
         InputSource::Lane { slot, port } => source_text(Source::Lane { slot, port }, ports),
+        InputSource::Off => "OFF".to_owned(),
     }
 }
 
@@ -871,6 +887,8 @@ mod tests {
         assert_eq!(parse("tr2"), Ok(InputSource::Jack(1)));
         assert_eq!(parse("1:burst"), Ok(InputSource::Lane { slot: 0, port: 1 }));
         assert_eq!(parse("1:#1"), Ok(InputSource::Lane { slot: 0, port: 0 }));
+        assert_eq!(parse("OFF"), Ok(InputSource::Off));
+        assert_eq!(input_source_text(InputSource::Off, true, &ports), "OFF");
         for wrong in ["cv1", "1:sub", "5:#1", "1"] {
             assert!(parse(wrong).is_err(), "{wrong}");
         }
@@ -1004,8 +1022,12 @@ mod tests {
         };
         use crate::client::{InputPortEntry, InstanceEntry, OutputPortEntry};
 
-        assert_eq!(instance_position("@1"), Some(1));
+        assert_eq!(instance_position("@1"), Some(0), "slots count from 1");
+        assert_eq!(instance_position("@4"), Some(3));
+        assert_eq!(instance_position("@0"), None);
+        assert_eq!(instance_position("@5"), None, "four slots");
         assert_eq!(instance_position("1"), None, "an applet's index");
+        assert_eq!(super::slot_label(0), "@1");
         assert_eq!(parse_output("off"), Ok(None));
         assert_eq!(parse_output("D"), Ok(Some(3)));
         assert!(parse_output("e").is_err());
