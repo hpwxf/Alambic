@@ -14,7 +14,7 @@ use oc_probe::apps::{
 use oc_probe::client::{
     AppDescription, AppEntry, InputEntry, InputPortEntry, InstanceEntry, OutputPortEntry, SpecEntry,
 };
-use oc_protocol::{Group, ParamKind, ParamValue, Request, Sample, Target};
+use oc_protocol::{Group, InputSource, ParamKind, ParamValue, Request, Sample, Target};
 use wasm_bindgen::prelude::wasm_bindgen;
 
 use crate::{Message, MessageKind, frame};
@@ -202,13 +202,48 @@ impl Instances {
             .map_or(-1, i32::from)
     }
 
-    /// The jack input port `port` of instance `at` reads, 0 for the first.
+    /// What input port `port` of instance `at` reads, as a code: a jack,
+    /// 0 to 3, or a port of another instance (see [`source_code`]).
     #[must_use]
     pub fn input(&self, at: usize, port: usize) -> u8 {
         self.instances
             .get(at)
             .and_then(|instance| instance.inputs.get(port).copied())
-            .unwrap_or(0)
+            .map_or(0, source_code)
+    }
+
+    /// The codes of the ports an input of the instance at `own` (-1: none)
+    /// can read besides the jacks, slot by slot: those of the other
+    /// instances that carry a level (journal/D-048).
+    #[must_use]
+    pub fn lane_codes(&self, own: i32) -> Vec<u8> {
+        let own = usize::try_from(own).ok();
+        self.instances
+            .iter()
+            .filter(|instance| Some(usize::from(instance.position)) != own)
+            .flat_map(|instance| {
+                let at = usize::from(instance.position);
+                instance
+                    .levels
+                    .iter()
+                    .enumerate()
+                    .filter(|&(_, &level)| level)
+                    .filter_map(move |(port, _)| InputSource::lane(at, port))
+            })
+            .map(source_code)
+            .collect()
+    }
+
+    /// How the routing page names what input `code` reads, for a port of
+    /// another instance: its slot and name, `1:BURST`.
+    #[must_use]
+    pub fn source_label(&self, code: u8) -> String {
+        match code_source(code) {
+            Some(InputSource::Lane { slot, port }) => {
+                source_text(Source::Lane { slot, port }, &PortNames::of(&self.instances))
+            }
+            _ => String::new(),
+        }
     }
 
     /// The ports of the other instances an input of the instance at `own`
@@ -274,14 +309,32 @@ impl Instances {
         })
     }
 
-    /// Plugs input port `port` of the instance at `position` into `jack`.
+    /// Plugs input port `port` of the instance at `position` into what
+    /// `code` names: a jack, 0 to 3, or a port of another instance.
     #[must_use]
-    pub fn input_request(position: u8, port: u8, jack: u8) -> Vec<u8> {
+    pub fn input_request(position: u8, port: u8, code: u8) -> Vec<u8> {
         frame(&Request::SetInput {
             instance: position,
             port,
-            jack,
+            source: code_source(code).unwrap_or(InputSource::Jack(0)),
         })
+    }
+}
+
+/// How the page names an input's source to the script, in one number: a
+/// jack 0 to 3, a port of another instance 4 and up, four per slot.
+fn source_code(source: InputSource) -> u8 {
+    match source {
+        InputSource::Jack(jack) => jack,
+        InputSource::Lane { slot, port } => 4 + slot * 4 + port,
+    }
+}
+
+/// The source `code` names (see [`source_code`]), `None` past the last.
+fn code_source(code: u8) -> Option<InputSource> {
+    match code.checked_sub(4) {
+        None => Some(InputSource::Jack(code)),
+        Some(lane) => InputSource::lane(usize::from(lane / 4), usize::from(lane % 4)),
     }
 }
 

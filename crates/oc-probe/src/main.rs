@@ -236,10 +236,12 @@ fn main() -> anyhow::Result<()> {
         Command::Screen { png, scale } => screen(&mut session, png, scale),
         Command::Reboot => unreachable!("served before the session"),
         Command::Instances => {
-            for instance in session.instances()? {
+            let instances = session.instances()?;
+            let ports = apps::PortNames::of(&instances);
+            for instance in instances {
                 let description = session.describe(Target::Instance(instance.position))?;
                 println!("{}", instance_line(&mut session, &instance)?);
-                for line in apps::routing_text(&description, &instance).lines() {
+                for line in apps::routing_text(&description, &instance, &ports).lines() {
                     println!("    {line}");
                 }
             }
@@ -433,8 +435,10 @@ fn instance_line(session: &mut Session, instance: &InstanceEntry) -> anyhow::Res
 fn route(session: &mut Session, query: &str, routes: &[String]) -> anyhow::Result<()> {
     let position = position(query)?;
     let description = session.describe(Target::Instance(position))?;
-    let mut instance = session
-        .instances()?
+    let instances = session.instances()?;
+    // The other instances' ports, by which an input names one (`1:BURST`).
+    let ports = apps::PortNames::of(&instances);
+    let mut instance = instances
         .into_iter()
         .find(|instance| instance.position == position)
         .with_context(|| format!("no instance @{position}"))?;
@@ -449,12 +453,13 @@ fn route(session: &mut Session, query: &str, routes: &[String]) -> anyhow::Resul
                     session.set_route(position, index, output)?
                 }
                 apps::PortRef::Input(index, trigger) => {
-                    let jack = apps::parse_jack(jack, trigger).map_err(anyhow::Error::msg)?;
-                    session.set_input(position, index, jack)?
+                    let source = apps::parse_input_source(jack, trigger, &ports)
+                        .map_err(anyhow::Error::msg)?;
+                    session.set_input(position, index, source)?
                 }
             };
     }
-    print!("{}", apps::routing_text(&description, &instance));
+    print!("{}", apps::routing_text(&description, &instance, &ports));
     Ok(())
 }
 

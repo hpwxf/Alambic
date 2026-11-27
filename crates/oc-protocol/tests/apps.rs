@@ -6,8 +6,8 @@ use oc_core::apps::{AppId, Instance, MAX_INSTANCES};
 use oc_core::testing::{MockEngine, mock_engine};
 use oc_protocol::server::{Identity, Server};
 use oc_protocol::{
-    Error, FrameReader, Group, MAX_FRAME, ParamKind, ParamValue, Refused, Reply, Request, Target,
-    VERSION, decode, encode,
+    Error, FrameReader, Group, InputSource, MAX_FRAME, ParamKind, ParamValue, Refused, Reply,
+    Request, Target, VERSION, decode, encode,
 };
 
 const IDENTITY: Identity = Identity {
@@ -480,7 +480,7 @@ fn slots_are_listed_filled_routed_focused_and_emptied() {
             app: supersaw,
             focused: false,
             outputs: [Some(2), Some(3), None, None],
-            inputs: [0; 4],
+            inputs: [InputSource::Jack(0); 4],
             levels: [false; 4],
             names: ["L/MONO", "R/MONO", "SUB", ""],
         }
@@ -506,14 +506,34 @@ fn slots_are_listed_filled_routed_focused_and_emptied() {
             &Request::SetInput {
                 instance: 0,
                 port: 0,
-                jack: 1,
+                source: InputSource::Jack(1),
             }
         ),
         Reply::Instance {
-            inputs: [1, 0, 0, 0],
+            inputs: [InputSource::Jack(1), ..],
             ..
         }
     ));
+    // RATCHET's CLOCK may read SUPERSAW's ports no more than its own: they
+    // carry sound, and its own are its own (journal/D-048).
+    for source in [
+        InputSource::Lane { slot: 1, port: 0 },
+        InputSource::Lane { slot: 0, port: 1 },
+    ] {
+        assert_eq!(
+            ask(
+                &mut server,
+                &mut engine,
+                &Request::SetInput {
+                    instance: 0,
+                    port: 0,
+                    source,
+                }
+            ),
+            Reply::Error(Error::Refused(Refused::NoSuch)),
+            "{source:?}"
+        );
+    }
     // A parameter of the instance at a position, not of the first of a kind.
     let level = 5;
     assert_eq!(

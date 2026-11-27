@@ -17,7 +17,10 @@ Architectural decisions behind each change are in `journal/` (French).
   effect); a port is an assignment, strictly, its setting's own value no
   longer shown. Ports that carry sound
   and the app's own are not offered. Probe protocol 11: `cargo probe assign
-  … input=1:note`, the browser page's input list.
+  … input=1:note`, the browser page's input list. An input port on the
+  routing page reads such a port too: `MELODY`'s `CLOCK <- 1:THRU` steps
+  on `RATCHET`'s copy of `TR1`, a trigger being high from 1 V (`cargo
+  probe route @1 clock=1:thru`).
 - **`MELODY`** (journal/D-047), in a new `SEQUENCE` column of the app
   menu: a looping sequence of up to 32 random but controllable notes,
   clocked by `TR1` and armed by `TR2`, each step drawn anew with the chance

@@ -54,7 +54,9 @@ picks a row, the right one turns it. An output (`A`, `B`, `SUB` for
 `SUPERSAW`) steps through `OFF` and the jacks `A` to `D`, skipping those
 another app holds; an input the app reads by itself (`RATCHET`'s `CLOCK`,
 `SCOPE`'s `IN`) steps through the four jacks of its kind, which apps may
-share. The right encoder stops at the ends instead of wrapping round: a
+share, then the ports of the other apps that carry a level (`1:THRU`,
+journal/D-048): `MELODY`'s `CLOCK <- 1:THRU` steps on `RATCHET`'s copy of
+`TR1`, one tick late, a trigger input being high from 1 V. The right encoder stops at the ends instead of wrapping round: a
 quick turn down lands on `OFF`, the first place, and one up on the last free
 jack. An app's CV inputs are set in their own submenu: one of the four
 jacks, or past `CV4` an output port of another app that carries a level
@@ -429,7 +431,7 @@ cargo probe assign supersaw detune --center 5  # fit it to what CV2 carries, as 
 cargo probe assign @1 note input=1:note  # another app's port, as the submenu names it: slot 1 (@0), NOTE
 cargo probe add ratchet        # put RATCHET in the first empty slot, on the free outputs
 cargo probe instances          # the four slots, @0 to @3, where their ports go
-cargo probe route @0 sub=off   # its routing page from afar: sub=off, burst=d, clock=tr2
+cargo probe route @0 sub=off   # its routing page from afar: sub=off, burst=d, clock=tr2, clock=1:thru
 cargo probe set @1 prob 50     # @N names one instance; a name, the first of that app
 cargo probe focus @1           # show it on the screen; `remove @1` empties the slot
 ```

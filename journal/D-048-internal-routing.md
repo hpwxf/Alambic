@@ -6,8 +6,8 @@
 | **Date** | 2026-11-27 |
 | **Auteur** | Pascal Havé |
 | **Statut** | adoptée, révisée |
-| **Commits** | `48f3689` (ADR, plan `docs/plan/etape-15-routage-interne.md`) ; implémentation `1d868b9` ; révision du 2026-11-27 : ce commit |
-| **Relations** | étend l'`Assign` de D-035 / D-036 et son assignation par le trait (D-045) ; lit les ports des instances de D-046 ; les ports d'entrée de la page de routage restent ceux de D-046 (lot suivant) ; millivolts de D-005 ; premier pas du « routage futur » annoncé par D-043 |
+| **Commits** | `48f3689` (ADR, plan `docs/plan/etape-15-routage-interne.md`) ; implémentation `1d868b9` ; révision du 2026-11-27 (assignation stricte, noms) : `0d40cb2` ; ports d'entrée internes : ce commit |
+| **Relations** | étend l'`Assign` de D-035 / D-036 et son assignation par le trait (D-045) ; lit les ports des instances de D-046 ; les ports d'entrée de la carte d'entrées de D-046 lisent aussi un port interne (révision du 2026-11-27, ports d'entrée) ; millivolts de D-005 ; premier pas du « routage futur » annoncé par D-043 |
 
 ## 1. Contexte
 
@@ -104,3 +104,30 @@ demandée ensuite le remplace :
 **Ce qui ferait changer d'avis.** Le besoin de transformer une source interne (échelle, décalage, lissage, S&H, comme
 le popup de modulations de *squares-and-circles*) : des opérations propres à l'assignation, à décider à part. Deux
 ports d'une même app aux six premières lettres égales : une abréviation déclarée par le port.
+
+## Révision du 2026-11-27 : les ports d'entrée lisent aussi un port interne
+
+**Contexte.** Le lot suivant annoncé au § 4 : l'utilisateur demande qu'un port d'entrée d'une app, réglé dans la page
+de routage, lise une sortie d'une autre, « par exemple une horloge `TR1` lue sur une sortie de `RATCHET` ».
+
+**Options.** Où brancher : dans la carte d'entrées de l'instance (D-046), chaque voie d'entrée lisant une prise ou un
+port interne ; ou une entrée « virtuelle » de plus par app. Un port trigger lisant un niveau : un seuil fixe, ou un
+seuil réglable par port, ou le front montant du niveau seul.
+
+**Proposé et décidé.** L'assistant a retenu, sur la demande, la carte d'entrées :
+
+* `InputRoute` branche chaque voie sur une `InputSource` : une prise de son genre (`Jack`, 0 à 3) ou un port d'une
+  autre instance qui porte un niveau (`Lane { slot, port }`), comme une assignation ; ni l'app elle-même ni un port
+  audio, ce que `AppHost::set_input` refuse ;
+* un port d'entrée CV prend le niveau tel quel ; un port trigger est haut tant que le niveau atteint
+  `INTERNAL_TRIGGER_MV` (1 V : sous les 5 V des triggers et gates des applets, près du basculement des transistors
+  d'entrée) ; le niveau est celui du tick précédent, comme pour les assignations, donc une horloge interne arrive
+  avec 1 ms de retard ;
+* page de routage : l'encodeur droit passe des quatre prises (`TR1`–`TR4`, `CV1`–`CV4`) aux ports offerts
+  (`1:THRU`, `1:BURST`…) et s'arrête aux bouts ; la ligne écrit `CLOCK <- 1:THRU` ;
+* protocole 11 (non publié) : `Request::SetInput` porte une `InputSource`, `Reply::Instance::inputs` aussi ; sonde
+  `cargo probe route @1 clock=1:thru` (ou `1:#1`) ; la page propose les ports dans la liste de l'entrée.
+
+**Ce qui ferait changer d'avis.** Une source dont le niveau bas reste au-dessus de 1 V (une hauteur prise pour
+horloge) : un seuil par port. Une horloge rapide mal servie par le tick de retard : la valeur du tick en cours pour les
+emplacements de gauche, comme au § 5.

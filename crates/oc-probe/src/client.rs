@@ -12,8 +12,8 @@ use std::io::{self, Read, Write};
 use oc_core::framebuffer::LEN;
 use oc_core::platform::{CvChannel, MilliVolts};
 use oc_protocol::{
-    Assign, Error, FrameReader, Group, MAX_FRAME, ParamKind, ParamValue, Profile, Reply, Request,
-    SCREEN_PAGES, Sample, Target, VERSION, decode, encode,
+    Assign, Error, FrameReader, Group, InputSource, MAX_FRAME, ParamKind, ParamValue, Profile,
+    Reply, Request, SCREEN_PAGES, Sample, Target, VERSION, decode, encode,
 };
 
 /// The index of `NOTHING`, what an empty slot runs (journal/D-046).
@@ -169,8 +169,9 @@ pub struct InstanceEntry {
     pub focused: bool,
     /// The output each output port goes to (0 for A), `None` for nowhere.
     pub outputs: [Option<u8>; 4],
-    /// The jack each input port reads (0 for `CV1` or `TR1`).
-    pub inputs: [u8; 4],
+    /// What each input port reads: a jack (0 for `CV1` or `TR1`) or a port
+    /// of another instance (journal/D-048).
+    pub inputs: [InputSource; 4],
     /// Whether each output port carries a level another instance can read
     /// (journal/D-048).
     pub levels: [bool; 4],
@@ -638,17 +639,23 @@ impl<T: Read + Write> Client<T> {
         })
     }
 
-    /// Plugs input port `port` of the instance at `instance` into jack
-    /// `jack` of its kind: the instance as it now is.
+    /// Plugs input port `port` of the instance at `instance` into `source`,
+    /// a jack of its kind or a port of another instance: the instance as it
+    /// now is.
     ///
     /// # Errors
     ///
-    /// As [`Self::hello`]; no such port or jack.
-    pub fn set_input(&mut self, instance: u8, port: u8, jack: u8) -> Result<InstanceEntry> {
+    /// As [`Self::hello`]; no such port or jack, or a port it may not read.
+    pub fn set_input(
+        &mut self,
+        instance: u8,
+        port: u8,
+        source: InputSource,
+    ) -> Result<InstanceEntry> {
         self.instance_answer(&Request::SetInput {
             instance,
             port,
-            jack,
+            source,
         })
     }
 

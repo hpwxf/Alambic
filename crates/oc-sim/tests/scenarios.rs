@@ -256,6 +256,25 @@ fn supersaw_names_melodys_note_on_its_screen() {
 }
 
 #[test]
+fn melody_steps_on_ratchets_thru_through_its_clock() {
+    use oc_core::apps::{InputKind, InputSource};
+    let mut simulator = replay("internal_clock");
+    assert_eq!(simulator.current_app(), AppId::Melody, "in the second slot");
+    let clock = simulator
+        .apps()
+        .inputs_at(1)
+        .unwrap()
+        .source(InputKind::Trigger, 0);
+    assert_eq!(clock, InputSource::lane(0, 0), "CLOCK <- 1:THRU");
+    assert_eq!(
+        simulator.app::<MelodyApp>().sequence().position(),
+        Some(2),
+        "three clocks, through RATCHET"
+    );
+    assert_screen_matches(&mut simulator, "internal_clock");
+}
+
+#[test]
 fn melody_plays_its_sixth_step_of_sixteen() {
     let mut simulator = replay("melody");
     assert_eq!(simulator.current_app(), AppId::Melody);
@@ -509,6 +528,7 @@ fn every_scenario_file_has_a_test_and_a_snapshot() {
         "gfx_knobs",
         "gfx_curves",
         "gfx_sequencer",
+        "internal_clock",
         "internal_routing",
         "internal_routing_closed",
         "gfx_meters",

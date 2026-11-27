@@ -956,6 +956,14 @@ each setting does: `crates/oc-core/src/apps/melody/README.md`.
    own slot) is refused; the browser page's
    input list offers `1:NOTE` to `1:GATE` for `SUPERSAW`.
 
+6. Internal clock: `RATCHET` in slot 1 on `TR1`, `MELODY` in slot 2, its
+   routing page: `CLOCK` turned past `TR4` reads `1:THRU`, then `1:BURST`,
+   and no further. `CLOCK <- 1:THRU`, a clock on `TR1` only: `MELODY`
+   steps on each one; `1:BURST`, it steps on every trigger of the burst.
+   `RATCHET` replaced by `NOTHING`: `MELODY` stops.
+   `cargo probe route @1 clock=1:burst` sets it; `instances` prints
+   `CLOCK <- 1:BURST`.
+
 ### 9.4 — Calibration
 
 This step measures how far the module is from the factory calibration, then

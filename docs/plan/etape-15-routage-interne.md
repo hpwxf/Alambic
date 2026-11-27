@@ -3,7 +3,7 @@
 > Plan de l'étape 15, suivi par git (journal/D-048).
 > Révisé le 2026-11-27 (D-048, révision) : un port assigne strictement le réglage (comme `SET`, sans mise en forme) et
 > se nomme `1:NOTE` partout ; `+1a` et la lettre du port abandonnés. Ce qui suit sur `1a`, la lettre et l'effet d'un
-> port est l'état d'avant.
+> port est l'état d'avant. Puis (lot 15g) les ports d'entrée lisent aussi un port interne, un trigger haut dès 1 V.
 
 ## Contexte
 

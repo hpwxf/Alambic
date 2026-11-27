@@ -155,3 +155,56 @@ fn an_applet_is_never_offered_its_own_ports_nor_an_audio_one() {
     assert!(!bus.offers(1, 0), "SUPERSAW's L/MONO");
     assert!(engine.apps().bus(Some(1)).offers(0, 3), "MELODY's GATE");
 }
+
+/// Holds `button` for `ticks`, then lets it go.
+fn hold(engine: &mut MockEngine, button: Button, ticks: u32) {
+    engine.parts_mut().3.hold(button, true);
+    for _ in 0..ticks {
+        tick(engine, false);
+    }
+    engine.parts_mut().3.hold(button, false);
+    for _ in 0..4 {
+        tick(engine, false);
+    }
+}
+
+#[test]
+fn melody_steps_on_ratchets_thru_once_its_clock_reads_it() {
+    use oc_core::apps::{InputKind, InputSource};
+    use oc_core::buttons::LONG_PRESS_TICKS;
+
+    // RATCHET in the first slot copies TR1 to THRU; MELODY in the second,
+    // with the focus, would read TR1 itself.
+    let mut engine = mock_engine(0);
+    engine.select_app(AppId::Ratchet);
+    assert!(engine.select_app_at(1, AppId::Melody));
+    assert!(engine.apps_mut().set_focus(1));
+    // Its routing page (a long up): CLOCK is the first input, after its four
+    // outputs; past TR4 comes RATCHET's first port, THRU.
+    hold(&mut engine, Button::Up, LONG_PRESS_TICKS + 10);
+    assert!(engine.routing_is_open());
+    turn(&mut engine, 0, 4);
+    turn(&mut engine, 1, 4);
+    let plugged = engine
+        .apps()
+        .inputs_at(1)
+        .unwrap()
+        .source(InputKind::Trigger, 0);
+    assert_eq!(plugged, InputSource::lane(0, 0), "CLOCK <- 1:THRU");
+    hold(&mut engine, Button::Up, LONG_PRESS_TICKS + 10);
+    assert!(!engine.routing_is_open());
+
+    // Each clock on TR1 reaches MELODY through RATCHET, one tick late.
+    let position = |engine: &MockEngine| engine.app::<MelodyApp>().sequence().position();
+    let before = position(&engine);
+    for _ in 0..3 {
+        clock(&mut engine);
+    }
+    assert_ne!(position(&engine), before, "MELODY stepped on THRU");
+
+    // RATCHET gone: nothing clocks MELODY any more.
+    engine.select_app_at(0, AppId::Nothing);
+    let held = position(&engine);
+    clock(&mut engine);
+    assert_eq!(position(&engine), held, "the port reads 0 V, low");
+}

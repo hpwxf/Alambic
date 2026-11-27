@@ -9,6 +9,7 @@
 
 use oc_core::Engine;
 use oc_core::TickReport;
+use oc_core::apps::InputSource;
 use oc_core::apps::param::{Kind, ParamSpec, Refused};
 use oc_core::apps::{App, AppHost, AppId, InputKind, Instance, MAX_INSTANCES, PortSignal};
 use oc_core::modulation::Source;
@@ -371,10 +372,10 @@ impl Server {
             Request::SetInput {
                 instance,
                 port,
-                jack,
+                source,
             } => {
                 let position = usize::from(instance);
-                match apps.set_input(position, usize::from(port), usize::from(jack)) {
+                match apps.set_input(position, usize::from(port), source) {
                     Ok(_) => instance_reply(&*apps, position).unwrap_or(Reply::Done),
                     Err(_) if apps.at(position).is_none() => Reply::Error(Error::NoSuchApp),
                     Err(refused) => Reply::Error(Error::Refused(refused)),
@@ -630,8 +631,8 @@ fn instance_reply(apps: &AppHost, position: usize) -> Option<Reply<'static>> {
         inputs: core::array::from_fn(|port| {
             ports
                 .get(port)
-                .and_then(|spec| inputs.jack(spec.kind, spec.lane))
-                .map_or(0, count)
+                .and_then(|spec| inputs.source(spec.kind, spec.lane))
+                .unwrap_or(InputSource::Jack(0))
         }),
         levels: core::array::from_fn(|port| {
             outputs

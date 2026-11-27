@@ -499,7 +499,10 @@ function drawRouting() {
   }
   for (let port = 0; port < appView.input_port_count; port += 1) {
     const kind = appView.input_port_trigger(port) ? "TR" : "CV";
-    const jacks = [0, 1, 2, 3].map((jack) => [`${kind}${jack + 1}`, jack]);
+    // The four jacks of its kind, then the ports of the other instances that
+    // carry a level (`1:BURST`, journal/D-048).
+    const jacks = [0, 1, 2, 3].map((jack) => [`${kind}${jack + 1}`, jack])
+      .concat(Array.from(instances.lane_codes(at), (code) => [instances.source_label(code), code]));
     line(appView.input_port_name(port), "←", jacks, instances.input(at, port),
       (jack) => oc.Instances.input_request(at, port, jack));
   }
