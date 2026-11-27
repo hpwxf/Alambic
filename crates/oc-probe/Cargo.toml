@@ -15,7 +15,7 @@ default = ["cli"]
 # parsing, PNG output. Without it the crate is the client and the rendering
 # alone, with no operating-system dependency, which is what the browser tool
 # reuses (`oc-web`, journal/D-031).
-cli = ["dep:anyhow", "dep:clap", "dep:serialport", "dep:png"]
+cli = ["dep:anyhow", "dep:clap", "dep:serialport", "dep:png", "dep:toml"]
 
 [[bin]]
 name = "oc-probe"
@@ -24,6 +24,10 @@ required-features = ["cli"]
 [dependencies]
 oc-core.workspace = true
 oc-protocol.workspace = true
+# The patch file (journal/D-050): its structure, `MELODY`'s steps decoded
+# from the module's bytes.
+serde = { workspace = true, features = ["std"] }
+postcard = { workspace = true, features = ["alloc"] }
 anyhow = { workspace = true, optional = true }
 clap = { workspace = true, optional = true }
 # The standard cross-platform serial port crate. Its default `libudev`
@@ -32,6 +36,8 @@ clap = { workspace = true, optional = true }
 serialport = { version = "4.10", default-features = false, optional = true }
 # Writes `oc-probe screen --png`.
 png = { version = "0.18", optional = true }
+# Reads and writes the patch file (`oc-probe save` / `load`, journal/D-050).
+toml = { version = "0.9", optional = true }
 
 [lints]
 workspace = true

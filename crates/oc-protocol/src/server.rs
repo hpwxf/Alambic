@@ -11,7 +11,9 @@ use oc_core::Engine;
 use oc_core::TickReport;
 use oc_core::apps::InputSource;
 use oc_core::apps::param::{Kind, ParamSpec, Refused};
-use oc_core::apps::{App, AppHost, AppId, InputKind, Instance, MAX_INSTANCES, PortSignal};
+use oc_core::apps::{
+    App, AppHost, AppId, InputKind, Instance, MAX_INSTANCES, PortSignal, STATE_MAX,
+};
 use oc_core::modulation::Source;
 use oc_core::platform::{
     AnalogIn, AnalogOut, CV_CHANNELS, Clock, Controls, CvChannel, DigitalIn, Display, MilliVolts,
@@ -20,8 +22,8 @@ use oc_core::platform::{
 
 use crate::queue::ByteQueue;
 use crate::{
-    Assign, Error, FrameReader, Group, MAX_FRAME, ParamKind, Reply, Request, SCREEN_PAGES, Sample,
-    Target, VERSION, decode, encode,
+    Assign, Error, FrameReader, Group, MAX_FRAME, ParamKind, Reply, Request, SCREEN_PAGES,
+    STATE_CHUNK, STATE_REPLY_CHUNK, Sample, Target, VERSION, decode, encode,
 };
 
 /// Room for the frames waiting to go out: a full screen capture (eight
@@ -49,6 +51,10 @@ pub struct Server {
     stream_every: u16,
     since_sample: u16,
     reboot_requested: bool,
+    /// An applet's own state as [`Request::SetState`] pieces bring it
+    /// (journal/D-050), and how much of it came.
+    state: [u8; STATE_MAX],
+    state_len: usize,
 }
 
 impl Server {
@@ -63,6 +69,8 @@ impl Server {
             stream_every: 0,
             since_sample: 0,
             reboot_requested: false,
+            state: [0; STATE_MAX],
+            state_len: 0,
         }
     }
 
@@ -230,7 +238,9 @@ impl Server {
             | Request::ListInstances
             | Request::Focus { .. }
             | Request::SetRoute { .. }
-            | Request::SetInput { .. }) => match self.serve_app(request, engine) {
+            | Request::SetInput { .. }
+            | Request::GetState { .. }
+            | Request::SetState { .. }) => match self.serve_app(request, engine) {
                 Some(reply) => reply,
                 None => return,
             },
@@ -303,6 +313,22 @@ impl Server {
                 }
                 _ => Reply::Error(Error::NoSuchApp),
             },
+            Request::GetState { app, offset } => {
+                return self.send_state(engine.apps(), app, offset);
+            }
+            Request::SetState {
+                app,
+                offset,
+                length,
+                bytes,
+                last,
+            } => self.take_state(
+                engine.apps_mut(),
+                app,
+                offset,
+                &bytes[..usize::from(length).min(STATE_CHUNK)],
+                last,
+            ),
             Request::GetAssign { app, param } => match read_target(engine.apps(), app, &mut None) {
                 Some(app) => input_reply(app, param),
                 None => Reply::Error(Error::NoSuchApp),
@@ -533,6 +559,69 @@ impl Server {
     }
 
     /// Queues one reply whole, or drops it if the host is not keeping up.
+    /// Sends the piece of `target`'s own state from `offset` (journal/D-050):
+    /// `None` once sent, the refusal otherwise.
+    fn send_state(
+        &mut self,
+        apps: &AppHost,
+        target: Target,
+        offset: u16,
+    ) -> Option<Reply<'static>> {
+        let mut fresh = None;
+        let Some(app) = read_target(apps, target, &mut fresh) else {
+            return Some(Reply::Error(Error::NoSuchApp));
+        };
+        let mut buffer = [0; STATE_MAX];
+        let Some(total) = app.save_state(&mut buffer) else {
+            return Some(Reply::Error(Error::Refused(Refused::NoSuch)));
+        };
+        let start = usize::from(offset).min(total);
+        let end = (start + STATE_REPLY_CHUNK).min(total);
+        self.send(&Reply::State {
+            total: u16::try_from(total).unwrap_or(u16::MAX),
+            offset: u16::try_from(start).unwrap_or(u16::MAX),
+            bytes: &buffer[start..end],
+        });
+        None
+    }
+
+    /// Keeps a piece of an applet's own state, and on the last one reads the
+    /// whole back into `target` (journal/D-050). A piece that does not
+    /// follow the last one, or overflows [`STATE_MAX`], is refused and
+    /// starts nothing.
+    fn take_state(
+        &mut self,
+        apps: &mut AppHost,
+        target: Target,
+        offset: u16,
+        piece: &[u8],
+        last: bool,
+    ) -> Reply<'static> {
+        let start = usize::from(offset);
+        if start == 0 {
+            self.state_len = 0;
+        }
+        let end = start + piece.len();
+        if start != self.state_len || end > STATE_MAX {
+            self.state_len = 0;
+            return Reply::Error(Error::Refused(Refused::OutOfRange));
+        }
+        self.state[start..end].copy_from_slice(piece);
+        self.state_len = end;
+        if !last {
+            return Reply::Done;
+        }
+        let len = core::mem::take(&mut self.state_len);
+        let state = &self.state[..len];
+        match write_target(apps, target) {
+            Some(app) => match app.load_state(state) {
+                Ok(()) => Reply::Done,
+                Err(refused) => Reply::Error(Error::Refused(refused)),
+            },
+            None => Reply::Error(Error::NoSuchApp),
+        }
+    }
+
     fn send(&mut self, reply: &Reply<'_>) {
         let mut buffer = [0; MAX_FRAME];
         if let Ok(frame) = encode(reply, &mut buffer) {

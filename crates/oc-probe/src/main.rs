@@ -162,6 +162,19 @@ enum Command {
         #[arg(value_name = "PORT=JACK")]
         routes: Vec<String>,
     },
+    /// Saves the module's patch to a TOML file: each slot's applet, its
+    /// routes, settings, CV inputs and steps; never the calibration
+    /// (journal/D-050).
+    Save {
+        /// The file to write.
+        file: std::path::PathBuf,
+    },
+    /// Loads a patch file onto the module, in place of everything that
+    /// runs, and says what it passed over.
+    Load {
+        /// The file to read.
+        file: std::path::PathBuf,
+    },
 }
 
 /// What `assign` reads or changes.
@@ -235,18 +248,7 @@ fn main() -> anyhow::Result<()> {
         Command::Sweep(args) => sweep(&mut session, &args),
         Command::Screen { png, scale } => screen(&mut session, png, scale),
         Command::Reboot => unreachable!("served before the session"),
-        Command::Instances => {
-            let instances = session.instances()?;
-            let ports = apps::PortNames::of(&instances);
-            for instance in instances {
-                let description = session.describe(Target::Instance(instance.position))?;
-                println!("{}", instance_line(&mut session, &instance)?);
-                for line in apps::routing_text(&description, &instance, &ports).lines() {
-                    println!("    {line}");
-                }
-            }
-            Ok(())
-        }
+        Command::Instances => print_instances(&mut session),
         Command::Add { app } => {
             let app = found(&mut session, &app)?;
             let instance = session.add_instance(app.index)?;
@@ -262,6 +264,8 @@ fn main() -> anyhow::Result<()> {
             Ok(())
         }
         Command::Route { instance, routes } => route(&mut session, &instance, &routes),
+        Command::Save { file } => save_patch(&mut session, &file),
+        Command::Load { file } => load_patch(&mut session, &file),
         Command::Apps => {
             for app in session.apps()? {
                 println!(
@@ -310,6 +314,45 @@ fn main() -> anyhow::Result<()> {
         }
         Command::Assign(args) => assign(&mut session, &args),
     }
+}
+
+/// Lists the slots, each with where its ports go.
+fn print_instances(session: &mut Session) -> anyhow::Result<()> {
+    let instances = session.instances()?;
+    let ports = apps::PortNames::of(&instances);
+    for instance in instances {
+        let description = session.describe(Target::Instance(instance.position))?;
+        println!("{}", instance_line(session, &instance)?);
+        for line in apps::routing_text(&description, &instance, &ports).lines() {
+            println!("    {line}");
+        }
+    }
+    Ok(())
+}
+
+/// Writes the module's patch to `file` (journal/D-050).
+fn save_patch(session: &mut Session, file: &std::path::Path) -> anyhow::Result<()> {
+    let saved = oc_probe::patch::save(session)?;
+    let text = saved.to_toml().map_err(anyhow::Error::msg)?;
+    std::fs::write(file, text).with_context(|| format!("writing {}", file.display()))?;
+    eprintln!("saved {} slot(s) to {}", saved.slots.len(), file.display());
+    Ok(())
+}
+
+/// Puts the patch in `file` on the module, saying what it passed over.
+fn load_patch(session: &mut Session, file: &std::path::Path) -> anyhow::Result<()> {
+    let text =
+        std::fs::read_to_string(file).with_context(|| format!("reading {}", file.display()))?;
+    let loaded = oc_probe::patch::Patch::from_toml(&text).map_err(anyhow::Error::msg)?;
+    for line in oc_probe::patch::load(session, &loaded)? {
+        eprintln!("passed over: {line}");
+    }
+    eprintln!(
+        "loaded {} slot(s) from {}",
+        loaded.slots.len(),
+        file.display()
+    );
+    Ok(())
 }
 
 /// Prints a parameter's CV input, after changing the fields given and

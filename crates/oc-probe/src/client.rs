@@ -13,7 +13,7 @@ use oc_core::framebuffer::LEN;
 use oc_core::platform::{CvChannel, MilliVolts};
 use oc_protocol::{
     Assign, Error, FrameReader, Group, InputSource, MAX_FRAME, ParamKind, ParamValue, Profile,
-    Reply, Request, SCREEN_PAGES, Sample, Target, VERSION, decode, encode,
+    Reply, Request, SCREEN_PAGES, STATE_CHUNK, Sample, Target, VERSION, decode, encode,
 };
 
 /// The index of `NOTHING`, what an empty slot runs (journal/D-046).
@@ -260,6 +260,11 @@ enum Answer {
         level: bool,
     },
     Instance(InstanceEntry),
+    State {
+        total: u16,
+        offset: u16,
+        bytes: Vec<u8>,
+    },
 }
 
 /// A session with one module.
@@ -542,6 +547,78 @@ impl<T: Read + Write> Client<T> {
         }
     }
 
+    /// What applet `app` keeps beside its parameters (`MELODY`'s steps),
+    /// read piece by piece; `None` for an applet with no such state
+    /// (journal/D-050).
+    ///
+    /// # Errors
+    ///
+    /// As [`Self::hello`]; no applet at that target.
+    pub fn get_state(&mut self, app: impl Into<Target>) -> Result<Option<Vec<u8>>> {
+        let app = app.into();
+        let mut state = Vec::new();
+        loop {
+            let offset = u16::try_from(state.len()).unwrap_or(u16::MAX);
+            match self.ask(&Request::GetState { app, offset }) {
+                Ok(Answer::State {
+                    total,
+                    offset: at,
+                    bytes,
+                }) => {
+                    if usize::from(at) != state.len()
+                        || (bytes.is_empty() && state.len() < usize::from(total))
+                    {
+                        return Err(ProbeError::Unexpected("the rest of a state"));
+                    }
+                    state.extend_from_slice(&bytes);
+                    if state.len() >= usize::from(total) {
+                        return Ok(Some(state));
+                    }
+                }
+                Err(ProbeError::Refused(Error::Refused(oc_protocol::Refused::NoSuch))) => {
+                    return Ok(None);
+                }
+                Err(error) => return Err(error),
+                Ok(_) => return Err(ProbeError::Unexpected("a state")),
+            }
+        }
+    }
+
+    /// Gives applet `app` back the state `state` read by [`Self::get_state`],
+    /// piece by piece.
+    ///
+    /// # Errors
+    ///
+    /// As [`Self::hello`]; no applet at that target, one with no such
+    /// state, or bytes it cannot read.
+    pub fn set_state(&mut self, app: impl Into<Target>, state: &[u8]) -> Result<()> {
+        let app = app.into();
+        let pieces = state.chunks(STATE_CHUNK).count().max(1);
+        for (index, piece) in state
+            .chunks(STATE_CHUNK)
+            .chain(
+                // An empty state is still one, last, piece.
+                core::iter::once(&[][..]).take(usize::from(state.is_empty())),
+            )
+            .enumerate()
+        {
+            let mut bytes = [0; STATE_CHUNK];
+            bytes[..piece.len()].copy_from_slice(piece);
+            let request = Request::SetState {
+                app,
+                offset: u16::try_from(index * STATE_CHUNK).unwrap_or(u16::MAX),
+                length: u8::try_from(piece.len()).unwrap_or(0),
+                bytes,
+                last: index + 1 == pieces,
+            };
+            match self.ask(&request)? {
+                Answer::Done => {}
+                _ => return Err(ProbeError::Unexpected("done")),
+            }
+        }
+        Ok(())
+    }
+
     /// Gives parameter `param` of applet `app` the CV input `assign`, as
     /// the submenu could: what the applet applied.
     ///
@@ -767,35 +844,9 @@ impl<T: Read + Write> Client<T> {
                 assign,
                 sweep,
             } => Answer::Input(index, InputEntry { assign, sweep }),
-            Reply::Port {
-                output,
-                name,
-                trigger,
-                level,
-                ..
-            } => Answer::Port {
-                output,
-                name: name.to_owned(),
-                trigger,
-                level,
-            },
-            Reply::Instance {
-                position,
-                app,
-                focused,
-                outputs,
-                inputs,
-                levels,
-                names,
-            } => Answer::Instance(InstanceEntry {
-                position,
-                app,
-                focused,
-                outputs,
-                inputs,
-                levels,
-                names: names.map(str::to_owned),
-            }),
+            reply @ (Reply::Port { .. } | Reply::Instance { .. } | Reply::State { .. }) => {
+                instance_answer(&reply)
+            }
         };
         Ok(Some(answer))
     }
@@ -817,5 +868,51 @@ impl<T: Read + Write> Client<T> {
             }
             self.received.extend(&chunk[..count]);
         }
+    }
+}
+
+/// What a reply about the instances says: a port of a description, an
+/// instance and where its ports go, or a piece of an applet's own state.
+fn instance_answer(reply: &Reply<'_>) -> Answer {
+    match *reply {
+        Reply::Port {
+            output,
+            name,
+            trigger,
+            level,
+            ..
+        } => Answer::Port {
+            output,
+            name: name.to_owned(),
+            trigger,
+            level,
+        },
+        Reply::Instance {
+            position,
+            app,
+            focused,
+            outputs,
+            inputs,
+            levels,
+            names,
+        } => Answer::Instance(InstanceEntry {
+            position,
+            app,
+            focused,
+            outputs,
+            inputs,
+            levels,
+            names: names.map(str::to_owned),
+        }),
+        Reply::State {
+            total,
+            offset,
+            bytes,
+        } => Answer::State {
+            total,
+            offset,
+            bytes: bytes.to_vec(),
+        },
+        _ => Answer::Done,
     }
 }

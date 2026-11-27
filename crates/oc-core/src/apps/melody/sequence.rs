@@ -23,6 +23,18 @@ use super::window::{PLACE_MAX, Window};
 /// The most steps a sequence has.
 pub const MAX_STEPS: usize = 32;
 
+/// Every step's place and rhythm ranks: what a patch keeps of a sequence
+/// beside the settings (journal/D-050), serialised by `postcard`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct Steps {
+    /// Each step's place in the window, 0 to the window's top.
+    pub places: [u16; MAX_STEPS],
+    /// Each step's play rank, compared with `DENSITY`.
+    pub plays: [u8; MAX_STEPS],
+    /// Each step's tie rank, compared with `LEGATO`.
+    pub ties: [u8; MAX_STEPS],
+}
+
 /// The longest walk from one step to the next, in degrees.
 pub const MAX_JUMP: u8 = 7;
 
@@ -152,6 +164,26 @@ impl Sequence {
         sequence.reroll(draw);
         sequence.reroll_rhythm();
         sequence
+    }
+
+    /// The steps, their places and their rhythm, as a patch keeps them
+    /// (journal/D-050).
+    #[must_use]
+    pub fn steps(&self) -> Steps {
+        Steps {
+            places: self.places,
+            plays: self.beats.map(|beat| beat.play),
+            ties: self.beats.map(|beat| beat.tie),
+        }
+    }
+
+    /// Takes `steps` back, every place and rank being one a step can hold;
+    /// the step playing and the draws to come stay.
+    pub fn set_steps(&mut self, steps: &Steps) {
+        self.places = steps.places;
+        for ((beat, &play), &tie) in self.beats.iter_mut().zip(&steps.plays).zip(&steps.ties) {
+            *beat = Beat { play, tie };
+        }
     }
 
     /// Takes `edited`'s steps, their places and their rhythm, keeping the

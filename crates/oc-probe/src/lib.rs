@@ -12,6 +12,7 @@
 pub mod apps;
 pub mod client;
 pub mod measure;
+pub mod patch;
 #[cfg(feature = "cli")]
 pub mod port;
 pub mod render;

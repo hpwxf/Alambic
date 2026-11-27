@@ -31,7 +31,7 @@ pub mod window;
 use core::fmt::Write as _;
 
 use self::scale::{CHORD_NAMES, Chord, ROOT_NAMES, SCALE_NAMES, Scale, chord};
-use self::sequence::{Draw, MAX_JUMP, MAX_STEPS, Rhythm, Sequence};
+use self::sequence::{Draw, MAX_JUMP, MAX_STEPS, Rhythm, Sequence, Steps};
 use self::window::{MAX_PERCENT, MAX_SPREAD, PLACE_MAX, Window};
 use crate::apps::param::{ParamSpec, ParamValue, Refused, Unit};
 use crate::apps::sound::Params;
@@ -1282,6 +1282,20 @@ const INPUTS: [InputPort; 2] = [
 ];
 
 impl App for MelodyApp {
+    /// Its steps, which no parameter holds (journal/D-050).
+    fn save_state(&self, out: &mut [u8]) -> Option<usize> {
+        postcard::to_slice(&self.sequence.steps(), out)
+            .ok()
+            .map(|used| used.len())
+    }
+
+    /// Takes steps saved by [`Self::save_state`] back.
+    fn load_state(&mut self, bytes: &[u8]) -> Result<(), Refused> {
+        let steps: Steps = postcard::from_bytes(bytes).map_err(|_| Refused::OutOfRange)?;
+        self.sequence.set_steps(&steps);
+        Ok(())
+    }
+
     /// The step editor's long press draws a new note (journal/D-047): it is
     /// not the freeze's (journal/D-049).
     fn takes_long_right(&self) -> bool {

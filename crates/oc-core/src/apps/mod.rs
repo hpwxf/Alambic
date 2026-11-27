@@ -61,6 +61,10 @@ use crate::platform::{
     BUTTONS, Button, CV_CHANNELS, ControlEvents, CvChannel, ENCODERS, MilliVolts, TRIGGER_CHANNELS,
 };
 
+/// The most bytes an applet's own state takes ([`App::save_state`],
+/// journal/D-050).
+pub const STATE_MAX: usize = 256;
+
 /// How many slots there are, each running an applet, [`AppId::Nothing`]
 /// when empty, that takes some of the outputs (journal/D-046): four, one
 /// per output at most.
@@ -485,6 +489,25 @@ pub trait App: Any {
     /// freeze's (journal/D-049).
     fn takes_long_right(&self) -> bool {
         false
+    }
+
+    /// Writes into `out` what the applet keeps beside its parameters and
+    /// would lose in a fresh instance (`MELODY`'s steps), serialised by
+    /// `postcard`: how many bytes, `None` for an applet with no such state
+    /// or one that does not fit [`STATE_MAX`] (journal/D-050).
+    fn save_state(&self, _out: &mut [u8]) -> Option<usize> {
+        None
+    }
+
+    /// Reads back what [`Self::save_state`] wrote, bounded as the panel
+    /// would bound it.
+    ///
+    /// # Errors
+    ///
+    /// [`Refused::NoSuch`] for an applet with no such state,
+    /// [`Refused::OutOfRange`] for bytes it cannot read.
+    fn load_state(&mut self, _bytes: &[u8]) -> Result<(), Refused> {
+        Err(Refused::NoSuch)
     }
 
     /// Takes from `edited`, a copy of itself the panel edited during a
