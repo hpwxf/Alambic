@@ -447,3 +447,12 @@ place.
 
 **Ce qui ferait changer d'avis** : `select_at` et `Instance::new` (2 608 o, sur les deux chemins) qui grandiraient
 avec une applet bien plus grande : construire chaque applet par sa propre fonction, puis le tas.
+
+## Note (2026-11-27) — la part de chaque applet estimée par ses symboles
+
+Demande de l'utilisateur. `cargo xtask size` finit par la part estimée de chaque applet dans `.text` : la somme des
+fonctions dont le nom démanglé est dans `oc_core::apps::<applet>` ou `oc_dsp::<applet>` (`xtask::applet_size`, sur
+`llvm-nm`), les applets trouvées par ces noms, puis les parts partagées. L'appel par `dyn App` depuis une fonction
+jamais inlinée garde les méthodes d'une applet à son nom ; ce qui est inliné dans du code partagé (le DSP dans
+l'interruption audio, les constructeurs dans `Instance::new`) compte comme partagé. Une estimation, gratuite à chaque
+`size` ; le coût exact d'une applet reste la différence de deux images, avec et sans elle.

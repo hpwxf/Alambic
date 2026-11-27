@@ -101,6 +101,13 @@ it already, this file only points to it.
   DAC bits.
 * Every access to the PIT waits on its 1 MHz domain for microseconds: never
   read it per period.
+* `cargo xtask size` ends with each applet's share of `.text`, estimated
+  from the image's symbols (`xtask::applet_size`): the functions named in
+  `oc_core::apps::<applet>` or `oc_dsp::<applet>`, which `dyn App` keeps
+  apart from the shared code. What is inlined into shared code (the DSP into
+  the audio interrupt, the constructors into `Instance::new`) counts as
+  shared; an applet's exact cost is still the difference of two builds, with
+  and without it (journal/D-038).
 * The engine times its stages through `Clock::fine_count` (the core's cycle
   counter on the module; the virtual clock's time, read without advancing
   it, elsewhere), so profiling never changes a test or a golden screen
