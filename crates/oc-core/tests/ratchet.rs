@@ -5,7 +5,7 @@ use oc_core::apps::AppId;
 use oc_core::apps::ratchet::RatchetApp;
 use oc_core::apps::ratchet::burst::{Count, Model};
 use oc_core::apps::ratchet::{Setting, TRIGGER_MV, sweep};
-use oc_core::modulation::{AssignLine, Effect};
+use oc_core::modulation::{AssignLine, Effect, Source};
 use oc_core::platform::{Button, CvChannel, TriggerChannel};
 use oc_core::settings::Settings;
 use oc_core::testing::{MockEngine, mock_engine_at_boot};
@@ -188,12 +188,12 @@ fn an_input_adds_to_a_setting_or_sets_it() {
     let count = *engine.app::<RatchetApp>().assign(Setting::Count).unwrap();
     assert_eq!(
         (count.input, count.effect),
-        (Some(CvChannel::One), Effect::Add)
+        (Some(Source::Jack(CvChannel::One)), Effect::Add)
     );
     let time = *engine.app::<RatchetApp>().assign(Setting::Time).unwrap();
     assert_eq!(
         (time.input, time.effect),
-        (Some(CvChannel::Two), Effect::Set)
+        (Some(Source::Jack(CvChannel::Two)), Effect::Set)
     );
     {
         let (analog_in, ..) = engine.parts_mut();

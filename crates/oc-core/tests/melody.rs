@@ -5,7 +5,7 @@
 use oc_core::apps::melody::scale::{Chord, Scale, chord};
 use oc_core::apps::melody::{GATE_MV, MelodyApp, Setting, UNKNOWN_GATE_MICROS};
 use oc_core::apps::{App, AppId};
-use oc_core::modulation::Assign;
+use oc_core::modulation::{Assign, Source};
 use oc_core::platform::{Button, CvChannel, MilliVolts, TriggerChannel};
 use oc_core::settings::Settings;
 use oc_core::testing::{MockEngine, mock_engine_at_boot};
@@ -311,7 +311,7 @@ fn an_input_given_to_transpose_moves_it_a_volt_an_octave() {
         .set_assign(
             transpose,
             Assign {
-                input: Some(CvChannel::One),
+                input: Some(Source::Jack(CvChannel::One)),
                 ..Assign::NONE
             },
         )

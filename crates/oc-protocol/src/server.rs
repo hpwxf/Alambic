@@ -10,7 +10,8 @@
 use oc_core::Engine;
 use oc_core::TickReport;
 use oc_core::apps::param::{Kind, ParamSpec, Refused};
-use oc_core::apps::{App, AppHost, AppId, InputKind, Instance, MAX_INSTANCES};
+use oc_core::apps::{App, AppHost, AppId, InputKind, Instance, MAX_INSTANCES, PortSignal};
+use oc_core::modulation::Source;
 use oc_core::platform::{
     AnalogIn, AnalogOut, CV_CHANNELS, Clock, Controls, CvChannel, DigitalIn, Display, MilliVolts,
     TriggerChannel,
@@ -305,6 +306,11 @@ impl Server {
                 Some(app) => input_reply(app, param),
                 None => Reply::Error(Error::NoSuchApp),
             },
+            Request::SetAssign { app, assign, .. }
+                if !source_offered(engine.apps(), app, assign) =>
+            {
+                Reply::Error(Error::Refused(Refused::NoSuch))
+            }
             Request::SetAssign { app, param, assign } => {
                 match write_target(engine.apps_mut(), app) {
                     Some(app) => match app.set_assign(usize::from(param), assign) {
@@ -440,6 +446,7 @@ impl Server {
                 index: count(index),
                 name: port.name,
                 trigger: false,
+                level: port.signal == PortSignal::Cv,
             });
         }
         for (index, port) in app.input_ports().iter().enumerate() {
@@ -448,6 +455,7 @@ impl Server {
                 index: count(index),
                 name: port.name,
                 trigger: port.kind == InputKind::Trigger,
+                level: false,
             });
         }
         self.send(&Reply::Done);
@@ -590,12 +598,30 @@ fn write_target(apps: &mut AppHost, target: Target) -> Option<&mut dyn App> {
     }
 }
 
+/// Whether the instance `target` names may read `assign`'s input: a jack,
+/// or a port of another instance that carries a level (journal/D-048). A
+/// target that runs nowhere is the write's to refuse.
+fn source_offered(apps: &AppHost, target: Target, assign: Assign) -> bool {
+    let Some(Source::Lane { slot, port }) = assign.input else {
+        return true;
+    };
+    let reader = match target {
+        Target::Instance(position) => Some(usize::from(position)),
+        Target::App(app) => app_id(app).and_then(|id| apps.position_of(id)),
+    };
+    reader.is_none_or(|reader| {
+        apps.bus(Some(reader))
+            .offers(usize::from(slot), usize::from(port))
+    })
+}
+
 /// What the instance at `position` runs and where its ports go.
 fn instance_reply(apps: &AppHost, position: usize) -> Option<Reply<'static>> {
     let app = apps.at(position)?;
     let route = apps.route_at(position)?;
     let inputs = apps.inputs_at(position)?;
     let ports = app.input_ports();
+    let outputs = app.output_ports();
     Some(Reply::Instance {
         position: count(position),
         app: count(app.id().index()),
@@ -606,6 +632,11 @@ fn instance_reply(apps: &AppHost, position: usize) -> Option<Reply<'static>> {
                 .get(port)
                 .and_then(|spec| inputs.jack(spec.kind, spec.lane))
                 .map_or(0, count)
+        }),
+        levels: core::array::from_fn(|port| {
+            outputs
+                .get(port)
+                .is_some_and(|port| port.signal == PortSignal::Cv)
         }),
     })
 }

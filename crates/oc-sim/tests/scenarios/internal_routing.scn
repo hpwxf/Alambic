@@ -1,0 +1,49 @@
+# oc-sim scenario v1
+# Internal routing (journal/D-048): launch MELODY in the first slot as in
+# melody.scn, step the focus to the second slot with a short press of down,
+# open the app menu there (it opens on NOTHING), pick the SOUND column with
+# the left encoder and SUPERSAW with the right one, launch it. Click the
+# right encoder on NOTE to open its input submenu and turn INPUT four
+# detents: past CV2 to CV4, to MELODY's first port. Then four clocks on TR1.
+# The snapshot shows the submenu with 1:NOTE as its input, the scale pushed
+# right of it, the CV bar at MELODY's note.
+ticks 1100
+20  button up down
+60  button down down
+70  button up up
+70  button down up
+90  button down down
+100 button down up
+110 button down down
+120 button down up
+130 button down down
+140 button down up
+150 button down down
+160 button down up
+170 button down down
+180 button down up
+190 button down down
+200 button down up
+220 button right down
+226 button right up
+300 button down down
+306 button down up
+400 button up down
+440 button down down
+450 button up up
+450 button down up
+480 encoder 1 -2
+490 encoder 2 +1
+510 button right down
+516 button right up
+560 button right down
+566 button right up
+600 encoder 2 +4
+700 trigger 1 high
+705 trigger 1 low
+800 trigger 1 high
+805 trigger 1 low
+900 trigger 1 high
+905 trigger 1 low
+1000 trigger 1 high
+1005 trigger 1 low

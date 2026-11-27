@@ -56,7 +56,14 @@ another app holds; an input the app reads by itself (`RATCHET`'s `CLOCK`,
 `SCOPE`'s `IN`) steps through the four jacks of its kind, which apps may
 share. The right encoder stops at the ends instead of wrapping round: a
 quick turn down lands on `OFF`, the first place, and one up on the last free
-jack. An app's CV inputs are set in their own submenu, on the physical jacks. Apps no longer use `up` and `down`
+jack. Each output port carries a letter, `a` to `d`, which names it as an
+input of another app. An app's CV inputs are set in their own submenu: one
+of the four jacks, or past `CV4` an output port of another app that carries
+a level (journal/D-048), read without a cable or a converter, routed to a
+jack or not: `SUPERSAW`'s `NOTE` playing `MELODY`'s notes reads `+1a` on
+its screen (slot 1, port `a`) and `1:NOTE` in the submenu. A port that
+carries sound (`SUPERSAW`, `TONE`) and the app's own are not offered; the
+level read is the one the other app published on the tick before. Apps no longer use `up` and `down`
 themselves. A column of marks left of the title, as wide as a list's scroll
 bar, shows the slots on the app's screen and its routing page: a dot for
 each that runs an app, nothing for an empty one, the one shown across the
@@ -417,6 +424,7 @@ cargo probe act ratchet burst  # an action, here a burst as the left click start
 cargo probe select tone        # put it in the slot shown; `select tone @2` in slot 2
 cargo probe assign supersaw detune input=cv2 effect=add  # a parameter's CV input, field by field
 cargo probe assign supersaw detune --center 5  # fit it to what CV2 carries, as CENTER does
+cargo probe assign @1 note input=1a  # another app's port, as the screen names it: slot 1 (@0), port a
 cargo probe add ratchet        # put RATCHET in the first empty slot, on the free outputs
 cargo probe instances          # the four slots, @0 to @3, where their ports go
 cargo probe route @0 sub=off   # its routing page from afar: sub=off, burst=d, clock=tr2

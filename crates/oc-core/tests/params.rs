@@ -7,7 +7,7 @@ use oc_core::apps::ratchet::{RatchetApp, Setting};
 use oc_core::apps::supersaw::SupersawApp;
 use oc_core::apps::tone::{Setting as ToneSetting, ToneApp};
 use oc_core::apps::{App, AppId, InputSnapshot, Instance};
-use oc_core::modulation::{Assign, Effect};
+use oc_core::modulation::{Assign, Effect, Source};
 use oc_core::platform::CvChannel;
 
 /// One tick's snapshot turning the left encoder by `left` and the right one
@@ -251,7 +251,7 @@ fn an_input_set_through_the_model_is_the_one_the_panel_shows_and_plays() {
     let mut tone = ToneApp::new();
     let note = index_of(&tone, "NOTE");
     let assign = Assign {
-        input: Some(CvChannel::Two),
+        input: Some(Source::Jack(CvChannel::Two)),
         effect: Effect::Add,
         ..Assign::NONE
     };
@@ -319,5 +319,5 @@ fn supersaws_note_takes_cv1_at_start_through_the_model() {
     let supersaw: &dyn App = &supersaw;
     let note = index_of(supersaw, "NOTE");
     let assign = supersaw.assign(note).expect("NOTE takes an input");
-    assert_eq!(assign.input, Some(CvChannel::One));
+    assert_eq!(assign.input, Some(Source::Jack(CvChannel::One)));
 }

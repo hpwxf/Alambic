@@ -122,6 +122,17 @@ pub struct InputEntry {
     pub sweep: Option<(MilliVolts, MilliVolts)>,
 }
 
+/// One output an applet writes, which its routing sends to a jack or
+/// nowhere (journal/D-046).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct OutputPortEntry {
+    /// Its name, as the routing page shows it.
+    pub name: String,
+    /// Whether it carries a level, which another instance's input can read
+    /// (journal/D-048).
+    pub level: bool,
+}
+
 /// One input an applet reads by itself, which its routing plugs into a
 /// jack (journal/D-046).
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -141,8 +152,8 @@ pub struct AppDescription {
     pub observables: Vec<SpecEntry>,
     /// What it can be asked to do, by index.
     pub actions: Vec<String>,
-    /// The outputs it writes, by name, in the order of its lanes.
-    pub outputs: Vec<String>,
+    /// The outputs it writes, in the order of its lanes.
+    pub outputs: Vec<OutputPortEntry>,
     /// The inputs it reads by itself.
     pub inputs: Vec<InputPortEntry>,
 }
@@ -160,6 +171,9 @@ pub struct InstanceEntry {
     pub outputs: [Option<u8>; 4],
     /// The jack each input port reads (0 for `CV1` or `TR1`).
     pub inputs: [u8; 4],
+    /// Whether each output port carries a level another instance can read
+    /// (journal/D-048).
+    pub levels: [bool; 4],
 }
 
 impl AppDescription {
@@ -239,6 +253,7 @@ enum Answer {
         output: bool,
         name: String,
         trigger: bool,
+        level: bool,
     },
     Instance(InstanceEntry),
 }
@@ -417,12 +432,16 @@ impl<T: Read + Write> Client<T> {
                     .add_input(index, input)
                     .map_err(ProbeError::Unexpected)?,
                 Answer::Port {
-                    output: true, name, ..
-                } => description.outputs.push(name),
+                    output: true,
+                    name,
+                    level,
+                    ..
+                } => description.outputs.push(OutputPortEntry { name, level }),
                 Answer::Port {
                     output: false,
                     name,
                     trigger,
+                    ..
                 } => description.inputs.push(InputPortEntry { name, trigger }),
                 Answer::Done => return Ok(description),
                 _ => return Err(ProbeError::Unexpected("a description")),
@@ -742,11 +761,13 @@ impl<T: Read + Write> Client<T> {
                 output,
                 name,
                 trigger,
+                level,
                 ..
             } => Answer::Port {
                 output,
                 name: name.to_owned(),
                 trigger,
+                level,
             },
             Reply::Instance {
                 position,
@@ -754,12 +775,14 @@ impl<T: Read + Write> Client<T> {
                 focused,
                 outputs,
                 inputs,
+                levels,
             } => Answer::Instance(InstanceEntry {
                 position,
                 app,
                 focused,
                 outputs,
                 inputs,
+                levels,
             }),
         };
         Ok(Some(answer))

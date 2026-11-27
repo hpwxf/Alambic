@@ -9,6 +9,14 @@ Architectural decisions behind each change are in `journal/` (French).
 
 ### Added
 
+- **Internal routing** (journal/D-048): an input submenu offers, past
+  `CV4`, the output ports of the other apps that carry a level, routed to a
+  jack or not, read without a cable or a converter one tick late: in
+  `SUPERSAW`'s `NOTE`, `1:NOTE` plays `MELODY`'s notes. The app's screen
+  names it `+1a` (slot 1, port `a`), the routing page shows each output's
+  letter. Ports that carry sound and the app's own are not offered. Probe
+  protocol 11: `cargo probe assign … input=1a`, the browser page's input
+  list.
 - **`MELODY`** (journal/D-047), in a new `SEQUENCE` column of the app
   menu: a looping sequence of up to 32 random but controllable notes,
   clocked by `TR1` and armed by `TR2`, each step drawn anew with the chance

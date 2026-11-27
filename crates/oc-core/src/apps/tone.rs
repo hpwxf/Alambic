@@ -191,7 +191,7 @@ impl ToneApp {
     /// Consumes one snapshot and returns what the outputs carry.
     pub fn update(&mut self, input: &InputSnapshot) -> Params {
         self.follow_panel(input);
-        self.inputs.read(&input.cv, input.elapsed_micros);
+        self.inputs.read(input);
         self.params()
     }
 
@@ -391,20 +391,13 @@ impl ToneApp {
 }
 
 /// One port per waveform, on A to D by default, named as the screen names
-/// them (journal/D-046): what each carries, not the jack.
+/// them (journal/D-046): what each carries, not the jack; a sound, which no
+/// other instance can read (journal/D-048).
 const PORTS: [Port; CV_CHANNELS] = [
-    Port {
-        name: WAVES[0].name(),
-    },
-    Port {
-        name: WAVES[1].name(),
-    },
-    Port {
-        name: WAVES[2].name(),
-    },
-    Port {
-        name: WAVES[3].name(),
-    },
+    Port::audio(WAVES[0].name()),
+    Port::audio(WAVES[1].name()),
+    Port::audio(WAVES[2].name()),
+    Port::audio(WAVES[3].name()),
 ];
 
 impl App for ToneApp {

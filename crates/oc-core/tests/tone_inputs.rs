@@ -4,7 +4,7 @@
 
 use oc_core::apps::AppId;
 use oc_core::apps::tone::{DEFAULT_AMPLITUDE_MV, REFERENCE_NOTE, Setting, ToneApp};
-use oc_core::modulation::{AssignLine, Effect};
+use oc_core::modulation::{AssignLine, Effect, Source};
 use oc_core::platform::{Button, CvChannel};
 use oc_core::settings::Settings;
 use oc_core::testing::{MockEngine, adc_reading, mock_engine_at_boot};
@@ -85,7 +85,10 @@ fn the_note_takes_cv1_through_its_submenu() {
     click(&mut engine);
     assert_eq!(engine.app::<ToneApp>().assigning(), None);
     let tone = engine.app::<ToneApp>();
-    assert_eq!(tone.assign(Setting::Note).input, Some(CvChannel::One));
+    assert_eq!(
+        tone.assign(Setting::Note).input,
+        Some(Source::Jack(CvChannel::One))
+    );
     assert_eq!(tone.assign(Setting::Note).effect, Effect::Add);
 
     hold_inputs(&mut engine, [500, 0, 0, 0]);
@@ -106,7 +109,7 @@ fn the_level_takes_an_input_as_a_vca() {
     let assign = *engine.app::<ToneApp>().assign(Setting::Level);
     assert_eq!(
         (assign.input, assign.effect),
-        (Some(CvChannel::Two), Effect::Mul)
+        (Some(Source::Jack(CvChannel::Two)), Effect::Mul)
     );
 
     hold_inputs(&mut engine, [0, 2_500, 0, 0]);

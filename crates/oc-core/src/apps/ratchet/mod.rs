@@ -412,7 +412,7 @@ impl RatchetApp {
         let elapsed = input.elapsed_micros;
         self.pulse_a_micros = self.pulse_a_micros.saturating_sub(elapsed);
         self.pulse_b_micros = self.pulse_b_micros.saturating_sub(elapsed);
-        self.inputs.read(&input.cv, elapsed);
+        self.inputs.read(input);
 
         let gate = input.triggers[0];
         let rising = gate && !self.gate;
@@ -905,7 +905,7 @@ fn position(setting: Setting, burst: &Burst) -> i32 {
 /// `THRU` copies `TR1`, `BURST` bursts, on A and B by default: C and D stay
 /// free for another applet (journal/D-046). Named by what they carry, not
 /// by the jack, which their routing page sets.
-const PORTS: [Port; 2] = [Port { name: "THRU" }, Port { name: "BURST" }];
+const PORTS: [Port; 2] = [Port::cv("THRU"), Port::cv("BURST")];
 
 /// `TR1` clocks the bursts; its routing page may plug another trigger in
 /// (journal/D-046).

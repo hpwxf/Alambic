@@ -24,6 +24,7 @@
 //! its bank, each through the generator of its kind that [`sound`] composes
 //! and a backend renders ([`crate::playback`]) (journal/D-033, D-044).
 
+pub mod bus;
 pub mod diagnostic;
 pub mod gfx_demo;
 pub mod melody;
@@ -39,6 +40,7 @@ use core::any::Any;
 
 use serde::{Deserialize, Serialize};
 
+pub use crate::apps::bus::Bus;
 use crate::apps::diagnostic::DiagnosticApp;
 use crate::apps::gfx_demo::GfxDemoApp;
 use crate::apps::melody::MelodyApp;
@@ -49,6 +51,7 @@ use crate::apps::scope::ScopeApp;
 use crate::apps::sound::{Params, Sound};
 use crate::apps::supersaw::SupersawApp;
 use crate::apps::tone::ToneApp;
+use crate::audio::basic::Channel;
 use crate::audio::{Route, Routed};
 use crate::buttons::ButtonEvents;
 use crate::framebuffer::FrameBuffer;
@@ -64,22 +67,50 @@ use crate::platform::{
 /// per output at most.
 pub const MAX_INSTANCES: usize = 4;
 
+/// What an output port carries (journal/D-048).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PortSignal {
+    /// A level, held from one tick to the next: a pitch, a gate, a
+    /// modulation. Another instance's assignment can read it.
+    Cv,
+    /// A sound, rendered at the audio rate: nothing for a control to read.
+    Audio,
+}
+
 /// One output an applet writes: a lane of its sound, which its route sends
 /// to a jack or nowhere (journal/D-046).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Port {
     /// The name its routing page shows.
     pub name: &'static str,
+    /// What it carries.
+    pub signal: PortSignal,
 }
 
-/// Four ports named after the jacks they go to by default: an applet that
-/// writes every output.
-pub const PORTS_A_TO_D: [Port; CV_CHANNELS] = [
-    Port { name: "A" },
-    Port { name: "B" },
-    Port { name: "C" },
-    Port { name: "D" },
-];
+impl Port {
+    /// A port named `name` that carries a level.
+    #[must_use]
+    pub const fn cv(name: &'static str) -> Self {
+        Self {
+            name,
+            signal: PortSignal::Cv,
+        }
+    }
+
+    /// A port named `name` that carries a sound.
+    #[must_use]
+    pub const fn audio(name: &'static str) -> Self {
+        Self {
+            name,
+            signal: PortSignal::Audio,
+        }
+    }
+}
+
+/// Four ports named after the jacks they go to by default, each a level: an
+/// applet that writes every output.
+pub const PORTS_A_TO_D: [Port; CV_CHANNELS] =
+    [Port::cv("A"), Port::cv("B"), Port::cv("C"), Port::cv("D")];
 
 /// What kind of jack an input port reads.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -171,6 +202,9 @@ pub struct InputSnapshot {
     pub buttons: ButtonEvents,
     /// Microseconds since the previous tick.
     pub elapsed_micros: u32,
+    /// What the other instances published on the last tick, for an
+    /// assignment that reads one of their ports (journal/D-048).
+    pub bus: Bus,
 }
 
 impl InputSnapshot {
@@ -196,6 +230,7 @@ impl Default for InputSnapshot {
             controls: ControlEvents::default(),
             buttons: ButtonEvents::default(),
             elapsed_micros: 0,
+            bus: Bus::EMPTY,
         }
     }
 }
@@ -244,7 +279,9 @@ pub trait App: Any {
 
     /// The outputs it writes, in the order of the lanes of the sound it
     /// publishes: port `i` is lane `i`, and a lane past the last port is
-    /// never heard (journal/D-046). Every output by default.
+    /// never heard (journal/D-046). Every output by default, each a level.
+    /// A [`PortSignal::Cv`] port publishes a level whether or not its route
+    /// sends it anywhere: another instance may read it (journal/D-048).
     fn output_ports(&self) -> &'static [Port] {
         &PORTS_A_TO_D
     }
@@ -257,8 +294,8 @@ pub trait App: Any {
     }
 
     /// Which of its ports reach a jack now, told whenever its route
-    /// changes: an applet may stop preparing a lane nobody hears
-    /// (`SUPERSAW`'s `SUB`). Ignored by default; the lane then plays into
+    /// changes: an applet may stop preparing an audio lane nobody hears
+    /// (`SUPERSAW`'s `SUB`), never a level another instance may read. Ignored by default; the lane then plays into
     /// nothing (journal/D-046).
     fn set_routed(&mut self, _routed: [bool; CV_CHANNELS]) {}
 
@@ -663,6 +700,9 @@ pub struct AppHost {
     slots: [Slot; MAX_INSTANCES],
     /// Position of the instance with the focus.
     focus: usize,
+    /// The level each lane of each slot published on the last tick, for
+    /// the others to read (journal/D-048).
+    levels: [[MilliVolts; CV_CHANNELS]; MAX_INSTANCES],
 }
 
 impl AppHost {
@@ -672,6 +712,7 @@ impl AppHost {
     pub const EMPTY: Self = Self {
         slots: [Slot::EMPTY; MAX_INSTANCES],
         focus: 0,
+        levels: [[0; CV_CHANNELS]; MAX_INSTANCES],
     };
 
     /// The diagnostic applet in the first slot, every output its own, the
@@ -775,6 +816,28 @@ impl AppHost {
             .find(|app| app.id() == id)
     }
 
+    /// The position of the first instance of kind `id`, left to right, if
+    /// one runs.
+    #[must_use]
+    pub fn position_of(&self, id: AppId) -> Option<usize> {
+        self.slots
+            .iter()
+            .position(|slot| slot.instance.app().id() == id)
+    }
+
+    /// What the instance at `reader` (`None`: no instance) reads of the
+    /// others' ports: the levels they published on the last tick
+    /// (journal/D-048).
+    #[must_use]
+    pub fn bus(&self, reader: Option<usize>) -> Bus {
+        Bus::new(self.levels, self.ports(), reader)
+    }
+
+    /// The output ports of every slot's instance.
+    fn ports(&self) -> [&'static [Port]; MAX_INSTANCES] {
+        core::array::from_fn(|index| self.slots[index].instance.app().output_ports())
+    }
+
     /// The first instance of kind `id`, to change it.
     pub fn get_mut(&mut self, id: AppId) -> Option<&mut dyn App> {
         self.slots
@@ -817,6 +880,7 @@ impl AppHost {
         let instance = Instance::new(id);
         let route = self.free_route(instance.app().output_ports().len());
         self.slots[position] = Slot::new(instance, route);
+        self.levels[position] = [0; CV_CHANNELS];
         true
     }
 
@@ -923,21 +987,33 @@ impl AppHost {
     }
 
     /// Runs one tick of every instance: what each slot's lanes carry and
-    /// where they go. Only the one with the focus sees the panel.
+    /// where they go. Only the one with the focus sees the panel. Each sees
+    /// the levels every slot published on the last tick (journal/D-048).
     pub fn update(&mut self, input: &InputSnapshot) -> [Routed<Sound>; MAX_INSTANCES] {
         let mut quiet = *input;
         quiet.silence_controls();
         let focused = self.focused_slot();
+        let outputs = self.ports();
+        let last = self.levels;
         let mut parts = [Routed::OFF; MAX_INSTANCES];
-        for (index, (slot, part)) in self.slots.iter_mut().zip(&mut parts).enumerate() {
+        for (index, ((slot, part), levels)) in self
+            .slots
+            .iter_mut()
+            .zip(&mut parts)
+            .zip(&mut self.levels)
+            .enumerate()
+        {
             let input = if index == focused { input } else { &quiet };
-            let input = if slot.inputs == InputRoute::IDENTITY {
+            let mut input = if slot.inputs == InputRoute::IDENTITY {
                 *input
             } else {
                 slot.inputs.apply(input)
             };
+            input.bus = Bus::new(last, outputs, Some(index));
+            let params = slot.instance.app_mut().update(&input);
+            *levels = published(&params, outputs[index]);
             *part = Routed {
-                params: slot.instance.app_mut().update(&input),
+                params,
                 route: slot.route,
             };
         }
@@ -948,6 +1024,18 @@ impl AppHost {
     pub fn render(&self, frame: &mut FrameBuffer, context: &TickContext) {
         self.focused().render(frame, context);
     }
+}
+
+/// The level each lane of `params` carries on its [`PortSignal::Cv`] port
+/// among `ports`, 0 V for the others: what the other instances read of it.
+fn published(params: &Params, ports: &[Port]) -> [MilliVolts; CV_CHANNELS] {
+    let Some(basic) = params.as_basic() else {
+        return [0; CV_CHANNELS];
+    };
+    core::array::from_fn(|lane| match (ports.get(lane), basic.channels[lane]) {
+        (Some(port), Channel::Level(level)) if port.signal == PortSignal::Cv => level,
+        _ => 0,
+    })
 }
 
 impl Default for AppHost {

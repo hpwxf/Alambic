@@ -11,7 +11,7 @@
 use std::fmt::Write as _;
 
 use oc_core::apps::param::{Unit, write_number};
-use oc_core::modulation::{AssignLine, CENTER_MIN_SPAN_MV, usable_range};
+use oc_core::modulation::{AssignLine, CENTER_MIN_SPAN_MV, Source, usable_range};
 use oc_core::platform::CvChannel;
 use oc_protocol::{Assign, Effect, ParamKind, ParamValue, Sample};
 
@@ -87,7 +87,7 @@ pub fn find_port(description: &AppDescription, query: &str) -> Option<PortRef> {
     if let Some(index) = description
         .outputs
         .iter()
-        .position(|name| folded(name) == query)
+        .position(|port| folded(&port.name) == query)
     {
         return u8::try_from(index).ok().map(PortRef::Output);
     }
@@ -142,7 +142,7 @@ pub fn parse_jack(text: &str, trigger: bool) -> Result<u8, String> {
 pub fn routing_text(description: &AppDescription, instance: &InstanceEntry) -> String {
     const OUTPUTS: [&str; 4] = ["A", "B", "C", "D"];
     let mut text = String::new();
-    for (index, name) in description.outputs.iter().enumerate() {
+    for (index, port) in description.outputs.iter().enumerate() {
         let jack = instance
             .outputs
             .get(index)
@@ -151,7 +151,12 @@ pub fn routing_text(description: &AppDescription, instance: &InstanceEntry) -> S
             .and_then(|jack| OUTPUTS.get(usize::from(jack)))
             .copied()
             .unwrap_or("OFF");
-        let _ = writeln!(text, "{name} -> {jack}");
+        let _ = writeln!(
+            text,
+            "{} {} -> {jack}",
+            oc_core::modulation::port_letter(index),
+            port.name
+        );
     }
     for (index, port) in description.inputs.iter().enumerate() {
         let jack = instance.inputs.get(index).copied().unwrap_or(0) + 1;
@@ -320,7 +325,8 @@ pub fn input_text(assign: &Assign) -> String {
 pub const INPUT_FIELDS: [&str; 6] = ["input", "scale", "shift", "min", "max", "effect"];
 
 /// `assign` with `field` (one of [`INPUT_FIELDS`]) read from `text`: the
-/// input `cv1` to `cv4` or `none`; the scale as a factor (`0.5`, `-1`); the
+/// input `cv1` to `cv4`, a port of another instance by its slot and letter
+/// (`1a` to `4d`, journal/D-048) or `none`; the scale as a factor (`0.5`, `-1`); the
 /// shift and the bounds in volts (`-2.5`); the effect `set`, `add` or
 /// `mul`. Whether the module takes it is the module's to say.
 ///
@@ -334,16 +340,12 @@ pub fn parse_input_field(mut assign: Assign, field: &str, text: &str) -> Result<
         || fixed(lower.trim_end_matches('v'), 3).ok_or_else(|| format!("{field}: volts, as -2.5"));
     match field.to_ascii_lowercase().as_str() {
         "input" => {
-            assign.input = match lower.trim_start_matches("cv") {
+            assign.input = match lower.as_str() {
                 "none" | "--" | "" => None,
-                number => {
-                    let index = number.parse::<usize>().ok().and_then(|n| n.checked_sub(1));
-                    Some(
-                        index
-                            .and_then(|index| CvChannel::ALL.get(index).copied())
-                            .ok_or_else(|| format!("{field}: cv1 to cv4, or none"))?,
-                    )
-                }
+                source => Some(
+                    parse_source(source)
+                        .ok_or_else(|| format!("{field}: cv1 to cv4, 1a to 4d, or none"))?,
+                ),
             };
         }
         "scale" => {
@@ -372,6 +374,23 @@ pub fn parse_input_field(mut assign: Assign, field: &str, text: &str) -> Result<
     Ok(assign)
 }
 
+/// The input `text` names, in lower case: `cv1` to `cv4`, or the slot and
+/// the port's letter of another instance, `1a` to `4d`.
+fn parse_source(text: &str) -> Option<Source> {
+    if let Some(number) = text.strip_prefix("cv") {
+        let index = number.parse::<usize>().ok()?.checked_sub(1)?;
+        return CvChannel::ALL.get(index).copied().map(Source::Jack);
+    }
+    let mut chars = text.chars();
+    let slot = chars.next()?.to_digit(10)?.checked_sub(1)?;
+    let letter = chars.next()?;
+    if chars.next().is_some() || !letter.is_ascii_lowercase() {
+        return None;
+    }
+    let port = u32::from(letter) - u32::from('a');
+    Source::lane(usize::try_from(slot).ok()?, usize::try_from(port).ok()?)
+}
+
 /// `input` with the scale and shift that carry what its input read over
 /// `samples` onto the range its parameter can use, as the submenu's
 /// `CENTER` does with the readings it saw: the same
@@ -380,10 +399,14 @@ pub fn parse_input_field(mut assign: Assign, field: &str, text: &str) -> Result<
 /// # Errors
 ///
 /// Without an input, a sweep, samples, or a signal that moves
-/// [`CENTER_MIN_SPAN_MV`] at least.
+/// [`CENTER_MIN_SPAN_MV`] at least; for a port of another instance, which
+/// the host's samples do not carry (the submenu's `CENTER` fits it).
 pub fn centered(input: &InputEntry, samples: &[Sample]) -> Result<Assign, String> {
     let mut assign = input.assign;
-    let channel = assign.input.ok_or("no input to fit: set one first")?;
+    let source = assign.input.ok_or("no input to fit: set one first")?;
+    let Source::Jack(channel) = source else {
+        return Err("the host samples the jacks only: use CENTER on the module".to_owned());
+    };
     let sweep = input.sweep.ok_or("the module gives no range for it")?;
     let spread = measure::input_spread(samples).ok_or("no sample came")?;
     let seen = &spread[channel.index()];
@@ -484,7 +507,17 @@ pub fn description_text(app: &AppEntry, description: &AppDescription) -> String 
         let _ = writeln!(out, "actions: {}", description.actions.join(", "));
     }
     if !description.outputs.is_empty() {
-        let _ = writeln!(out, "outputs: {}", description.outputs.join(", "));
+        let names: Vec<String> = description
+            .outputs
+            .iter()
+            .enumerate()
+            .map(|(index, port)| {
+                let letter = oc_core::modulation::port_letter(index);
+                let kind = if port.level { "" } else { " (audio)" };
+                format!("{letter} {}{kind}", port.name)
+            })
+            .collect();
+        let _ = writeln!(out, "outputs: {}", names.join(", "));
     }
     if !description.inputs.is_empty() {
         let names: Vec<_> = description
@@ -650,6 +683,24 @@ mod tests {
     }
 
     #[test]
+    fn an_input_is_a_jack_or_a_port_of_another_instance() {
+        use oc_core::modulation::{Assign, Source};
+        use oc_core::platform::CvChannel;
+
+        use super::{input_text, parse_input_field};
+
+        let parse = |text| parse_input_field(Assign::NONE, "input", text).map(|a| a.input);
+        assert_eq!(parse("CV3"), Ok(Some(Source::Jack(CvChannel::Three))));
+        assert_eq!(parse("2b"), Ok(Some(Source::Lane { slot: 1, port: 1 })));
+        assert_eq!(parse("none"), Ok(None));
+        for wrong in ["cv5", "5a", "1e", "0a", "1ab", "a1"] {
+            assert!(parse(wrong).is_err(), "{wrong}");
+        }
+        let assign = parse_input_field(Assign::NONE, "input", "4d").unwrap();
+        assert!(input_text(&assign).starts_with("4d x1.00"));
+    }
+
+    #[test]
     fn a_name_is_found_whatever_its_case_and_punctuation() {
         let mut first = spec("FIRST", number(0, Unit::Milliseconds), &[]);
         first.label = "SPAN".to_owned();
@@ -677,7 +728,7 @@ mod tests {
 
         let input = InputEntry {
             assign: Assign {
-                input: Some(CvChannel::Two),
+                input: Some(CvChannel::Two.into()),
                 effect: Effect::Set,
                 ..Assign::NONE
             },
@@ -732,7 +783,7 @@ mod tests {
         set.index = 2;
         set.input = Some(InputEntry {
             assign: Assign {
-                input: Some(oc_core::platform::CvChannel::Two),
+                input: Some(oc_core::platform::CvChannel::Two.into()),
                 ..Assign::NONE
             },
             sweep: None,
@@ -770,7 +821,7 @@ mod tests {
         use super::{
             PortRef, find_port, instance_position, parse_jack, parse_output, routing_text,
         };
-        use crate::client::{InputPortEntry, InstanceEntry};
+        use crate::client::{InputPortEntry, InstanceEntry, OutputPortEntry};
 
         assert_eq!(instance_position("@1"), Some(1));
         assert_eq!(instance_position("1"), None, "an applet's index");
@@ -783,7 +834,12 @@ mod tests {
         assert!(parse_jack("tr5", true).is_err());
 
         let description = AppDescription {
-            outputs: vec!["A".to_owned(), "B".to_owned()],
+            outputs: ["A", "B"]
+                .map(|name| OutputPortEntry {
+                    name: name.to_owned(),
+                    level: true,
+                })
+                .to_vec(),
             inputs: vec![InputPortEntry {
                 name: "CLOCK".to_owned(),
                 trigger: true,
@@ -802,10 +858,11 @@ mod tests {
             focused: true,
             outputs: [Some(3), None, None, None],
             inputs: [1, 0, 0, 0],
+            levels: [true, true, false, false],
         };
         assert_eq!(
             routing_text(&description, &instance),
-            "A -> D\nB -> OFF\nCLOCK <- TR2\n"
+            "a A -> D\nb B -> OFF\nCLOCK <- TR2\n"
         );
     }
 }

@@ -217,6 +217,31 @@ fn the_app_menu_lists_the_apps_right_of_the_scroll_track() {
 }
 
 #[test]
+fn supersaw_reads_melodys_note_through_its_input() {
+    use oc_core::apps::supersaw::Setting;
+    use oc_core::modulation::{AssignLine, Source};
+    let mut simulator = replay("internal_routing");
+    assert_eq!(
+        simulator.current_app(),
+        AppId::Supersaw,
+        "in the second slot"
+    );
+    let supersaw = simulator.app::<SupersawApp>();
+    assert_eq!(supersaw.assigning(), Some(AssignLine::Input));
+    assert_eq!(
+        supersaw.assign(Setting::Note).unwrap().input,
+        Some(Source::Lane { slot: 0, port: 0 }),
+        "MELODY's NOTE"
+    );
+    assert_eq!(
+        simulator.app::<MelodyApp>().sequence().position(),
+        Some(3),
+        "four clocks"
+    );
+    assert_screen_matches(&mut simulator, "internal_routing");
+}
+
+#[test]
 fn melody_plays_its_sixth_step_of_sixteen() {
     let mut simulator = replay("melody");
     assert_eq!(simulator.current_app(), AppId::Melody);
@@ -273,7 +298,7 @@ fn ratchet_shows_the_input_submenu() {
     let assign = ratchet.assign(Setting::Count).unwrap();
     assert_eq!(
         (assign.input, assign.scale_percent),
-        (Some(CvChannel::Two), 50)
+        (Some(CvChannel::Two.into()), 50)
     );
     assert_screen_matches(&mut simulator, "ratchet_inputs");
 }
@@ -317,7 +342,7 @@ fn supersaw_shows_the_input_submenu() {
     let supersaw = simulator.app::<SupersawApp>();
     assert_eq!(supersaw.assigning(), Some(AssignLine::Input));
     let assign = supersaw.assign(Setting::Detune).unwrap();
-    assert_eq!(assign.input, Some(CvChannel::Two));
+    assert_eq!(assign.input, Some(CvChannel::Two.into()));
     assert_eq!(supersaw.played_detune(), 800);
     assert_screen_matches(&mut simulator, "supersaw_inputs");
 }
@@ -343,7 +368,10 @@ fn tone_plays_its_note_raised_by_the_cv1_it_was_given() {
     assert_eq!(tone.amplitude(), 1_500);
     assert_eq!(tone.selected(), Setting::Note);
     assert_eq!(tone.assigning(), None);
-    assert_eq!(tone.assign(Setting::Note).input, Some(CvChannel::One));
+    assert_eq!(
+        tone.assign(Setting::Note).input,
+        Some(CvChannel::One.into())
+    );
     // Half an octave above C5 (523.25 Hz): 739.99 Hz, CV1 as the module's
     // converter reads 500 mV.
     assert!(
@@ -364,7 +392,10 @@ fn tone_shows_the_input_submenu_of_its_level() {
     let tone = simulator.app::<ToneApp>();
     assert_eq!(tone.selected(), Setting::Level);
     assert_eq!(tone.assigning(), Some(AssignLine::Input));
-    assert_eq!(tone.assign(Setting::Level).input, Some(CvChannel::Two));
+    assert_eq!(
+        tone.assign(Setting::Level).input,
+        Some(CvChannel::Two.into())
+    );
     assert!(
         tone.played_amplitude().abs_diff(1_600) <= 5,
         "{}",
@@ -464,6 +495,7 @@ fn every_scenario_file_has_a_test_and_a_snapshot() {
         "gfx_knobs",
         "gfx_curves",
         "gfx_sequencer",
+        "internal_routing",
         "gfx_meters",
         "ratchet",
         "ratchet_inputs",

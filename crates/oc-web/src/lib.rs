@@ -356,16 +356,19 @@ impl Message {
                 index,
                 name,
                 trigger,
+                level,
             } => Self::applet(
                 format!(
-                    "{} {index} {name}{}",
+                    "{} {index} {name}{}{}",
                     if output { "output" } else { "input" },
-                    if trigger { " (trigger)" } else { "" }
+                    if trigger { " (trigger)" } else { "" },
+                    if output && !level { " (audio)" } else { "" }
                 ),
                 Applet::Port {
                     output,
                     name: name.to_owned(),
                     trigger,
+                    level,
                 },
             ),
             Reply::Instance {
@@ -374,6 +377,7 @@ impl Message {
                 focused,
                 outputs,
                 inputs,
+                levels,
             } => Self::applet(
                 format!(
                     "instance {position}: app {app}{}",
@@ -385,6 +389,7 @@ impl Message {
                     focused,
                     outputs,
                     inputs,
+                    levels,
                 }),
             ),
             _ => Self::with_text(MessageKind::Error, "not a routing reply".to_owned()),

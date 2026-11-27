@@ -932,6 +932,26 @@ each setting does: `crates/oc-core/src/apps/melody/README.md`.
    round under the same melody; `R REROLL` and `REROLL` each draw only their
    own.
 
+### 9.3j — Internal routing (journal/D-048)
+
+1. `MELODY` in slot 1, a clock on `TR1`; the focus stepped to slot 2 and
+   `SUPERSAW` picked in the menu there; its routing page: no jack left,
+   every port `OFF`. On `SUPERSAW`'s screen,
+   the right click on `NOTE`, `INPUT` turned past `CV4`: `1:NOTE`, then
+   `1:CH1`, `1:CH2`, `1:GATE`, and no further: `SUPERSAW`'s own ports, which
+   carry sound, are not offered.
+   `1:NOTE` picked, closed: the row reads `+1a`.
+2. `MELODY`'s `NOTE` routed to A, a tuner on A and another on the jack
+   `SUPERSAW` is given (route `L/MONO` to B, freeing it on `MELODY`'s
+   page): the two follow the same notes, step by step, with no lag heard.
+3. `MELODY`'s `NOTE` back to `OFF`: `SUPERSAW` still plays the melody.
+4. `MELODY` replaced by `NOTHING`: `SUPERSAW` holds its panel note (the
+   input reads 0 V), the row still `+1a`.
+5. From the host (`@1` is slot 2: the probe counts from 0, the screen from
+   1): `cargo probe assign @1 note input=1a` sets it, `input=2a` (its own
+   slot) is refused; the browser page's input list offers `1a` to
+   `1d` for `SUPERSAW`.
+
 ### 9.4 — Calibration
 
 This step measures how far the module is from the factory calibration, then
@@ -1053,7 +1073,7 @@ under Eurorack power-supply noise; none of that is in scope for this plan.
   writes); none is implemented.
 * **Parts of Level 9.** The DAC8565's simultaneous update has no step yet;
   the input assignment submenu of 9.3c (lot 6e), 9.3h (journal/D-041)
-  and 9.3i (journal/D-047) have not been run on the module. The other sections have been, on the TLM
+  9.3i (journal/D-047) and 9.3j (journal/D-048) have not been run on the module. The other sections have been, on the TLM
   module; their results are in the progress files of steps 3 to 8 and in
   `PLAN.md` for the step in progress.
 

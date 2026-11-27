@@ -21,7 +21,11 @@ and C a chord built on it in the same scale, D a gate.
 | `GATE` | D | 5 V for `GATE` percent of the clock's period on a step that plays, then 0 V; held to the next clock when that step ties (*Rhythm*) |
 
 The jacks are the defaults; the routing page moves each port as for any app
-(README, *Apps and the app menu*).
+(README, *Apps and the app menu*). Every port carries a level, so another
+app's input can read it without a cable, routed to a jack or not
+(journal/D-048): in `SUPERSAW`'s `NOTE` submenu, turn `INPUT` past `CV4` to
+`1:NOTE` (`MELODY` in slot 1) and the bank plays the melody, to the
+millivolt.
 
 Reset arms rather than jumps: a reset and a clock arriving together, or a
 reset followed by a clock, both play step 1. A reset alone changes nothing

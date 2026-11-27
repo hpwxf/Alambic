@@ -5,7 +5,7 @@
 use oc_core::apps::InputSnapshot;
 use oc_core::buttons::ButtonReader;
 use oc_core::modulation::editor::AssignEditor;
-use oc_core::modulation::{Assign, AssignLine, Effect, WINDOW_MICROS, usable_range};
+use oc_core::modulation::{Assign, AssignLine, Effect, Source, WINDOW_MICROS, usable_range};
 use oc_core::platform::{ControlEvents, CvChannel};
 
 /// A parameter swept by 0 V to 7.75 V when it follows its input.
@@ -46,9 +46,12 @@ impl Panel {
             buttons: self.reader.update(&controls),
             controls,
             elapsed_micros: 1_000,
+            ..InputSnapshot::default()
         };
         self.open = self.editor.follow(&mut self.assign, &input, SWEEP);
-        self.editor.observe(&self.assign, &input.cv, 1_000);
+        if let Some(reading) = self.assign.raw(&input) {
+            self.editor.observe(reading, 1_000);
+        }
     }
 
     fn press(&mut self, index: usize) {
@@ -71,7 +74,7 @@ impl Panel {
 #[test]
 fn the_signal_is_scaled_shifted_then_bounded() {
     let mut assign = Assign {
-        input: Some(CvChannel::One),
+        input: Some(Source::Jack(CvChannel::One)),
         scale_percent: 50,
         shift_mv: 500,
         max_mv: 2_000,
@@ -81,8 +84,8 @@ fn the_signal_is_scaled_shifted_then_bounded() {
     assert_eq!(assign.shape(6_000), 2_000, "bounded after the shift");
     assign.scale_percent = -100;
     assert_eq!(assign.shape(1_000), -500, "a negative scale inverts");
-    assert_eq!(assign.reading(&[1_000, 0, 0, 0]), Some((-500, Effect::Add)));
-    assert_eq!(Assign::NONE.reading(&[1_000, 0, 0, 0]), None);
+    assert_eq!(assign.reading(1_000), Some((-500, Effect::Add)));
+    assert_eq!(Assign::NONE.reading(1_000), None);
 }
 
 #[test]
@@ -115,7 +118,11 @@ fn the_editor_turns_each_field_within_its_bounds() {
     let mut panel = Panel::new();
     assert_eq!(panel.editor.line(), AssignLine::Input);
     panel.turn_line(AssignLine::Input, 9);
-    assert_eq!(panel.assign.input, Some(CvChannel::Four), "stops at CV4");
+    assert_eq!(
+        panel.assign.input,
+        Some(Source::Jack(CvChannel::Four)),
+        "stops at CV4: no other instance"
+    );
     panel.turn_line(AssignLine::Scale, 100);
     assert_eq!(panel.assign.scale_percent, 200);
     panel.turn_line(AssignLine::Shift, -3);

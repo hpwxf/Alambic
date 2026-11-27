@@ -6,12 +6,12 @@
 //! what `cargo probe` does.
 
 use oc_core::fmt::TextBuf;
-use oc_core::modulation::AssignLine;
+use oc_core::modulation::{Assign, AssignLine, Source};
 use oc_probe::apps::{
     INPUT_FIELDS, centered, edit_text, input_text, parse_input_field, parse_value, value_text,
 };
 use oc_probe::client::{
-    AppDescription, AppEntry, InputEntry, InputPortEntry, InstanceEntry, SpecEntry,
+    AppDescription, AppEntry, InputEntry, InputPortEntry, InstanceEntry, OutputPortEntry, SpecEntry,
 };
 use oc_protocol::{Group, ParamKind, ParamValue, Request, Sample, Target};
 use wasm_bindgen::prelude::wasm_bindgen;
@@ -48,6 +48,9 @@ pub(crate) enum Applet {
         name: String,
         /// For an input, whether it reads a trigger.
         trigger: bool,
+        /// For an output, whether it carries a level another instance can
+        /// read (journal/D-048).
+        level: bool,
     },
     /// One running instance (journal/D-046).
     Instance(InstanceEntry),
@@ -207,6 +210,32 @@ impl Instances {
             .unwrap_or(0)
     }
 
+    /// The ports of the other instances an input of the instance at `own`
+    /// (-1: none) can read, as the module names them (`2a`): every output
+    /// port that carries a level, slot by slot (journal/D-048).
+    #[must_use]
+    pub fn sources(&self, own: i32) -> Vec<String> {
+        let own = usize::try_from(own).ok();
+        self.instances
+            .iter()
+            .enumerate()
+            .filter(|&(at, _)| Some(at) != own)
+            .flat_map(|(at, instance)| {
+                instance
+                    .levels
+                    .iter()
+                    .enumerate()
+                    .filter(|&(_, &level)| level)
+                    .filter_map(move |(port, _)| Source::lane(at, port))
+            })
+            .map(|source| {
+                let mut assign = Assign::NONE;
+                assign.input = Some(source);
+                assign.field(AssignLine::Input).as_str().to_owned()
+            })
+            .collect()
+    }
+
     /// Whether the slot `at` is empty: it runs `NOTHING` (journal/D-046).
     #[must_use]
     pub fn is_empty_slot(&self, at: usize) -> bool {
@@ -292,6 +321,17 @@ impl AppView {
         }
     }
 
+    /// The slot of the instance its requests reach, -1 for the first
+    /// instance of its applet, wherever it runs.
+    #[wasm_bindgen(getter)]
+    #[must_use]
+    pub fn position(&self) -> i32 {
+        match self.target {
+            Target::Instance(position) => i32::from(position),
+            Target::App(_) => -1,
+        }
+    }
+
     /// The instance at `position`, of applet `app`, nothing described yet:
     /// its requests reach that instance alone (journal/D-046).
     #[must_use]
@@ -315,8 +355,7 @@ impl AppView {
         self.description
             .outputs
             .get(at)
-            .cloned()
-            .unwrap_or_default()
+            .map_or_else(String::new, |port| port.name.clone())
     }
 
     /// The inputs it reads by itself.
@@ -369,14 +408,21 @@ impl AppView {
                 self.broken |= self.description.add_input(*index, *input).is_err();
             }
             Some(Applet::Port {
-                output: true, name, ..
+                output: true,
+                name,
+                level,
+                ..
             }) => {
-                self.description.outputs.push(name.clone());
+                self.description.outputs.push(OutputPortEntry {
+                    name: name.clone(),
+                    level: *level,
+                });
             }
             Some(Applet::Port {
                 output: false,
                 name,
                 trigger,
+                ..
             }) => self.description.inputs.push(InputPortEntry {
                 name: name.clone(),
                 trigger: *trigger,
@@ -1043,7 +1089,7 @@ mod tests {
             .unwrap();
         assert_eq!(
             (detune.input, detune.effect, detune.shift_mv),
-            (Some(CvChannel::Three), Effect::Mul, 250)
+            (Some(CvChannel::Three.into()), Effect::Mul, 250)
         );
         assert!(
             view.assign_request(1, "scale", "x2.5").is_ok(),

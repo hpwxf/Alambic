@@ -492,7 +492,9 @@ function drawRouting() {
   };
   const outputs = [...OUTPUT_JACKS.map((jack, index) => [jack, index]), ["OFF", -1]];
   for (let port = 0; port < appView.output_count; port += 1) {
-    line(appView.output_name(port), "→", outputs, instances.output(at, port),
+    // The port's letter, as another instance's input names it (`2a`).
+    const letter = String.fromCharCode(97 + port);
+    line(`${letter} ${appView.output_name(port)}`, "→", outputs, instances.output(at, port),
       (output) => oc.Instances.route_request(at, port, output));
   }
   for (let port = 0; port < appView.input_port_count; port += 1) {
@@ -626,9 +628,14 @@ function showMark(entry, at) {
     : "Open the CV input panel: input, scale, shift, bounds, effect";
 }
 
-/** The field that edits one field of an input: a list or a text field. */
+/**
+ * The field that edits one field of an input: a list or a text field. The
+ * input's list ends with the ports of the other instances that carry a
+ * level (`2a`), which it can read as a CV (journal/D-048).
+ */
 function inputEditor(field) {
   const choices = oc.AppView.input_choices(field);
+  if (field === "input" && instances) choices.push(...instances.sources(appView.position));
   if (choices.length === 0) {
     const input = document.createElement("input");
     input.type = "text";

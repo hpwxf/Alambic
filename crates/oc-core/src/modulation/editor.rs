@@ -9,11 +9,14 @@
 //! picked (`down` is the panel's, journal/D-046). Opening it is the applet's (`RATCHET`: the
 //! right encoder's click on a setting).
 
-use super::{Assign, AssignLine, Window, usable_range};
+use core::fmt::Write as _;
+
+use super::{Assign, AssignLine, Source, Window, usable_range};
 use crate::apps::InputSnapshot;
+use crate::fmt::TextBuf;
 use crate::framebuffer::{FrameBuffer, ROW_HEIGHT, WIDTH_I32};
 use crate::gfx::{self, Ink, Point};
-use crate::platform::{Button, CV_CHANNELS, MilliVolts};
+use crate::platform::{Button, MilliVolts};
 use crate::text::fonts::FONT_5X8;
 use crate::text::{self, Alignment, TextStyle};
 
@@ -33,8 +36,15 @@ const OVERLAY_LEFT: i32 = 4;
 /// Right edge of the submenu's text and bars, inside the frame.
 const OVERLAY_RIGHT: i32 = WIDTH_I32 - 5;
 
-/// Left edge of the scale on the formula line, after the input.
+/// Left edge of the scale on the formula line, after the input, unless a
+/// port's name pushes it right (journal/D-048).
 const SCALE_LEFT: i32 = 34;
+
+/// The gap between the input and the scale when a port's name is long.
+const SCALE_GAP: i32 = 4;
+
+/// The most letters of a port's name the submenu writes after its slot.
+const PORT_NAME_LETTERS: usize = 5;
 
 /// Left edge of the lower bound's value, after `MIN`.
 const MIN_VALUE_LEFT: i32 = 26;
@@ -133,7 +143,7 @@ impl AssignEditor {
         let turns = i32::from(input.controls.delta(1));
         if turns != 0 {
             let before = assign.input;
-            assign.turn(self.line(), turns);
+            assign.turn(self.line(), turns, &input.bus);
             if assign.input != before {
                 self.seen = Window::new();
             }
@@ -141,21 +151,21 @@ impl AssignEditor {
         true
     }
 
-    /// Adds the reading of `assign`'s input to the range seen, `elapsed`
-    /// after the last.
-    pub fn observe(&mut self, assign: &Assign, cv: &[MilliVolts; CV_CHANNELS], elapsed: u32) {
-        if let Some(channel) = assign.input {
-            self.seen.add(cv[channel.index()], elapsed);
-        }
+    /// Adds `reading`, what the input reads now, to the range seen,
+    /// `elapsed` after the last.
+    pub fn observe(&mut self, reading: MilliVolts, elapsed: u32) {
+        self.seen.add(reading, elapsed);
     }
 
-    /// Draws the submenu for `assign` over what the frame holds, the inputs
-    /// reading `cv`.
+    /// Draws the submenu for `assign` over what the frame holds, its input
+    /// reading `reading`; `port_name` names the port it reads, if it reads
+    /// one (`1:NOTE`), `None` for one gone (`1:--`).
     pub fn render(
         &self,
         frame: &mut FrameBuffer,
         assign: &Assign,
-        cv: &[MilliVolts; CV_CHANNELS],
+        reading: MilliVolts,
+        port_name: Option<&str>,
         param: &Param<'_>,
     ) {
         render_overlay_frame(frame, param.name, param.now);
@@ -168,16 +178,23 @@ impl AssignEditor {
         ] {
             text::draw(frame, shown.label(), Point::new(x, overlay_row(row)), lit);
         }
+        let source = input_text(assign, port_name);
+        let scale_left =
+            SCALE_LEFT.max(OVERLAY_LEFT + FONT_5X8.width_of(source.as_str()) + SCALE_GAP);
         for (shown, row, x, align) in [
             (AssignLine::Input, 0, OVERLAY_LEFT, Alignment::Left),
-            (AssignLine::Scale, 0, SCALE_LEFT, Alignment::Left),
+            (AssignLine::Scale, 0, scale_left, Alignment::Left),
             (AssignLine::Shift, 0, OVERLAY_RIGHT, Alignment::Right),
             (AssignLine::Min, 1, MIN_VALUE_LEFT, Alignment::Left),
             (AssignLine::Max, 1, OVERLAY_RIGHT, Alignment::Right),
             (AssignLine::Effect, 2, EFFECT_VALUE_LEFT, Alignment::Left),
             (AssignLine::Center, 2, OVERLAY_RIGHT, Alignment::Right),
         ] {
-            let value = assign.field(shown);
+            let value = if shown == AssignLine::Input {
+                source
+            } else {
+                assign.field(shown)
+            };
             let width = FONT_5X8.width_of(value.as_str());
             let left = if align == Alignment::Right {
                 x - width
@@ -199,7 +216,7 @@ impl AssignEditor {
             text::draw(frame, value.as_str(), Point::new(left, top), style);
         }
 
-        self.render_signal_bar(frame, assign, cv, SIGNAL_BAR_TOP);
+        self.render_signal_bar(frame, assign, reading, SIGNAL_BAR_TOP);
         render_param_bar(frame, assign, param, SIGNAL_BAR_TOP + ROW_HEIGHT + 3);
     }
 
@@ -213,7 +230,7 @@ impl AssignEditor {
         &self,
         frame: &mut FrameBuffer,
         assign: &Assign,
-        cv: &[MilliVolts; CV_CHANNELS],
+        reading: MilliVolts,
         top: i32,
     ) {
         text::draw(
@@ -235,13 +252,12 @@ impl AssignEditor {
                 gfx::pixel(frame, x + inward, top + BAR_HEIGHT, Ink::Lit);
             }
         }
-        let Some(channel) = assign.input else {
+        if assign.input.is_none() {
             return;
-        };
+        }
         if let Some((low, high)) = self.seen.range() {
             gfx::hline(frame, x_of(low), top, x_of(high) - x_of(low) + 1, Ink::Lit);
         }
-        let reading = cv[channel.index()];
         let shaped = x_of(assign.shape(reading));
         let zero = x_of(0);
         let (left, right) = (zero.min(shaped), zero.max(shaped));
@@ -255,6 +271,20 @@ impl Default for AssignEditor {
     fn default() -> Self {
         Self::new()
     }
+}
+
+/// The input field as the submenu writes it: `CV1`, or a port of another
+/// instance by its slot and name, `1:NOTE` (journal/D-048), `1:--` for a
+/// port that is no more.
+fn input_text(assign: &Assign, port_name: Option<&str>) -> TextBuf<16> {
+    let Some(Source::Lane { slot, .. }) = assign.input else {
+        return assign.field(AssignLine::Input);
+    };
+    let mut out = TextBuf::<16>::new();
+    let name = port_name.unwrap_or("--");
+    let name = name.get(..PORT_NAME_LETTERS).unwrap_or(name);
+    let _ = write!(out, "{}:{name}", u32::from(slot) + 1);
+    out
 }
 
 /// The bar of `param` at `top`, over its whole range: the panel's value as a

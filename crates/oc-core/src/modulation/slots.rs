@@ -8,11 +8,11 @@
 //! names its input, without a table of its own in each applet.
 
 use super::editor::{AssignEditor, Param};
-use super::{Assign, AssignLine, Effect};
+use super::{Assign, AssignLine, Effect, Source};
 use crate::apps::InputSnapshot;
 use crate::apps::param::ParamSpec;
 use crate::framebuffer::FrameBuffer;
-use crate::platform::{CV_CHANNELS, MilliVolts};
+use crate::platform::MilliVolts;
 
 /// The slot of parameter `index` among `specs`: its rank among the
 /// assignable ones, `None` for one that takes no input or past the last.
@@ -23,15 +23,19 @@ pub fn slot_of(specs: &[ParamSpec], index: usize) -> Option<usize> {
         .then(|| specs[..index].iter().filter(|spec| spec.assignable).count())
 }
 
-/// The input of each of `N` assignable parameters, the last readings of the
-/// inputs, and the submenu while it is open on one of them.
+/// The input of each of `N` assignable parameters, what each read last,
+/// and the submenu while it is open on one of them.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Modulations<const N: usize> {
     assigns: [Assign; N],
     /// The slot the submenu is open on, and the submenu.
     editor: Option<(usize, AssignEditor)>,
-    /// The last inputs.
-    cv: [MilliVolts; CV_CHANNELS],
+    /// What each slot's input read on the last tick, unshaped: a jack, or a
+    /// port of another instance (journal/D-048).
+    raw: [MilliVolts; N],
+    /// The name of the port the submenu's input reads, when it reads one:
+    /// what the submenu writes after the slot (`1:NOTE`).
+    port_name: Option<&'static str>,
 }
 
 impl<const N: usize> Modulations<N> {
@@ -41,7 +45,8 @@ impl<const N: usize> Modulations<N> {
         Self {
             assigns,
             editor: None,
-            cv: [0; CV_CHANNELS],
+            raw: [0; N],
+            port_name: None,
         }
     }
 
@@ -77,12 +82,25 @@ impl<const N: usize> Modulations<N> {
         true
     }
 
-    /// Takes the inputs of this tick, `elapsed` after the last, into the
-    /// range the open submenu has seen.
-    pub fn read(&mut self, cv: &[MilliVolts; CV_CHANNELS], elapsed: u32) {
-        self.cv = *cv;
+    /// Reads each slot's input off `input`, a jack or another instance's
+    /// port on its bus, and takes the open submenu's into the range it has
+    /// seen, `input.elapsed_micros` after the last.
+    pub fn read(&mut self, input: &InputSnapshot) {
+        for (raw, assign) in self.raw.iter_mut().zip(&self.assigns) {
+            *raw = assign.raw(input).unwrap_or(0);
+        }
+        self.port_name = None;
         if let Some((slot, editor)) = &mut self.editor {
-            editor.observe(&self.assigns[*slot], &self.cv, elapsed);
+            let assign = &self.assigns[*slot];
+            if assign.input.is_some() {
+                editor.observe(self.raw[*slot], input.elapsed_micros);
+            }
+            if let Some(Source::Lane { slot, port }) = assign.input {
+                self.port_name = input
+                    .bus
+                    .port(usize::from(slot), usize::from(port))
+                    .map(|port| port.name);
+            }
         }
     }
 
@@ -100,7 +118,7 @@ impl<const N: usize> Modulations<N> {
     /// input.
     #[must_use]
     pub fn reading(&self, slot: usize) -> Option<(MilliVolts, Effect)> {
-        self.assigns[slot].reading(&self.cv)
+        self.assigns[slot].reading(self.raw[slot])
     }
 
     /// The field picked in the submenu, `None` while it is closed.
@@ -124,7 +142,13 @@ impl<const N: usize> Modulations<N> {
     /// while it is closed.
     pub fn render(&self, frame: &mut FrameBuffer, param: &Param<'_>) {
         if let Some((slot, editor)) = &self.editor {
-            editor.render(frame, &self.assigns[*slot], &self.cv, param);
+            editor.render(
+                frame,
+                &self.assigns[*slot],
+                self.raw[*slot],
+                self.port_name,
+                param,
+            );
         }
     }
 
