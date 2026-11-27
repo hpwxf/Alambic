@@ -84,6 +84,10 @@ const VALUE_RIGHT: i32 = 98;
 /// Steps at start.
 const DEFAULT_LENGTH: u8 = 8;
 
+/// How long `REROLL` reads `DONE` after a reroll: long enough to see it,
+/// short enough to press again.
+const REROLLED_MICROS: u32 = 500_000;
+
 /// Pixels between the two fields of a row.
 const FIELD_GAP: i32 = 6;
 
@@ -518,6 +522,8 @@ pub struct MelodyApp {
     clock: bool,
     reset: bool,
     gate_micros: u32,
+    /// Time left showing `DONE` on `REROLL`'s row.
+    rerolled_micros: u32,
     outputs: [MilliVolts; CV_CHANNELS],
 }
 
@@ -540,6 +546,7 @@ impl MelodyApp {
             clock: false,
             reset: false,
             gate_micros: 0,
+            rerolled_micros: 0,
             outputs: [0; CV_CHANNELS],
         };
         app.outputs = app.levels();
@@ -599,6 +606,7 @@ impl MelodyApp {
         self.follow_panel(input);
         let elapsed = input.elapsed_micros;
         self.gate_micros = self.gate_micros.saturating_sub(elapsed);
+        self.rerolled_micros = self.rerolled_micros.saturating_sub(elapsed);
         self.inputs.read(&input.cv, elapsed);
         self.tempo.advance(elapsed);
 
@@ -654,6 +662,7 @@ impl MelodyApp {
     fn reroll(&mut self) {
         let draw = self.with_inputs().draw();
         self.sequence.reroll(draw);
+        self.rerolled_micros = REROLLED_MICROS;
     }
 
     /// The window as it reads now, its inputs applied: they bend the loop
@@ -810,9 +819,11 @@ impl MelodyApp {
             Setting::Jump => write!(out, "{}", JUMP_NAMES[jump_choice(settings)]),
             Setting::Chord => write!(out, "{}", CHORD_NAMES[settings.chord.index()]),
             Setting::Gate => write!(out, "{}%", settings.gate_percent),
-            // An action; the inversion is an arrow, drawn rather than
-            // written ([`invert_arrow`]).
-            Setting::Reroll | Setting::Invert => Ok(()),
+            // An action, which says how to fire it ([`Self::value_text`]
+            // shows `DONE` once fired).
+            Setting::Reroll => write!(out, "PRESS"),
+            // An arrow, drawn rather than written ([`invert_arrow`]).
+            Setting::Invert => Ok(()),
         };
     }
 
@@ -926,9 +937,7 @@ impl MelodyApp {
         } else if self.hidden(setting) {
             0
         } else {
-            let mut value = TextBuf::<16>::new();
-            Self::write_value(setting, &self.settings, &mut value);
-            FONT_5X8.width_of(value.as_str())
+            FONT_5X8.width_of(self.value_text(setting).as_str())
         };
         if boxed {
             gfx::fill_rect(
@@ -949,8 +958,7 @@ impl MelodyApp {
                 style.color,
             );
         } else if !self.hidden(setting) {
-            let mut value = TextBuf::<16>::new();
-            Self::write_value(setting, &self.settings, &mut value);
+            let value = self.value_text(setting);
             text::draw(
                 frame,
                 value.as_str(),
@@ -959,6 +967,18 @@ impl MelodyApp {
             );
         }
         width
+    }
+
+    /// `setting`'s value as its row shows it: `REROLL` says `DONE` for a
+    /// moment after a reroll, so a press is seen to have acted.
+    fn value_text(&self, setting: Setting) -> TextBuf<16> {
+        let mut value = TextBuf::<16>::new();
+        if setting == Setting::Reroll && self.rerolled_micros > 0 {
+            let _ = write!(value, "DONE");
+        } else {
+            Self::write_value(setting, &self.settings, &mut value);
+        }
+        value
     }
 
     /// Whether the screen leaves `setting`'s value out: one that follows its
@@ -1270,8 +1290,8 @@ mod tests {
         FIELDS, MelodyApp, PAGES, PARAM_SPECS, ROWS, Setting, Settings, millivolts, row_label,
         sweep,
     };
-    use crate::apps::App;
     use crate::apps::param::ParamValue;
+    use crate::apps::{App, InputSnapshot};
     use crate::fmt::TextBuf;
     use crate::modulation::slots::slot_of;
 
@@ -1300,6 +1320,30 @@ mod tests {
         }
         assert_eq!(Setting::Reroll.param(), None);
         assert_eq!(Setting::ALL.len(), PARAM_SPECS.len() + 1);
+    }
+
+    #[test]
+    fn reroll_says_to_press_and_that_it_acted() {
+        let mut app = MelodyApp::new();
+        assert_eq!(app.value_text(Setting::Reroll).as_str(), "PRESS");
+        app.act(0).unwrap();
+        assert_eq!(
+            app.value_text(Setting::Reroll).as_str(),
+            "DONE",
+            "from the probe too"
+        );
+        let tick = InputSnapshot {
+            elapsed_micros: 1_000,
+            ..InputSnapshot::default()
+        };
+        for _ in 0..500 {
+            MelodyApp::update(&mut app, &tick);
+        }
+        assert_eq!(
+            app.value_text(Setting::Reroll).as_str(),
+            "PRESS",
+            "half a second on"
+        );
     }
 
     #[test]

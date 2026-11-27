@@ -145,7 +145,7 @@ picked; in a row of two, only the field picked is boxed.
 | 2 | `OCTAVE` | | −3 to +3 | 0 | octaves the whole moves by |
 | 2 | `TRANSPOSE` | | −24 to +24 | 0 | semitones added before quantising, so the melody moves within the scale |
 | 2 | `GATE` | | 1–99 % | 50 % | the gate's length, in percent of the clock's period (10 ms until two clocks give the rate) |
-| 2 | `REROLL` | | — | — | the right encoder's click draws the whole sequence anew |
+| 2 | `REROLL` | | `PRESS` | — | an action: the right encoder's click draws the whole sequence anew, and the row reads `DONE` for half a second |
 | 3 | `JUMP` | | `OFF`, `NO REP`, 1–7 | `OFF` | how a step is drawn: an even place, one whose note never repeats the step before's, or a walk of up to so many degrees (*Chance and draws*) |
 | 3 | `SPREAD` | | 0–48 semitones | 24 | the window's width: the loop stretches or narrows at once |
 | 3 | `CENTER` | | −100 to +100 % | 0 % | the window's place round the root: 0 centred on it, +100 % starting on it, −100 % ending on it |

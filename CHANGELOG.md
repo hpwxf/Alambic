@@ -23,7 +23,8 @@ Architectural decisions behind each change are in `journal/` (French).
   gate, each port routed like any other. Its settings fit three pages of
   four rows, `KEY` and `CHORD` holding two fields each, which the left
   encoder walks one by one. The loop shows at the bottom of the screen; a
-  click on the left encoder edits its steps there. Its own guide:
+  click on the left encoder edits its steps there. `REROLL`, an action,
+  reads `PRESS`, then `DONE` for half a second once fired. Its own guide:
   `crates/oc-core/src/apps/melody/README.md`.
 
 ### Changed
