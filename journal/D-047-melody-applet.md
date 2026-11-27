@@ -209,3 +209,39 @@ qu'à peu près (`RANGE 2`, `OCTAVE −1`, `BIAS 50 %`), à l'octave près, et p
   absolus, hors de la projection.
 * Le surcoût de 32 o par pas (×4 emplacements) qui compterait dans le budget de D-038 : `u` sur 8 bits (256 positions,
   ≈ 0,19 demi-ton à 48 demi-tons de largeur).
+
+## Révision du 2026-11-27 (suite) : un rythme aléatoire qui boucle
+
+**Contexte.** `MELODY` déclenche une gate à chaque pas d'horloge. Le Gamut Repetitor génère des rythmes aléatoires
+répétés sur ses sorties de triggers ; le meloDICER a une section rythme (silences, liaisons) tirée à part de la
+mélodie (manuels relus le 2026-11-27). C'était le premier manque relevé face aux deux.
+
+**Décidé (réponses de l'utilisateur, détails proposés par l'assistant).**
+
+* **Ce qu'un pas garde en plus** : deux valeurs de 16 bits tirées une fois, comme sa place : `r`, son rang de jeu, et
+  `l`, son rang de liaison. Elles bouclent avec la séquence.
+* **`DENSITY`** (0 à 100 %, 100 % par défaut, le comportement d'avant) : un pas joue si `r` est sous le seuil de la
+  densité. Le seuil se compare en direct, comme la fenêtre : monter la densité ajoute des pas, la baisser en retire,
+  toujours les mêmes et dans le même ordre ; assignable à une entrée CV (20 % par volt), qui agit tout de suite.
+* **`LEGATO`** (0 à 100 %, 0 par défaut) : un pas joué dont `l` est sous le seuil se lie au pas joué qui le précède :
+  sa note change sans nouvelle gate, la gate de l'autre tenue jusqu'à lui. Un pas lié après un silence joue
+  normalement. Une gate qui suit une gate tenue sans liaison commence par un tick bas, pour que l'enveloppe voie le
+  front.
+* **Un pas silencieux** : la gate ne s'ouvre pas, et `NOTE` et l'accord gardent la dernière note jouée, qui suit
+  toujours la fenêtre en direct ; le pointeur, lui, avance.
+* **Un tirage à part, comme le meloDICER** : `PROB` et `REROLL` ne tirent plus que les places ; le rythme a les
+  siens, une chance de nouveau tirage au passage (`RHYTHM`, 0 % par défaut) et un `REROLL` du rythme seul. Un
+  rythme figé sous une mélodie qui change, ou l'inverse. L'action de sonde `REROLL` reste celle des notes ; une
+  action `RHYTHM` tire le rythme.
+* **L'éditeur des pas** : un clic droit court bascule la gate du pas encadré (son `r` à 0, joué dès que la densité
+  dépasse 0 %, ou au plus haut, silencieux même à 100 %) ; un appui long sur l'encodeur droit tire une nouvelle note
+  au hasard pour ce seul pas, comme le clic droit le faisait. Hors de l'éditeur, l'appui long droit reste réservé à
+  la future page d'options.
+* **L'écran** : un pas silencieux garde sa marque de hauteur, en pointillés ; un pas lié est relié à la marque du
+  précédent.
+* **Pages** : `DENSITY`, `LEGATO`, `RHYTHM` et le `REROLL` du rythme ajoutent des réglages ; le dépassement des trois
+  pages sera repris par la page d'options (hors de cette révision).
+
+**Ce qui ferait changer d'avis.** Une liaison qui sonne mal avec des gates courtes (`GATE` bas) : la tenir à la
+longueur de `GATE` au lieu de l'étendre au pas suivant. Un rythme manuel écrasé par `DENSITY 0 %` qui gêne : un
+verrou par pas, hors des seuils.
