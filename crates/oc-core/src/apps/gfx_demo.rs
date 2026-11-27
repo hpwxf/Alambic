@@ -222,7 +222,7 @@ impl GfxDemoApp {
                 }
                 let knob = &mut self.knobs[self.focus];
                 *knob = (*knob + turns * KNOB_STEP).clamp(0, KNOB_MAX);
-                if input.buttons.pressed(Button::RightEncoder) {
+                if input.buttons.tapped(Button::RightEncoder) {
                     *knob = KNOB_START[self.focus];
                 }
             }

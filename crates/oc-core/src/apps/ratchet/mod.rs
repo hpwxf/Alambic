@@ -557,7 +557,7 @@ impl RatchetApp {
             self.selected = wrapped(self.selected, Setting::ALL.len(), picks);
         }
         if let (true, Some(slot)) = (
-            input.buttons.pressed(Button::RightEncoder),
+            input.buttons.tapped(Button::RightEncoder),
             self.selected().input_slot(),
         ) {
             self.inputs.open(slot);
@@ -925,6 +925,16 @@ const INPUTS: [InputPort; 1] = [InputPort {
 }];
 
 impl App for RatchetApp {
+    /// Keeps the setting the panel picked during a freeze and the input
+    /// submenu as it was left (journal/D-049); the values came through the
+    /// parameter model.
+    fn adopt(&mut self, edited: &dyn core::any::Any) {
+        if let Some(edited) = edited.downcast_ref::<Self>() {
+            self.selected = edited.selected;
+            self.inputs = edited.inputs;
+        }
+    }
+
     fn input_ports(&self) -> &'static [InputPort] {
         &INPUTS
     }

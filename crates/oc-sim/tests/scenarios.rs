@@ -275,6 +275,18 @@ fn melody_steps_on_ratchets_thru_through_its_clock() {
 }
 
 #[test]
+fn a_frozen_supersaw_plays_on_while_the_panel_edits_a_copy() {
+    let mut simulator = replay("freeze");
+    assert_eq!(simulator.apps().frozen(), Some(0));
+    assert_eq!(
+        simulator.app::<SupersawApp>().detune(),
+        500,
+        "SUPERSAW plays on as it was"
+    );
+    assert_screen_matches(&mut simulator, "freeze");
+}
+
+#[test]
 fn melody_plays_its_sixth_step_of_sixteen() {
     let mut simulator = replay("melody");
     assert_eq!(simulator.current_app(), AppId::Melody);
@@ -528,6 +540,7 @@ fn every_scenario_file_has_a_test_and_a_snapshot() {
         "gfx_knobs",
         "gfx_curves",
         "gfx_sequencer",
+        "freeze",
         "internal_clock",
         "internal_routing",
         "internal_routing_closed",

@@ -9,6 +9,11 @@ Architectural decisions behind each change are in `journal/` (French).
 
 ### Changed
 
+- **Freeze** (journal/D-049): a long press of the right encoder lets the
+  panel edit a copy of the shown app while it plays on, its title bar in
+  inverse video; the release of the next long press publishes every value,
+  CV input and `MELODY` step at once. A short right click now acts on its
+  release. In the simulator, `Y` holds the right encoder.
 - `RATCHET`'s title bar: the `1 A B` lights give way to a mark right of the
   tempo, a disc while the clock is high, a ring while it is low; its clock
   may come from any input now (journal/D-048).

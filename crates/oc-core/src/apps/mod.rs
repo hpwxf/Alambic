@@ -58,7 +58,7 @@ use crate::framebuffer::FrameBuffer;
 use crate::modulation::Assign;
 use crate::modulation::slots::slot_of;
 use crate::platform::{
-    BUTTONS, CV_CHANNELS, ControlEvents, CvChannel, ENCODERS, MilliVolts, TRIGGER_CHANNELS,
+    BUTTONS, Button, CV_CHANNELS, ControlEvents, CvChannel, ENCODERS, MilliVolts, TRIGGER_CHANNELS,
 };
 
 /// How many slots there are, each running an applet, [`AppId::Nothing`]
@@ -479,6 +479,40 @@ pub trait App: Any {
     fn assign_sweep(&self, _index: usize) -> Option<(MilliVolts, MilliVolts)> {
         None
     }
+
+    /// Whether a long press of the right encoder is the applet's own now
+    /// (`MELODY`'s step editor draws a new note with it), rather than the
+    /// freeze's (journal/D-049).
+    fn takes_long_right(&self) -> bool {
+        false
+    }
+
+    /// Takes from `edited`, a copy of itself the panel edited during a
+    /// freeze, what the parameter model and the assignments do not carry:
+    /// the setting picked, an open submenu, `MELODY`'s steps (journal/D-049).
+    /// Its own running state (a step playing, a burst under way) stays.
+    /// Nothing by default.
+    fn adopt(&mut self, _edited: &dyn Any) {}
+}
+
+/// What a freeze leaves unpublished, then publishes on the live applet
+/// (journal/D-049): each parameter that differs, set as the probe would,
+/// twice round for the bounds one setting moves for another, the
+/// assignments, and what the applet itself carries over ([`App::adopt`]).
+fn adopt_edits(live: &mut dyn App, edited: &dyn App) {
+    for _ in 0..2 {
+        for index in 0..edited.param_specs().len() {
+            if let Some(value) = edited.get(index)
+                && live.get(index) != Some(value)
+            {
+                let _ = live.set(index, value);
+            }
+        }
+    }
+    let count = live.assigns().len().min(edited.assigns().len());
+    live.assigns_mut()[..count].copy_from_slice(&edited.assigns()[..count]);
+    let edited: &dyn Any = edited;
+    live.adopt(edited);
 }
 
 // Once for every applet rather than in each one's table: what an applet
@@ -791,6 +825,14 @@ pub struct AppHost {
     slots: [Slot; MAX_INSTANCES],
     /// Position of the instance with the focus.
     focus: usize,
+    /// While the panel is frozen, the slot frozen and the copy of its
+    /// instance the panel edits (journal/D-049).
+    edited: Option<(usize, Instance)>,
+    /// Whether a long press of the right encoder is under way, fired and not
+    /// yet released.
+    long_right: bool,
+    /// Whether the edits are published once that long press is released.
+    apply_on_release: bool,
     /// The level each lane of each slot published on the last tick, for
     /// the others to read (journal/D-048).
     levels: [[MilliVolts; CV_CHANNELS]; MAX_INSTANCES],
@@ -803,6 +845,9 @@ impl AppHost {
     pub const EMPTY: Self = Self {
         slots: [Slot::EMPTY; MAX_INSTANCES],
         focus: 0,
+        edited: None,
+        long_right: false,
+        apply_on_release: false,
         levels: [[0; CV_CHANNELS]; MAX_INSTANCES],
     };
 
@@ -967,6 +1012,9 @@ impl AppHost {
         if slot.instance.app().id() == id {
             return true;
         }
+        if self.frozen() == Some(position) {
+            self.edited = None;
+        }
         self.slots[position].route = Route::OFF;
         let instance = Instance::new(id);
         let route = self.free_route(instance.app().output_ports().len());
@@ -1090,12 +1138,15 @@ impl AppHost {
     /// where they go. Only the one with the focus sees the panel. Each sees
     /// the levels every slot published on the last tick (journal/D-048).
     pub fn update(&mut self, input: &InputSnapshot) -> [Routed<Sound>; MAX_INSTANCES] {
-        let mut quiet = *input;
+        let mut input = *input;
+        let freezing = self.follow_freeze(&mut input);
+        let mut quiet = input;
         quiet.silence_controls();
         let focused = self.focused_slot();
         let outputs = self.ports();
         let last = self.levels;
         let mut parts = [Routed::OFF; MAX_INSTANCES];
+        let edited = &mut self.edited;
         for (index, ((slot, part), levels)) in self
             .slots
             .iter_mut()
@@ -1103,26 +1154,102 @@ impl AppHost {
             .zip(&mut self.levels)
             .enumerate()
         {
-            let input = if index == focused { input } else { &quiet };
-            let mut input = *input;
-            input.bus = Bus::new(last, outputs, Some(index));
+            let frozen = edited.as_ref().is_some_and(|(at, _)| *at == index);
+            // A frozen applet plays on without the panel; its copy takes it.
+            let mut seen = if index == focused && !frozen {
+                input
+            } else {
+                quiet
+            };
+            seen.bus = Bus::new(last, outputs, Some(index));
             if slot.inputs != InputRoute::IDENTITY {
-                input = slot.inputs.apply(&input);
+                seen = slot.inputs.apply(&seen);
             }
-            let params = slot.instance.app_mut().update(&input);
+            let params = slot.instance.app_mut().update(&seen);
             *levels = published(&params, outputs[index]);
             *part = Routed {
                 params,
                 route: slot.route,
             };
+            if frozen && let Some((_, copy)) = edited.as_mut() {
+                copy.app_mut()
+                    .update(&edited_input(&input, &seen, index == focused));
+            }
+        }
+        // The copy is taken once the applet has had this tick's panel: what
+        // the press that freezes came with still reaches it.
+        if freezing {
+            self.edited = Some((focused, self.slots[focused].instance.clone()));
         }
         parts
     }
 
-    /// Draws the screen of the instance with the focus.
-    pub fn render(&self, frame: &mut FrameBuffer, context: &TickContext) {
-        self.focused().render(frame, context);
+    /// The slot frozen, if the panel edits a copy of its applet
+    /// (journal/D-049).
+    #[must_use]
+    pub fn frozen(&self) -> Option<usize> {
+        self.edited.as_ref().map(|(at, _)| *at)
     }
+
+    /// Follows the freeze's gesture on `input`, the panel's this tick: a long
+    /// press of the right encoder freezes the applet with the focus, unless
+    /// the applet takes it; the release of the next one publishes the edits.
+    /// The long press the freeze takes is forgotten from `input`. Whether
+    /// the freeze begins after this tick.
+    fn follow_freeze(&mut self, input: &mut InputSnapshot) -> bool {
+        let buttons = &mut input.buttons;
+        let panel_app = match &self.edited {
+            Some((_, copy)) => copy.app(),
+            None => self.focused(),
+        };
+        if buttons.long_pressed(Button::RightEncoder) && !panel_app.takes_long_right() {
+            buttons.forget_long(Button::RightEncoder);
+            self.long_right = true;
+            if self.edited.is_none() {
+                return true;
+            }
+            self.apply_on_release = true;
+        }
+        if self.long_right && !buttons.held(Button::RightEncoder) {
+            self.long_right = false;
+            if core::mem::take(&mut self.apply_on_release) {
+                self.apply_freeze();
+            }
+        }
+        false
+    }
+
+    /// Publishes what the panel edited during the freeze on the live
+    /// applet, and ends the freeze (journal/D-049).
+    pub fn apply_freeze(&mut self) {
+        if let Some((at, copy)) = self.edited.take() {
+            adopt_edits(self.slots[at].instance.app_mut(), copy.app());
+        }
+        self.apply_on_release = false;
+    }
+
+    /// Draws the screen of the instance with the focus: the copy the panel
+    /// edits while it is frozen.
+    pub fn render(&self, frame: &mut FrameBuffer, context: &TickContext) {
+        match &self.edited {
+            Some((at, copy)) if *at == self.focus => copy.app().render(frame, context),
+            _ => self.focused().render(frame, context),
+        }
+    }
+}
+
+/// What the copy of a frozen applet sees: the panel, when it has the focus,
+/// and the inputs `seen` gives the live one, but no trigger and no time, so
+/// that it neither steps nor draws (journal/D-049).
+fn edited_input(panel: &InputSnapshot, seen: &InputSnapshot, focused: bool) -> InputSnapshot {
+    let mut copy = *seen;
+    if focused {
+        copy.controls = panel.controls;
+        copy.buttons = panel.buttons;
+    }
+    copy.triggers = [false; TRIGGER_CHANNELS];
+    copy.elapsed_micros = 0;
+    copy
 }
 
 /// The level each lane of `params` carries on its [`PortSignal::Cv`] port

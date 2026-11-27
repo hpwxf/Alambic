@@ -91,7 +91,7 @@ l'écran et éditable pas à pas. Plan : [etape-14-melodie.md](docs/plan/etape-1
 | 14n | révision de D-047 : boucle qui se déforme sans se perdre (position normalisée par pas, `SPREAD` / `CENTER` / `BIAS` en direct) | ✅ |
 | 14o | rythme aléatoire tiré à part (`DENSITY`, `LEGATO`, `R PROB`, `R REROLL`), gate par pas dans l'éditeur ; pile 3 976 o libres | ✅ |
 | 14p | applet choisie une fois le moteur en place (révision de D-038) : pile 6 328 o libres | ✅ |
-| 14q | page d'options de l'applet, à l'appui long de `down` ou de l'encodeur droit : réglages secondaires (le rythme de `MELODY`, sa quatrième page) | ⏳ plus tard |
+| 14q | page d'options de l'applet, à l'appui long de `down` (l'encodeur droit étant au freeze depuis D-049) : réglages secondaires (le rythme de `MELODY`, sa quatrième page) | ⏳ plus tard |
 
 ## Étape en cours : 15 — routage interne (D-048)
 
@@ -114,6 +114,17 @@ module (14f).
 | 15h | `OFF` pour les ports d'entrée (`InputSource::Off` : CV à 0 V, trigger bas), en tête de liste ; sonde `reset=off`, page | ✅ |
 | 15i | `RATCHET` : voyants `1 A B` retirés, état de l'horloge en rond à droite du tempo | ✅ |
 | 15j | emplacements numérotés de 1 à 4 dans la page web et la sonde (`@1`–`@4`) | ✅ |
+
+## Étape suivante : 16 — freeze du panneau (D-049)
+
+Un appui long sur l'encodeur droit fait éditer au panneau une copie de l'app au focus, qui joue sans changement ; le
+relâchement du prochain appui long publie tout (réglages, assignations, pas de `MELODY`). Branche `freeze`, sur
+`internal-routing` (PR #34).
+
+| Lot | Contenu | État |
+|---|---|---|
+| 16a | ADR D-049 ; `App::takes_long_right`, `App::adopt`, copie d'édition dans `AppHost` (`frozen`, `apply_freeze`), clic droit au relâchement, navigation bloquée, titre inversé ; `adopt` de `TONE`, `SUPERSAW`, `RATCHET`, `MELODY` (`Sequence::adopt_steps`) ; maintien `Y` du simulateur ; tests `freeze.rs`, scénario `freeze` ; docs ; `.text` +3,3 Kio (47,6 Kio d'ITCM libres), pile estimée +440 o (5 224 o libres) | ✅ |
+| 16b | essai sur le module | ⏳ |
 
 ## Décisions actées
 
@@ -160,4 +171,5 @@ Valeurs seules ; le raisonnement est dans `journal/`.
 | applet Supersaw | sept scies PolyBLEP en `f32` (phases entières), désaccord et mix de Szabo, passe-haut sur la fondamentale ; banc dans l'app (générateur `SupersawBank`) partagé par les sorties : A / B mono ou stéréo, C sub-octave ; entrées assignables par `oc_core::modulation` sauf `STEREO`, CV1 en V/oct sur `NOTE` au démarrage ; ×4 non nécessaire (repliement mesuré) ; forme de la scie au carré (`SHAPE`) ; scies descendantes, `LEVEL` à 3 V au plus | D-037, D-044 |
 | applet Melody | jusqu'à 32 pas, chacun une place dans une fenêtre projetée à la sortie, en direct et monotone : `SPREAD` (largeur, 0–48 dt), `CENTER` (position autour de la tonique, ±100 %), `BIAS` (courbe à bornes fixes, ±100 %), puis `TRANSPOSE` et quantification dans `KEY` (tonique, gamme), `OCTAVE` ; `TR1` horloge, `TR2` reset armé (ports routables) ; remplacement au passage avec `PROB` (place uniforme, `JUMP NO REP`, ou marche `JUMP` en degrés), `REROLL` ; rythme qui boucle, tiré à part (`DENSITY` en direct, `LEGATO`, `R PROB`, `R REROLL`), note tenue sur un silence ; ports `NOTE`, `CH1`, `CH2`, `GATE` (accord de deux tons empilés, `CHORD`, inversion ↓ / – / ↑) ; aucune entrée au démarrage ; niveaux tenus ; trois pages, `KEY` et `CHORD` à deux champs ; catégorie `SEQUENCE`, `AppId` 7 | D-047 |
 | routage interne | une assignation lit une prise ou un port CV d'une autre instance (`Source::Jack` / `Lane`) ; ports `Cv` / `Audio`, seuls les premiers proposés ; niveau publié (avant calibration, sans la sonde) au tick précédent ; l'app elle-même sautée ; un port assigne strictement (comme `SET`, sans mise en forme, valeur du panneau masquée) `=1:NOTE` à l'écran, `1:NOTE` au sous-menu, à la sonde et dans la page (révision du 2026-11-27) ; ports d'entrée (horloge, CV) branchés aussi sur un port interne, un trigger haut dès 1 V, ou sur `OFF` ; protocole 11 | D-048 |
+| freeze du panneau | appui long de l'encodeur droit : le panneau édite une copie de l'app au focus, qui joue sans changement (titre inversé) ; relâchement du prochain appui long : valeurs (par `set`), assignations et `App::adopt` (sélection, sous-menu, pas de `MELODY`) ; clic droit au relâchement d'un appui court ; focus, menu et routage bloqués ; pas dans l'éditeur de pas | D-049 |
 | budget mémoire | disposition de `teensy4-bsp`, reprise dans le `build.rs` d'`oc-firmware` (sans la feature `rt`) : code en ITCM, bancs 6 / 10 (192 + 320 Kio) ; coût d'une applet par différence de `xtask size` ; budgets lus dans l'ELF (`__flexram_config`), alerte sous 16 Kio d'ITCM libres ; profil `release` en `opt-level = "s"` par défaut, `3` pour `oc-dsp` (DSP), `oc-realtime` (interruption, chemin par échantillon) et `oc-vcv-ffi`, le firmware en `s`, justifié dans `Cargo.toml` ; ITCM à court : bancs repartagés, puis code en flash ; tampon de mesure : feature de test, `.uninit` en OCRAM ; arena dans `oc-core` au premier grand usage d'applet ; tampons du DMA en DTCM ; profondeur de la pile estimée par `cargo xtask size`, appels `dyn App` compris (`stack-depth` : `FAIL` au-delà de `.stack`, `warn` sous 2 Kio) ; moteur construit sans applet, démarré une fois dans sa `static` | D-038 |

@@ -42,6 +42,7 @@ rationale behind each crate is in the journal entry cited.
 | What a backend plays them with, for this image's instance slots (`Patch`, `Setup`, `Voice`, `Changes`, `Voices`, `Follower`, `Player`; `MAX_INSTANCES` in `apps/mod.rs`) | `crates/oc-core/src/playback.rs` (journal/D-040, D-046) |
 | The `Generator` trait, the voice, `Setup`, routes and the voices of every slot, the waveforms, levels and tones (`Basic`) | `crates/oc-core/src/audio/mod.rs`, `audio/wave.rs`, `audio/basic.rs` (journal/D-033, D-040, D-044, D-046) |
 | A parameter modulated by a CV input, and its submenu | `crates/oc-core/src/modulation/mod.rs`, `modulation/editor.rs` (journal/D-035, D-036); an applet's inputs and open submenu, a parameter's slot: `modulation/slots.rs` (`Modulations`, `slot_of`); reached by the probe through `App::assigns` and `assign` / `set_assign` on `dyn App` (journal/D-045); what an input reads, a jack or another instance's port (`Source`), and the levels the instances publish to one another (`apps/bus.rs`, `Bus`, filled by `AppHost::update`, journal/D-048) |
+| The freeze: the copy the panel edits, its gesture, what is published | `crates/oc-core/src/apps/mod.rs` (`AppHost::follow_freeze`, `apply_freeze`, `adopt_edits`; `App::takes_long_right`, `App::adopt`), the title bar in `engine.rs` (journal/D-049) |
 | The app menu (`up`+`down`) | `crates/oc-core/src/menu.rs` |
 | Button debouncing and the `up`+`down` chord | `crates/oc-core/src/buttons.rs` |
 | The system settings screen (`SETUP`, boot gestures) | `crates/oc-core/src/system.rs` (routing in `engine.rs`) |

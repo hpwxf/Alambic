@@ -69,6 +69,14 @@ impl ButtonEvents {
         self.long.get(button.index()).copied().unwrap_or(false)
     }
 
+    /// Forgets `button`'s long press on this tick: another part of the
+    /// panel took it (the freeze, journal/D-049).
+    pub fn forget_long(&mut self, button: Button) {
+        if let Some(long) = self.long.get_mut(button.index()) {
+            *long = false;
+        }
+    }
+
     /// Whether this button was released on this tick before its long press
     /// fired: the short action of a button that has a long one too.
     #[must_use]
