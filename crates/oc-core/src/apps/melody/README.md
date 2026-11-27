@@ -194,7 +194,8 @@ A click on the **left encoder** enters the sequence; `EDIT` replaces
   100 %.
 * A long press on the right encoder (a second) draws a new note for that
   step alone, by the rules above, its gate untouched. Out of the editor, the
-  long press is kept for the app's options page.
+  long press is kept for the app's options page, to come, which a long
+  press of `down` will open too.
 * Another left click leaves.
 
 The clock keeps running while you edit: the edited step plays its new note

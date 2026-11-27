@@ -90,6 +90,7 @@ l'écran et éditable pas à pas. Plan : [etape-14-melodie.md](docs/plan/etape-1
 | 14n | révision de D-047 : boucle qui se déforme sans se perdre (position normalisée par pas, `SPREAD` / `CENTER` / `BIAS` en direct) | ✅ |
 | 14o | rythme aléatoire tiré à part (`DENSITY`, `LEGATO`, `R PROB`, `R REROLL`), gate par pas dans l'éditeur ; pile 3 976 o libres | ✅ |
 | 14p | applet choisie une fois le moteur en place (révision de D-038) : pile 6 328 o libres | ✅ |
+| 14q | page d'options de l'applet, à l'appui long de `down` ou de l'encodeur droit : réglages secondaires (le rythme de `MELODY`, sa quatrième page) | ⏳ plus tard |
 
 ## Décisions actées
 

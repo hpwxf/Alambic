@@ -198,8 +198,8 @@ qu'à peu près (`RANGE 2`, `OCTAVE −1`, `BIAS 50 %`), à l'octave près, et p
   emplacements des entrées gardent leur rang (`SPREAD` prend celui de `RANGE`, `CENTER` celui de l'ancien `SPREAD`).
 * **Pages de réglages** : le compte de lignes ne change pas (`SPREAD`, `CENTER`, `BIAS` à la place de `RANGE`,
   `SPREAD`, `BIAS`). Le dépassement des pages qui viendrait d'autres ajouts sera traité à part : les réglages
-  secondaires passeront sur une page d'options de l'app, ouverte par un appui long sur l'encodeur droit (décision à
-  venir, hors de cette révision).
+  secondaires passeront sur une page d'options de l'app, ouverte par un appui long sur `down` ou sur l'encodeur
+  droit (précisé par l'utilisateur le 2026-11-27 ; à faire, hors de cette révision).
 
 **Ce qui ferait changer d'avis.**
 
@@ -236,7 +236,7 @@ mélodie (manuels relus le 2026-11-27). C'était le premier manque relevé face 
 * **L'éditeur des pas** : un clic droit court bascule la gate du pas encadré (son `r` à 0, joué dès que la densité
   dépasse 0 %, ou au plus haut, silencieux même à 100 %) ; un appui long sur l'encodeur droit tire une nouvelle note
   au hasard pour ce seul pas, comme le clic droit le faisait. Hors de l'éditeur, l'appui long droit reste réservé à
-  la future page d'options.
+  la future page d'options, que l'appui long de `down` ouvrira aussi.
 * **L'écran** : un pas silencieux garde sa marque de hauteur, en pointillés ; un pas lié est relié à la marque du
   précédent.
 * **Pages** : `DENSITY`, `LEGATO`, `R PROB` et `R REROLL` ajoutent une quatrième page ; le dépassement des trois

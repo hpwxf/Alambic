@@ -589,7 +589,8 @@ where
             // right, from the last round to the first and back, on the
             // applet's screen as on its routing page; a long `up` opens that
             // page, and closes it again. A long `down` does nothing: kept for
-            // another page (journal/D-046, revision of 2026-11-26).
+            // the applet's options page, to come (journal/D-046, revision
+            // of 2026-11-26).
             Screen::App => {
                 self.move_focus(&snapshot.buttons);
                 if snapshot.buttons.long_pressed(Button::Up) {

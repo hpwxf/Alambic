@@ -2,7 +2,8 @@
 //! of its output ports goes, and which jack each input it reads by itself
 //! comes from. Opened by a long press of `up`, closed the same way or by
 //! the menu chord; a short press of `up` or `down` moves to the next
-//! applet's page. A long press of `down` is kept for another page.
+//! applet's page. A long press of `down` is kept for the applet's
+//! options page, to come.
 //!
 //! Like the menu, a screen of the engine that owns the display without
 //! owning the outputs: every applet keeps running behind it. The left

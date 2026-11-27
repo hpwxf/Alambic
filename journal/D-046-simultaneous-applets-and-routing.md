@@ -403,6 +403,10 @@ rien et ne bouge pas le focus ; README, guide de `MELODY`, `CHANGELOG`.
 **Ce qui ferait changer d'avis.** L'usage réservé à `down` qui n'arrive pas, ou un `up` long confondu à l'usage avec
 le début de l'accord : rendre l'appui long aux deux boutons.
 
+**Usage précisé le 2026-11-27 (par l'utilisateur).** L'appui long de `down` ouvrira la page d'options de l'applet
+affichée, comme l'appui long de l'encodeur droit hors d'un éditeur (D-047) : ses réglages secondaires, par exemple le
+rythme de `MELODY`. À faire ; d'ici là, l'appui long de `down` ne fait toujours rien.
+
 ## Révision du 2026-11-27 : la valeur de la page de routage en butée
 
 Demande de l'utilisateur : l'encodeur droit de la page de routage bouclait (`A`, `B`, `C`, `D`, `OFF`, puis de nouveau
