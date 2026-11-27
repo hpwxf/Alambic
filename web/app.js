@@ -398,10 +398,13 @@ function activeSlot() {
 }
 
 function drawInstances() {
+  // Slots are numbered 1 to 4, as the module names another app's port
+  // (`1:NOTE`, journal/D-048); the protocol counts them from 0.
+  const label = (at) => String(at + 1);
   const row = $("apps-instances");
   row.replaceChildren();
   const active = activeSlot();
-  $("apps-select").textContent = active < 0 ? "Run on the module" : `Run in slot @${active}`;
+  $("apps-select").textContent = active < 0 ? "Run on the module" : `Run in slot ${label(active)}`;
   for (let at = 0; at < instances.len; at += 1) {
     const show = document.createElement("button");
     const empty = instances.is_empty_slot(at);
@@ -410,13 +413,15 @@ function drawInstances() {
     show.classList.toggle("empty", empty);
     show.setAttribute("aria-pressed", String(at === active));
     show.title = at === active ? "shown on the module" : "show it on the module";
-    show.textContent = empty ? `@${at} empty` : `@${at} ${appNames.get(instances.app(at)) ?? "?"}`;
+    show.textContent = empty
+      ? `${label(at)} empty`
+      : `${label(at)} ${appNames.get(instances.app(at)) ?? "?"}`;
     show.addEventListener("click", (event) => request(
       event.currentTarget, "apps-status", "showing…", async (probe) => {
         await probe.ask(oc.Instances.focus_request(at));
         await listInstances(probe);
         await showInstance(probe, at);
-        return `@${at} shown`;
+        return `slot ${label(at)} shown`;
       },
     ));
     row.append(show);
@@ -424,7 +429,7 @@ function drawInstances() {
       const remove = document.createElement("button");
       remove.className = "needs-probe";
       remove.textContent = "✕";
-      remove.title = `empty @${at}`;
+      remove.title = `empty slot ${label(at)}`;
       remove.addEventListener("click", (event) => request(
         event.currentTarget, "apps-status", "emptying…", async (probe) => {
           await probe.ask(oc.Instances.remove_request(at));
@@ -450,6 +455,8 @@ async function showApp(probe, app) {
 
 /** Fills `view` and draws its parameters, values, actions and routing. */
 async function describe(probe, view) {
+  // The other instances' port names, by which an input names one (`1:NOTE`).
+  if (instances) view.take_ports(instances);
   const items = await probe.ask(view.describe_request(), UNTIL_DONE, true);
   for (const item of items) view.absorb(item.message);
   release(items);
@@ -497,7 +504,11 @@ function drawRouting() {
   }
   for (let port = 0; port < appView.input_port_count; port += 1) {
     const kind = appView.input_port_trigger(port) ? "TR" : "CV";
-    const jacks = [0, 1, 2, 3].map((jack) => [`${kind}${jack + 1}`, jack]);
+    // OFF, the four jacks of its kind, then the ports of the other instances
+    // that carry a level (`1:BURST`, journal/D-048).
+    const jacks = [["OFF", oc.Instances.off_code()]]
+      .concat([0, 1, 2, 3].map((jack) => [`${kind}${jack + 1}`, jack]))
+      .concat(Array.from(instances.lane_codes(at), (code) => [instances.source_label(code), code]));
     line(appView.input_port_name(port), "←", jacks, instances.input(at, port),
       (jack) => oc.Instances.input_request(at, port, jack));
   }
@@ -626,9 +637,14 @@ function showMark(entry, at) {
     : "Open the CV input panel: input, scale, shift, bounds, effect";
 }
 
-/** The field that edits one field of an input: a list or a text field. */
+/**
+ * The field that edits one field of an input: a list or a text field. The
+ * input's list ends with the ports of the other instances that carry a
+ * level (`2:NOTE`), which it can read as a CV (journal/D-048).
+ */
 function inputEditor(field) {
   const choices = oc.AppView.input_choices(field);
+  if (field === "input" && instances) choices.push(...instances.sources(appView.position));
   if (choices.length === 0) {
     const input = document.createElement("input");
     input.type = "text";

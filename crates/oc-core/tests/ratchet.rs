@@ -5,7 +5,7 @@ use oc_core::apps::AppId;
 use oc_core::apps::ratchet::RatchetApp;
 use oc_core::apps::ratchet::burst::{Count, Model};
 use oc_core::apps::ratchet::{Setting, TRIGGER_MV, sweep};
-use oc_core::modulation::{AssignLine, Effect};
+use oc_core::modulation::{AssignLine, Effect, Source};
 use oc_core::platform::{Button, CvChannel, TriggerChannel};
 use oc_core::settings::Settings;
 use oc_core::testing::{MockEngine, mock_engine_at_boot};
@@ -188,12 +188,12 @@ fn an_input_adds_to_a_setting_or_sets_it() {
     let count = *engine.app::<RatchetApp>().assign(Setting::Count).unwrap();
     assert_eq!(
         (count.input, count.effect),
-        (Some(CvChannel::One), Effect::Add)
+        (Some(Source::Jack(CvChannel::One)), Effect::Add)
     );
     let time = *engine.app::<RatchetApp>().assign(Setting::Time).unwrap();
     assert_eq!(
         (time.input, time.effect),
-        (Some(CvChannel::Two), Effect::Set)
+        (Some(Source::Jack(CvChannel::Two)), Effect::Set)
     );
     {
         let (analog_in, ..) = engine.parts_mut();
@@ -455,8 +455,9 @@ fn a_scroll_bar_left_of_the_settings_shows_the_page() {
     set(&mut engine, Setting::Mode, 0);
     let frame = engine.parts_mut().4.frame_mut().clone();
     assert!(!frame.pixel(0, 8) && !frame.pixel(2, 23) && frame.pixel(0, 24) && frame.pixel(2, 39));
-    // Nothing left of the rows in the title bar's place of the old cursor.
-    assert!((80..90).all(|x| (0..8).all(|y| !frame.pixel(x, y))));
+    // Nothing in the title bar right of the clock's mark (80 to 84, past the
+    // tempo), where an old cursor once sat.
+    assert!((86..oc_core::framebuffer::WIDTH_I32).all(|x| (0..8).all(|y| !frame.pixel(x, y))));
 }
 
 #[test]

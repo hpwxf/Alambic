@@ -678,7 +678,7 @@ impl MelodyApp {
             let left = micros.saturating_sub(elapsed);
             (left > 0).then_some((setting, left))
         });
-        self.inputs.read(&input.cv, elapsed);
+        self.inputs.read(input);
         self.tempo.advance(elapsed);
 
         let reset = input.triggers[1];
@@ -1015,6 +1015,12 @@ impl MelodyApp {
                 Point::new(LIST_LEFT + 2, top),
                 style,
             );
+            // A row of one field with an input: the input's name at the
+            // right, the value left of it.
+            let slot = match fields {
+                [setting] => setting.input_slot(),
+                _ => None,
+            };
             // The fields right to left, each ending a gap left of the next.
             let mut right = VALUE_RIGHT;
             for &setting in fields.iter().rev() {
@@ -1022,10 +1028,9 @@ impl MelodyApp {
                 let width = self.draw_field(frame, setting, right, top, style, boxed);
                 right -= width + FIELD_GAP;
             }
-            if let [setting] = fields
-                && let Some(assign) = self.assign(*setting)
-            {
-                crate::modulation::draw_input(frame, assign, WIDTH_I32 - 3, top, style);
+            if let Some(slot) = slot {
+                self.inputs
+                    .draw_input(frame, slot, WIDTH_I32 - 3, top, style);
             }
         }
     }
@@ -1255,10 +1260,10 @@ fn write_signed(out: &mut TextBuf<16>, value: i32) -> core::fmt::Result {
 /// tones so that the gate has a port (journal/D-047, revision of
 /// 2026-11-26).
 const PORTS: [Port; 4] = [
-    Port { name: "NOTE" },
-    Port { name: "CH1" },
-    Port { name: "CH2" },
-    Port { name: "GATE" },
+    Port::cv("NOTE"),
+    Port::cv("CH1"),
+    Port::cv("CH2"),
+    Port::cv("GATE"),
 ];
 
 /// `TR1` clocks the steps, `TR2` arms the first; the routing page may plug

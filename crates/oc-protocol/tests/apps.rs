@@ -6,8 +6,8 @@ use oc_core::apps::{AppId, Instance, MAX_INSTANCES};
 use oc_core::testing::{MockEngine, mock_engine};
 use oc_protocol::server::{Identity, Server};
 use oc_protocol::{
-    Error, FrameReader, Group, MAX_FRAME, ParamKind, ParamValue, Refused, Reply, Request, Target,
-    VERSION, decode, encode,
+    Error, FrameReader, Group, InputSource, MAX_FRAME, ParamKind, ParamValue, Refused, Reply,
+    Request, Target, VERSION, decode, encode,
 };
 
 const IDENTITY: Identity = Identity {
@@ -365,7 +365,7 @@ fn an_input_is_read_and_set_from_afar_by_its_parameters_index() {
     assert!(sweep.is_some(), "COUNT says what sweeps it");
 
     let wanted = Assign {
-        input: Some(CvChannel::Three),
+        input: Some(CvChannel::Three.into()),
         effect: Effect::Set,
         scale_percent: 50,
         ..Assign::NONE
@@ -480,7 +480,9 @@ fn slots_are_listed_filled_routed_focused_and_emptied() {
             app: supersaw,
             focused: false,
             outputs: [Some(2), Some(3), None, None],
-            inputs: [0; 4],
+            inputs: [InputSource::Jack(0); 4],
+            levels: [false; 4],
+            names: ["L/MONO", "R/MONO", "SUB", ""],
         }
     );
 
@@ -504,14 +506,34 @@ fn slots_are_listed_filled_routed_focused_and_emptied() {
             &Request::SetInput {
                 instance: 0,
                 port: 0,
-                jack: 1,
+                source: InputSource::Jack(1),
             }
         ),
         Reply::Instance {
-            inputs: [1, 0, 0, 0],
+            inputs: [InputSource::Jack(1), ..],
             ..
         }
     ));
+    // RATCHET's CLOCK may read SUPERSAW's ports no more than its own: they
+    // carry sound, and its own are its own (journal/D-048).
+    for source in [
+        InputSource::Lane { slot: 1, port: 0 },
+        InputSource::Lane { slot: 0, port: 1 },
+    ] {
+        assert_eq!(
+            ask(
+                &mut server,
+                &mut engine,
+                &Request::SetInput {
+                    instance: 0,
+                    port: 0,
+                    source,
+                }
+            ),
+            Reply::Error(Error::Refused(Refused::NoSuch)),
+            "{source:?}"
+        );
+    }
     // A parameter of the instance at a position, not of the first of a kind.
     let level = 5;
     assert_eq!(
@@ -595,5 +617,61 @@ fn a_description_ends_with_the_ports() {
             (true, "BURST".to_owned(), false),
             (false, "CLOCK".to_owned(), true),
         ]
+    );
+}
+
+#[test]
+fn an_input_reads_only_a_level_port_of_another_instance() {
+    use oc_core::modulation::Source;
+    use oc_protocol::Assign;
+
+    let (mut server, mut engine) = running_ratchet();
+    assert!(engine.select_app_at(1, AppId::Melody));
+    assert!(engine.select_app_at(2, AppId::Supersaw));
+    let count = 0;
+    let set = |server: &mut Server, engine: &mut MockEngine, slot: u8, port: u8| {
+        ask(
+            server,
+            engine,
+            &Request::SetAssign {
+                app: Target::Instance(0),
+                param: count,
+                assign: Assign {
+                    input: Some(Source::Lane { slot, port }),
+                    ..Assign::NONE
+                },
+            },
+        )
+    };
+    assert!(
+        matches!(
+            set(&mut server, &mut engine, 1, 3),
+            Reply::Assign { assign, .. } if assign.input == Source::lane(1, 3)
+        ),
+        "MELODY's GATE, though no jack is left for it"
+    );
+    for (slot, port, why) in [
+        (0, 0, "RATCHET's own THRU"),
+        (2, 0, "SUPERSAW's L/MONO, a sound"),
+        (1, 3 + 1, "past MELODY's last port"),
+        (3, 0, "an empty slot"),
+    ] {
+        assert_eq!(
+            set(&mut server, &mut engine, slot, port),
+            Reply::Error(Error::Refused(Refused::NoSuch)),
+            "{why}"
+        );
+    }
+    let mut frames = replies(&mut server, &mut engine, &Request::ListInstances);
+    assert!(
+        matches!(
+            decode::<Reply<'_>>(&mut frames[1]).unwrap(),
+            Reply::Instance {
+                position: 1,
+                levels: [true, true, true, true],
+                ..
+            }
+        ),
+        "MELODY's four ports carry levels"
     );
 }

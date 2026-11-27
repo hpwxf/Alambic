@@ -175,7 +175,7 @@ fn an_applet_is_found_described_and_set_by_name() {
     client.select_app(ratchet.index, None).unwrap();
     let mode = apps::find_spec(&description.params, "mode").unwrap();
     assert_eq!(mode.choices, ["FIRST", "SPAN"]);
-    let text = apps::description_text(&ratchet, &description);
+    let text = apps::description_text(&ratchet, &description, &apps::PortNames::default());
     assert!(text.contains("COUNT"), "{text}");
     assert!(text.contains("actions: BURST"), "{text}");
 
@@ -210,15 +210,19 @@ fn an_input_is_described_and_set_by_its_fields() {
     let description = client.describe(supersaw.index).unwrap();
     let detune = apps::find_spec(&description.params, "detune").unwrap();
     let input = detune.input.expect("DETUNE takes an input");
-    assert_eq!(apps::input_text(&input.assign), "--");
+    assert_eq!(
+        apps::input_text(&input.assign, &apps::PortNames::default()),
+        "--"
+    );
     let note = apps::find_spec(&description.params, "note").unwrap();
-    let text = apps::input_text(&note.input.unwrap().assign);
+    let text = apps::input_text(&note.input.unwrap().assign, &apps::PortNames::default());
     assert_eq!(
         text, "CV1 x1.00 +0.00V -10.0..+10.0 ADD",
         "CV1 on NOTE at start"
     );
     assert!(
-        apps::description_text(&supersaw, &description).contains("CV CV1 x1.00"),
+        apps::description_text(&supersaw, &description, &apps::PortNames::default())
+            .contains("CV CV1 x1.00"),
         "the description shows it"
     );
 
@@ -231,13 +235,13 @@ fn an_input_is_described_and_set_by_its_fields() {
         ("min", "0"),
         ("max", "5"),
     ] {
-        assign = apps::parse_input_field(assign, field, text).unwrap();
+        assign = apps::parse_input_field(assign, field, text, &apps::PortNames::default()).unwrap();
     }
     let applied = client
         .set_assign(supersaw.index, detune.index, assign)
         .unwrap();
     assert_eq!(
-        apps::input_text(&applied.assign),
+        apps::input_text(&applied.assign, &apps::PortNames::default()),
         "CV2 x0.50 -0.25V +0.0..+5.0 MUL"
     );
     assert_eq!(
@@ -247,13 +251,13 @@ fn an_input_is_described_and_set_by_its_fields() {
             .assign,
         assign
     );
-    assert!(apps::parse_input_field(assign, "input", "cv5").is_err());
-    assert!(apps::parse_input_field(assign, "gain", "1").is_err());
+    assert!(apps::parse_input_field(assign, "input", "cv5", &apps::PortNames::default()).is_err());
+    assert!(apps::parse_input_field(assign, "gain", "1", &apps::PortNames::default()).is_err());
     assert!(matches!(
         client.set_assign(
             supersaw.index,
             detune.index,
-            apps::parse_input_field(assign, "scale", "3").unwrap()
+            apps::parse_input_field(assign, "scale", "3", &apps::PortNames::default()).unwrap()
         ),
         Err(ProbeError::Refused(Error::Refused(
             oc_protocol::Refused::OutOfRange

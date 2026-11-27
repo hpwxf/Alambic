@@ -6,14 +6,15 @@
 //! what `cargo probe` does.
 
 use oc_core::fmt::TextBuf;
-use oc_core::modulation::AssignLine;
+use oc_core::modulation::{AssignLine, Source};
 use oc_probe::apps::{
-    INPUT_FIELDS, centered, edit_text, input_text, parse_input_field, parse_value, value_text,
+    INPUT_FIELDS, PortNames, centered, edit_text, input_text, parse_input_field, parse_value,
+    source_text, value_text,
 };
 use oc_probe::client::{
-    AppDescription, AppEntry, InputEntry, InputPortEntry, InstanceEntry, SpecEntry,
+    AppDescription, AppEntry, InputEntry, InputPortEntry, InstanceEntry, OutputPortEntry, SpecEntry,
 };
-use oc_protocol::{Group, ParamKind, ParamValue, Request, Sample, Target};
+use oc_protocol::{Group, InputSource, ParamKind, ParamValue, Request, Sample, Target};
 use wasm_bindgen::prelude::wasm_bindgen;
 
 use crate::{Message, MessageKind, frame};
@@ -48,6 +49,9 @@ pub(crate) enum Applet {
         name: String,
         /// For an input, whether it reads a trigger.
         trigger: bool,
+        /// For an output, whether it carries a level another instance can
+        /// read (journal/D-048).
+        level: bool,
     },
     /// One running instance (journal/D-046).
     Instance(InstanceEntry),
@@ -154,7 +158,7 @@ impl Instances {
     /// Takes one message of the answer; true once it is complete.
     pub fn absorb(&mut self, message: &Message) -> bool {
         if let Some(Applet::Instance(instance)) = &message.applet {
-            self.instances.push(*instance);
+            self.instances.push(instance.clone());
         }
         message.kind == MessageKind::Done
     }
@@ -198,13 +202,80 @@ impl Instances {
             .map_or(-1, i32::from)
     }
 
-    /// The jack input port `port` of instance `at` reads, 0 for the first.
+    /// What input port `port` of instance `at` reads, as a code: a jack,
+    /// 0 to 3, a port of another instance, or nothing (see [`source_code`]).
     #[must_use]
     pub fn input(&self, at: usize, port: usize) -> u8 {
         self.instances
             .get(at)
             .and_then(|instance| instance.inputs.get(port).copied())
-            .unwrap_or(0)
+            .map_or(0, source_code)
+    }
+
+    /// The code of `OFF`, an input that reads nothing: the first of an
+    /// input's choices.
+    #[must_use]
+    pub fn off_code() -> u8 {
+        OFF_CODE
+    }
+
+    /// The codes of the ports an input of the instance at `own` (-1: none)
+    /// can read besides the jacks, slot by slot: those of the other
+    /// instances that carry a level (journal/D-048).
+    #[must_use]
+    pub fn lane_codes(&self, own: i32) -> Vec<u8> {
+        let own = usize::try_from(own).ok();
+        self.instances
+            .iter()
+            .filter(|instance| Some(usize::from(instance.position)) != own)
+            .flat_map(|instance| {
+                let at = usize::from(instance.position);
+                instance
+                    .levels
+                    .iter()
+                    .enumerate()
+                    .filter(|&(_, &level)| level)
+                    .filter_map(move |(port, _)| InputSource::lane(at, port))
+            })
+            .map(source_code)
+            .collect()
+    }
+
+    /// How the routing page names what input `code` reads, for a port of
+    /// another instance: its slot and name, `1:BURST`.
+    #[must_use]
+    pub fn source_label(&self, code: u8) -> String {
+        match code_source(code) {
+            Some(InputSource::Lane { slot, port }) => {
+                source_text(Source::Lane { slot, port }, &PortNames::of(&self.instances))
+            }
+            _ => String::new(),
+        }
+    }
+
+    /// The ports of the other instances an input of the instance at `own`
+    /// (-1: none) can read, as the module's submenu names them (`2:NOTE`):
+    /// every output port that carries a level, slot by slot
+    /// (journal/D-048).
+    #[must_use]
+    pub fn sources(&self, own: i32) -> Vec<String> {
+        let own = usize::try_from(own).ok();
+        let ports = PortNames::of(&self.instances);
+        self.instances
+            .iter()
+            .enumerate()
+            .filter(|&(_, instance)| Some(usize::from(instance.position)) != own)
+            .flat_map(|(_, instance)| {
+                let at = usize::from(instance.position);
+                instance
+                    .levels
+                    .iter()
+                    .enumerate()
+                    .filter(|&(_, &level)| level)
+                    .filter_map(move |(port, _)| Source::lane(at, port))
+            })
+            .map(|source| source_text(source, &ports))
+            .collect()
     }
 
     /// Whether the slot `at` is empty: it runs `NOTHING` (journal/D-046).
@@ -245,14 +316,40 @@ impl Instances {
         })
     }
 
-    /// Plugs input port `port` of the instance at `position` into `jack`.
+    /// Plugs input port `port` of the instance at `position` into what
+    /// `code` names: a jack, 0 to 3, or a port of another instance.
     #[must_use]
-    pub fn input_request(position: u8, port: u8, jack: u8) -> Vec<u8> {
+    pub fn input_request(position: u8, port: u8, code: u8) -> Vec<u8> {
         frame(&Request::SetInput {
             instance: position,
             port,
-            jack,
+            source: code_source(code).unwrap_or(InputSource::Jack(0)),
         })
+    }
+}
+
+/// The code of `OFF` (see [`source_code`]).
+const OFF_CODE: u8 = u8::MAX;
+
+/// How the page names an input's source to the script, in one number: a
+/// jack 0 to 3, a port of another instance 4 and up, four per slot,
+/// [`OFF_CODE`] for nothing.
+fn source_code(source: InputSource) -> u8 {
+    match source {
+        InputSource::Jack(jack) => jack,
+        InputSource::Lane { slot, port } => 4 + slot * 4 + port,
+        InputSource::Off => OFF_CODE,
+    }
+}
+
+/// The source `code` names (see [`source_code`]), `None` past the last.
+fn code_source(code: u8) -> Option<InputSource> {
+    if code == OFF_CODE {
+        return Some(InputSource::Off);
+    }
+    match code.checked_sub(4) {
+        None => Some(InputSource::Jack(code)),
+        Some(lane) => InputSource::lane(usize::from(lane / 4), usize::from(lane % 4)),
     }
 }
 
@@ -273,6 +370,9 @@ pub struct AppView {
     requested: Option<ParamValue>,
     /// Whether the last value absorbed differs from the one asked for.
     narrowed: bool,
+    /// The other instances' port names, by which an input names one
+    /// (`1:NOTE`, journal/D-048).
+    ports: PortNames,
 }
 
 #[wasm_bindgen]
@@ -289,6 +389,18 @@ impl AppView {
             moved: Vec::new(),
             requested: None,
             narrowed: false,
+            ports: PortNames::default(),
+        }
+    }
+
+    /// The slot of the instance its requests reach, -1 for the first
+    /// instance of its applet, wherever it runs.
+    #[wasm_bindgen(getter)]
+    #[must_use]
+    pub fn position(&self) -> i32 {
+        match self.target {
+            Target::Instance(position) => i32::from(position),
+            Target::App(_) => -1,
         }
     }
 
@@ -300,6 +412,12 @@ impl AppView {
             target: Target::Instance(position),
             ..Self::new(app)
         }
+    }
+
+    /// Takes the port names of the instances `instances` lists, by which
+    /// an input names another instance's port (`1:NOTE`, journal/D-048).
+    pub fn take_ports(&mut self, instances: &Instances) {
+        self.ports = PortNames::of(&instances.instances);
     }
 
     /// The output ports it writes, in the order of its lanes.
@@ -315,8 +433,7 @@ impl AppView {
         self.description
             .outputs
             .get(at)
-            .cloned()
-            .unwrap_or_default()
+            .map_or_else(String::new, |port| port.name.clone())
     }
 
     /// The inputs it reads by itself.
@@ -369,14 +486,21 @@ impl AppView {
                 self.broken |= self.description.add_input(*index, *input).is_err();
             }
             Some(Applet::Port {
-                output: true, name, ..
+                output: true,
+                name,
+                level,
+                ..
             }) => {
-                self.description.outputs.push(name.clone());
+                self.description.outputs.push(OutputPortEntry {
+                    name: name.clone(),
+                    level: *level,
+                });
             }
             Some(Applet::Port {
                 output: false,
                 name,
                 trigger,
+                ..
             }) => self.description.inputs.push(InputPortEntry {
                 name: name.clone(),
                 trigger: *trigger,
@@ -523,7 +647,13 @@ impl AppView {
         };
         let mut mark = TextBuf::<8>::new();
         if let Some(input) = &spec.input {
-            input.assign.write(&mut mark);
+            let port_name = match input.assign.input {
+                Some(Source::Lane { slot, port }) => {
+                    self.ports.name(usize::from(slot), usize::from(port))
+                }
+                _ => None,
+            };
+            input.assign.write(&mut mark, port_name);
         }
         if mark.as_str().is_empty() {
             "CV".to_owned()
@@ -536,7 +666,8 @@ impl AppView {
     /// prints it; empty for a parameter that takes none.
     #[must_use]
     pub fn input_text(&self, at: usize) -> String {
-        input(&self.description, at).map_or_else(String::new, |input| input_text(&input.assign))
+        input(&self.description, at)
+            .map_or_else(String::new, |input| input_text(&input.assign, &self.ports))
     }
 
     /// The fields of an input panel, the same for every assignable
@@ -554,7 +685,10 @@ impl AppView {
         let Some((input, line)) = input(&self.description, at).zip(input_line(field)) else {
             return String::new();
         };
-        input.assign.field(line).as_str().to_owned()
+        match (line, input.assign.input) {
+            (AssignLine::Input, Some(source)) => source_text(source, &self.ports),
+            _ => input.assign.field(line).as_str().to_owned(),
+        }
     }
 
     /// The values field `field` takes when it is a list (`--`, `CV1`… for
@@ -581,7 +715,7 @@ impl AppView {
     pub fn assign_request(&self, at: usize, field: &str, text: &str) -> Result<Vec<u8>, String> {
         let spec = param(&self.description, at).ok_or("no such parameter")?;
         let input = spec.input.ok_or("it takes no CV input")?;
-        let assign = parse_input_field(input.assign, field, text)?;
+        let assign = parse_input_field(input.assign, field, text, &self.ports)?;
         Ok(frame(&Request::SetAssign {
             app: self.target,
             param: spec.index,
@@ -619,7 +753,7 @@ impl AppView {
             return String::new();
         };
         spec.input = Some(input);
-        input_text(&input.assign)
+        input_text(&input.assign, &self.ports)
     }
 
     /// The request that sets parameter `at` to what `text` says, as
@@ -1043,7 +1177,7 @@ mod tests {
             .unwrap();
         assert_eq!(
             (detune.input, detune.effect, detune.shift_mv),
-            (Some(CvChannel::Three), Effect::Mul, 250)
+            (Some(CvChannel::Three.into()), Effect::Mul, 250)
         );
         assert!(
             view.assign_request(1, "scale", "x2.5").is_ok(),

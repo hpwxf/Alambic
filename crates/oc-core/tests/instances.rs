@@ -203,7 +203,10 @@ fn an_instance_reads_the_trigger_its_map_plugs_in() {
     engine.select_app(AppId::Ratchet);
     engine.select_app_at(1, AppId::Ratchet);
     // The second one's CLOCK from TR2; its A on C.
-    engine.apps_mut().set_input(1, 0, 1).unwrap();
+    engine
+        .apps_mut()
+        .set_input(1, 0, oc_core::apps::InputSource::Jack(1))
+        .unwrap();
     let mut copies = [false; 4];
     for step in 0..40 {
         let high = (5..10).contains(&step);

@@ -40,7 +40,7 @@ use crate::gfx::plots::Area;
 use crate::gfx::{self, Ink, Point};
 use crate::modulation::editor::Param;
 use crate::modulation::slots::Modulations;
-use crate::modulation::{Assign, AssignLine, Effect, multiplied};
+use crate::modulation::{Assign, AssignLine, Effect, Source, multiplied};
 use crate::platform::{Button, CV_CHANNELS, CvChannel, MilliVolts};
 use crate::text::fonts::FONT_5X8;
 use crate::text::{self, Alignment, TextStyle};
@@ -246,7 +246,7 @@ fn swept(value: i64, full: i64, millivolts: MilliVolts, effect: Effect) -> i64 {
 /// oscillator is patched by; nothing for the others.
 const DEFAULT_ASSIGNS: [Assign; 6] = [
     Assign {
-        input: Some(CvChannel::One),
+        input: Some(Source::Jack(CvChannel::One)),
         ..Assign::NONE
     },
     Assign::NONE,
@@ -322,7 +322,7 @@ impl SupersawApp {
     /// Consumes one snapshot and returns what the outputs carry.
     pub fn update(&mut self, input: &InputSnapshot) -> Params {
         self.follow_panel(input);
-        self.inputs.read(&input.cv, input.elapsed_micros);
+        self.inputs.read(input);
         self.params()
     }
 
@@ -558,14 +558,15 @@ impl SupersawApp {
             let top = row * ROW_HEIGHT;
             text::draw(frame, setting.label(), Point::new(LIST_LEFT + 1, top), lit);
             let assign = self.assign(setting);
+            let slot = setting.input_slot();
             // A setting that follows its input has no use for the panel's
             // value: its input stands in its place.
             if !assign.is_some_and(Assign::sets) {
                 let value = self.value_text(setting);
                 text::draw(frame, value.as_str(), Point::new(VALUE_RIGHT, top), right);
             }
-            if let Some(assign) = assign {
-                crate::modulation::draw_input(frame, assign, last - 1, top, lit);
+            if let Some(slot) = slot {
+                self.inputs.draw_input(frame, slot, last - 1, top, lit);
             }
             if setting == Setting::Shape {
                 self.draw_shape(frame, top);
@@ -723,9 +724,9 @@ impl SupersawApp {
 /// sub-octave, on A to C by default; a route may turn one off to free the
 /// jack (journal/D-046). Named by what they carry, not by the jack.
 const PORTS: [Port; 3] = [
-    Port { name: "L/MONO" },
-    Port { name: "R/MONO" },
-    Port { name: "SUB" },
+    Port::audio("L/MONO"),
+    Port::audio("R/MONO"),
+    Port::audio("SUB"),
 ];
 
 impl App for SupersawApp {

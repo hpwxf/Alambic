@@ -5,7 +5,7 @@
 use oc_core::apps::InputSnapshot;
 use oc_core::buttons::ButtonReader;
 use oc_core::modulation::editor::AssignEditor;
-use oc_core::modulation::{Assign, AssignLine, Effect, WINDOW_MICROS, usable_range};
+use oc_core::modulation::{Assign, AssignLine, Effect, Source, WINDOW_MICROS, usable_range};
 use oc_core::platform::{ControlEvents, CvChannel};
 
 /// A parameter swept by 0 V to 7.75 V when it follows its input.
@@ -46,9 +46,12 @@ impl Panel {
             buttons: self.reader.update(&controls),
             controls,
             elapsed_micros: 1_000,
+            ..InputSnapshot::default()
         };
         self.open = self.editor.follow(&mut self.assign, &input, SWEEP);
-        self.editor.observe(&self.assign, &input.cv, 1_000);
+        if let Some(reading) = self.assign.raw(&input) {
+            self.editor.observe(reading, 1_000);
+        }
     }
 
     fn press(&mut self, index: usize) {
@@ -71,7 +74,7 @@ impl Panel {
 #[test]
 fn the_signal_is_scaled_shifted_then_bounded() {
     let mut assign = Assign {
-        input: Some(CvChannel::One),
+        input: Some(Source::Jack(CvChannel::One)),
         scale_percent: 50,
         shift_mv: 500,
         max_mv: 2_000,
@@ -81,8 +84,8 @@ fn the_signal_is_scaled_shifted_then_bounded() {
     assert_eq!(assign.shape(6_000), 2_000, "bounded after the shift");
     assign.scale_percent = -100;
     assert_eq!(assign.shape(1_000), -500, "a negative scale inverts");
-    assert_eq!(assign.reading(&[1_000, 0, 0, 0]), Some((-500, Effect::Add)));
-    assert_eq!(Assign::NONE.reading(&[1_000, 0, 0, 0]), None);
+    assert_eq!(assign.reading(1_000), Some((-500, Effect::Add)));
+    assert_eq!(Assign::NONE.reading(1_000), None);
 }
 
 #[test]
@@ -115,7 +118,11 @@ fn the_editor_turns_each_field_within_its_bounds() {
     let mut panel = Panel::new();
     assert_eq!(panel.editor.line(), AssignLine::Input);
     panel.turn_line(AssignLine::Input, 9);
-    assert_eq!(panel.assign.input, Some(CvChannel::Four), "stops at CV4");
+    assert_eq!(
+        panel.assign.input,
+        Some(Source::Jack(CvChannel::Four)),
+        "stops at CV4: no other instance"
+    );
     panel.turn_line(AssignLine::Scale, 100);
     assert_eq!(panel.assign.scale_percent, 200);
     panel.turn_line(AssignLine::Shift, -3);
@@ -171,4 +178,47 @@ fn the_range_seen_forgets_what_is_older_than_two_windows() {
     // A new input starts the range again.
     panel.turn_line(AssignLine::Input, 1);
     assert_eq!(panel.editor.range(), Some((0, 0)));
+}
+
+#[test]
+fn a_port_of_another_instance_is_assigned_as_it_comes() {
+    use oc_core::fmt::TextBuf;
+
+    // Scale, shift, bounds and effect as a jack would have them...
+    let assign = Assign {
+        input: Source::lane(0, 0),
+        effect: Effect::Mul,
+        scale_percent: 50,
+        shift_mv: 1_000,
+        max_mv: 2_000,
+        ..Assign::NONE
+    };
+    // ...act on nothing: the port sets the parameter, unshaped.
+    assert!(assign.assigns() && assign.sets());
+    assert_eq!(assign.reading(4_250), Some((4_250, Effect::Set)));
+    assert_eq!(assign.shaped(4_250), 4_250);
+    let jack = Assign {
+        input: Some(Source::Jack(CvChannel::One)),
+        ..assign
+    };
+    assert!(!jack.assigns());
+    assert_eq!(
+        jack.reading(4_250),
+        Some((2_000, Effect::Mul)),
+        "kept for a jack"
+    );
+
+    // Assigned: `=`, the slot and the port's name.
+    let mut name = TextBuf::<8>::new();
+    assign.write(&mut name, Some("NOTE"));
+    assert_eq!(name.as_str(), "=1:NOTE", "the main screen");
+    let mut long = TextBuf::<8>::new();
+    assign.write(&mut long, Some("L/MONO"));
+    assert_eq!(long.as_str(), "=1:L/MON", "five letters at most");
+    let mut gone = TextBuf::<8>::new();
+    assign.write(&mut gone, None);
+    assert_eq!(gone.as_str(), "=1:--", "a port that is no more");
+    let mut cv = TextBuf::<8>::new();
+    jack.write(&mut cv, None);
+    assert_eq!(cv.as_str(), "*CV1");
 }

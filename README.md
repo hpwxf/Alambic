@@ -54,9 +54,21 @@ picks a row, the right one turns it. An output (`A`, `B`, `SUB` for
 `SUPERSAW`) steps through `OFF` and the jacks `A` to `D`, skipping those
 another app holds; an input the app reads by itself (`RATCHET`'s `CLOCK`,
 `SCOPE`'s `IN`) steps through the four jacks of its kind, which apps may
-share. The right encoder stops at the ends instead of wrapping round: a
+share, then the ports of the other apps that carry a level (`1:THRU`,
+journal/D-048), after `OFF`, which reads nothing (a `RESET` the patch does
+not need, leaving every `TR` jack to the others): `MELODY`'s `CLOCK <- 1:THRU` steps on `RATCHET`'s copy of
+`TR1`, one tick late, a trigger input being high from 1 V. The right encoder stops at the ends instead of wrapping round: a
 quick turn down lands on `OFF`, the first place, and one up on the last free
-jack. An app's CV inputs are set in their own submenu, on the physical jacks. Apps no longer use `up` and `down`
+jack. An app's CV inputs are set in their own submenu: one of the four
+jacks, or past `CV4` an output port of another app that carries a level
+(journal/D-048), read without a cable or a converter, routed to a jack or
+not. A jack modulates the setting (scale, shift, bounds, effect); a port is
+an assignment, strictly: the setting takes the value the port carries, as
+`SET` reads it, and its own value no longer shows. `SUPERSAW`'s `NOTE`
+assigned `1:NOTE` (slot 1, the port's name; `=1:NOTE` on its screen) plays
+`MELODY`'s pitches themselves, C4 at 0 V. A port that
+carries sound (`SUPERSAW`, `TONE`) and the app's own are not offered; the
+level read is the one the other app published on the tick before. Apps no longer use `up` and `down`
 themselves. A column of marks left of the title, as wide as a list's scroll
 bar, shows the slots on the app's screen and its routing page: a dot for
 each that runs an app, nothing for an empty one, the one shown across the
@@ -109,8 +121,9 @@ the left encoder's click fires a burst by hand.
     the repeats spread; `SHAPE` crowds them towards its end or its start.
 * `FIRST` or `SPAN`, the time setting: a duration in milliseconds, or with
   `SYNC ON` a fraction of `TR1`'s period (×2, ×1.5, ×4/3, ×1, ×3/4, ×2/3,
-  /2 … /32; for a span, ×1 fills the step). The rate of `TR1` shows in BPM,
-  and a dotted line on the timeline marks where the next trigger is due.
+  /2 … /32; for a span, ×1 fills the step). The rate of the clock shows in
+  BPM in the title bar, a disc right of it while the clock is high, a ring
+  while it is low, whichever input it reads; a dotted line on the timeline marks where the next trigger is due.
 * `SHAPE`, −3.0 to +3.0, an abstract curve rather than a unit: from an
   exponential one at −3.0, through a straight line at 0 (even repeats), to a
   logarithmic one at +3.0. Below 0 the burst accelerates, above 0 it slows
@@ -414,14 +427,15 @@ cargo probe app ratchet        # its parameters and values, observables, actions
 cargo probe set ratchet prob 50  # as the panel would, within its bounds
 cargo probe get supersaw freq  # a parameter or what it plays now
 cargo probe act ratchet burst  # an action, here a burst as the left click starts one
-cargo probe select tone        # put it in the slot shown; `select tone @2` in slot 2
+cargo probe select tone        # put it in the slot shown; `select tone @2` in slot 2 (slots count from 1)
 cargo probe assign supersaw detune input=cv2 effect=add  # a parameter's CV input, field by field
 cargo probe assign supersaw detune --center 5  # fit it to what CV2 carries, as CENTER does
+cargo probe assign @2 note input=1:note  # another app's port, as the submenu names it: slot 1, NOTE
 cargo probe add ratchet        # put RATCHET in the first empty slot, on the free outputs
-cargo probe instances          # the four slots, @0 to @3, where their ports go
-cargo probe route @0 sub=off   # its routing page from afar: sub=off, burst=d, clock=tr2
-cargo probe set @1 prob 50     # @N names one instance; a name, the first of that app
-cargo probe focus @1           # show it on the screen; `remove @1` empties the slot
+cargo probe instances          # the four slots, @1 to @4, where their ports go
+cargo probe route @1 sub=off   # its routing page from afar: sub=off, burst=d, clock=tr2, clock=1:thru, reset=off
+cargo probe set @2 prob 50     # @N names the instance in slot N; a name, the first of that app
+cargo probe focus @2           # show it on the screen; `remove @2` empties the slot
 ```
 
 `cargo probe` is an alias of `cargo run -q -p oc-probe --`. The tool finds the

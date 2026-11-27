@@ -1,0 +1,41 @@
+# oc-sim scenario v1
+# An input port reading another app's output (journal/D-048): launch RATCHET
+# in the first slot (the menu, three detents down), step the focus to the
+# second slot with a short press of down, open the menu there (on NOTHING),
+# pick the SEQUENCE column with the left encoder and launch MELODY. Hold up
+# for a second: MELODY's routing page. Pick CLOCK (four detents of the left
+# encoder, past its four outputs) and turn it four detents: past TR2 to TR4,
+# to RATCHET's THRU. Then three clocks on TR1, which RATCHET copies to THRU.
+# The snapshot shows the routing page, CLOCK reading 1:THRU.
+ticks 2100
+20  button up down
+60  button down down
+70  button up up
+70  button down up
+90  button down down
+100 button down up
+110 button down down
+120 button down up
+130 button down down
+140 button down up
+160 button right down
+166 button right up
+220 button down down
+226 button down up
+300 button up down
+340 button down down
+350 button up up
+350 button down up
+380 encoder 1 -1
+400 button right down
+406 button right up
+450 button up down
+1500 button up up
+1520 encoder 1 +4
+1540 encoder 2 +4
+1700 trigger 1 high
+1705 trigger 1 low
+1800 trigger 1 high
+1805 trigger 1 low
+1900 trigger 1 high
+1905 trigger 1 low

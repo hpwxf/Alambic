@@ -520,16 +520,16 @@ With the module running and the USB cable on the Teensy (journal/D-029):
    and the submenu opened on the panel shows the same fields;
    `cargo probe assign supersaw stereo` says it takes no CV input.
    Slots (journal/D-046, protocol 10): with `SUPERSAW` running,
-   `cargo probe add ratchet` prints `@1 RATCHET` (the first empty slot) and
-   its mark appears left of the title; `cargo probe instances` lists the
-   four slots, `@0` with `L/MONO -> A`, `R/MONO -> B`, `SUB -> C`, `@1` with
-   `THRU -> D`, `BURST -> OFF`, `CLOCK <- TR1`, `@2` and `@3` `NOTHING`; `cargo probe select scope @3`
+   `cargo probe add ratchet` prints `@2 RATCHET` (the first empty slot; slots
+   count from 1) and its mark appears left of the title; `cargo probe instances` lists the
+   four slots, `@1` with `L/MONO -> A`, `R/MONO -> B`, `SUB -> C`, `@2` with
+   `THRU -> D`, `BURST -> OFF`, `CLOCK <- TR1`, `@3` and `@4` `NOTHING`; `cargo probe select scope @4`
    fills the last one, which gets no output (`SUPERSAW` and `RATCHET` hold
    them all);
-   `cargo probe route @0 sub=off` frees C, `cargo probe route @1 burst=c`
-   takes it, `cargo probe route @1 thru=b` is refused (`Taken`);
-   `cargo probe set @1 prob 50` reaches the second app alone; `focus @0`
-   shows `SUPERSAW` again, `remove @1` puts `NOTHING` in its slot and C and
+   `cargo probe route @1 sub=off` frees C, `cargo probe route @2 burst=c`
+   takes it, `cargo probe route @2 thru=b` is refused (`Taken`);
+   `cargo probe set @2 prob 50` reaches the second app alone; `focus @1`
+   shows `SUPERSAW` again, `remove @2` puts `NOTHING` in its slot and C and
    D fall to 0 V. On the panel: a short `down` shows the next slot, empty
    ones too (`NOTHING`'s screen, `EMPTY SLOT`), from the last round to the
    first, `up` the other way; the menu there lists the apps, `NOTHING` last,
@@ -932,6 +932,38 @@ each setting does: `crates/oc-core/src/apps/melody/README.md`.
    round under the same melody; `R REROLL` and `REROLL` each draw only their
    own.
 
+### 9.3j — Internal routing (journal/D-048)
+
+1. `MELODY` in slot 1, a clock on `TR1`; the focus stepped to slot 2 and
+   `SUPERSAW` picked in the menu there; its routing page: no jack left,
+   every port `OFF`. On `SUPERSAW`'s screen,
+   the right click on `NOTE`, `INPUT` turned past `CV4`: `1:NOTE`, then
+   `1:CH1`, `1:CH2`, `1:GATE`, and no further: `SUPERSAW`'s own ports, which
+   carry sound, are not offered.
+   `1:NOTE` picked: the submenu shows `INPUT` alone and `ASSIGNED`, the
+   left encoder picks nothing else. Closed: the row reads `=1:NOTE`, no
+   note of its own.
+2. `MELODY`'s `NOTE` routed to A, a tuner on A and another on the jack
+   `SUPERSAW` is given (route `L/MONO` to B, freeing it on `MELODY`'s
+   page): the two show the same notes, step by step, with no lag heard;
+   `SUPERSAW`'s own `NOTE` no longer matters.
+3. `MELODY`'s `NOTE` back to `OFF`: `SUPERSAW` still plays the melody.
+4. `MELODY` replaced by `NOTHING`: `SUPERSAW` holds its panel note (the
+   input reads 0 V: C4), the row `=1:--`.
+5. From the host: `cargo probe assign @2 note input=1:note` sets it and prints
+   `1:NOTE`, `scale=0.5` is refused (nothing to shape), `input=2:sub` (its
+   own slot) is refused; the browser page's
+   input list offers `1:NOTE` to `1:GATE` for `SUPERSAW`.
+
+6. Internal clock: `RATCHET` in slot 1 on `TR1`, `MELODY` in slot 2, its
+   routing page: `CLOCK` turned past `TR4` reads `1:THRU`, then `1:BURST`,
+   and no further. `CLOCK <- 1:THRU`, a clock on `TR1` only: `MELODY`
+   steps on each one; `1:BURST`, it steps on every trigger of the burst.
+   `RATCHET` replaced by `NOTHING`: `MELODY` stops. `RESET` turned all the
+   way down reads `OFF`: a trigger on `TR2` no longer resets `MELODY`.
+   `cargo probe route @2 clock=1:burst` sets it; `instances` prints
+   `CLOCK <- 1:BURST`.
+
 ### 9.4 — Calibration
 
 This step measures how far the module is from the factory calibration, then
@@ -1053,7 +1085,7 @@ under Eurorack power-supply noise; none of that is in scope for this plan.
   writes); none is implemented.
 * **Parts of Level 9.** The DAC8565's simultaneous update has no step yet;
   the input assignment submenu of 9.3c (lot 6e), 9.3h (journal/D-041)
-  and 9.3i (journal/D-047) have not been run on the module. The other sections have been, on the TLM
+  9.3i (journal/D-047) and 9.3j (journal/D-048) have not been run on the module. The other sections have been, on the TLM
   module; their results are in the progress files of steps 3 to 8 and in
   `PLAN.md` for the step in progress.
 

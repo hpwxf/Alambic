@@ -94,8 +94,8 @@ enum Command {
     /// what it can be read for, what it can be asked to do, its ports.
     App {
         /// The applet: its name (`ratchet`, `gfx-demo`) or its index, its
-        /// first instance then; or `@N`, the instance at position N
-        /// (journal/D-046). The same for every command below.
+        /// first instance then; or `@N`, the instance in slot N, 1 to 4 left
+        /// to right (journal/D-046). The same for every command below.
         app: String,
     },
     /// Reads one parameter or observable of an applet.
@@ -128,7 +128,7 @@ enum Command {
     Select {
         /// The applet: its name or its index.
         app: String,
-        /// The slot: `@N`; the one shown when left out.
+        /// The slot: `@1` to `@4`; the one shown when left out.
         instance: Option<String>,
     },
     /// Reads the CV input of an applet's parameter, or sets it field by
@@ -145,18 +145,18 @@ enum Command {
     },
     /// Empties a slot (`NOTHING` in it), freeing its outputs.
     Remove {
-        /// The instance: `@N`.
+        /// The instance: `@1` to `@4`.
         instance: String,
     },
     /// Shows an instance on the screen and gives it the panel.
     Focus {
-        /// The instance: `@N`.
+        /// The instance: `@1` to `@4`.
         instance: String,
     },
     /// Prints where an instance's ports go, after routing those given, as
     /// its routing page does: `sub=off`, `burst=d`, `clock=tr2`.
     Route {
-        /// The instance: `@N`.
+        /// The instance: `@1` to `@4`.
         instance: String,
         /// Ports to route, as `port=jack`.
         #[arg(value_name = "PORT=JACK")]
@@ -236,10 +236,12 @@ fn main() -> anyhow::Result<()> {
         Command::Screen { png, scale } => screen(&mut session, png, scale),
         Command::Reboot => unreachable!("served before the session"),
         Command::Instances => {
-            for instance in session.instances()? {
+            let instances = session.instances()?;
+            let ports = apps::PortNames::of(&instances);
+            for instance in instances {
                 let description = session.describe(Target::Instance(instance.position))?;
                 println!("{}", instance_line(&mut session, &instance)?);
-                for line in apps::routing_text(&description, &instance).lines() {
+                for line in apps::routing_text(&description, &instance, &ports).lines() {
                     println!("    {line}");
                 }
             }
@@ -273,7 +275,11 @@ fn main() -> anyhow::Result<()> {
         }
         Command::App { app } => {
             let (app, description) = described(&mut session, &app)?;
-            print!("{}", apps::description_text(&app.entry, &description));
+            let ports = apps::PortNames::of(&session.instances()?);
+            print!(
+                "{}",
+                apps::description_text(&app.entry, &description, &ports)
+            );
             Ok(())
         }
         Command::Get { app, name } => get(&mut session, &app, &name),
@@ -295,7 +301,9 @@ fn main() -> anyhow::Result<()> {
             let instance = instance.as_deref().map(position).transpose()?;
             session.select_app(app.index, instance)?;
             match instance {
-                Some(position) => eprintln!("{} in slot @{position}", app.name),
+                Some(position) => {
+                    eprintln!("{} in slot {}", app.name, apps::slot_label(position));
+                }
                 None => eprintln!("{} in the slot shown", app.name),
             }
             Ok(())
@@ -308,6 +316,8 @@ fn main() -> anyhow::Result<()> {
 /// fitting it to its signal when asked.
 fn assign(session: &mut Session, args: &AssignArgs) -> anyhow::Result<()> {
     let (app, description) = described(session, &args.app)?;
+    // The other instances' ports, by which an input names one (`1:NOTE`).
+    let ports = apps::PortNames::of(&session.instances()?);
     let spec = apps::find_spec(&description.params, &args.param)
         .with_context(|| format!("{} has no parameter {}", app.entry.name, args.param))?;
     let mut input = spec
@@ -319,7 +329,8 @@ fn assign(session: &mut Session, args: &AssignArgs) -> anyhow::Result<()> {
             let (name, text) = field
                 .split_once('=')
                 .with_context(|| format!("{field}: write it field=value"))?;
-            assign = apps::parse_input_field(assign, name, text).map_err(anyhow::Error::msg)?;
+            assign =
+                apps::parse_input_field(assign, name, text, &ports).map_err(anyhow::Error::msg)?;
         }
         input = session.set_assign(app.target, spec.index, assign)?;
     }
@@ -331,7 +342,11 @@ fn assign(session: &mut Session, args: &AssignArgs) -> anyhow::Result<()> {
         let assign = apps::centered(&input, &samples).map_err(anyhow::Error::msg)?;
         input = session.set_assign(app.target, spec.index, assign)?;
     }
-    println!("{} CV {}", spec.label, apps::input_text(&input.assign));
+    println!(
+        "{} CV {}",
+        spec.label,
+        apps::input_text(&input.assign, &ports)
+    );
     Ok(())
 }
 
@@ -377,12 +392,16 @@ fn reboot(path: Option<&str>) -> anyhow::Result<()> {
 }
 
 fn position(query: &str) -> anyhow::Result<u8> {
-    apps::instance_position(query).with_context(|| format!("{query}: an instance is @N"))
+    apps::instance_position(query).with_context(|| format!("{query}: an instance is @1 to @4"))
 }
 
 /// The applet `query` names: `@N`, an instance, or a name or an index, the
 /// first instance of that applet (a fresh one to describe while none runs).
 fn addressed(session: &mut Session, query: &str) -> anyhow::Result<Addressed> {
+    if query.starts_with('@') {
+        // An instance, not a name: `@0` or `@5` is a slot that is not.
+        position(query)?;
+    }
     let Some(position) = apps::instance_position(query) else {
         let entry = found(session, query)?;
         let target = Target::App(entry.index);
@@ -392,7 +411,13 @@ fn addressed(session: &mut Session, query: &str) -> anyhow::Result<Addressed> {
     let instance = instances
         .iter()
         .find(|instance| instance.position == position)
-        .with_context(|| format!("no instance @{position}; {} run", instances.len()))?;
+        .with_context(|| {
+            format!(
+                "no instance {}; {} run",
+                apps::slot_label(position),
+                instances.len()
+            )
+        })?;
     let entry = found(session, &instance.app.to_string())?;
     Ok(Addressed {
         entry,
@@ -407,13 +432,13 @@ fn described(session: &mut Session, query: &str) -> anyhow::Result<(Addressed, A
     Ok((app, description))
 }
 
-/// One line for an instance: `* @1 RATCHET`, the one shown marked.
+/// One line for an instance: `* @2 RATCHET`, the one shown marked.
 fn instance_line(session: &mut Session, instance: &InstanceEntry) -> anyhow::Result<String> {
     let entry = found(session, &instance.app.to_string())?;
     Ok(format!(
-        "{} @{} {}",
+        "{} {} {}",
         if instance.focused { '*' } else { ' ' },
-        instance.position,
+        apps::slot_label(instance.position),
         entry.name
     ))
 }
@@ -422,11 +447,13 @@ fn instance_line(session: &mut Session, instance: &InstanceEntry) -> anyhow::Res
 fn route(session: &mut Session, query: &str, routes: &[String]) -> anyhow::Result<()> {
     let position = position(query)?;
     let description = session.describe(Target::Instance(position))?;
-    let mut instance = session
-        .instances()?
+    let instances = session.instances()?;
+    // The other instances' ports, by which an input names one (`1:BURST`).
+    let ports = apps::PortNames::of(&instances);
+    let mut instance = instances
         .into_iter()
         .find(|instance| instance.position == position)
-        .with_context(|| format!("no instance @{position}"))?;
+        .with_context(|| format!("no instance {}", apps::slot_label(position)))?;
     for route in routes {
         let (port, jack) = route
             .split_once('=')
@@ -438,12 +465,13 @@ fn route(session: &mut Session, query: &str, routes: &[String]) -> anyhow::Resul
                     session.set_route(position, index, output)?
                 }
                 apps::PortRef::Input(index, trigger) => {
-                    let jack = apps::parse_jack(jack, trigger).map_err(anyhow::Error::msg)?;
-                    session.set_input(position, index, jack)?
+                    let source = apps::parse_input_source(jack, trigger, &ports)
+                        .map_err(anyhow::Error::msg)?;
+                    session.set_input(position, index, source)?
                 }
             };
     }
-    print!("{}", apps::routing_text(&description, &instance));
+    print!("{}", apps::routing_text(&description, &instance, &ports));
     Ok(())
 }
 

@@ -24,6 +24,7 @@
 //! its bank, each through the generator of its kind that [`sound`] composes
 //! and a backend renders ([`crate::playback`]) (journal/D-033, D-044).
 
+pub mod bus;
 pub mod diagnostic;
 pub mod gfx_demo;
 pub mod melody;
@@ -39,6 +40,7 @@ use core::any::Any;
 
 use serde::{Deserialize, Serialize};
 
+pub use crate::apps::bus::Bus;
 use crate::apps::diagnostic::DiagnosticApp;
 use crate::apps::gfx_demo::GfxDemoApp;
 use crate::apps::melody::MelodyApp;
@@ -49,6 +51,7 @@ use crate::apps::scope::ScopeApp;
 use crate::apps::sound::{Params, Sound};
 use crate::apps::supersaw::SupersawApp;
 use crate::apps::tone::ToneApp;
+use crate::audio::basic::Channel;
 use crate::audio::{Route, Routed};
 use crate::buttons::ButtonEvents;
 use crate::framebuffer::FrameBuffer;
@@ -56,7 +59,6 @@ use crate::modulation::Assign;
 use crate::modulation::slots::slot_of;
 use crate::platform::{
     BUTTONS, CV_CHANNELS, ControlEvents, CvChannel, ENCODERS, MilliVolts, TRIGGER_CHANNELS,
-    TriggerChannel,
 };
 
 /// How many slots there are, each running an applet, [`AppId::Nothing`]
@@ -64,22 +66,50 @@ use crate::platform::{
 /// per output at most.
 pub const MAX_INSTANCES: usize = 4;
 
+/// What an output port carries (journal/D-048).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PortSignal {
+    /// A level, held from one tick to the next: a pitch, a gate, a
+    /// modulation. Another instance's assignment can read it.
+    Cv,
+    /// A sound, rendered at the audio rate: nothing for a control to read.
+    Audio,
+}
+
 /// One output an applet writes: a lane of its sound, which its route sends
 /// to a jack or nowhere (journal/D-046).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Port {
     /// The name its routing page shows.
     pub name: &'static str,
+    /// What it carries.
+    pub signal: PortSignal,
 }
 
-/// Four ports named after the jacks they go to by default: an applet that
-/// writes every output.
-pub const PORTS_A_TO_D: [Port; CV_CHANNELS] = [
-    Port { name: "A" },
-    Port { name: "B" },
-    Port { name: "C" },
-    Port { name: "D" },
-];
+impl Port {
+    /// A port named `name` that carries a level.
+    #[must_use]
+    pub const fn cv(name: &'static str) -> Self {
+        Self {
+            name,
+            signal: PortSignal::Cv,
+        }
+    }
+
+    /// A port named `name` that carries a sound.
+    #[must_use]
+    pub const fn audio(name: &'static str) -> Self {
+        Self {
+            name,
+            signal: PortSignal::Audio,
+        }
+    }
+}
+
+/// Four ports named after the jacks they go to by default, each a level: an
+/// applet that writes every output.
+pub const PORTS_A_TO_D: [Port; CV_CHANNELS] =
+    [Port::cv("A"), Port::cv("B"), Port::cv("C"), Port::cv("D")];
 
 /// What kind of jack an input port reads.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -103,57 +133,149 @@ pub struct InputPort {
     pub lane: usize,
 }
 
-/// Which jack each lane of an instance's [`InputSnapshot`] reads: every
-/// lane its own by default (journal/D-046).
+/// The level from which a trigger input that reads a port of another
+/// instance is high: 1 V, below any gate or trigger an applet writes (5 V),
+/// about where the module's input transistors switch (journal/D-048).
+pub const INTERNAL_TRIGGER_MV: MilliVolts = 1_000;
+
+/// What an input port reads (journal/D-046, D-048): a jack of its kind, by
+/// its index (0 for `CV1` or `TR1`), output port `port` of the instance in
+/// slot `slot`, which must carry a level and belong to another instance, or
+/// nothing: `OFF`, so that a port the patch does not use (a `RESET`) leaves
+/// every jack to the others.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum InputSource {
+    /// A jack of the port's kind, from 0.
+    Jack(u8),
+    /// An output port of another instance, by its slot and rank, from 0.
+    Lane {
+        /// The instance's slot, from 0.
+        slot: u8,
+        /// The port's rank among the instance's output ports.
+        port: u8,
+    },
+    /// Nothing: a CV input at 0 V, a trigger input low.
+    Off,
+}
+
+impl InputSource {
+    /// Jack `jack`, `None` past the last.
+    #[must_use]
+    pub fn jack(jack: usize) -> Option<Self> {
+        (jack < CV_CHANNELS)
+            .then(|| u8::try_from(jack).ok().map(Self::Jack))
+            .flatten()
+    }
+
+    /// Port `port` of the instance in slot `slot`, `None` past the last slot
+    /// or lane.
+    #[must_use]
+    pub fn lane(slot: usize, port: usize) -> Option<Self> {
+        (slot < MAX_INSTANCES && port < CV_CHANNELS).then(|| Self::Lane {
+            slot: u8::try_from(slot).unwrap_or(0),
+            port: u8::try_from(port).unwrap_or(0),
+        })
+    }
+
+    /// The level it carries on `input`: a CV jack's, or what the port
+    /// published on the last tick, 0 V for one not offered.
+    fn level(self, input: &InputSnapshot) -> MilliVolts {
+        match self {
+            Self::Jack(jack) => input.cv.get(usize::from(jack)).copied().unwrap_or(0),
+            Self::Lane { slot, port } => input.bus.level(usize::from(slot), usize::from(port)),
+            Self::Off => 0,
+        }
+    }
+
+    /// Whether it is high on `input`: a trigger jack's state, or a port's
+    /// level from [`INTERNAL_TRIGGER_MV`].
+    fn high(self, input: &InputSnapshot) -> bool {
+        match self {
+            Self::Jack(jack) => input
+                .triggers
+                .get(usize::from(jack))
+                .copied()
+                .unwrap_or(false),
+            Self::Lane { .. } => self.level(input) >= INTERNAL_TRIGGER_MV,
+            Self::Off => false,
+        }
+    }
+}
+
+/// What each lane of an instance's [`InputSnapshot`] reads: a jack, every
+/// lane its own by default (journal/D-046), or a port of another instance
+/// (journal/D-048).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct InputRoute {
-    cv: [CvChannel; CV_CHANNELS],
-    triggers: [TriggerChannel; TRIGGER_CHANNELS],
+    cv: [InputSource; CV_CHANNELS],
+    triggers: [InputSource; TRIGGER_CHANNELS],
 }
+
+/// Every lane on the jack of its rank.
+const OWN_JACKS: [InputSource; CV_CHANNELS] = [
+    InputSource::Jack(0),
+    InputSource::Jack(1),
+    InputSource::Jack(2),
+    InputSource::Jack(3),
+];
 
 impl InputRoute {
     /// Every lane reads the jack of its rank.
     pub const IDENTITY: Self = Self {
-        cv: CvChannel::ALL,
-        triggers: TriggerChannel::ALL,
+        cv: OWN_JACKS,
+        triggers: OWN_JACKS,
     };
 
-    /// The jack lane `lane` of `kind` reads, as its index.
+    /// What lane `lane` of `kind` reads.
+    #[must_use]
+    pub fn source(&self, kind: InputKind, lane: usize) -> Option<InputSource> {
+        match kind {
+            InputKind::Cv => self.cv.get(lane).copied(),
+            InputKind::Trigger => self.triggers.get(lane).copied(),
+        }
+    }
+
+    /// The jack lane `lane` of `kind` reads, as its index; `None` for a
+    /// port of another instance, or nothing.
     #[must_use]
     pub fn jack(&self, kind: InputKind, lane: usize) -> Option<usize> {
-        match kind {
-            InputKind::Cv => self.cv.get(lane).map(|jack| jack.index()),
-            InputKind::Trigger => self.triggers.get(lane).map(|jack| jack.index()),
+        match self.source(kind, lane)? {
+            InputSource::Jack(jack) => Some(usize::from(jack)),
+            InputSource::Lane { .. } | InputSource::Off => None,
         }
     }
 
-    /// Plugs lane `lane` of `kind` into jack `jack`; `false`, and nothing
-    /// changes, for a lane or a jack past the last.
-    pub fn set(&mut self, kind: InputKind, lane: usize, jack: usize) -> bool {
-        match kind {
-            InputKind::Cv => match (self.cv.get_mut(lane), CvChannel::from_index(jack)) {
-                (Some(slot), Some(jack)) => *slot = jack,
-                _ => return false,
-            },
-            InputKind::Trigger => {
-                match (
-                    self.triggers.get_mut(lane),
-                    TriggerChannel::from_index(jack),
-                ) {
-                    (Some(slot), Some(jack)) => *slot = jack,
-                    _ => return false,
-                }
+    /// Plugs lane `lane` of `kind` into `source`; `false`, and nothing
+    /// changes, for a lane, a jack or a port past the last. Whether the
+    /// port may be read is the caller's to check.
+    pub fn set(&mut self, kind: InputKind, lane: usize, source: InputSource) -> bool {
+        let valid = match source {
+            InputSource::Jack(jack) => usize::from(jack) < CV_CHANNELS,
+            InputSource::Lane { slot, port } => {
+                InputSource::lane(usize::from(slot), usize::from(port)).is_some()
             }
+            InputSource::Off => true,
+        };
+        let lanes = match kind {
+            InputKind::Cv => &mut self.cv,
+            InputKind::Trigger => &mut self.triggers,
+        };
+        match lanes.get_mut(lane) {
+            Some(plugged) if valid => {
+                *plugged = source;
+                true
+            }
+            _ => false,
         }
-        true
     }
 
-    /// `input` as an instance with this map sees it.
+    /// `input` as an instance with this map sees it, its bus already the
+    /// instance's.
     #[must_use]
     pub fn apply(&self, input: &InputSnapshot) -> InputSnapshot {
         let mut seen = *input;
-        seen.cv = self.cv.map(|jack| input.cv[jack.index()]);
-        seen.triggers = self.triggers.map(|jack| input.triggers[jack.index()]);
+        seen.cv = self.cv.map(|source| source.level(input));
+        seen.triggers = self.triggers.map(|source| source.high(input));
         seen
     }
 }
@@ -171,6 +293,9 @@ pub struct InputSnapshot {
     pub buttons: ButtonEvents,
     /// Microseconds since the previous tick.
     pub elapsed_micros: u32,
+    /// What the other instances published on the last tick, for an
+    /// assignment that reads one of their ports (journal/D-048).
+    pub bus: Bus,
 }
 
 impl InputSnapshot {
@@ -196,6 +321,7 @@ impl Default for InputSnapshot {
             controls: ControlEvents::default(),
             buttons: ButtonEvents::default(),
             elapsed_micros: 0,
+            bus: Bus::EMPTY,
         }
     }
 }
@@ -244,7 +370,9 @@ pub trait App: Any {
 
     /// The outputs it writes, in the order of the lanes of the sound it
     /// publishes: port `i` is lane `i`, and a lane past the last port is
-    /// never heard (journal/D-046). Every output by default.
+    /// never heard (journal/D-046). Every output by default, each a level.
+    /// A [`PortSignal::Cv`] port publishes a level whether or not its route
+    /// sends it anywhere: another instance may read it (journal/D-048).
     fn output_ports(&self) -> &'static [Port] {
         &PORTS_A_TO_D
     }
@@ -257,8 +385,8 @@ pub trait App: Any {
     }
 
     /// Which of its ports reach a jack now, told whenever its route
-    /// changes: an applet may stop preparing a lane nobody hears
-    /// (`SUPERSAW`'s `SUB`). Ignored by default; the lane then plays into
+    /// changes: an applet may stop preparing an audio lane nobody hears
+    /// (`SUPERSAW`'s `SUB`), never a level another instance may read. Ignored by default; the lane then plays into
     /// nothing (journal/D-046).
     fn set_routed(&mut self, _routed: [bool; CV_CHANNELS]) {}
 
@@ -663,6 +791,9 @@ pub struct AppHost {
     slots: [Slot; MAX_INSTANCES],
     /// Position of the instance with the focus.
     focus: usize,
+    /// The level each lane of each slot published on the last tick, for
+    /// the others to read (journal/D-048).
+    levels: [[MilliVolts; CV_CHANNELS]; MAX_INSTANCES],
 }
 
 impl AppHost {
@@ -672,6 +803,7 @@ impl AppHost {
     pub const EMPTY: Self = Self {
         slots: [Slot::EMPTY; MAX_INSTANCES],
         focus: 0,
+        levels: [[0; CV_CHANNELS]; MAX_INSTANCES],
     };
 
     /// The diagnostic applet in the first slot, every output its own, the
@@ -775,6 +907,28 @@ impl AppHost {
             .find(|app| app.id() == id)
     }
 
+    /// The position of the first instance of kind `id`, left to right, if
+    /// one runs.
+    #[must_use]
+    pub fn position_of(&self, id: AppId) -> Option<usize> {
+        self.slots
+            .iter()
+            .position(|slot| slot.instance.app().id() == id)
+    }
+
+    /// What the instance at `reader` (`None`: no instance) reads of the
+    /// others' ports: the levels they published on the last tick
+    /// (journal/D-048).
+    #[must_use]
+    pub fn bus(&self, reader: Option<usize>) -> Bus {
+        Bus::new(self.levels, self.ports(), reader)
+    }
+
+    /// The output ports of every slot's instance.
+    fn ports(&self) -> [&'static [Port]; MAX_INSTANCES] {
+        core::array::from_fn(|index| self.slots[index].instance.app().output_ports())
+    }
+
     /// The first instance of kind `id`, to change it.
     pub fn get_mut(&mut self, id: AppId) -> Option<&mut dyn App> {
         self.slots
@@ -817,6 +971,7 @@ impl AppHost {
         let instance = Instance::new(id);
         let route = self.free_route(instance.app().output_ports().len());
         self.slots[position] = Slot::new(instance, route);
+        self.levels[position] = [0; CV_CHANNELS];
         true
     }
 
@@ -862,19 +1017,28 @@ impl AppHost {
         self.slots.get(position).map(|slot| slot.inputs)
     }
 
-    /// Plugs input port `port` of the instance at `position` into jack
-    /// `jack` of its kind: the map it now has. Inputs are shared: any
-    /// instance may read any jack.
+    /// Plugs input port `port` of the instance at `position` into `source`,
+    /// a jack of its kind or another instance's port that carries a level
+    /// (journal/D-048): the map it now has. Jacks are shared: any instance
+    /// may read any jack, and any port.
     ///
     /// # Errors
     ///
-    /// [`Refused::NoSuch`] for no such instance, port or jack.
+    /// [`Refused::NoSuch`] for no such instance, port or jack, or a port it
+    /// may not read: its own, one that carries sound, one past the last.
     pub fn set_input(
         &mut self,
         position: usize,
         port: usize,
-        jack: usize,
+        source: InputSource,
     ) -> Result<InputRoute, Refused> {
+        if let InputSource::Lane { slot, port } = source
+            && !self
+                .bus(Some(position))
+                .offers(usize::from(slot), usize::from(port))
+        {
+            return Err(Refused::NoSuch);
+        }
         let held = self.slots.get_mut(position).ok_or(Refused::NoSuch)?;
         let port = *held
             .instance
@@ -882,7 +1046,7 @@ impl AppHost {
             .input_ports()
             .get(port)
             .ok_or(Refused::NoSuch)?;
-        if !held.inputs.set(port.kind, port.lane, jack) {
+        if !held.inputs.set(port.kind, port.lane, source) {
             return Err(Refused::NoSuch);
         }
         Ok(held.inputs)
@@ -923,21 +1087,32 @@ impl AppHost {
     }
 
     /// Runs one tick of every instance: what each slot's lanes carry and
-    /// where they go. Only the one with the focus sees the panel.
+    /// where they go. Only the one with the focus sees the panel. Each sees
+    /// the levels every slot published on the last tick (journal/D-048).
     pub fn update(&mut self, input: &InputSnapshot) -> [Routed<Sound>; MAX_INSTANCES] {
         let mut quiet = *input;
         quiet.silence_controls();
         let focused = self.focused_slot();
+        let outputs = self.ports();
+        let last = self.levels;
         let mut parts = [Routed::OFF; MAX_INSTANCES];
-        for (index, (slot, part)) in self.slots.iter_mut().zip(&mut parts).enumerate() {
+        for (index, ((slot, part), levels)) in self
+            .slots
+            .iter_mut()
+            .zip(&mut parts)
+            .zip(&mut self.levels)
+            .enumerate()
+        {
             let input = if index == focused { input } else { &quiet };
-            let input = if slot.inputs == InputRoute::IDENTITY {
-                *input
-            } else {
-                slot.inputs.apply(input)
-            };
+            let mut input = *input;
+            input.bus = Bus::new(last, outputs, Some(index));
+            if slot.inputs != InputRoute::IDENTITY {
+                input = slot.inputs.apply(&input);
+            }
+            let params = slot.instance.app_mut().update(&input);
+            *levels = published(&params, outputs[index]);
             *part = Routed {
-                params: slot.instance.app_mut().update(&input),
+                params,
                 route: slot.route,
             };
         }
@@ -948,6 +1123,18 @@ impl AppHost {
     pub fn render(&self, frame: &mut FrameBuffer, context: &TickContext) {
         self.focused().render(frame, context);
     }
+}
+
+/// The level each lane of `params` carries on its [`PortSignal::Cv`] port
+/// among `ports`, 0 V for the others: what the other instances read of it.
+fn published(params: &Params, ports: &[Port]) -> [MilliVolts; CV_CHANNELS] {
+    let Some(basic) = params.as_basic() else {
+        return [0; CV_CHANNELS];
+    };
+    core::array::from_fn(|lane| match (ports.get(lane), basic.channels[lane]) {
+        (Some(port), Channel::Level(level)) if port.signal == PortSignal::Cv => level,
+        _ => 0,
+    })
 }
 
 impl Default for AppHost {

@@ -404,6 +404,13 @@ impl Simulator {
         self.engine.current_app()
     }
 
+    /// The applets running and where their ports go, for a test that looks
+    /// at a slot's routing (journal/D-046, D-048).
+    #[must_use]
+    pub fn apps(&self) -> &oc_core::apps::AppHost {
+        self.engine.apps()
+    }
+
     /// The applet with the focus, through its trait: what the TUI's status
     /// line reads (journal/D-043).
     #[must_use]

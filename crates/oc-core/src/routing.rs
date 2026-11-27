@@ -13,13 +13,16 @@
 //! right encoder stops at the ends rather than wrapping round, so a quick
 //! turn down always lands on `OFF`, first, and one up on the last free jack.
 
-use crate::apps::{AppHost, InputKind};
+use core::fmt::Write as _;
+
+use crate::apps::{AppHost, InputKind, InputSource, MAX_INSTANCES};
 use crate::fmt::TextBuf;
 use crate::framebuffer::{FrameBuffer, ROW_HEIGHT, ROWS};
 use crate::gfx::controls::{
     LIST_LEFT, SCROLL_WIDTH, TITLE_LEFT, row_highlight, scroll_track, scroll_window,
 };
 use crate::gfx::{Ink, Point};
+use crate::modulation::Source;
 use crate::platform::{CV_CHANNELS, CvChannel};
 use crate::text::fonts::FONT_5X8;
 use crate::text::{self, TextStyle};
@@ -146,8 +149,9 @@ impl RoutingPage {
         }
     }
 
-    /// Moves input port `port` to the next jack of its kind, staying put at
-    /// the first and the last.
+    /// Moves input port `port` to the next of what it can read, staying put
+    /// at the first and the last: `OFF`, the four jacks of its kind, then the
+    /// ports the other instances offer, slot by slot (journal/D-048).
     fn step_input(host: &mut AppHost, port: usize, step: i32) {
         let position = host.focus();
         let Some(spec) = host.focused().input_ports().get(port).copied() else {
@@ -156,13 +160,15 @@ impl RoutingPage {
         let Some(inputs) = host.inputs_at(position) else {
             return;
         };
-        let jacks = i32::try_from(CV_CHANNELS).unwrap_or(4);
-        let current = inputs
-            .jack(spec.kind, spec.lane)
-            .and_then(|jack| i32::try_from(jack).ok())
+        let (choices, count) = input_choices(host, position);
+        let current = inputs.source(spec.kind, spec.lane);
+        let index = choices[..count]
+            .iter()
+            .position(|&choice| Some(choice) == current)
             .unwrap_or(0);
-        let next = usize::try_from((current + step).clamp(0, jacks - 1)).unwrap_or(0);
-        let _ = host.set_input(position, port, next);
+        let last = i32::try_from(count).unwrap_or(1) - 1;
+        let next = (i32::try_from(index).unwrap_or(0) + step).clamp(0, last);
+        let _ = host.set_input(position, port, choices[usize::try_from(next).unwrap_or(0)]);
     }
 
     /// First row shown, so that the one picked stays on screen.
@@ -243,30 +249,84 @@ impl RoutingPage {
                 RouteRow::Output(port) => (
                     app.output_ports()[port].name,
                     "->",
-                    route
-                        .and_then(|route| route.output(port))
-                        .map_or("OFF", |jack| OUTPUTS[jack.index()]),
+                    text_of(
+                        route
+                            .and_then(|route| route.output(port))
+                            .map_or("OFF", |jack| OUTPUTS[jack.index()]),
+                    ),
                 ),
                 RouteRow::Input(port) => {
                     let spec = app.input_ports()[port];
-                    let names = match spec.kind {
-                        InputKind::Cv => &CV_INPUTS,
-                        InputKind::Trigger => &TRIGGER_INPUTS,
-                    };
-                    let jack = inputs
-                        .and_then(|inputs| inputs.jack(spec.kind, spec.lane))
-                        .and_then(|jack| names.get(jack))
-                        .copied()
-                        .unwrap_or("--");
-                    (spec.name, "<-", jack)
+                    let source = inputs.and_then(|inputs| inputs.source(spec.kind, spec.lane));
+                    (spec.name, "<-", source_text(host, spec.kind, source))
                 }
             };
             text::draw(frame, name, Point::new(TEXT_INSET, top), style);
             text::draw(frame, arrow, Point::new(arrow_column, top), style);
-            text::draw(frame, jack, Point::new(jack_column, top), style);
+            text::draw(frame, jack.as_str(), Point::new(jack_column, top), style);
         }
     }
 }
+
+/// The most an input port can read: nothing, the four jacks of its kind,
+/// and every lane of the other instances.
+const MAX_CHOICES: usize = 1 + CV_CHANNELS + (MAX_INSTANCES - 1) * CV_CHANNELS;
+
+/// What an input of the instance at `position` can read, in the order the
+/// right encoder turns them, and how many.
+fn input_choices(host: &AppHost, position: usize) -> ([InputSource; MAX_CHOICES], usize) {
+    let mut choices = [InputSource::Off; MAX_CHOICES];
+    // `OFF` first, as an output's: a quick turn down frees every jack.
+    let mut count = 1;
+    let jacks = (0..CV_CHANNELS).filter_map(InputSource::jack);
+    let bus = host.bus(Some(position));
+    let lanes = bus.sources().filter_map(|source| match source {
+        Source::Lane { slot, port } => InputSource::lane(usize::from(slot), usize::from(port)),
+        Source::Jack(_) => None,
+    });
+    for choice in jacks.chain(lanes) {
+        if count < MAX_CHOICES {
+            choices[count] = choice;
+            count += 1;
+        }
+    }
+    (choices, count)
+}
+
+/// What an input of `kind` reading `source` shows: its jack (`TR2`), the
+/// slot and name of the port it reads (`1:BURST`, journal/D-048), or `OFF`.
+fn source_text(host: &AppHost, kind: InputKind, source: Option<InputSource>) -> TextBuf<16> {
+    let mut out = TextBuf::<16>::new();
+    let names = match kind {
+        InputKind::Cv => &CV_INPUTS,
+        InputKind::Trigger => &TRIGGER_INPUTS,
+    };
+    match source {
+        Some(InputSource::Jack(jack)) => {
+            return text_of(names.get(usize::from(jack)).copied().unwrap_or("--"));
+        }
+        Some(InputSource::Lane { slot, port }) => {
+            let name = host
+                .bus(None)
+                .port(usize::from(slot), usize::from(port))
+                .map(|port| port.name);
+            Source::Lane { slot, port }.write_name(&mut out, name, PORT_LETTERS);
+        }
+        Some(InputSource::Off) => return text_of("OFF"),
+        None => return text_of("--"),
+    }
+    out
+}
+
+/// `text`, in a buffer of a row's width.
+fn text_of(text: &str) -> TextBuf<16> {
+    let mut out = TextBuf::<16>::new();
+    let _ = out.write_str(text);
+    out
+}
+
+/// The most letters of a port's name an input's row writes after its slot.
+const PORT_LETTERS: usize = 6;
 
 #[cfg(test)]
 mod tests {
@@ -348,7 +408,7 @@ mod tests {
     }
 
     #[test]
-    fn an_input_steps_through_the_jacks_of_its_kind() {
+    fn an_input_steps_through_off_and_the_jacks_of_its_kind() {
         let mut host = supersaw_and_ratchet();
         host.set_focus(1);
         let mut page = RoutingPage::new();
@@ -360,12 +420,19 @@ mod tests {
             Some(1),
             "TR2"
         );
-        page.update([0, -2], &mut host);
+        page.update([0, -1], &mut host);
         let inputs = host.inputs_at(1).unwrap();
         assert_eq!(
             inputs.jack(crate::apps::InputKind::Trigger, 0),
             Some(0),
-            "TR1, the first: no wrapping round"
+            "TR1"
+        );
+        page.update([0, -5], &mut host);
+        let inputs = host.inputs_at(1).unwrap();
+        assert_eq!(
+            inputs.source(crate::apps::InputKind::Trigger, 0),
+            Some(crate::apps::InputSource::Off),
+            "OFF, the first: no wrapping round"
         );
         page.update([0, 9], &mut host);
         let inputs = host.inputs_at(1).unwrap();

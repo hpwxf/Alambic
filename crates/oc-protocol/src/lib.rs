@@ -37,14 +37,17 @@ pub mod server;
 
 use serde::{Deserialize, Serialize};
 
+pub use oc_core::apps::InputSource;
 use oc_core::apps::param::{Kind, ParamSpec, Unit};
 pub use oc_core::apps::param::{ParamValue, Refused};
 pub use oc_core::modulation::{Assign, Effect};
 use oc_core::platform::{CV_CHANNELS, MilliVolts};
 pub use oc_core::profile::Profile;
 
-/// Protocol version, raised on any change to a message's encoding.
-pub const VERSION: u16 = 10;
+/// Protocol version, raised on any change to a message's encoding: 11 for
+/// an input that reads a port of another instance and a port that says
+/// whether it carries a level (journal/D-048).
+pub const VERSION: u16 = 11;
 
 /// Longest frame either side sends or accepts, zero byte included. A
 /// screen page (128 bytes) and a profile (a few hundred) both fit with room
@@ -205,15 +208,17 @@ pub enum Request {
         /// The output, or `None`.
         output: Option<u8>,
     },
-    /// Plugs input port `port` of the instance at `instance` into jack
-    /// `jack` of its kind (0 for `CV1` or `TR1`): [`Reply::Instance`].
+    /// Plugs input port `port` of the instance at `instance` into a jack
+    /// of its kind (0 for `CV1` or `TR1`) or a port of another instance
+    /// that carries a level (protocol 11, journal/D-048):
+    /// [`Reply::Instance`].
     SetInput {
         /// Its position.
         instance: u8,
         /// The port's index.
         port: u8,
-        /// The jack.
-        jack: u8,
+        /// What it reads.
+        source: InputSource,
     },
 }
 
@@ -380,6 +385,9 @@ pub enum Reply<'a> {
         name: &'a str,
         /// For an input, whether it reads a trigger rather than a CV.
         trigger: bool,
+        /// For an output, whether it carries a level, which another
+        /// instance's input can read (protocol 11, journal/D-048).
+        level: bool,
     },
     /// One running instance, answering [`Request::ListInstances`] and the
     /// requests that start or route one.
@@ -393,9 +401,18 @@ pub enum Reply<'a> {
         /// The output each output port goes to (0 for A), `None` for one
         /// routed nowhere or past its last port.
         outputs: [Option<u8>; CV_CHANNELS],
-        /// The jack each input port reads (0 for `CV1` or `TR1`), past its
-        /// last port 0.
-        inputs: [u8; CV_CHANNELS],
+        /// What each input port reads: a jack (0 for `CV1` or `TR1`) or a
+        /// port of another instance (protocol 11); past its last port jack
+        /// 0.
+        inputs: [InputSource; CV_CHANNELS],
+        /// Whether each output port carries a level, which another
+        /// instance's input can read; past its last port `false`
+        /// (protocol 11, journal/D-048).
+        levels: [bool; CV_CHANNELS],
+        /// Each output port's name, by which another instance's input
+        /// names it (`1:NOTE`); past its last port empty (protocol 11).
+        #[serde(borrow)]
+        names: [&'a str; CV_CHANNELS],
     },
     /// A parameter's value, answering [`Request::GetParam`] or
     /// [`Request::SetParam`].

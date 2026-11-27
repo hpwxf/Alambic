@@ -36,23 +36,23 @@ filter() {
   '
 }
 
-# One instance left, at position 0, a fresh SUPERSAW.
-for position in 3 2 1; do probe remove "@$position" >/dev/null || true; done
-probe focus @0 >/dev/null || true
+# One instance left, in slot 1, a fresh SUPERSAW (slots count from 1).
+for slot in 4 3 2; do probe remove "@$slot" >/dev/null || true; done
+probe focus @1 >/dev/null || true
 probe select supersaw >/dev/null
-if [ "$instances" -gt 2 ]; then probe route @0 b=off sub=off >/dev/null; fi
-for position in $(seq 1 $((instances - 1))); do
+if [ "$instances" -gt 2 ]; then probe route @1 b=off sub=off >/dev/null; fi
+for slot in $(seq 2 "$instances"); do
   probe add supersaw >/dev/null
-  if [ "$instances" -gt 2 ]; then probe route "@$position" b=off sub=off >/dev/null; fi
+  if [ "$instances" -gt 2 ]; then probe route "@$slot" b=off sub=off >/dev/null; fi
 done
-for position in $(seq 0 $((instances - 1))); do
-  probe set "@$position" mix 50 >/dev/null
-  probe set "@$position" shape "${SHAPE:-25}" >/dev/null
-  probe set "@$position" stereo on >/dev/null
-  probe assign "@$position" note input=cv1 effect=add >/dev/null
-  probe assign "@$position" detune "input=${DETUNE_INPUT:-cv2}" effect=add >/dev/null
+for slot in $(seq 1 "$instances"); do
+  probe set "@$slot" mix 50 >/dev/null
+  probe set "@$slot" shape "${SHAPE:-25}" >/dev/null
+  probe set "@$slot" stereo on >/dev/null
+  probe assign "@$slot" note input=cv1 effect=add >/dev/null
+  probe assign "@$slot" detune "input=${DETUNE_INPUT:-cv2}" effect=add >/dev/null
 done
-probe focus @0 >/dev/null
+probe focus @1 >/dev/null
 
 # Long enough for what the sets put on the screen to go: a profile taken
 # with it there draws another frame.

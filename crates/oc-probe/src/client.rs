@@ -12,8 +12,8 @@ use std::io::{self, Read, Write};
 use oc_core::framebuffer::LEN;
 use oc_core::platform::{CvChannel, MilliVolts};
 use oc_protocol::{
-    Assign, Error, FrameReader, Group, MAX_FRAME, ParamKind, ParamValue, Profile, Reply, Request,
-    SCREEN_PAGES, Sample, Target, VERSION, decode, encode,
+    Assign, Error, FrameReader, Group, InputSource, MAX_FRAME, ParamKind, ParamValue, Profile,
+    Reply, Request, SCREEN_PAGES, Sample, Target, VERSION, decode, encode,
 };
 
 /// The index of `NOTHING`, what an empty slot runs (journal/D-046).
@@ -122,6 +122,17 @@ pub struct InputEntry {
     pub sweep: Option<(MilliVolts, MilliVolts)>,
 }
 
+/// One output an applet writes, which its routing sends to a jack or
+/// nowhere (journal/D-046).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct OutputPortEntry {
+    /// Its name, as the routing page shows it.
+    pub name: String,
+    /// Whether it carries a level, which another instance's input can read
+    /// (journal/D-048).
+    pub level: bool,
+}
+
 /// One input an applet reads by itself, which its routing plugs into a
 /// jack (journal/D-046).
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -141,14 +152,14 @@ pub struct AppDescription {
     pub observables: Vec<SpecEntry>,
     /// What it can be asked to do, by index.
     pub actions: Vec<String>,
-    /// The outputs it writes, by name, in the order of its lanes.
-    pub outputs: Vec<String>,
+    /// The outputs it writes, in the order of its lanes.
+    pub outputs: Vec<OutputPortEntry>,
     /// The inputs it reads by itself.
     pub inputs: Vec<InputPortEntry>,
 }
 
 /// One running instance (journal/D-046).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct InstanceEntry {
     /// Its position on the panel, left to right.
     pub position: u8,
@@ -158,8 +169,15 @@ pub struct InstanceEntry {
     pub focused: bool,
     /// The output each output port goes to (0 for A), `None` for nowhere.
     pub outputs: [Option<u8>; 4],
-    /// The jack each input port reads (0 for `CV1` or `TR1`).
-    pub inputs: [u8; 4],
+    /// What each input port reads: a jack (0 for `CV1` or `TR1`) or a port
+    /// of another instance (journal/D-048).
+    pub inputs: [InputSource; 4],
+    /// Whether each output port carries a level another instance can read
+    /// (journal/D-048).
+    pub levels: [bool; 4],
+    /// Each output port's name, empty past the last: what another
+    /// instance's input names it by (`1:NOTE`).
+    pub names: [String; 4],
 }
 
 impl AppDescription {
@@ -239,6 +257,7 @@ enum Answer {
         output: bool,
         name: String,
         trigger: bool,
+        level: bool,
     },
     Instance(InstanceEntry),
 }
@@ -417,12 +436,16 @@ impl<T: Read + Write> Client<T> {
                     .add_input(index, input)
                     .map_err(ProbeError::Unexpected)?,
                 Answer::Port {
-                    output: true, name, ..
-                } => description.outputs.push(name),
+                    output: true,
+                    name,
+                    level,
+                    ..
+                } => description.outputs.push(OutputPortEntry { name, level }),
                 Answer::Port {
                     output: false,
                     name,
                     trigger,
+                    ..
                 } => description.inputs.push(InputPortEntry { name, trigger }),
                 Answer::Done => return Ok(description),
                 _ => return Err(ProbeError::Unexpected("a description")),
@@ -616,17 +639,23 @@ impl<T: Read + Write> Client<T> {
         })
     }
 
-    /// Plugs input port `port` of the instance at `instance` into jack
-    /// `jack` of its kind: the instance as it now is.
+    /// Plugs input port `port` of the instance at `instance` into `source`,
+    /// a jack of its kind or a port of another instance: the instance as it
+    /// now is.
     ///
     /// # Errors
     ///
-    /// As [`Self::hello`]; no such port or jack.
-    pub fn set_input(&mut self, instance: u8, port: u8, jack: u8) -> Result<InstanceEntry> {
+    /// As [`Self::hello`]; no such port or jack, or a port it may not read.
+    pub fn set_input(
+        &mut self,
+        instance: u8,
+        port: u8,
+        source: InputSource,
+    ) -> Result<InstanceEntry> {
         self.instance_answer(&Request::SetInput {
             instance,
             port,
-            jack,
+            source,
         })
     }
 
@@ -742,11 +771,13 @@ impl<T: Read + Write> Client<T> {
                 output,
                 name,
                 trigger,
+                level,
                 ..
             } => Answer::Port {
                 output,
                 name: name.to_owned(),
                 trigger,
+                level,
             },
             Reply::Instance {
                 position,
@@ -754,12 +785,16 @@ impl<T: Read + Write> Client<T> {
                 focused,
                 outputs,
                 inputs,
+                levels,
+                names,
             } => Answer::Instance(InstanceEntry {
                 position,
                 app,
                 focused,
                 outputs,
                 inputs,
+                levels,
+                names: names.map(str::to_owned),
             }),
         };
         Ok(Some(answer))

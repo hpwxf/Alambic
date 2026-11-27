@@ -39,6 +39,7 @@ fn busy_snapshot() -> InputSnapshot {
         buttons: ButtonReader::new().update(&controls),
         controls,
         elapsed_micros: 1_000,
+        ..InputSnapshot::default()
     }
 }
 
@@ -125,6 +126,7 @@ impl RatchetPanel {
             buttons: self.reader.update(&controls),
             controls,
             elapsed_micros: 1_000,
+            ..InputSnapshot::default()
         };
         self.app.update(&snapshot);
     }
