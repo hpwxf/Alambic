@@ -12,8 +12,11 @@ Architectural decisions behind each change are in `journal/` (French).
 - **`MELODY`** (journal/D-047), in a new `SEQUENCE` column of the app
   menu: a looping sequence of up to 32 random but controllable notes,
   clocked by `TR1` and armed by `TR2`, each step drawn anew with the chance
-  `PROB` over `RANGE` octaves (`SPREAD`, `BIAS`, `JUMP NO REP`) or by a walk
-  (`JUMP`), `REROLL` on demand. A carries the note quantised to the scale
+  `PROB` (an even place, `JUMP NO REP`, or a walk with `JUMP`), `REROLL` on
+  demand. Each step keeps a place in a window that bends the whole loop at
+  once without losing it (journal/D-047, revision of 2026-11-27): `SPREAD`
+  its width (0–48 semitones), `CENTER` its place round the root, `BIAS` a
+  curve with fixed ends. A carries the note quantised to the scale
   of `KEY` (root and scale), moved by `OCTAVE` and `TRANSPOSE` (one volt
   per octave from an input, none at start); B and C a chord of two tones
   stacked in the scale (`CHORD`, its inversion an arrow ↓ / – / ↑), D a

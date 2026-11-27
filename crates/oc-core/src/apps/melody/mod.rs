@@ -26,11 +26,13 @@
 
 pub mod scale;
 pub mod sequence;
+pub mod window;
 
 use core::fmt::Write as _;
 
 use self::scale::{CHORD_NAMES, Chord, ROOT_NAMES, SCALE_NAMES, Scale, chord};
-use self::sequence::{Draw, MAX_JUMP, MAX_NOTE, MAX_RANGE, MAX_STEPS, Sequence};
+use self::sequence::{Draw, MAX_JUMP, MAX_STEPS, Sequence};
+use self::window::{MAX_PERCENT, MAX_SPREAD, PLACE_MAX, Window};
 use crate::apps::param::{ParamSpec, ParamValue, Refused, Unit};
 use crate::apps::sound::Params;
 use crate::apps::tone::note_name;
@@ -120,14 +122,15 @@ pub enum Setting {
     Transpose,
     /// The gate's length, in percent of the clock's period.
     Gate,
-    /// How a note is drawn: over the range, without repeating the step
-    /// before, or by a walk of up to so many degrees from it.
+    /// How a step is drawn: an even place in the window, one whose note
+    /// does not repeat the step before's, or a walk of up to so many degrees
+    /// from it.
     Jump,
-    /// Octaves a drawn note spans above the root.
-    Range,
-    /// How evenly drawn notes spread over the range.
+    /// The window's width, in semitones ([`window`]).
     Spread,
-    /// Where in the range they gather.
+    /// The window's place around the root.
+    Center,
+    /// The curve the steps' places are bent by in the window.
     Bias,
     /// Draws the whole sequence anew.
     Reroll,
@@ -146,8 +149,8 @@ impl Setting {
         Self::Transpose,
         Self::Gate,
         Self::Jump,
-        Self::Range,
         Self::Spread,
+        Self::Center,
         Self::Bias,
         Self::Reroll,
     ];
@@ -167,8 +170,8 @@ impl Setting {
             Self::Length => Some(0),
             Self::Chance => Some(1),
             Self::Transpose => Some(2),
-            Self::Range => Some(3),
-            Self::Spread => Some(4),
+            Self::Spread => Some(3),
+            Self::Center => Some(4),
             Self::Bias => Some(5),
             _ => None,
         }
@@ -184,9 +187,13 @@ impl Setting {
             Self::Length => Rate::new((1, MAX_STEPS as i32), 1, (1, 250)),
             // One volt an octave.
             Self::Transpose => Rate::new((-MAX_TRANSPOSE, MAX_TRANSPOSE), 0, (12, 1_000)),
-            Self::Range => Rate::new((1, MAX_RANGE as i32), 1, (1, 1_000)),
+            // One volt an octave of width.
+            Self::Spread => Rate::new((0, MAX_SPREAD as i32), 0, (12, 1_000)),
             // 20 % a volt, as `RATCHET`'s `PROB`.
-            Self::Chance | Self::Spread | Self::Bias => Rate::new((0, 100), 0, (1, 50)),
+            Self::Chance => Rate::new((0, 100), 0, (1, 50)),
+            Self::Center | Self::Bias => {
+                Rate::new((-(MAX_PERCENT as i32), MAX_PERCENT as i32), 0, (1, 50))
+            }
             _ => return None,
         };
         Some(rate)
@@ -200,8 +207,8 @@ impl Setting {
             Self::Root => "ROOT",
             Self::Octave => "OCTAVE",
             Self::Transpose => "TRANSPOSE",
-            Self::Range => "RANGE",
             Self::Spread => "SPREAD",
+            Self::Center => "CENTER",
             Self::Bias => "BIAS",
             Self::Jump => "JUMP",
             Self::Chord => "CHORD",
@@ -226,14 +233,14 @@ pub const FIELDS: [Setting; 14] = [
     Setting::Gate,
     Setting::Reroll,
     Setting::Jump,
-    Setting::Range,
     Setting::Spread,
+    Setting::Center,
     Setting::Bias,
 ];
 
 /// The rows of the screen, four a page, three pages: the loop, its key and
-/// its chord; the pitch, the gate and the action; how notes are drawn,
-/// `JUMP` first, for it decides whether `SPREAD` and `BIAS` act. A row of
+/// its chord; the pitch, the gate and the action; how steps are drawn and
+/// the window they sound in. A row of
 /// two fields shows both values, the root before the scale, the chord
 /// before its inversion's arrow.
 pub const ROWS: [&[Setting]; 12] = [
@@ -246,8 +253,8 @@ pub const ROWS: [&[Setting]; 12] = [
     &[Setting::Gate],
     &[Setting::Reroll],
     &[Setting::Jump],
-    &[Setting::Range],
     &[Setting::Spread],
+    &[Setting::Center],
     &[Setting::Bias],
 ];
 
@@ -360,12 +367,8 @@ pub struct Settings {
     pub octave: i8,
     /// Semitones the notes move by before they are quantised.
     pub transpose: i8,
-    /// Octaves a drawn note spans.
-    pub range_octaves: u8,
-    /// See [`Draw::spread_percent`].
-    pub spread_percent: u8,
-    /// See [`Draw::bias_percent`].
-    pub bias_percent: u8,
+    /// The window the steps' places sound in: its width, place and curve.
+    pub window: Window,
     /// See [`Draw::jump`].
     pub jump: u8,
     /// See [`Draw::repeat`]; `JUMP`'s `NO REP` when `false` without a walk.
@@ -387,9 +390,7 @@ impl Settings {
         root: 0,
         octave: 0,
         transpose: 0,
-        range_octaves: Draw::DEFAULT.range_octaves,
-        spread_percent: Draw::DEFAULT.spread_percent,
-        bias_percent: Draw::DEFAULT.bias_percent,
+        window: Window::DEFAULT,
         jump: Draw::DEFAULT.jump,
         repeat: Draw::DEFAULT.repeat,
         chord: Chord::Triad,
@@ -402,9 +403,7 @@ impl Settings {
     pub const fn draw(&self) -> Draw {
         Draw {
             scale: self.scale,
-            range_octaves: self.range_octaves,
-            spread_percent: self.spread_percent,
-            bias_percent: self.bias_percent,
+            window: self.window,
             jump: self.jump,
             repeat: self.repeat,
         }
@@ -416,9 +415,9 @@ impl Settings {
             Setting::Length => i32::from(self.length),
             Setting::Chance => i32::from(self.chance_percent),
             Setting::Transpose => i32::from(self.transpose),
-            Setting::Range => i32::from(self.range_octaves),
-            Setting::Spread => i32::from(self.spread_percent),
-            Setting::Bias => i32::from(self.bias_percent),
+            Setting::Spread => i32::from(self.window.spread),
+            Setting::Center => i32::from(self.window.center),
+            Setting::Bias => i32::from(self.window.bias),
             _ => 0,
         }
     }
@@ -430,9 +429,9 @@ impl Settings {
             Setting::Length => self.length = byte,
             Setting::Chance => self.chance_percent = byte,
             Setting::Transpose => self.transpose = i8::try_from(value).unwrap_or(0),
-            Setting::Range => self.range_octaves = byte,
-            Setting::Spread => self.spread_percent = byte,
-            Setting::Bias => self.bias_percent = byte,
+            Setting::Spread => self.window.spread = byte,
+            Setting::Center => self.window.center = i8::try_from(value).unwrap_or(0),
+            Setting::Bias => self.window.bias = i8::try_from(value).unwrap_or(0),
             _ => {}
         }
     }
@@ -459,9 +458,23 @@ pub const PARAM_SPECS: [ParamSpec; 13] = [
     .assignable(),
     ParamSpec::number("GATE", (1, 99), 1, 0, Unit::Percent),
     ParamSpec::choice("JUMP", &JUMP_NAMES),
-    ParamSpec::number("RANGE", (1, MAX_RANGE as i32), 1, 0, Unit::Octaves).assignable(),
-    ParamSpec::number("SPREAD", (0, 100), 1, 0, Unit::Percent).assignable(),
-    ParamSpec::number("BIAS", (0, 100), 1, 0, Unit::Percent).assignable(),
+    ParamSpec::number("SPREAD", (0, MAX_SPREAD as i32), 1, 0, Unit::None).assignable(),
+    ParamSpec::number(
+        "CENTER",
+        (-(MAX_PERCENT as i32), MAX_PERCENT as i32),
+        1,
+        0,
+        Unit::Percent,
+    )
+    .assignable(),
+    ParamSpec::number(
+        "BIAS",
+        (-(MAX_PERCENT as i32), MAX_PERCENT as i32),
+        1,
+        0,
+        Unit::Percent,
+    )
+    .assignable(),
 ];
 
 /// What `MELODY` can be read for: the step playing (from 1) and the note A
@@ -643,11 +656,31 @@ impl MelodyApp {
         self.sequence.reroll(draw);
     }
 
-    /// The note step `index` plays, in semitones above the root: moved by
-    /// the transposition, quantised to the scale.
+    /// The window as it reads now, its inputs applied: they bend the loop
+    /// at once, not at the next clock (journal/D-047, revision of
+    /// 2026-11-27).
+    #[must_use]
+    pub fn window(&self) -> Window {
+        self.with_inputs().window
+    }
+
+    /// The note step `index` plays, in semitones above the root: its place
+    /// in the window, moved by the transposition, quantised to the scale.
     fn played(&self, index: usize, transpose: i32) -> i32 {
-        let note = i32::from(self.sequence.note(index)) + transpose;
-        self.settings.scale.quantize(note)
+        self.played_in(self.window(), index, transpose)
+    }
+
+    /// The same in `window`, read once by a caller that plays several steps.
+    fn played_in(&self, window: Window, index: usize, transpose: i32) -> i32 {
+        let pitch = window.pitch(self.sequence.place(index));
+        self.settings.scale.quantize(pitch + transpose)
+    }
+
+    /// The note step `index` plays now, in semitones above the root, the
+    /// transposition the step started with included.
+    #[must_use]
+    pub fn played_note(&self, index: usize) -> i32 {
+        self.played(index, self.transpose)
     }
 
     /// Semitones above the root as semitones from C4.
@@ -693,14 +726,17 @@ impl MelodyApp {
             self.editing = Some(step);
             let turns = i32::from(input.controls.delta(1));
             if turns != 0 {
-                let note = i32::from(self.sequence.note(step));
-                let moved = self
-                    .settings
-                    .scale
-                    .step(note, turns)
-                    .clamp(0, i32::from(MAX_NOTE));
-                self.sequence
-                    .set_note(step, u8::try_from(moved).unwrap_or(0));
+                // The note shown moves a degree a detent, and the step takes
+                // the place that gives it; a window of one note has nothing
+                // to move to.
+                let window = self.window();
+                let scale = self.settings.scale;
+                let (lowest, highest) = window.bounds(scale);
+                if lowest < highest {
+                    let note = window.note(scale, self.sequence.place(step));
+                    let moved = scale.step(note, turns).clamp(lowest, highest);
+                    self.sequence.set_place(step, window.place_of(scale, moved));
+                }
             }
             if input.buttons.pressed(Button::RightEncoder) {
                 let draw = self.with_inputs().draw();
@@ -768,9 +804,9 @@ impl MelodyApp {
             Setting::Root => write!(out, "{}", ROOT_NAMES[usize::from(settings.root % 12)]),
             Setting::Octave => write_signed(out, i32::from(settings.octave)),
             Setting::Transpose => write_signed(out, i32::from(settings.transpose)),
-            Setting::Range => write!(out, "{} OCT", settings.range_octaves),
-            Setting::Spread => write!(out, "{}%", settings.spread_percent),
-            Setting::Bias => write!(out, "{}%", settings.bias_percent),
+            Setting::Spread => write!(out, "{} ST", settings.window.spread),
+            Setting::Center => write_percent(out, i32::from(settings.window.center)),
+            Setting::Bias => write_percent(out, i32::from(settings.window.bias)),
             Setting::Jump => write!(out, "{}", JUMP_NAMES[jump_choice(settings)]),
             Setting::Chord => write!(out, "{}", CHORD_NAMES[settings.chord.index()]),
             Setting::Gate => write!(out, "{}%", settings.gate_percent),
@@ -926,12 +962,10 @@ impl MelodyApp {
     }
 
     /// Whether the screen leaves `setting`'s value out: one that follows its
-    /// input, which stands in its place; `SPREAD` and `BIAS` during a walk,
-    /// which does not use them.
+    /// input, which stands in its place. The window's settings act during a
+    /// walk too, which moves in it.
     fn hidden(&self, setting: Setting) -> bool {
-        let walking = self.settings.jump > 0;
         self.assign(setting).is_some_and(Assign::sets)
-            || (walking && matches!(setting, Setting::Spread | Setting::Bias))
     }
 
     /// The steps of the loop at the bottom of the screen, side by side: each
@@ -939,30 +973,27 @@ impl MelodyApp {
     /// mark, the playhead at the top of its column, the step edited framed.
     fn render_sequence(&self, frame: &mut FrameBuffer) {
         let length = usize::from(self.sequence.length());
+        // Scaled to the window's notes, so a mark sits where its note is in
+        // the window: the window's width shows as the marks' spread.
+        let window = self.window();
         let scale = self.settings.scale;
-        let notes = &self.sequence.notes()[..length];
-        let quantised = |note: u8| {
-            scale
-                .quantize(i32::from(note))
-                .clamp(0, i32::from(MAX_NOTE))
-        };
-        let highest = notes.iter().map(|&note| quantised(note)).max().unwrap_or(0);
-        let top_note = highest
-            .max(12 * i32::from(self.settings.range_octaves))
-            .max(1);
+        let lowest = scale.quantize(window.pitch(0) + self.transpose);
+        let highest = scale.quantize(window.pitch(PLACE_MAX) + self.transpose);
+        let notes_span = (highest - lowest).max(1);
         let bottom = HEIGHT_I32 - MARK_HEIGHT;
         let height = bottom - NOTES_TOP;
         let count = i32::try_from(length).unwrap_or(1);
         let playing = self.sequence.position();
-        for (index, &note) in (0..).zip(notes) {
+        for index in 0..i32::try_from(length).unwrap_or(1) {
             let step = usize::try_from(index).unwrap_or(0);
+            let note = self.played_in(window, step, self.transpose);
             // Columns from x = 1, a pixel left of the first and one right of
             // each for the editor's frame, which so stays on the screen at
             // both ends.
             let span = WIDTH_I32 - 1;
             let x = 1 + index * span / count;
             let width = (1 + (index + 1) * span / count - x - 1).max(1);
-            let y = bottom - quantised(note) * height / top_note;
+            let y = bottom - (note - lowest).clamp(0, notes_span) * height / notes_span;
             if playing == Some(step) {
                 gfx::fill_rect(frame, x, y, width, HEIGHT_I32 - y, Ink::Lit);
                 playhead(frame, x, width);
@@ -1050,6 +1081,15 @@ fn invert_arrow(frame: &mut FrameBuffer, x: i32, top: i32, inversion: i8, ink: I
     }
 }
 
+/// `value` in percent with its sign, `0%` without.
+fn write_percent(out: &mut TextBuf<16>, value: i32) -> core::fmt::Result {
+    if value > 0 {
+        write!(out, "+{value}%")
+    } else {
+        write!(out, "{value}%")
+    }
+}
+
 /// `value` with its sign, `0` without.
 fn write_signed(out: &mut TextBuf<16>, value: i32) -> core::fmt::Result {
     if value > 0 {
@@ -1111,15 +1151,6 @@ impl App for MelodyApp {
         &PARAM_SPECS
     }
 
-    fn param_active(&self, index: usize) -> bool {
-        let walking = self.settings.jump > 0;
-        match Setting::ALL.get(index) {
-            // A walk draws from the step before, not over the range.
-            Some(Setting::Spread | Setting::Bias) => !walking,
-            _ => true,
-        }
-    }
-
     fn get(&self, index: usize) -> Option<ParamValue> {
         let settings = &self.settings;
         let number = |value: i32| Some(ParamValue::Number(value));
@@ -1131,9 +1162,9 @@ impl App for MelodyApp {
             Setting::Root => choice(usize::from(settings.root)),
             Setting::Octave => number(i32::from(settings.octave)),
             Setting::Transpose => number(i32::from(settings.transpose)),
-            Setting::Range => number(i32::from(settings.range_octaves)),
-            Setting::Spread => number(i32::from(settings.spread_percent)),
-            Setting::Bias => number(i32::from(settings.bias_percent)),
+            Setting::Spread => number(i32::from(settings.window.spread)),
+            Setting::Center => number(i32::from(settings.window.center)),
+            Setting::Bias => number(i32::from(settings.window.bias)),
             Setting::Jump => choice(jump_choice(settings)),
             Setting::Chord => choice(settings.chord.index()),
             Setting::Invert => number(i32::from(settings.inversion)),
@@ -1163,9 +1194,11 @@ impl App for MelodyApp {
             (Setting::Transpose, ParamValue::Number(semitones)) => {
                 settings.transpose = signed(semitones);
             }
-            (Setting::Range, ParamValue::Number(octaves)) => settings.range_octaves = byte(octaves),
-            (Setting::Spread, ParamValue::Number(spread)) => settings.spread_percent = byte(spread),
-            (Setting::Bias, ParamValue::Number(bias)) => settings.bias_percent = byte(bias),
+            (Setting::Spread, ParamValue::Number(spread)) => settings.window.spread = byte(spread),
+            (Setting::Center, ParamValue::Number(center)) => {
+                settings.window.center = signed(center);
+            }
+            (Setting::Bias, ParamValue::Number(bias)) => settings.window.bias = signed(bias),
             (Setting::Jump, ParamValue::Choice(choice)) => {
                 // `OFF` and `NO REP` draw over the range; past them, a walk.
                 settings.repeat = choice != 1;
@@ -1296,10 +1329,12 @@ mod tests {
         );
         app.set(jump, ParamValue::Choice(4)).unwrap();
         assert_eq!(app.settings.jump, 3, "a walk of three");
-        assert!(app.hidden(Setting::Spread) && app.hidden(Setting::Bias));
+        assert!(
+            !app.hidden(Setting::Spread),
+            "the window acts on a walk too"
+        );
         app.set(jump, ParamValue::Choice(0)).unwrap();
         assert_eq!((app.settings.jump, app.settings.repeat), (0, true), "OFF");
-        assert!(!app.hidden(Setting::Spread));
         app.change(Setting::Jump, -3);
         assert_eq!(app.get(jump), Some(ParamValue::Choice(0)), "stops at OFF");
     }
@@ -1308,7 +1343,12 @@ mod tests {
     fn transpose_follows_its_input_at_a_volt_an_octave() {
         assert_eq!(sweep(Setting::Transpose), Some((-2_000, 2_000)));
         assert_eq!(sweep(Setting::Length), Some((0, 7_750)));
-        assert_eq!(sweep(Setting::Range), Some((0, 3_000)));
+        assert_eq!(
+            sweep(Setting::Spread),
+            Some((0, 4_000)),
+            "a volt an octave of width"
+        );
+        assert_eq!(sweep(Setting::Center), Some((-5_000, 5_000)));
     }
 
     #[test]

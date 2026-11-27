@@ -78,9 +78,9 @@ fn millivolts(semitones: i32) -> MilliVolts {
     (product + product.signum() * 6) / 12
 }
 
-/// What step `step` plays now in the major scale from C4, untransposed.
+/// What step `step` plays now, in semitones from C4: the root is C.
 fn played(engine: &MockEngine, step: usize) -> i32 {
-    Scale::Major.quantize(i32::from(app(engine).sequence().note(step)))
+    app(engine).played_note(step)
 }
 
 #[test]
@@ -201,25 +201,25 @@ fn the_routing_page_sends_the_gate_elsewhere_or_nowhere() {
 #[test]
 fn no_chance_loops_the_same_notes() {
     let mut engine = melody();
-    let first = *app(&engine).sequence().notes();
+    let first = *app(&engine).sequence().places();
     for _ in 0..24 {
         clock(&mut engine, 5);
     }
-    assert_eq!(*app(&engine).sequence().notes(), first);
+    assert_eq!(*app(&engine).sequence().places(), first);
     set(&mut engine, Setting::Chance, 100);
     for _ in 0..8 {
         clock(&mut engine, 5);
     }
-    assert_ne!(*app(&engine).sequence().notes(), first, "all drawn anew");
+    assert_ne!(*app(&engine).sequence().places(), first, "all drawn anew");
 }
 
 #[test]
 fn reroll_draws_the_whole_sequence_anew() {
     let mut engine = melody();
-    let first = *app(&engine).sequence().notes();
+    let first = *app(&engine).sequence().places();
     set(&mut engine, Setting::Reroll, 0);
     press(&mut engine, Button::RightEncoder);
-    assert_ne!(*app(&engine).sequence().notes(), first);
+    assert_ne!(*app(&engine).sequence().places(), first);
     assert!(!app(&engine).assigning(), "an action, not a submenu");
 }
 
@@ -230,13 +230,13 @@ fn the_left_switch_edits_the_steps_on_the_screen() {
     assert_eq!(app(&engine).editing(), Some(0));
     turn(&mut engine, 0, 2);
     assert_eq!(app(&engine).editing(), Some(2), "the left encoder: a step");
-    let before = i32::from(app(&engine).sequence().note(2));
+    let before = played(&engine, 2);
+    let (_, highest) = app(&engine).window().bounds(Scale::Major);
     turn(&mut engine, 1, 1);
-    let after = i32::from(app(&engine).sequence().note(2));
     assert_eq!(
-        after,
-        Scale::Major.step(before, 1),
-        "the right encoder: the next note of the scale"
+        played(&engine, 2),
+        Scale::Major.step(before, 1).min(highest),
+        "the right encoder: the next note of the scale, within the window"
     );
     turn(&mut engine, 0, -3);
     assert_eq!(app(&engine).editing(), Some(7), "round the loop");
@@ -330,12 +330,64 @@ fn an_input_given_to_transpose_moves_it_a_volt_an_octave() {
 #[test]
 fn a_scale_quantises_without_changing_what_the_steps_hold() {
     let mut engine = melody();
-    let notes = *app(&engine).sequence().notes();
+    let places = *app(&engine).sequence().places();
     set(&mut engine, Setting::Scale, 8);
     assert_eq!(app(&engine).settings().scale, Scale::PentaMajor);
     clock(&mut engine, 5);
-    let note = Scale::PentaMajor.quantize(i32::from(notes[0]));
+    let note = played(&engine, 0);
+    assert!(Scale::PentaMajor.contains(note), "{note}");
     assert_eq!(engine.outputs()[0], millivolts(note));
     set(&mut engine, Setting::Scale, -8);
-    assert_eq!(*app(&engine).sequence().notes(), notes);
+    assert_eq!(*app(&engine).sequence().places(), places);
+}
+
+#[test]
+fn the_window_bends_the_loop_at_once_and_back() {
+    let mut engine = melody();
+    clock(&mut engine, 5);
+    let places = *app(&engine).sequence().places();
+    let notes =
+        |engine: &MockEngine| -> Vec<i32> { (0..8).map(|step| played(engine, step)).collect() };
+    let wide = notes(&engine);
+    let output = engine.outputs()[0];
+    // Twelve semitones narrower, without a clock.
+    set(&mut engine, Setting::Spread, -12);
+    assert_eq!(app(&engine).window().spread, 12);
+    let narrow = notes(&engine);
+    let (lowest, highest) = app(&engine).window().bounds(Scale::Major);
+    assert!(
+        (lowest, highest) == (-7, 5),
+        "{lowest}..{highest}, quantised"
+    );
+    assert!(
+        narrow.iter().all(|note| (lowest..=highest).contains(note)),
+        "{narrow:?}"
+    );
+    assert_ne!(engine.outputs()[0], output, "A follows at once");
+    for i in 0..8 {
+        for j in 0..8 {
+            if wide[i] < wide[j] {
+                assert!(narrow[i] <= narrow[j], "the contour kept: {i}, {j}");
+            }
+        }
+    }
+    set(&mut engine, Setting::Spread, 12);
+    assert_eq!(notes(&engine), wide, "back: the same melody");
+    assert_eq!(
+        *app(&engine).sequence().places(),
+        places,
+        "the steps untouched"
+    );
+}
+
+#[test]
+fn the_center_moves_the_window_round_the_root() {
+    let mut engine = melody();
+    let above = |engine: &MockEngine| (0..8).all(|step| played(engine, step) >= 0);
+    assert!(!above(&engine), "centred on the root at start: some below");
+    set(&mut engine, Setting::Center, 100);
+    assert_eq!(app(&engine).window().center, 100);
+    assert!(above(&engine), "starting on the root: none below");
+    let below = (0..8).all(|step| played(&engine, step) <= 24);
+    assert!(below, "two octaves at most above");
 }

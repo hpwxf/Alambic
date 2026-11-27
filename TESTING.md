@@ -900,10 +900,14 @@ each setting does: `crates/oc-core/src/apps/melody/README.md`.
    cent: the output rounds to the millivolt, journal/D-041).
 2. `SCALE MAJOR`, `ROOT C`: every note A plays is a white key; `ROOT D`: the
    same melody moved into D major. Back to `CHROMATIC`: the first melody.
-3. `PROB 100%`: every step changes as the clock reaches it; `SPREAD 0%`: the
-   notes stay on `BIAS`; `JUMP NO REP`: no step repeats the one before;
-   `JUMP 2`: steps never repeat and move by one or two
-   degrees.
+3. `PROB 100%`: every step changes as the clock reaches it; `JUMP NO REP`:
+   no step repeats the one before; `JUMP 2`: steps never repeat and move by
+   one or two degrees. Back to `PROB 0%` and `JUMP OFF`, then the window,
+   each heard at once without a clock: `SPREAD` down to 0, the loop narrows
+   onto the root, and back up to 24, the same melody again; `CENTER +100%`,
+   every note at or above the root; `BIAS +100%`, the notes crowd towards
+   the top of the window, its lowest and highest notes unchanged; an LFO
+   assigned to `SPREAD` breathes the melody while it plays.
 4. B and C: with `CHORD TRIAD` on C, about +333 and +583 mV above A
    (E, G); the inversion's arrow ↑ raises the lower an octave (G, E above),
    ↓ lowers the upper (G below, E).

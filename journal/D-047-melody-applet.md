@@ -137,8 +137,8 @@ l'ordre des champs ; les emplacements des entrées CV ne bougent pas.
 
 ## Révision du 2026-11-27 : une boucle qui se déforme sans se perdre
 
-**Statut de cette révision** : décidée, pas encore implémentée ; le code suivra dans un commit qui citera cette
-section.
+**Statut de cette révision** : décidée le 2026-11-27, implémentée dans le commit qui suit celui de cette section
+(`melody/window.rs`, `melody/sequence.rs`).
 
 **Contexte.** La comparaison avec le Gamut Repetitor de Noise Engineering (manuel officiel, relu le 2026-11-27) a
 montré la différence qui compte le plus : sur le GR, une boucle verrouillée se resserre, s'étire ou glisse quand on
