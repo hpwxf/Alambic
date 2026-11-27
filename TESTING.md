@@ -964,6 +964,21 @@ each setting does: `crates/oc-core/src/apps/melody/README.md`.
    `cargo probe route @2 clock=1:burst` sets it; `instances` prints
    `CLOCK <- 1:BURST`.
 
+### 9.3k — Freeze (journal/D-049)
+
+1. `SUPERSAW` on A, listened to. A short right click opens `NOTE`'s submenu
+   on its release, not on the press; held, nothing opens.
+2. Right encoder held a second: the title bar turns to inverse video, the
+   sound does not change. `DETUNE`, `MIX` and `LEVEL` turned far: still
+   unheard; `down`, the menu chord and a long `up` do nothing.
+3. Right encoder held again: nothing changes while held; on its release
+   every change is heard at once, the title bar back to normal, the
+   setting picked as it was left.
+4. `MELODY` clocked: frozen, into the step editor (left click), a few notes
+   turned and a long right press there draws a note (no publishing); out of
+   the editor, the melody plays on unchanged; the next long press publishes
+   the steps, the loop going on from where it was.
+
 ### 9.4 — Calibration
 
 This step measures how far the module is from the factory calibration, then
@@ -1085,7 +1100,8 @@ under Eurorack power-supply noise; none of that is in scope for this plan.
   writes); none is implemented.
 * **Parts of Level 9.** The DAC8565's simultaneous update has no step yet;
   the input assignment submenu of 9.3c (lot 6e), 9.3h (journal/D-041)
-  9.3i (journal/D-047) and 9.3j (journal/D-048) have not been run on the module. The other sections have been, on the TLM
+  9.3i (journal/D-047), 9.3j (journal/D-048, run through the probe only) and
+  9.3k (journal/D-049) have not been run on the module. The other sections have been, on the TLM
   module; their results are in the progress files of steps 3 to 8 and in
   `PLAN.md` for the step in progress.
 

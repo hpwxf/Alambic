@@ -205,7 +205,7 @@ impl ToneApp {
         let pick = i32::try_from(self.selected).unwrap_or(0) + i32::from(input.controls.delta(0));
         let last = i32::try_from(Setting::ALL.len() - 1).unwrap_or(0);
         self.selected = usize::try_from(pick.clamp(0, last)).unwrap_or(0);
-        if input.buttons.pressed(Button::RightEncoder) {
+        if input.buttons.tapped(Button::RightEncoder) {
             self.inputs.open(self.selected);
         }
         let turn = i32::from(input.controls.delta(1));
@@ -401,6 +401,16 @@ const PORTS: [Port; CV_CHANNELS] = [
 ];
 
 impl App for ToneApp {
+    /// Keeps the setting the panel picked during a freeze and the input
+    /// submenu as it was left (journal/D-049); the values came through the
+    /// parameter model.
+    fn adopt(&mut self, edited: &dyn core::any::Any) {
+        if let Some(edited) = edited.downcast_ref::<Self>() {
+            self.selected = edited.selected;
+            self.inputs = edited.inputs;
+        }
+    }
+
     fn id(&self) -> AppId {
         AppId::Tone
     }

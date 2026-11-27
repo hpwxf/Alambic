@@ -236,7 +236,8 @@ mélodie (manuels relus le 2026-11-27). C'était le premier manque relevé face 
 * **L'éditeur des pas** : un clic droit court bascule la gate du pas encadré (son `r` à 0, joué dès que la densité
   dépasse 0 %, ou au plus haut, silencieux même à 100 %) ; un appui long sur l'encodeur droit tire une nouvelle note
   au hasard pour ce seul pas, comme le clic droit le faisait. Hors de l'éditeur, l'appui long droit reste réservé à
-  la future page d'options, que l'appui long de `down` ouvrira aussi.
+  la future page d'options, que l'appui long de `down` ouvrira aussi. (Depuis D-049, le 2026-11-27, l'appui long
+  droit hors de l'éditeur est le freeze ; la page d'options passera par `down` seul.)
 * **L'écran** : un pas silencieux garde sa marque de hauteur, en pointillés ; un pas lié est relié à la marque du
   précédent.
 * **Pages** : `DENSITY`, `LEGATO`, `R PROB` et `R REROLL` ajoutent une quatrième page ; le dépassement des trois

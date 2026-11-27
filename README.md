@@ -49,7 +49,15 @@ short press of `up` or `down` moves to the slot on the left or right, empty
 ones too, from the last round to the first, on the routing page too. A
 long press of `up` (one second) opens the shown app's **routing page**, and
 closes it again; a long press of `down` does nothing yet, kept for the app's
-options page to come (journal/D-046, revision of 2026-11-26). On the page, the left encoder
+options page to come (journal/D-046, revision of 2026-11-26). A long press
+of the right encoder **freezes** the shown app (journal/D-049): its title
+bar turns to inverse video and it plays on as it was, while the panel goes
+through its settings, CV inputs and, for `MELODY`, its steps, unheard; the
+release of the next long press of the right encoder publishes every change
+at once. Meanwhile `up`, `down`, the menu and the routing page do nothing.
+A short click of the right encoder acts on its release, so that a long one
+never also opens a submenu; in `MELODY`'s step editor the long press still
+draws a new note. On the page, the left encoder
 picks a row, the right one turns it. An output (`A`, `B`, `SUB` for
 `SUPERSAW`) steps through `OFF` and the jacks `A` to `D`, skipping those
 another app holds; an input the app reads by itself (`RATCHET`'s `CLOCK`,
@@ -344,6 +352,7 @@ one:
 | `e`            | turn the left encoder clockwise (`Shift` for ten detents) |
 | `r` / `t`      | turn the right encoder anticlockwise / clockwise (`Shift` for ten detents) |
 | `y`            | press the right encoder                           |
+| `Y`            | hold the right encoder, again to release: held a second, a long press (the freeze) |
 | `1` `2` `3`    | paused, real time, 50x                            |
 | `Space`        | run a single tick while paused                    |
 | `o` / `0`      | reset the module (replays the boot splash screen) |

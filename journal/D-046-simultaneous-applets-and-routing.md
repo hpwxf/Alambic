@@ -405,7 +405,8 @@ le début de l'accord : rendre l'appui long aux deux boutons.
 
 **Usage précisé le 2026-11-27 (par l'utilisateur).** L'appui long de `down` ouvrira la page d'options de l'applet
 affichée, comme l'appui long de l'encodeur droit hors d'un éditeur (D-047) : ses réglages secondaires, par exemple le
-rythme de `MELODY`. À faire ; d'ici là, l'appui long de `down` ne fait toujours rien.
+rythme de `MELODY`. À faire ; d'ici là, l'appui long de `down` ne fait toujours rien. Depuis D-049 (2026-11-27),
+l'appui long de l'encodeur droit hors d'un éditeur est le freeze : la page d'options ne s'ouvrira que par `down`.
 
 ## Révision du 2026-11-27 : la valeur de la page de routage en butée
 

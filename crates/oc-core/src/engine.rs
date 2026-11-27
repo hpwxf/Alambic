@@ -19,8 +19,9 @@ use crate::apps::{InputSnapshot, TickContext};
 use crate::audio::{Route, Routed};
 use crate::buttons::{ButtonEvents, ButtonReader};
 use crate::calibration::Calibration;
-use crate::framebuffer::FrameBuffer;
+use crate::framebuffer::{FrameBuffer, ROW_HEIGHT, WIDTH_I32};
 use crate::gfx::controls::instance_marks;
+use crate::gfx::{self, Ink};
 use crate::menu::{Menu, MenuEntry, MenuOutcome};
 use crate::platform::{
     AnalogIn, AnalogOut, Button, CV_CHANNELS, Clock, Controls, CvChannel, DigitalIn, Display,
@@ -545,7 +546,10 @@ where
     /// On the settings screen the chord leaves without keeping the draft, like
     /// `EXIT`, rather than opening the menu over it.
     fn route_panel(&mut self, snapshot: &InputSnapshot, wired: [i8; 2]) {
-        if snapshot.buttons.menu_chord() {
+        // While the panel is frozen it edits the applet shown, and nothing
+        // else: no menu, no other applet, no routing page (journal/D-049).
+        let frozen = self.apps.frozen().is_some();
+        if snapshot.buttons.menu_chord() && !frozen {
             match self.screen {
                 Screen::Menu | Screen::Routing => self.screen = Screen::App,
                 Screen::System => {
@@ -591,6 +595,7 @@ where
             // page, and closes it again. A long `down` does nothing: kept for
             // the applet's options page, to come (journal/D-046, revision
             // of 2026-11-26).
+            Screen::App if frozen => {}
             Screen::App => {
                 self.move_focus(&snapshot.buttons);
                 if snapshot.buttons.long_pressed(Button::Up) {
@@ -651,6 +656,11 @@ where
                 let frame = self.display.frame_mut();
                 self.apps.render(frame, &context);
                 instance_marks(frame, self.apps.occupied(), self.apps.focus());
+                // The title bar in inverse video while the panel edits a copy
+                // of the applet that plays (journal/D-049).
+                if self.apps.frozen() == Some(self.apps.focus()) {
+                    gfx::fill_rect(frame, 0, 0, WIDTH_I32, ROW_HEIGHT, Ink::Invert);
+                }
             }
         }
     }

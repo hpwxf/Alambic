@@ -867,7 +867,7 @@ impl MelodyApp {
         if picks != 0 {
             self.selected = wrapped(self.selected, FIELDS.len(), picks);
         }
-        if input.buttons.pressed(Button::RightEncoder) {
+        if input.buttons.tapped(Button::RightEncoder) {
             match self.selected() {
                 Setting::Reroll => self.reroll(),
                 Setting::RerollRhythm => self.reroll_rhythm(),
@@ -1282,6 +1282,25 @@ const INPUTS: [InputPort; 2] = [
 ];
 
 impl App for MelodyApp {
+    /// The step editor's long press draws a new note (journal/D-047): it is
+    /// not the freeze's (journal/D-049).
+    fn takes_long_right(&self) -> bool {
+        self.editing.is_some()
+    }
+
+    /// Keeps, after a freeze, the steps the panel edited or drew on the copy,
+    /// the setting picked, the editor and the input submenu as they were
+    /// left (journal/D-049); the step playing and the draws to come stay
+    /// this applet's.
+    fn adopt(&mut self, edited: &dyn core::any::Any) {
+        if let Some(edited) = edited.downcast_ref::<Self>() {
+            self.sequence.adopt_steps(&edited.sequence);
+            self.selected = edited.selected;
+            self.editing = edited.editing;
+            self.inputs = edited.inputs;
+        }
+    }
+
     fn id(&self) -> AppId {
         AppId::Melody
     }

@@ -121,6 +121,10 @@ fn help_lines(layout: KeyLayout) -> Vec<String> {
             "turn or press the right encoder (Shift: x10)".to_owned(),
         ),
         (
+            "Y".to_owned(),
+            "hold the right encoder, again to release (1 s: freeze)".to_owned(),
+        ),
+        (
             "1/2/3".to_owned(),
             "speed: paused / real-time / 50x".to_owned(),
         ),
@@ -317,6 +321,9 @@ impl Tui {
             KeyCode::Char('t') => self.turn(1, 1),
             KeyCode::Char('T') => self.turn(1, FAST_DETENTS),
             KeyCode::Char('y') => self.press(Button::RightEncoder),
+            // Held the same way as `up` and `down`: a second of it is the
+            // long press that freezes the applet shown (journal/D-049).
+            KeyCode::Char('Y') => self.toggle_button_hold(Button::RightEncoder),
 
             KeyCode::Char('1') => self.set_speed(Speed::Paused),
             KeyCode::Char('2') => self.set_speed(Speed::Realtime),

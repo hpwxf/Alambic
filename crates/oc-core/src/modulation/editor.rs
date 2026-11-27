@@ -122,7 +122,7 @@ impl AssignEditor {
         input: &InputSnapshot,
         sweep: (MilliVolts, MilliVolts),
     ) -> bool {
-        let click = input.buttons.pressed(Button::RightEncoder);
+        let click = input.buttons.tapped(Button::RightEncoder);
         if click && self.line() == AssignLine::Center {
             if let Some(seen) = self.seen.range() {
                 assign.center(seen, usable_range(sweep, assign.effect));

@@ -154,6 +154,14 @@ impl Sequence {
         sequence
     }
 
+    /// Takes `edited`'s steps, their places and their rhythm, keeping the
+    /// step playing and the draws to come: what a freeze publishes
+    /// (journal/D-049).
+    pub fn adopt_steps(&mut self, edited: &Self) {
+        self.places = edited.places;
+        self.beats = edited.beats;
+    }
+
     /// Steps in the loop.
     #[must_use]
     pub const fn length(&self) -> u8 {

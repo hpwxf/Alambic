@@ -1,0 +1,26 @@
+# oc-sim scenario v1
+# The freeze (journal/D-049): launch SUPERSAW as in supersaw.scn, hold the
+# right encoder for a second: the panel now edits a copy while SUPERSAW plays
+# on. Pick DETUNE and raise it four detents. The snapshot shows the title bar
+# in inverse video and DETUNE at 70 % on the copy; SUPERSAW still plays 50 %.
+ticks 1500
+20  button up down
+60  button down down
+70  button up up
+70  button down up
+90  button down down
+100 button down up
+110 button down down
+120 button down up
+130 button down down
+140 button down up
+150 button down down
+160 button down up
+170 button down down
+176 button down up
+190 button right down
+196 button right up
+250 button right down
+1300 button right up
+1350 encoder 1 +1
+1370 encoder 2 +4
