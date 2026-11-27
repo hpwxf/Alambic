@@ -445,6 +445,8 @@ cargo probe instances          # the four slots, @1 to @4, where their ports go
 cargo probe route @1 sub=off   # its routing page from afar: sub=off, burst=d, clock=tr2, clock=1:thru, reset=off
 cargo probe set @2 prob 50     # @N names the instance in slot N; a name, the first of that app
 cargo probe focus @2           # show it on the screen; `remove @2` empties the slot
+cargo probe save live.toml     # the whole patch to a file: applets, routes, settings, CV inputs, MELODY's steps
+cargo probe load live.toml     # back onto the module, in place of everything; never the calibration
 ```
 
 `cargo probe` is an alias of `cargo run -q -p oc-probe --`. The tool finds the

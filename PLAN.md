@@ -126,6 +126,16 @@ relâchement du prochain appui long publie tout (réglages, assignations, pas de
 | 16a | ADR D-049 ; `App::takes_long_right`, `App::adopt`, copie d'édition dans `AppHost` (`frozen`, `apply_freeze`), clic droit au relâchement, navigation bloquée, titre inversé ; `adopt` de `TONE`, `SUPERSAW`, `RATCHET`, `MELODY` (`Sequence::adopt_steps`) ; maintien `Y` du simulateur ; tests `freeze.rs`, scénario `freeze` ; docs ; `.text` +3,3 Kio (47,6 Kio d'ITCM libres), pile estimée +440 o (5 224 o libres) | ✅ |
 | 16b | essai sur le module | ⏳ |
 
+## Étape suivante : 17 — patch dans un fichier (D-050)
+
+`cargo probe save fichier.toml` lit par la sonde tout le patch (apps, routes, réglages, assignations, pas de `MELODY`) ;
+`cargo probe load fichier.toml` le remet sur le module à la place de tout, sans toucher la calibration.
+
+| Lot | Contenu | État |
+|---|---|---|
+| 17a | ADR D-050 ; `App::save_state` / `load_state`, `melody::Steps` ; protocole 12 (`GetState`, `SetState` par morceaux de 32 octets, `Reply::State`) ; `oc_probe::patch` (TOML par noms), `save` / `load` ; tests `oc-probe/tests/patch.rs` ; `.text` +3,6 Kio (44,1 Kio d'ITCM libres), pile 5 144 o libres | ✅ |
+| 17b | essai sur le module | ⏳ |
+
 ## Décisions actées
 
 Valeurs seules ; le raisonnement est dans `journal/`.
@@ -172,4 +182,5 @@ Valeurs seules ; le raisonnement est dans `journal/`.
 | applet Melody | jusqu'à 32 pas, chacun une place dans une fenêtre projetée à la sortie, en direct et monotone : `SPREAD` (largeur, 0–48 dt), `CENTER` (position autour de la tonique, ±100 %), `BIAS` (courbe à bornes fixes, ±100 %), puis `TRANSPOSE` et quantification dans `KEY` (tonique, gamme), `OCTAVE` ; `TR1` horloge, `TR2` reset armé (ports routables) ; remplacement au passage avec `PROB` (place uniforme, `JUMP NO REP`, ou marche `JUMP` en degrés), `REROLL` ; rythme qui boucle, tiré à part (`DENSITY` en direct, `LEGATO`, `R PROB`, `R REROLL`), note tenue sur un silence ; ports `NOTE`, `CH1`, `CH2`, `GATE` (accord de deux tons empilés, `CHORD`, inversion ↓ / – / ↑) ; aucune entrée au démarrage ; niveaux tenus ; trois pages, `KEY` et `CHORD` à deux champs ; catégorie `SEQUENCE`, `AppId` 7 | D-047 |
 | routage interne | une assignation lit une prise ou un port CV d'une autre instance (`Source::Jack` / `Lane`) ; ports `Cv` / `Audio`, seuls les premiers proposés ; niveau publié (avant calibration, sans la sonde) au tick précédent ; l'app elle-même sautée ; un port assigne strictement (comme `SET`, sans mise en forme, valeur du panneau masquée) `=1:NOTE` à l'écran, `1:NOTE` au sous-menu, à la sonde et dans la page (révision du 2026-11-27) ; ports d'entrée (horloge, CV) branchés aussi sur un port interne, un trigger haut dès 1 V, ou sur `OFF` ; protocole 11 | D-048 |
 | freeze du panneau | appui long de l'encodeur droit : le panneau édite une copie de l'app au focus, qui joue sans changement (titre inversé) ; relâchement du prochain appui long : valeurs (par `set`), assignations et `App::adopt` (sélection, sous-menu, pas de `MELODY`) ; clic droit au relâchement d'un appui court ; focus, menu et routage bloqués ; pas dans l'éditeur de pas | D-049 |
+| patch dans un fichier | TOML par noms (`format = 1`, `[[slot]]` avec `outputs`, `inputs`, `params`, `assigns`, `state`), valeurs écrites comme la sonde ; `cargo probe save` / `load` ; chargement : tout remplacé, sorties coupées puis routées, réglages deux fois, entrées et assignations après, état propre, focus ; jamais la calibration ; état propre d'une app par `postcard` (256 octets au plus), protocole 12 | D-050 |
 | budget mémoire | disposition de `teensy4-bsp`, reprise dans le `build.rs` d'`oc-firmware` (sans la feature `rt`) : code en ITCM, bancs 6 / 10 (192 + 320 Kio) ; coût d'une applet par différence de `xtask size` ; budgets lus dans l'ELF (`__flexram_config`), alerte sous 16 Kio d'ITCM libres ; profil `release` en `opt-level = "s"` par défaut, `3` pour `oc-dsp` (DSP), `oc-realtime` (interruption, chemin par échantillon) et `oc-vcv-ffi`, le firmware en `s`, justifié dans `Cargo.toml` ; ITCM à court : bancs repartagés, puis code en flash ; tampon de mesure : feature de test, `.uninit` en OCRAM ; arena dans `oc-core` au premier grand usage d'applet ; tampons du DMA en DTCM ; profondeur de la pile estimée par `cargo xtask size`, appels `dyn App` compris (`stack-depth` : `FAIL` au-delà de `.stack`, `warn` sous 2 Kio) ; moteur construit sans applet, démarré une fois dans sa `static` | D-038 |

@@ -23,6 +23,11 @@ Architectural decisions behind each change are in `journal/` (French).
 
 ### Added
 
+- **Patch file** (journal/D-050): `cargo probe save live.toml` writes the
+  module's whole patch, by name, in TOML (applets, routes, settings, CV
+  inputs, `MELODY`'s steps); `cargo probe load live.toml` puts it back in
+  place of everything, the calibration untouched. Probe protocol 12 reads
+  and writes an applet's own state.
 - **Internal routing** (journal/D-048): an input submenu offers, past
   `CV4`, the output ports of the other apps that carry a level, routed to a
   jack or not, read without a cable or a converter one tick late: in

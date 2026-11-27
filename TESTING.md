@@ -979,6 +979,19 @@ each setting does: `crates/oc-core/src/apps/melody/README.md`.
    the editor, the melody plays on unchanged; the next long press publishes
    the steps, the loop going on from where it was.
 
+### 9.3l — Patch file (journal/D-050)
+
+1. A patch set by hand: `MELODY` clocked, a few steps edited, `RATCHET` and
+   `SUPERSAW` routed into it. `cargo probe save live.toml`; the file reads
+   by name (`[[slot]]`, `app = "MELODY"`, `CLOCK = "2:THRU"`, the steps as
+   three arrays).
+2. Everything changed on the panel (other applets, steps redrawn), then
+   `cargo probe load live.toml`: the screen, the routing pages and the sound
+   are as before, the melody included; `cargo probe save` again gives the
+   same file. The calibration is unchanged.
+3. A setting renamed by hand in the file: `load` says it passed it over and
+   loads the rest.
+
 ### 9.4 — Calibration
 
 This step measures how far the module is from the factory calibration, then

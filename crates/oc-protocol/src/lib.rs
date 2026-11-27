@@ -46,8 +46,15 @@ pub use oc_core::profile::Profile;
 
 /// Protocol version, raised on any change to a message's encoding: 11 for
 /// an input that reads a port of another instance and a port that says
-/// whether it carries a level (journal/D-048).
-pub const VERSION: u16 = 11;
+/// whether it carries a level (journal/D-048); 12 for an applet's own
+/// state, read and written for a patch file (journal/D-050).
+pub const VERSION: u16 = 12;
+
+/// The most state bytes one [`Request::SetState`] carries.
+pub const STATE_CHUNK: usize = 32;
+
+/// The most state bytes one [`Reply::State`] carries.
+pub const STATE_REPLY_CHUNK: usize = 64;
 
 /// Longest frame either side sends or accepts, zero byte included. A
 /// screen page (128 bytes) and a profile (a few hundred) both fit with room
@@ -219,6 +226,29 @@ pub enum Request {
         port: u8,
         /// What it reads.
         source: InputSource,
+    },
+    /// What applet `app` keeps beside its parameters, from byte `offset`
+    /// (protocol 12, journal/D-050): [`Reply::State`].
+    GetState {
+        /// The applet.
+        app: Target,
+        /// The first byte wanted.
+        offset: u16,
+    },
+    /// Bytes `offset` to `offset + length` of applet `app`'s own state; on
+    /// the `last` piece, the module reads the whole back into the applet
+    /// (protocol 12): [`Reply::Done`].
+    SetState {
+        /// The applet.
+        app: Target,
+        /// Where the piece goes; 0 starts a new state.
+        offset: u16,
+        /// How many of `bytes` count.
+        length: u8,
+        /// The piece, [`STATE_CHUNK`] bytes at most.
+        bytes: [u8; STATE_CHUNK],
+        /// Whether it is the last piece.
+        last: bool,
     },
 }
 
@@ -436,6 +466,16 @@ pub enum Reply<'a> {
     Done,
     /// The request was refused.
     Error(Error),
+    /// Part of an applet's own state, answering [`Request::GetState`]
+    /// (protocol 12).
+    State {
+        /// The whole state's length.
+        total: u16,
+        /// Where `bytes` start in it.
+        offset: u16,
+        /// [`STATE_REPLY_CHUNK`] bytes at most.
+        bytes: &'a [u8],
+    },
 }
 
 /// The state of the module on one tick.

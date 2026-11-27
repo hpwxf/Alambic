@@ -347,11 +347,13 @@ impl Message {
                 ),
                 Applet::Input(index, InputEntry { assign, sweep }),
             ),
-            reply @ (Reply::Port { .. } | Reply::Instance { .. }) => Self::from_routing(&reply),
+            // Ports, instances, state: the rest.
+            reply => Self::from_routing(&reply),
         }
     }
 
-    /// A port of a description, or an instance (journal/D-046).
+    /// A port of a description, an instance (journal/D-046), or a piece of
+    /// an applet's own state (journal/D-050).
     fn from_routing(reply: &Reply<'_>) -> Self {
         match *reply {
             Reply::Port {
@@ -396,6 +398,18 @@ impl Message {
                     levels,
                     names: names.map(str::to_owned),
                 }),
+            ),
+            // The page does not save patches yet (journal/D-050).
+            Reply::State {
+                total,
+                offset,
+                bytes,
+            } => Self::with_text(
+                MessageKind::Done,
+                format!(
+                    "state {offset}..{} of {total}",
+                    usize::from(offset) + bytes.len()
+                ),
             ),
             _ => Self::with_text(MessageKind::Error, "not a routing reply".to_owned()),
         }
