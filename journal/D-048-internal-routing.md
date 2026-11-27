@@ -6,7 +6,7 @@
 | **Date** | 2026-11-27 |
 | **Auteur** | Pascal Havé |
 | **Statut** | adoptée, révisée |
-| **Commits** | `48f3689` (ADR, plan `docs/plan/etape-15-routage-interne.md`) ; implémentation `1d868b9` ; révision du 2026-11-27 (assignation stricte, noms) : `0d40cb2` ; ports d'entrée internes : ce commit |
+| **Commits** | `48f3689` (ADR, plan `docs/plan/etape-15-routage-interne.md`) ; implémentation `1d868b9` ; révision du 2026-11-27 (assignation stricte, noms) : `0d40cb2` ; ports d'entrée internes : `c439365` ; `OFF`, marque d'horloge de `RATCHET`, emplacements de 1 à 4 : `e029434`, `a37eab3` |
 | **Relations** | étend l'`Assign` de D-035 / D-036 et son assignation par le trait (D-045) ; lit les ports des instances de D-046 ; les ports d'entrée de la carte d'entrées de D-046 lisent aussi un port interne (révision du 2026-11-27, ports d'entrée) ; millivolts de D-005 ; premier pas du « routage futur » annoncé par D-043 |
 
 ## 1. Contexte
