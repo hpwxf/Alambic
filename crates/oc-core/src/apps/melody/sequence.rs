@@ -9,6 +9,11 @@
 //! place over the window, or a walk of a few degrees from the note the step
 //! before plays, found back as a place.
 //!
+//! A step also keeps a [`Beat`]: its rank to play and its rank to tie,
+//! drawn apart from its place, with a chance of their own, and compared to
+//! the density and the legato as they read, so those act at once too
+//! (journal/D-047, revision of 2026-11-27, continued).
+//!
 //! Every draw comes from one xorshift generator seeded the same at start, so
 //! a run replays exactly, on every backend.
 
@@ -28,6 +33,64 @@ const REPEAT_RETRIES: u32 = 4;
 
 /// The generator's state at start.
 const SEED: u32 = 0x9E37_79B9;
+
+/// The highest rank a draw gives: [`SILENT`], one above, never plays.
+const RANK_DRAWN_MAX: u8 = u8::MAX - 1;
+
+/// The rank of a step the editor silenced: never under a threshold, not even
+/// at 100 %.
+pub const SILENT: u8 = u8::MAX;
+
+/// The rank of a step the editor made play: under every threshold but 0 %.
+pub const PLAYING: u8 = 0;
+
+/// The threshold of `percent`, 0 to 100: a rank under it passes; 100 % lets
+/// every drawn rank through, not [`SILENT`].
+fn threshold(percent: u8) -> u16 {
+    u16::from(percent.min(100)) * u16::from(u8::MAX) / 100
+}
+
+/// What the rhythm is set by, as it reads now.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Rhythm {
+    /// The share of the steps that play, in percent.
+    pub density: u8,
+    /// The share of the played steps that tie to the one before, in
+    /// percent.
+    pub legato: u8,
+}
+
+impl Rhythm {
+    /// Every step plays, none ties: a gate at every clock.
+    pub const DEFAULT: Self = Self {
+        density: 100,
+        legato: 0,
+    };
+}
+
+/// One step's rhythm: its rank to play and its rank to tie, drawn once.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Beat {
+    /// The step plays when this is under the density's threshold.
+    pub play: u8,
+    /// A played step ties to the one before when this is under the
+    /// legato's threshold.
+    pub tie: u8,
+}
+
+impl Beat {
+    /// Whether the step plays with `rhythm`.
+    #[must_use]
+    pub fn plays(self, rhythm: Rhythm) -> bool {
+        u16::from(self.play) < threshold(rhythm.density)
+    }
+
+    /// Whether the step, if it plays, ties to the step before with `rhythm`.
+    #[must_use]
+    pub fn ties(self, rhythm: Rhythm) -> bool {
+        self.plays(rhythm) && u16::from(self.tie) < threshold(rhythm.legato)
+    }
+}
 
 /// How a new step is drawn.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -63,6 +126,7 @@ impl Draw {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Sequence {
     places: [u16; MAX_STEPS],
+    beats: [Beat; MAX_STEPS],
     length: u8,
     /// The step playing, `None` while armed: before the first clock or after
     /// a reset, the next clock plays the first step.
@@ -76,12 +140,17 @@ impl Sequence {
     pub fn new(length: u8, draw: Draw) -> Self {
         let mut sequence = Self {
             places: [PLACE_MAX / 2; MAX_STEPS],
+            beats: [Beat {
+                play: PLAYING,
+                tie: RANK_DRAWN_MAX,
+            }; MAX_STEPS],
             length: 1,
             position: None,
             seed: SEED,
         };
         sequence.set_length(length);
         sequence.reroll(draw);
+        sequence.reroll_rhythm();
         sequence
     }
 
@@ -128,8 +197,9 @@ impl Sequence {
     }
 
     /// Moves to the next step, the first after the last or while armed,
-    /// redrawing it first with `chance_percent`: the step it plays.
-    pub fn clock(&mut self, chance_percent: u8, draw: Draw) -> usize {
+    /// redrawing first its place with `chance_percent` and its beat with
+    /// `rhythm_percent`, apart: the step it plays.
+    pub fn clock(&mut self, chance_percent: u8, rhythm_percent: u8, draw: Draw) -> usize {
         let next = match self.position {
             Some(position) if position + 1 < self.length => position + 1,
             _ => 0,
@@ -139,7 +209,60 @@ impl Sequence {
         if self.roll(chance_percent) {
             self.redraw(next, draw);
         }
+        if self.roll(rhythm_percent) {
+            self.redraw_beat(next);
+        }
         next
+    }
+
+    /// The step after `index` in the loop, the first after the last.
+    #[must_use]
+    pub fn after(&self, index: usize) -> usize {
+        if index + 1 < usize::from(self.length) {
+            index + 1
+        } else {
+            0
+        }
+    }
+
+    /// Step `index`'s beat; one that plays past the last.
+    #[must_use]
+    pub fn beat(&self, index: usize) -> Beat {
+        self.beats.get(index).copied().unwrap_or(Beat {
+            play: PLAYING,
+            tie: RANK_DRAWN_MAX,
+        })
+    }
+
+    /// Makes step `index` play (`true`) or keep silent, whatever the density
+    /// but 0 %; nothing past the last step.
+    pub fn set_plays(&mut self, index: usize, plays: bool) {
+        if let Some(beat) = self.beats.get_mut(index) {
+            beat.play = if plays { PLAYING } else { SILENT };
+        }
+    }
+
+    /// Draws every step's beat anew, the melody untouched.
+    pub fn reroll_rhythm(&mut self) {
+        for index in 0..MAX_STEPS {
+            self.redraw_beat(index);
+        }
+    }
+
+    /// Draws step `index`'s beat anew: an even rank to play and to tie.
+    pub fn redraw_beat(&mut self, index: usize) {
+        if index >= MAX_STEPS {
+            return;
+        }
+        let play = self.rank();
+        let tie = self.rank();
+        self.beats[index] = Beat { play, tie };
+    }
+
+    /// An even rank, 0 to [`RANK_DRAWN_MAX`].
+    fn rank(&mut self) -> u8 {
+        let rank = self.random() % (u32::from(RANK_DRAWN_MAX) + 1);
+        u8::try_from(rank).unwrap_or(RANK_DRAWN_MAX)
     }
 
     /// Draws every step anew, each from the one before: those past the loop
@@ -247,7 +370,7 @@ impl Sequence {
 mod tests {
     use proptest::prelude::*;
 
-    use super::{Draw, MAX_JUMP, MAX_STEPS, Sequence};
+    use super::{Draw, MAX_JUMP, MAX_STEPS, Rhythm, Sequence};
     use crate::apps::melody::scale::Scale;
     use crate::apps::melody::window::{MAX_SPREAD, Window};
 
@@ -276,11 +399,11 @@ mod tests {
     fn the_clock_loops_over_the_length_from_armed() {
         let mut sequence = Sequence::new(3, Draw::DEFAULT);
         assert_eq!(sequence.position(), None, "armed");
-        let played: [usize; 7] = core::array::from_fn(|_| sequence.clock(0, Draw::DEFAULT));
+        let played: [usize; 7] = core::array::from_fn(|_| sequence.clock(0, 0, Draw::DEFAULT));
         assert_eq!(played, [0, 1, 2, 0, 1, 2, 0]);
         sequence.reset();
         assert_eq!(
-            sequence.clock(0, Draw::DEFAULT),
+            sequence.clock(0, 0, Draw::DEFAULT),
             0,
             "the first after a reset"
         );
@@ -290,10 +413,10 @@ mod tests {
     fn a_shorter_loop_wraps_at_once() {
         let mut sequence = Sequence::new(8, Draw::DEFAULT);
         for _ in 0..6 {
-            sequence.clock(0, Draw::DEFAULT);
+            sequence.clock(0, 0, Draw::DEFAULT);
         }
         sequence.set_length(4);
-        assert_eq!(sequence.clock(0, Draw::DEFAULT), 0);
+        assert_eq!(sequence.clock(0, 0, Draw::DEFAULT), 0);
         sequence.set_length(0);
         assert_eq!(sequence.length(), 1);
         sequence.set_length(200);
@@ -305,11 +428,11 @@ mod tests {
         let mut sequence = Sequence::new(8, Draw::DEFAULT);
         let first = *sequence.places();
         for _ in 0..64 {
-            sequence.clock(0, Draw::DEFAULT);
+            sequence.clock(0, 0, Draw::DEFAULT);
         }
         assert_eq!(*sequence.places(), first, "0 %: the same loop");
         for _ in 0..8 {
-            sequence.clock(100, Draw::DEFAULT);
+            sequence.clock(100, 0, Draw::DEFAULT);
         }
         assert_ne!(sequence.places()[..8], first[..8], "100 %: new steps");
         assert_eq!(
@@ -324,7 +447,7 @@ mod tests {
         let run = || {
             let mut sequence = Sequence::new(16, Draw::DEFAULT);
             let places: [u16; 100] = core::array::from_fn(|_| {
-                let step = sequence.clock(30, Draw::DEFAULT);
+                let step = sequence.clock(30, 30, Draw::DEFAULT);
                 sequence.place(step)
             });
             places
@@ -363,12 +486,71 @@ mod tests {
         assert_eq!(notes(24), wide, "back: the same melody");
     }
 
+    #[test]
+    fn the_density_lets_more_steps_play_the_same_ones_first() {
+        let sequence = Sequence::new(32, Draw::DEFAULT);
+        let playing = |density| {
+            let rhythm = Rhythm {
+                density,
+                ..Rhythm::DEFAULT
+            };
+            sequence.beats.map(|beat| beat.plays(rhythm))
+        };
+        assert!(
+            playing(100).iter().all(|&plays| plays),
+            "100 %: every drawn step"
+        );
+        assert!(playing(0).iter().all(|&plays| !plays), "0 %: none");
+        let (sparse, dense) = (playing(30), playing(70));
+        for (few, many) in sparse.iter().zip(&dense) {
+            assert!(!few || *many, "a step playing at 30 % plays at 70 %");
+        }
+        assert!(sparse.iter().filter(|&&plays| plays).count() < 20);
+    }
+
+    #[test]
+    fn the_editor_can_silence_a_step_even_at_full_density() {
+        let mut sequence = Sequence::new(8, Draw::DEFAULT);
+        sequence.set_plays(3, false);
+        assert!(!sequence.beat(3).plays(Rhythm::DEFAULT), "silent at 100 %");
+        sequence.set_plays(3, true);
+        let sparse = Rhythm {
+            density: 1,
+            ..Rhythm::DEFAULT
+        };
+        assert!(sequence.beat(3).plays(sparse), "playing from 1 %");
+    }
+
+    #[test]
+    fn the_rhythm_is_drawn_apart_from_the_melody() {
+        let mut sequence = Sequence::new(16, Draw::DEFAULT);
+        let (places, beats) = (*sequence.places(), sequence.beats);
+        sequence.reroll_rhythm();
+        assert_eq!(*sequence.places(), places, "the melody untouched");
+        assert_ne!(sequence.beats, beats);
+        let beats = sequence.beats;
+        for _ in 0..16 {
+            sequence.clock(100, 0, Draw::DEFAULT);
+        }
+        assert_eq!(sequence.beats, beats, "the notes' chance leaves the rhythm");
+        let places = *sequence.places();
+        for _ in 0..16 {
+            sequence.clock(0, 100, Draw::DEFAULT);
+        }
+        assert_eq!(
+            *sequence.places(),
+            places,
+            "the rhythm's chance leaves the notes"
+        );
+        assert_ne!(sequence.beats, beats);
+    }
+
     proptest! {
         #[test]
         fn every_drawn_note_is_in_the_scale_and_the_window(draw in draws(), chance in 0..=100_u8) {
             let mut sequence = Sequence::new(16, draw);
             for _ in 0..64 {
-                sequence.clock(chance, draw);
+                sequence.clock(chance, chance, draw);
             }
             let (lowest, highest) = draw.window.bounds(draw.scale);
             for &place in sequence.places() {

@@ -23,7 +23,12 @@ Architectural decisions behind each change are in `journal/` (French).
   gate, each port routed like any other. Its settings fit three pages of
   four rows, `KEY` and `CHORD` holding two fields each, which the left
   encoder walks one by one. The loop shows at the bottom of the screen; a
-  click on the left encoder edits its steps there. `REROLL`, an action,
+  click on the left encoder edits its steps there. A looping random
+  rhythm, drawn apart from the melody (journal/D-047, revision of
+  2026-11-27): `DENSITY` (the steps that play, assignable, at once),
+  `LEGATO` (ties without a new gate), `R PROB` and `R REROLL`; a silent
+  step holds the last note, and in the editor a short right click toggles
+  a step's gate, a long press draws it a new note. `REROLL`, an action,
   reads `PRESS`, then `DONE` for half a second once fired. Its own guide:
   `crates/oc-core/src/apps/melody/README.md`.
 

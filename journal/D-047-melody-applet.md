@@ -230,16 +230,16 @@ mélodie (manuels relus le 2026-11-27). C'était le premier manque relevé face 
 * **Un pas silencieux** : la gate ne s'ouvre pas, et `NOTE` et l'accord gardent la dernière note jouée, qui suit
   toujours la fenêtre en direct ; le pointeur, lui, avance.
 * **Un tirage à part, comme le meloDICER** : `PROB` et `REROLL` ne tirent plus que les places ; le rythme a les
-  siens, une chance de nouveau tirage au passage (`RHYTHM`, 0 % par défaut) et un `REROLL` du rythme seul. Un
+  siens, une chance de nouveau tirage au passage (`R PROB`, 0 % par défaut) et un `R REROLL` du rythme seul. Un
   rythme figé sous une mélodie qui change, ou l'inverse. L'action de sonde `REROLL` reste celle des notes ; une
-  action `RHYTHM` tire le rythme.
+  action `R REROLL` tire le rythme.
 * **L'éditeur des pas** : un clic droit court bascule la gate du pas encadré (son `r` à 0, joué dès que la densité
   dépasse 0 %, ou au plus haut, silencieux même à 100 %) ; un appui long sur l'encodeur droit tire une nouvelle note
   au hasard pour ce seul pas, comme le clic droit le faisait. Hors de l'éditeur, l'appui long droit reste réservé à
   la future page d'options.
 * **L'écran** : un pas silencieux garde sa marque de hauteur, en pointillés ; un pas lié est relié à la marque du
   précédent.
-* **Pages** : `DENSITY`, `LEGATO`, `RHYTHM` et le `REROLL` du rythme ajoutent des réglages ; le dépassement des trois
+* **Pages** : `DENSITY`, `LEGATO`, `R PROB` et `R REROLL` ajoutent une quatrième page ; le dépassement des trois
   pages sera repris par la page d'options (hors de cette révision).
 
 **Ce qui ferait changer d'avis.** Une liaison qui sonne mal avec des gates courtes (`GATE` bas) : la tenir à la

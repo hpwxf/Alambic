@@ -18,7 +18,7 @@ and C a chord built on it in the same scale, D a gate.
 | `NOTE` | A | the step's note, 1 V/octave, C4 at 0 V |
 | `CH1` | B | the chord's lower tone, 1 V/octave |
 | `CH2` | C | the chord's upper tone, 1 V/octave |
-| `GATE` | D | 5 V for `GATE` percent of the clock's period, then 0 V |
+| `GATE` | D | 5 V for `GATE` percent of the clock's period on a step that plays, then 0 V; held to the next clock when that step ties (*Rhythm*) |
 
 The jacks are the defaults; the routing page moves each port as for any app
 (README, *Apps and the app menu*).
@@ -97,6 +97,27 @@ The draws come from one random generator that always starts from the same
 seed: the same patch played the same way replays the same melody on the
 module, the simulator and VCV Rack.
 
+## Rhythm
+
+Each step also keeps a rhythm, drawn apart from its note (journal/D-047,
+revision of 2026-11-27, continued), and looping with it:
+
+* `DENSITY`, 0 to 100 % (100 % at start): the share of the steps that play.
+  It acts at once and keeps the same steps: raising it adds steps, lowering
+  it takes some away, always in the same order. A step that does not play
+  opens no gate, and `NOTE` and the chord keep the last note played (which
+  still follows the window); the playhead moves on.
+* `LEGATO`, 0 to 100 % (0 at start): the share of the played steps that tie
+  to the step before when it plays too: the note changes without a new gate,
+  the gate held from one to the other across the clock. A step after a held
+  gate that does not tie starts its gate a tick low, so that an envelope sees
+  the edge.
+* `R PROB`, 0 to 100 % (0 at start): the chance a step's rhythm is drawn anew
+  as the clock reaches it, apart from `PROB`, which draws its note: a rhythm
+  frozen under a changing melody, or the other way round.
+* `R REROLL`: draws the whole rhythm anew, the melody untouched; `REROLL`
+  draws the melody, the rhythm untouched.
+
 ## Chords
 
 `CH1` and `CH2` carry two tones stacked on A's note in the scale, so the
@@ -127,8 +148,8 @@ note and the gate, two are left for the chord (journal/D-047, revision of
 
 ## Settings
 
-Three pages of four rows; the scroll bar left of the list shows which page
-is on screen. Two rows hold two fields each: `KEY`, the root then the scale
+Four pages of four rows; the scroll bar left of the list shows which page
+is on screen. (The rhythm's page will move to an options page.) Two rows hold two fields each: `KEY`, the root then the scale
 (`C MAJOR`), and `CHORD`, the chord then its inversion's arrow. The left
 encoder walks the fields one by one, left to right and row by row; the right
 encoder changes the one picked. A row of one field is highlighted whole when
@@ -145,11 +166,15 @@ picked; in a row of two, only the field picked is boxed.
 | 2 | `OCTAVE` | | −3 to +3 | 0 | octaves the whole moves by |
 | 2 | `TRANSPOSE` | | −24 to +24 | 0 | semitones added before quantising, so the melody moves within the scale |
 | 2 | `GATE` | | 1–99 % | 50 % | the gate's length, in percent of the clock's period (10 ms until two clocks give the rate) |
-| 2 | `REROLL` | | `PRESS` | — | an action: the right encoder's click draws the whole sequence anew, and the row reads `DONE` for half a second |
+| 2 | `REROLL` | | `PRESS` | — | an action: the right encoder's click draws the whole melody anew, the rhythm untouched; the row reads `DONE` for half a second |
 | 3 | `JUMP` | | `OFF`, `NO REP`, 1–7 | `OFF` | how a step is drawn: an even place, one whose note never repeats the step before's, or a walk of up to so many degrees (*Chance and draws*) |
 | 3 | `SPREAD` | | 0–48 semitones | 24 | the window's width: the loop stretches or narrows at once |
 | 3 | `CENTER` | | −100 to +100 % | 0 % | the window's place round the root: 0 centred on it, +100 % starting on it, −100 % ending on it |
 | 3 | `BIAS` | | −100 to +100 % | 0 % | the curve over the places: towards + the notes crowd high, towards − low; the ends stay |
+| 4 | `DENSITY` | | 0–100 % | 100 % | the share of the steps that play, at once (*Rhythm*) |
+| 4 | `LEGATO` | | 0–100 % | 0 % | the share of the played steps tied to the one before |
+| 4 | `R PROB` | | 0–100 % | 0 % | the chance a step's rhythm is drawn anew at the clock |
+| 4 | `R REROLL` | | `PRESS` | — | an action: draws the whole rhythm anew; the row reads `DONE` for half a second |
 
 The probe names each field as its own parameter (`ROOT`, `SCALE`, `CHORD`,
 `INVERT` from −1 to +1, `JUMP` by its names).
@@ -164,7 +189,12 @@ A click on the **left encoder** enters the sequence; `EDIT` replaces
   the scale, within the window's notes; the step takes the place in the
   window that gives it, so the edit bends with the window like the rest. In
   a window of one note (`SPREAD 0`) it does nothing.
-* A right click redraws that step alone, by the rules above.
+* A short click on the right encoder toggles the step's gate: a silent step
+  plays from any `DENSITY` above 0 %, a playing one keeps silent even at
+  100 %.
+* A long press on the right encoder (a second) draws a new note for that
+  step alone, by the rules above, its gate untouched. Out of the editor, the
+  long press is kept for the app's options page.
 * Another left click leaves.
 
 The clock keeps running while you edit: the edited step plays its new note
@@ -174,12 +204,12 @@ above 0 %, an edited step may be redrawn when the clock reaches it; set
 
 ## CV inputs
 
-Six settings take an input: `LENGTH`, `PROB`, `TRANSPOSE`, `SPREAD`,
-`CENTER` and `BIAS`. A right click on one opens its input submenu, shared
+Seven settings take an input: `LENGTH`, `PROB`, `TRANSPOSE`, `SPREAD`,
+`CENTER`, `BIAS` and `DENSITY`. A right click on one opens its input submenu, shared
 with the other apps (README, *Assigning an input*): which `CV`, its scale,
 shift, bounds and effect. `LENGTH`, `PROB` and `TRANSPOSE` read their input
-at each clock, so a step plays as it started; the window's three act at
-once, so an LFO on `SPREAD` breathes the melody wider and narrower while it
+at each clock, so a step plays as it started; the window's three and
+`DENSITY` act at once, so an LFO on `SPREAD` breathes the melody wider and narrower while it
 plays.
 
 | Setting | With `ADD` | `SET` at 0 V |
@@ -189,6 +219,7 @@ plays.
 | `TRANSPOSE` | 12 semitones a volt (1 V/octave) | 0 |
 | `SPREAD` | 12 semitones a volt | 0 |
 | `CENTER`, `BIAS` | 20 % a volt | 0 % |
+| `DENSITY` | 20 % a volt | 0 % |
 
 `MUL` multiplies the panel's value by the input over 5 V. No setting has
 an input at start, `TRANSPOSE` included. Give `TRANSPOSE` a `CV` with `ADD`
@@ -210,14 +241,15 @@ place of the value.
   as the note it plays between the window's lowest and highest notes. The
   step playing is filled down to the bottom, a small playhead at the top of
   its column in inverse video (no row is kept for it above the marks); in the
-  editor, the step edited is framed. The marks follow the window as it
+  editor, the step edited is framed. A silent step's mark is dotted, at its
+  height still; a tied step's mark is joined to the one before. The marks follow the window as it
   bends, `TRANSPOSE` included.
 
 ## Through the probe
 
-The parameters are those of the table above, by name, except `REROLL`.
-`STEP` (from 1) and `NOTE` (the MIDI note A plays) can be read; `REROLL`
-and `RESET` are actions.
+The parameters are those of the table above, by name, except the two
+rerolls. `STEP` (from 1) and `NOTE` (the MIDI note A plays) can be read;
+`REROLL`, `RESET` and `R REROLL` are actions.
 
 ```sh
 cargo probe app melody            # its parameters, values, what it plays
@@ -226,5 +258,5 @@ cargo probe get melody note
 cargo probe act melody reroll
 ```
 
-The steps' notes are not visible to the probe, and are not saved: the
+The steps' notes and rhythm are not visible to the probe, and are not saved: the
 sequence starts from the same seed at each start.

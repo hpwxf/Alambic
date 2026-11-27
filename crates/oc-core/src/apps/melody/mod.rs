@@ -31,7 +31,7 @@ pub mod window;
 use core::fmt::Write as _;
 
 use self::scale::{CHORD_NAMES, Chord, ROOT_NAMES, SCALE_NAMES, Scale, chord};
-use self::sequence::{Draw, MAX_JUMP, MAX_STEPS, Sequence};
+use self::sequence::{Draw, MAX_JUMP, MAX_STEPS, Rhythm, Sequence};
 use self::window::{MAX_PERCENT, MAX_SPREAD, PLACE_MAX, Window};
 use crate::apps::param::{ParamSpec, ParamValue, Refused, Unit};
 use crate::apps::sound::Params;
@@ -136,13 +136,22 @@ pub enum Setting {
     Center,
     /// The curve the steps' places are bent by in the window.
     Bias,
-    /// Draws the whole sequence anew.
+    /// The share of the steps that play.
+    Density,
+    /// The share of the played steps that tie to the one before.
+    Legato,
+    /// The chance a step's rhythm is redrawn as the clock reaches it,
+    /// apart from its note.
+    RhythmChance,
+    /// Draws the whole melody anew.
     Reroll,
+    /// Draws the whole rhythm anew.
+    RerollRhythm,
 }
 
 impl Setting {
-    /// Every setting, in the order of the parameters, `REROLL` last.
-    pub const ALL: [Self; 14] = [
+    /// Every setting, in the order of the parameters, the actions last.
+    pub const ALL: [Self; 18] = [
         Self::Length,
         Self::Chance,
         Self::Root,
@@ -156,13 +165,17 @@ impl Setting {
         Self::Spread,
         Self::Center,
         Self::Bias,
+        Self::Density,
+        Self::Legato,
+        Self::RhythmChance,
         Self::Reroll,
+        Self::RerollRhythm,
     ];
 
-    /// Its parameter's index, `None` for `REROLL`, an action.
+    /// Its parameter's index, `None` for the two rerolls, actions.
     const fn param(self) -> Option<usize> {
         match self {
-            Self::Reroll => None,
+            Self::Reroll | Self::RerollRhythm => None,
             other => Some(other as usize),
         }
     }
@@ -177,6 +190,7 @@ impl Setting {
             Self::Spread => Some(3),
             Self::Center => Some(4),
             Self::Bias => Some(5),
+            Self::Density => Some(6),
             _ => None,
         }
     }
@@ -194,7 +208,7 @@ impl Setting {
             // One volt an octave of width.
             Self::Spread => Rate::new((0, MAX_SPREAD as i32), 0, (12, 1_000)),
             // 20 % a volt, as `RATCHET`'s `PROB`.
-            Self::Chance => Rate::new((0, 100), 0, (1, 50)),
+            Self::Chance | Self::Density => Rate::new((0, 100), 0, (1, 50)),
             Self::Center | Self::Bias => {
                 Rate::new((-(MAX_PERCENT as i32), MAX_PERCENT as i32), 0, (1, 50))
             }
@@ -219,13 +233,17 @@ impl Setting {
             Self::Invert => "INVERT",
             Self::Gate => "GATE",
             Self::Reroll => "REROLL",
+            Self::Density => "DENSITY",
+            Self::Legato => "LEGATO",
+            Self::RhythmChance => "R PROB",
+            Self::RerollRhythm => "R REROLL",
         }
     }
 }
 
 /// The fields in the order the left encoder walks them: [`ROWS`] read
 /// left to right, top to bottom.
-pub const FIELDS: [Setting; 14] = [
+pub const FIELDS: [Setting; 18] = [
     Setting::Length,
     Setting::Chance,
     Setting::Root,
@@ -240,14 +258,18 @@ pub const FIELDS: [Setting; 14] = [
     Setting::Spread,
     Setting::Center,
     Setting::Bias,
+    Setting::Density,
+    Setting::Legato,
+    Setting::RhythmChance,
+    Setting::RerollRhythm,
 ];
 
-/// The rows of the screen, four a page, three pages: the loop, its key and
-/// its chord; the pitch, the gate and the action; how steps are drawn and
-/// the window they sound in. A row of
+/// The rows of the screen, four a page: the loop, its key and its chord;
+/// the pitch, the gate and the action; how steps are drawn and the window
+/// they sound in; the rhythm, drawn apart. A row of
 /// two fields shows both values, the root before the scale, the chord
 /// before its inversion's arrow.
-pub const ROWS: [&[Setting]; 12] = [
+pub const ROWS: [&[Setting]; 16] = [
     &[Setting::Length],
     &[Setting::Chance],
     &[Setting::Root, Setting::Scale],
@@ -260,6 +282,10 @@ pub const ROWS: [&[Setting]; 12] = [
     &[Setting::Spread],
     &[Setting::Center],
     &[Setting::Bias],
+    &[Setting::Density],
+    &[Setting::Legato],
+    &[Setting::RhythmChance],
+    &[Setting::RerollRhythm],
 ];
 
 /// The row `setting` is on.
@@ -383,6 +409,11 @@ pub struct Settings {
     pub inversion: i8,
     /// The gate's length, in percent of the clock's period.
     pub gate_percent: u8,
+    /// Which steps play and which tie ([`Rhythm`]).
+    pub rhythm: Rhythm,
+    /// The chance a step's rhythm is redrawn as the clock reaches it, in
+    /// percent, apart from its note.
+    pub rhythm_chance_percent: u8,
 }
 
 impl Settings {
@@ -400,6 +431,8 @@ impl Settings {
         chord: Chord::Triad,
         inversion: 0,
         gate_percent: 50,
+        rhythm: Rhythm::DEFAULT,
+        rhythm_chance_percent: 0,
     };
 
     /// How a new note is drawn with these settings.
@@ -422,6 +455,7 @@ impl Settings {
             Setting::Spread => i32::from(self.window.spread),
             Setting::Center => i32::from(self.window.center),
             Setting::Bias => i32::from(self.window.bias),
+            Setting::Density => i32::from(self.rhythm.density),
             _ => 0,
         }
     }
@@ -436,6 +470,7 @@ impl Settings {
             Setting::Spread => self.window.spread = byte,
             Setting::Center => self.window.center = i8::try_from(value).unwrap_or(0),
             Setting::Bias => self.window.bias = i8::try_from(value).unwrap_or(0),
+            Setting::Density => self.rhythm.density = byte,
             _ => {}
         }
     }
@@ -444,7 +479,7 @@ impl Settings {
 /// What `MELODY` is set by (journal/D-043), in the order of the screen.
 // Every bound here is below a hundred; `From` is not `const`.
 #[allow(clippy::cast_possible_wrap, clippy::cast_possible_truncation)]
-pub const PARAM_SPECS: [ParamSpec; 13] = [
+pub const PARAM_SPECS: [ParamSpec; 16] = [
     ParamSpec::number("LENGTH", (1, MAX_STEPS as i32), 1, 0, Unit::None).assignable(),
     ParamSpec::number("PROB", (0, 100), 1, 0, Unit::Percent).assignable(),
     ParamSpec::choice("ROOT", &ROOT_NAMES),
@@ -479,6 +514,9 @@ pub const PARAM_SPECS: [ParamSpec; 13] = [
         Unit::Percent,
     )
     .assignable(),
+    ParamSpec::number("DENSITY", (0, 100), 1, 0, Unit::Percent).assignable(),
+    ParamSpec::number("LEGATO", (0, 100), 1, 0, Unit::Percent),
+    ParamSpec::number("R PROB", (0, 100), 1, 0, Unit::Percent),
 ];
 
 /// What `MELODY` can be read for: the step playing (from 1) and the note A
@@ -490,15 +528,43 @@ pub const OBSERVABLES: [ParamSpec; 2] = [
     ParamSpec::number("NOTE", (0, 127), 1, 0, Unit::Note),
 ];
 
-/// What `MELODY` can be asked to do: draw the whole sequence anew, as
-/// `REROLL` does; arm it, as `RESET` does.
-pub const ACTIONS: [&str; 2] = ["REROLL", "RESET"];
+/// What `MELODY` can be asked to do: draw the whole melody anew, as
+/// `REROLL` does; arm it, as `RESET` does; draw the whole rhythm anew, as
+/// `R REROLL` does.
+pub const ACTIONS: [&str; 3] = ["REROLL", "RESET", "R REROLL"];
 
 /// Semitones from C4 as millivolts at one volt per octave, rounded to the
 /// nearest (journal/D-041 leaves the half millivolt).
 fn millivolts(semitones: i32) -> MilliVolts {
     let product = semitones * 1_000;
     (product + product.signum() * 6) / 12
+}
+
+/// The gate on `GATE`: open for a time, or held to the next clock for a tie.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct Gate {
+    /// Time left open.
+    micros: u32,
+    /// Whether it stays open until the next clock, which ties to the step
+    /// playing.
+    held: bool,
+    /// Whether it is kept low on this tick, so that a new gate after a held
+    /// one shows its rising edge.
+    gap: bool,
+}
+
+impl Gate {
+    /// Shut, nothing held.
+    const SHUT: Self = Self {
+        micros: 0,
+        held: false,
+        gap: false,
+    };
+
+    /// Whether it is open now.
+    const fn open(self) -> bool {
+        !self.gap && (self.held || self.micros > 0)
+    }
 }
 
 /// A looping melody of random but controllable notes, its chord's two tones
@@ -515,15 +581,16 @@ pub struct MelodyApp {
     /// The rate of `CLOCK`, which the gate is a fraction of.
     tempo: Tempo,
     /// The input of each setting that takes one, and the submenu.
-    inputs: Modulations<6>,
+    inputs: Modulations<7>,
     selected: usize,
     /// The step the panel edits, `None` outside the sequence.
     editing: Option<usize>,
     clock: bool,
     reset: bool,
-    gate_micros: u32,
-    /// Time left showing `DONE` on `REROLL`'s row.
-    rerolled_micros: u32,
+    gate: Gate,
+    /// The reroll that fired lately, and how long its row still reads
+    /// `DONE`.
+    rerolled: Option<(Setting, u32)>,
     outputs: [MilliVolts; CV_CHANNELS],
 }
 
@@ -540,13 +607,13 @@ impl MelodyApp {
             tempo: Tempo::new(),
             // No input at start, `TRANSPOSE` included: one is given in the
             // submenu, as to any other setting.
-            inputs: Modulations::new([Assign::NONE; 6]),
+            inputs: Modulations::new([Assign::NONE; 7]),
             selected: 0,
             editing: None,
             clock: false,
             reset: false,
-            gate_micros: 0,
-            rerolled_micros: 0,
+            gate: Gate::SHUT,
+            rerolled: None,
             outputs: [0; CV_CHANNELS],
         };
         app.outputs = app.levels();
@@ -605,8 +672,12 @@ impl MelodyApp {
     pub fn update(&mut self, input: &InputSnapshot) -> [MilliVolts; CV_CHANNELS] {
         self.follow_panel(input);
         let elapsed = input.elapsed_micros;
-        self.gate_micros = self.gate_micros.saturating_sub(elapsed);
-        self.rerolled_micros = self.rerolled_micros.saturating_sub(elapsed);
+        self.gate.micros = self.gate.micros.saturating_sub(elapsed);
+        self.gate.gap = false;
+        self.rerolled = self.rerolled.and_then(|(setting, micros)| {
+            let left = micros.saturating_sub(elapsed);
+            (left > 0).then_some((setting, left))
+        });
         self.inputs.read(&input.cv, elapsed);
         self.tempo.advance(elapsed);
 
@@ -643,11 +714,32 @@ impl MelodyApp {
 
     /// Moves to the next step with the settings its inputs give now, and
     /// opens D's gate.
+    ///
+    /// A silent step leaves the note and the gate as they were, a held gate
+    /// closed; a step that plays takes the note, ties to a held gate or
+    /// opens a new one (a tick low first after a held one), and holds it
+    /// to the next clock when the next step ties to it.
     fn step(&mut self) {
         let latched = self.with_inputs();
-        self.transpose = i32::from(latched.transpose);
         self.sequence.set_length(latched.length);
-        self.playing = self.sequence.clock(latched.chance_percent, latched.draw());
+        let step = self.sequence.clock(
+            latched.chance_percent,
+            latched.rhythm_chance_percent,
+            latched.draw(),
+        );
+        let rhythm = latched.rhythm;
+        let beat = self.sequence.beat(step);
+        if !beat.plays(rhythm) {
+            self.gate.held = false;
+            return;
+        }
+        self.playing = step;
+        self.transpose = i32::from(latched.transpose);
+        let tied = beat.ties(rhythm) && self.gate.held;
+        if !tied && (self.gate.held || self.gate.micros > 0) {
+            self.gate.gap = true;
+        }
+        self.gate.held = self.sequence.beat(self.sequence.after(step)).ties(rhythm);
         let gate = self
             .tempo
             .period_micros()
@@ -655,14 +747,25 @@ impl MelodyApp {
                 let part = u64::from(period) * u64::from(self.settings.gate_percent) / 100;
                 u32::try_from(part).unwrap_or(u32::MAX)
             });
-        self.gate_micros = gate.max(MIN_GATE_MICROS);
+        self.gate.micros = gate.max(MIN_GATE_MICROS);
+    }
+
+    /// Whether the gate is open now.
+    const fn gate_open(&self) -> bool {
+        self.gate.open()
     }
 
     /// Draws the whole sequence anew, with the inputs as they read now.
     fn reroll(&mut self) {
         let draw = self.with_inputs().draw();
         self.sequence.reroll(draw);
-        self.rerolled_micros = REROLLED_MICROS;
+        self.rerolled = Some((Setting::Reroll, REROLLED_MICROS));
+    }
+
+    /// Draws the whole rhythm anew, the melody untouched.
+    fn reroll_rhythm(&mut self) {
+        self.sequence.reroll_rhythm();
+        self.rerolled = Some((Setting::RerollRhythm, REROLLED_MICROS));
     }
 
     /// The window as it reads now, its inputs applied: they bend the loop
@@ -713,7 +816,7 @@ impl MelodyApp {
             millivolts(self.above_c4(note)),
             millivolts(self.above_c4(low)),
             millivolts(self.above_c4(high)),
-            if self.gate_micros > 0 { GATE_MV } else { 0 },
+            if self.gate_open() { GATE_MV } else { 0 },
         ]
     }
 
@@ -747,7 +850,14 @@ impl MelodyApp {
                     self.sequence.set_place(step, window.place_of(scale, moved));
                 }
             }
-            if input.buttons.pressed(Button::RightEncoder) {
+            // A short click toggles the step's gate; a long press draws it
+            // a new note, the long press out of the editor being kept for
+            // the app's options (journal/D-047, revision of 2026-11-27).
+            if input.buttons.tapped(Button::RightEncoder) {
+                let plays = self.sequence.beat(step).plays(self.with_inputs().rhythm);
+                self.sequence.set_plays(step, !plays);
+            }
+            if input.buttons.long_pressed(Button::RightEncoder) {
                 let draw = self.with_inputs().draw();
                 self.sequence.redraw(step, draw);
             }
@@ -760,6 +870,7 @@ impl MelodyApp {
         if input.buttons.pressed(Button::RightEncoder) {
             match self.selected() {
                 Setting::Reroll => self.reroll(),
+                Setting::RerollRhythm => self.reroll_rhythm(),
                 setting => {
                     if let Some(slot) = setting.input_slot() {
                         self.inputs.open(slot);
@@ -816,12 +927,15 @@ impl MelodyApp {
             Setting::Spread => write!(out, "{} ST", settings.window.spread),
             Setting::Center => write_percent(out, i32::from(settings.window.center)),
             Setting::Bias => write_percent(out, i32::from(settings.window.bias)),
+            Setting::Density => write!(out, "{}%", settings.rhythm.density),
+            Setting::Legato => write!(out, "{}%", settings.rhythm.legato),
+            Setting::RhythmChance => write!(out, "{}%", settings.rhythm_chance_percent),
             Setting::Jump => write!(out, "{}", JUMP_NAMES[jump_choice(settings)]),
             Setting::Chord => write!(out, "{}", CHORD_NAMES[settings.chord.index()]),
             Setting::Gate => write!(out, "{}%", settings.gate_percent),
             // An action, which says how to fire it ([`Self::value_text`]
             // shows `DONE` once fired).
-            Setting::Reroll => write!(out, "PRESS"),
+            Setting::Reroll | Setting::RerollRhythm => write!(out, "PRESS"),
             // An arrow, drawn rather than written ([`invert_arrow`]).
             Setting::Invert => Ok(()),
         };
@@ -973,7 +1087,7 @@ impl MelodyApp {
     /// moment after a reroll, so a press is seen to have acted.
     fn value_text(&self, setting: Setting) -> TextBuf<16> {
         let mut value = TextBuf::<16>::new();
-        if setting == Setting::Reroll && self.rerolled_micros > 0 {
+        if self.rerolled.is_some_and(|(fired, _)| fired == setting) {
             let _ = write!(value, "DONE");
         } else {
             Self::write_value(setting, &self.settings, &mut value);
@@ -1004,9 +1118,13 @@ impl MelodyApp {
         let height = bottom - NOTES_TOP;
         let count = i32::try_from(length).unwrap_or(1);
         let playing = self.sequence.position();
+        let rhythm = self.with_inputs().rhythm;
+        // The mark of the step before, if it plays, for a tie to join.
+        let mut before: Option<i32> = None;
         for index in 0..i32::try_from(length).unwrap_or(1) {
             let step = usize::try_from(index).unwrap_or(0);
             let note = self.played_in(window, step, self.transpose);
+            let beat = self.sequence.beat(step);
             // Columns from x = 1, a pixel left of the first and one right of
             // each for the editor's frame, which so stays on the screen at
             // both ends.
@@ -1014,11 +1132,23 @@ impl MelodyApp {
             let x = 1 + index * span / count;
             let width = (1 + (index + 1) * span / count - x - 1).max(1);
             let y = bottom - (note - lowest).clamp(0, notes_span) * height / notes_span;
-            if playing == Some(step) {
+            let plays = beat.plays(rhythm);
+            if !plays {
+                // Silent: the mark dotted, its height still shown.
+                gfx::dotted_hline(frame, x, y, width, 2, Ink::Lit);
+            } else if playing == Some(step) {
                 gfx::fill_rect(frame, x, y, width, HEIGHT_I32 - y, Ink::Lit);
-                playhead(frame, x, width);
             } else {
                 gfx::fill_rect(frame, x, y, width, MARK_HEIGHT, Ink::Lit);
+            }
+            if let (true, Some(from)) = (beat.ties(rhythm), before) {
+                // Tied: joined to the mark before, across the gap between.
+                let (top, low) = (from.min(y), from.max(y));
+                gfx::vline(frame, x - 1, top, low - top + MARK_HEIGHT, Ink::Lit);
+            }
+            before = plays.then_some(y);
+            if playing == Some(step) {
+                playhead(frame, x, width);
             }
             if self.editing == Some(step) {
                 gfx::rect(
@@ -1185,11 +1315,14 @@ impl App for MelodyApp {
             Setting::Spread => number(i32::from(settings.window.spread)),
             Setting::Center => number(i32::from(settings.window.center)),
             Setting::Bias => number(i32::from(settings.window.bias)),
+            Setting::Density => number(i32::from(settings.rhythm.density)),
+            Setting::Legato => number(i32::from(settings.rhythm.legato)),
+            Setting::RhythmChance => number(i32::from(settings.rhythm_chance_percent)),
             Setting::Jump => choice(jump_choice(settings)),
             Setting::Chord => choice(settings.chord.index()),
             Setting::Invert => number(i32::from(settings.inversion)),
             Setting::Gate => number(i32::from(settings.gate_percent)),
-            Setting::Reroll => None,
+            Setting::Reroll | Setting::RerollRhythm => None,
         }
     }
 
@@ -1219,6 +1352,13 @@ impl App for MelodyApp {
                 settings.window.center = signed(center);
             }
             (Setting::Bias, ParamValue::Number(bias)) => settings.window.bias = signed(bias),
+            (Setting::Density, ParamValue::Number(density)) => {
+                settings.rhythm.density = byte(density);
+            }
+            (Setting::Legato, ParamValue::Number(legato)) => settings.rhythm.legato = byte(legato),
+            (Setting::RhythmChance, ParamValue::Number(chance)) => {
+                settings.rhythm_chance_percent = byte(chance);
+            }
             (Setting::Jump, ParamValue::Choice(choice)) => {
                 // `OFF` and `NO REP` draw over the range; past them, a walk.
                 settings.repeat = choice != 1;
@@ -1259,6 +1399,7 @@ impl App for MelodyApp {
         match index {
             0 => self.reroll(),
             1 => self.sequence.reset(),
+            2 => self.reroll_rhythm(),
             _ => return Err(Refused::NoSuch),
         }
         self.outputs = self.levels();
@@ -1319,7 +1460,8 @@ mod tests {
             assert_eq!(spec.assignable, sweep(setting).is_some(), "{index}");
         }
         assert_eq!(Setting::Reroll.param(), None);
-        assert_eq!(Setting::ALL.len(), PARAM_SPECS.len() + 1);
+        assert_eq!(Setting::RerollRhythm.param(), None);
+        assert_eq!(Setting::ALL.len(), PARAM_SPECS.len() + 2, "two actions");
     }
 
     #[test]
@@ -1347,7 +1489,7 @@ mod tests {
     }
 
     #[test]
-    fn the_rows_hold_every_field_once_in_three_pages() {
+    fn the_rows_hold_every_field_once_in_four_pages() {
         let mut walked = ROWS.iter().flat_map(|row| row.iter().copied());
         for field in FIELDS {
             assert_eq!(walked.next(), Some(field), "the rows read in FIELDS' order");
@@ -1356,7 +1498,7 @@ mod tests {
         for setting in Setting::ALL {
             assert!(FIELDS.contains(&setting), "{setting:?}");
         }
-        assert_eq!(PAGES, 3);
+        assert_eq!(PAGES, 4, "the rhythm's page, until the options page");
         assert_eq!(row_label(ROWS[2]), "KEY");
         assert_eq!(row_label(ROWS[3]), "CHORD");
     }

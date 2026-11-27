@@ -921,6 +921,16 @@ each setting does: `crates/oc-core/src/apps/melody/README.md`.
    next clock A plays an octave up, `+CV1` beside `TRANSPOSE`.
 8. Left encoder click: `EDIT`; turn the left encoder to a step, the right
    one: its mark moves and, when it plays, A follows.
+   A short right click silences the framed step (its mark dotted, no gate
+   on D when it comes round) and back; a long right press (a second) gives
+   it a new note, its gate unchanged.
+9. Rhythm: `DENSITY 50%`, about half the steps open D's gate, A holding the
+   last note through the others; down to 20 %, the steps still playing are
+   among those that played at 50 %. `LEGATO 100%`: D stays high across the clocks, A still moving;
+   back to 0 %, the next gate starts after a 1 ms drop an envelope
+   retriggers on. `R PROB 100%` with `PROB 0%`: the rhythm changes each time
+   round under the same melody; `R REROLL` and `REROLL` each draw only their
+   own.
 
 ### 9.4 — Calibration
 

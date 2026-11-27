@@ -391,3 +391,96 @@ fn the_center_moves_the_window_round_the_root() {
     let below = (0..8).all(|step| played(&engine, step) <= 24);
     assert!(below, "two octaves at most above");
 }
+
+/// Sets parameter `setting` of the first slot's `MELODY`, as the probe would.
+fn set_param(engine: &mut MockEngine, setting: Setting, value: i32) {
+    let index = Setting::ALL
+        .iter()
+        .position(|&each| each == setting)
+        .unwrap();
+    engine
+        .apps_mut()
+        .at_mut(0)
+        .unwrap()
+        .set(index, oc_core::apps::param::ParamValue::Number(value))
+        .unwrap();
+}
+
+#[test]
+fn no_density_keeps_the_gate_shut_and_the_note_held() {
+    let mut engine = melody();
+    clock(&mut engine, 50);
+    let held = engine.outputs()[..3].to_vec();
+    set_param(&mut engine, Setting::Density, 0);
+    for _ in 0..6 {
+        for _ in 0..5 {
+            tick(&mut engine, true, false);
+            assert_eq!(engine.outputs()[3], 0, "no gate on a silent step");
+        }
+        for _ in 0..45 {
+            tick(&mut engine, false, false);
+        }
+        assert_eq!(engine.outputs()[..3], held[..], "the last note held");
+    }
+}
+
+#[test]
+fn a_tied_step_keeps_the_gate_open_across_the_clock() {
+    let mut engine = melody();
+    set_param(&mut engine, Setting::Legato, 100);
+    // Every step ties to the one before: the gate opens once and stays.
+    clock(&mut engine, 95);
+    clock(&mut engine, 95);
+    for _ in 0..4 {
+        for _ in 0..5 {
+            tick(&mut engine, true, false);
+            assert_eq!(engine.outputs()[3], GATE_MV, "no new edge at a tie");
+        }
+        for _ in 0..95 {
+            tick(&mut engine, false, false);
+            assert_eq!(engine.outputs()[3], GATE_MV, "held to the next clock");
+        }
+    }
+    // Back to no legato: the next step opens a new gate, a tick low first.
+    set_param(&mut engine, Setting::Legato, 0);
+    tick(&mut engine, true, false);
+    assert_eq!(engine.outputs()[3], 0, "the edge shows: a tick low");
+    tick(&mut engine, true, false);
+    assert_eq!(engine.outputs()[3], GATE_MV, "then the new gate");
+}
+
+#[test]
+fn the_editor_toggles_a_gate_and_redraws_a_note_on_a_long_press() {
+    let mut engine = melody();
+    press(&mut engine, Button::LeftEncoder);
+    turn(&mut engine, 0, 3);
+    assert_eq!(app(&engine).editing(), Some(3));
+    let rhythm = oc_core::apps::melody::sequence::Rhythm::DEFAULT;
+    assert!(app(&engine).sequence().beat(3).plays(rhythm));
+    press(&mut engine, Button::RightEncoder);
+    assert!(
+        !app(&engine).sequence().beat(3).plays(rhythm),
+        "a short click: silent"
+    );
+    press(&mut engine, Button::RightEncoder);
+    assert!(app(&engine).sequence().beat(3).plays(rhythm), "and back");
+
+    let place = app(&engine).sequence().place(3);
+    for _ in 0..1_100 {
+        engine.parts_mut().3.hold(Button::RightEncoder, true);
+        tick(&mut engine, false, false);
+    }
+    engine.parts_mut().3.hold(Button::RightEncoder, false);
+    for _ in 0..8 {
+        tick(&mut engine, false, false);
+    }
+    assert_ne!(
+        app(&engine).sequence().place(3),
+        place,
+        "a long press: a new note"
+    );
+    assert!(
+        app(&engine).sequence().beat(3).plays(rhythm),
+        "the long press leaves the gate"
+    );
+}
