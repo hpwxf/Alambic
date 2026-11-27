@@ -23,6 +23,9 @@ Architectural decisions behind each change are in `journal/` (French).
 
 ### Added
 
+- `cargo xtask size` ends with each applet's estimated share of `.text`,
+  from the image's symbols, then the shared parts (journal/D-038, note of
+  2026-11-27).
 - **Patch file** (journal/D-050): `cargo probe save live.toml` writes the
   module's whole patch, by name, in TOML (applets, routes, settings, CV
   inputs, `MELODY`'s steps); `cargo probe load live.toml` puts it back in

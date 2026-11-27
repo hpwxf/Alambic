@@ -2,11 +2,13 @@
 //!
 //! The CLI binary is the user-facing entry point; this crate exists so that
 //! integration tests can exercise the pre-flash image gate, the
-//! `llvm-size` layout checklist and the stack estimate over `llvm-objdump`
-//! text without spawning the full command line.
+//! `llvm-size` layout checklist, the stack estimate over `llvm-objdump`
+//! text and the applets' share of the code over `llvm-nm` text without
+//! spawning the full command line.
 //! Keeping validation pure over bytes (or captured tool text) makes the
 //! rejection messages straightforward to assert on.
 
+pub mod applet_size;
 pub mod size_check;
 pub mod stack_check;
 

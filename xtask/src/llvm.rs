@@ -10,7 +10,7 @@ use std::process::Command;
 use anyhow::{Context, Result, bail};
 
 use crate::{cargo, paths};
-use xtask::{size_check, stack_check};
+use xtask::{applet_size, size_check, stack_check};
 
 /// Stable `llvm-size` flags: long option names, `SysV` table, hex radix.
 ///
@@ -78,6 +78,9 @@ pub(crate) fn report_size(elf: &Path) -> Result<()> {
         );
     }
 
+    println!();
+    println!("{}", applet_size::format_breakdown(&applet_breakdown(elf)?));
+
     if report.failed() {
         let failed = report
             .failures()
@@ -99,6 +102,22 @@ fn stack_estimate(elf: &Path) -> Result<stack_check::StackEstimate> {
     let graph = stack_check::parse_disassembly(&disassembly);
     let vectors = stack_check::parse_vector_table(&vectors).map_err(anyhow::Error::msg)?;
     stack_check::estimate(&graph, &vectors).map_err(anyhow::Error::msg)
+}
+
+/// Each applet's share of the code in `elf`, from its symbols (see
+/// `xtask::applet_size`).
+fn applet_breakdown(elf: &Path) -> Result<applet_size::Breakdown> {
+    let output = Command::new(tool("llvm-nm")?)
+        .args(["--print-size", "--demangle", "--defined-only", "-t", "d"])
+        .arg(elf)
+        .output()
+        .with_context(|| format!("cannot run llvm-nm on {}", elf.display()))?;
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        bail!("llvm-nm failed with {}: {}", output.status, stderr.trim());
+    }
+    let text = String::from_utf8(output.stdout).context("llvm-nm wrote non-UTF-8 output")?;
+    Ok(applet_size::attribute(&applet_size::parse_nm(&text)))
 }
 
 /// What `llvm-objdump` prints for `elf` with `args`.
