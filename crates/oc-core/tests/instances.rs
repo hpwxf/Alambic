@@ -182,10 +182,10 @@ fn a_long_up_opens_the_routing_page_where_a_port_goes_off() {
     hold(&mut engine, Button::Up, long);
     assert!(engine.routing_is_open());
     // SUB is the third row: two detents of the left encoder, one of the
-    // right turns it from C to D, the next to OFF.
+    // right down turns it from C to OFF, past B and A, SUPERSAW's own.
     engine.parts_mut().3.turn(0, 2);
     tick(&mut engine);
-    engine.parts_mut().3.turn(1, 2);
+    engine.parts_mut().3.turn(1, -1);
     tick(&mut engine);
     assert_eq!(engine.apps().route().output(2), None, "SUB off");
     assert!(

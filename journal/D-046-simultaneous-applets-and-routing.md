@@ -410,3 +410,8 @@ Demande de l'utilisateur : l'encodeur droit de la page de routage bouclait (`A`,
 prise libre à `OFF`, toujours libre et dernière, en sautant les prises tenues ; une entrée de sa première à sa
 dernière prise. Un tour rapide vers le haut mène donc toujours à `OFF`, vers le bas à la première prise libre.
 L'encodeur gauche, qui choisit la ligne, boucle toujours. `routing.rs` et ses tests ; README.
+
+Puis, à la demande de l'utilisateur, `OFF` passe en tête d'une sortie, avant `A` : `OFF`, `A`, `B`, `C`, `D`. Le bout
+toujours libre est ainsi le premier, celui vers lequel on tourne pour couper une sortie ; un tour rapide vers le bas
+mène à `OFF`, vers le haut à la dernière prise libre. Scénario `routing` (un cran vers le bas au lieu de deux vers le
+haut, même écran) et test `instances.rs` ajustés.
