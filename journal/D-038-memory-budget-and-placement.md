@@ -6,7 +6,7 @@
 | **Date** | 2026-11-18 |
 | **Auteur** | Pascal Havé |
 | **Statut** | adoptée, révisée |
-| **Commits** | `0438059` (ADR seul, aucun code) ; révisions : profondeur de la pile estimée par `cargo xtask size`, moteur hors de la pile, `main` coupé en `boot` et `run` ; seuil de l'ITCM dans `xtask size`, runtime configuré par `oc-firmware`, code froid en `s` |
+| **Commits** | `0438059` (ADR seul, aucun code) ; révisions : profondeur de la pile estimée par `cargo xtask size`, moteur hors de la pile, `main` coupé en `boot` et `run` ; seuil de l'ITCM dans `xtask size`, runtime configuré par `oc-firmware`, code froid en `s` ; appels `dyn App` suivis ; applet choisie une fois le moteur en place |
 | **Relations** | précise D-004 (script de lien généré par `imxrt-rt`, disposition vérifiée par `cargo xtask size`) ; DMA et anneau du DAC (D-033) ; tampons de mesure à venir (capture du signal par la sonde, D-029) ; firmware de test par feature (`settings-stress`, D-028) ; applets résidents (D-021) |
 
 ## 1. Contexte
@@ -409,3 +409,41 @@ profond depuis `select_at`, sous le chemin du démarrage.
 pointeur (comptée par ses appels directs), un cadre qui grandit à l'exécution, la récursion. **Ce qui ferait
 changer d'avis** : une borne trop pessimiste qui ferait alerter à tort (une applet au `render` lourd mais jamais
 appelée profond) : lire les vtables et les méthodes réellement appelées à chaque site.
+
+## Révision (2026-11-27, suite) — l'applet choisie une fois le moteur en place
+
+**Contexte.** Avec le rythme de `MELODY` (D-047), la pile estimée monte à 12 408 o (3 976 o libres). Le chemin le
+plus profond est celui du démarrage : `main` 952 o, `boot` 3 016 o, `engine_in_static` 4 432 o, `AppHost::select_at`
+1 368 o, `Instance::new` 1 240 o. `Engine::new` choisissait `DIAGNOSTIC` (`AppHost::new`) alors que le moteur n'était
+encore qu'une valeur temporaire sur la pile : l'applet était construite *sous* cette valeur de 4,4 Kio.
+
+**Mesuré** (le cadre de chaque variante, rien de gardé sauf la dernière) :
+
+| Variante | pile estimée | libre |
+|---|---|---|
+| actuelle | 12 408 o | 3 976 o |
+| `Engine::new` non inliné (construction en place espérée par le retour) | 18 024 o, `FAIL` | −1 640 o |
+| applet choisie après le placement du moteur (retenue) | 10 056 o | 6 328 o |
+
+LLVM ne construit pas le retour de `Engine::new` directement dans la `static` : il garde la valeur et la copie. Une
+construction réellement en place (champ par champ, donc `unsafe`) n'apporterait rien de plus : une fois l'applet sortie
+du cadre du moteur, le chemin le plus profond devient celui de la boucle, `run` 2 080 o, `Usb::serve` 3 016 o (une
+applet choisie par la sonde), `select_at`, `Instance::new` : 9 088 o avec `main`.
+
+**Décidé (accord de l'utilisateur).** `Engine::without_apps` construit le moteur, tous ses emplacements vides
+(`AppHost::EMPTY`, une constante). Aucune applet n'est codée en dur : c'est le réglage `START APP` qui la choisit,
+par `Engine::apply_settings`. `Engine::new` est `without_apps` puis les réglages par défaut (`DIAGNOSTIC`), pour le
+simulateur, Rack et les tests, qui n'ont pas toujours de réglages à appliquer. Le firmware construit par
+`without_apps` dans `engine_in_static`, puis applique depuis `boot` les réglages lus en flash, ou ceux par défaut si
+la flash manque (`settings_in_static`), le moteur dans sa `static`. `Engine::reset` repart aussi d'`AppHost::EMPTY`
+au lieu de construire `DIAGNOSTIC` pour le remplacer aussitôt. Test : `tests/instances.rs`.
+
+**Écarté pour l'instant.** Placer les applets dans un tas ou une arena en OCRAM (`Box<dyn App>`) : `AppHost`
+passerait d'environ 1 800 à 100 o, chaque emplacement coûterait la taille de son applet et non celle de la plus
+grande, `select_at` et `Instance::new` d'environ 2,6 à 0,6 Kio (estimations, non prototypé) ; mais `alloc` dans
+`oc-core`, un allocateur et un module `unsafe` de plus dans le firmware. L'arena de l'option I prête des tranches
+typées, pas des objets `dyn App`. Agrandir `.stack` (`TEENSY4_STACK_SIZE`) reste l'autre recours, la DTCM ayant la
+place.
+
+**Ce qui ferait changer d'avis** : `select_at` et `Instance::new` (2 608 o, sur les deux chemins) qui grandiraient
+avec une applet bien plus grande : construire chaque applet par sa propre fonction, puis le tas.

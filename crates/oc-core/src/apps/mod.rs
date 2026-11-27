@@ -554,10 +554,11 @@ impl Instance {
     // Each arm builds its applet as a temporary, then moves it into the
     // instance, and the instance into the caller's: a `const fn` called here
     // is an ordinary call, which Rust does not promise to build in place.
-    // Those copies take stack, on the boot path, the firmware's deepest:
-    // 968 bytes in this frame with `MELODY`, the largest applet, against 536
-    // without it. That is below the critical level (`cargo xtask size`,
-    // about 6 KiB of the 16 KiB stack left); should it not be, a
+    // Those copies take stack, on the firmware's deepest path (an applet
+    // chosen by the probe, from the loop): 1,240 bytes in this frame, about
+    // the temporaries of every applet side by side, `MELODY`'s 432 the
+    // largest. That is below the critical level (`cargo xtask size`, about
+    // 6 KiB of the 16 KiB stack left); should it not be, a
     // `const { .. }` arm, or a constant then drawn through a reference for
     // what runs at start, took 600 bytes off when tried
     // (docs/plan/avancement/etape-14.md, journal/D-038).
@@ -665,14 +666,19 @@ pub struct AppHost {
 }
 
 impl AppHost {
+    /// Every slot empty, the focus on the first: a constant, laid out in
+    /// place, for an engine built where no applet may be chosen yet
+    /// ([`crate::engine::Engine::without_apps`]).
+    pub const EMPTY: Self = Self {
+        slots: [Slot::EMPTY; MAX_INSTANCES],
+        focus: 0,
+    };
+
     /// The diagnostic applet in the first slot, every output its own, the
     /// others empty.
     #[must_use]
     pub fn new() -> Self {
-        let mut host = Self {
-            slots: [Slot::EMPTY; MAX_INSTANCES],
-            focus: 0,
-        };
+        let mut host = Self::EMPTY;
         host.select(AppId::Diagnostic);
         host
     }

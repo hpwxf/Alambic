@@ -77,7 +77,7 @@ use bsp::board as bsp_board;
 use oc_core::Engine;
 use oc_core::platform::{CV_CHANNELS, Clock as _, CvChannel};
 use oc_core::profile::Stage;
-use oc_core::settings::SettingsStore;
+use oc_core::settings::{Settings, SettingsStore};
 use oc_core::toast::SaveOutcome;
 use oc_drivers::panel::Panel;
 use oc_drivers::shared_bus::SharedBus;
@@ -559,9 +559,12 @@ fn record_since<A, O, D, C, S>(
     engine.profile_mut().record(stage, fine);
 }
 
-/// Builds the engine in [`ENGINE`], once. Not inlined: built in [`boot`],
-/// the value would add its 3.5 KiB to the start-up's frame, the deepest
-/// path of the stack.
+/// Builds the engine in [`ENGINE`], once, without its applet: the
+/// settings choose it, applied once the engine is in place
+/// ([`settings_in_static`]). Not inlined: built in [`boot`], the
+/// value would add its 4.5 KiB to the start-up's frame; and an applet
+/// chosen here would be built under it, on the deepest path of the stack
+/// (journal/D-038, revision of 2026-11-27).
 #[inline(never)]
 fn engine_in_static(
     cv_inputs: CvInputs,
@@ -570,7 +573,7 @@ fn engine_in_static(
     clock: SystemClock,
 ) -> &'static mut FirmwareEngine {
     ENGINE.init_with(|| {
-        Engine::new(
+        Engine::without_apps(
             cv_inputs,
             realtime::MutedOutputs,
             triggers,
@@ -599,6 +602,7 @@ fn settings_in_static(
         }
         Err(error) => {
             log::warn!("settings flash unavailable ({error:?}): defaults, nothing saved");
+            engine.apply_settings(Settings::DEFAULT);
             None
         }
     }

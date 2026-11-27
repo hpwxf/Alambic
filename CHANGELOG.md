@@ -38,6 +38,12 @@ Architectural decisions behind each change are in `journal/` (French).
   wrapping round, and an output's `OFF` comes first, before `A`
   (journal/D-046, revision of 2026-11-27): a quick turn down lands on
   `OFF`, one up on the last free jack.
+- The firmware builds its engine without an applet and lets the settings'
+  `START APP` choose it once the engine is in its static
+  (`Engine::without_apps`; `Engine::new` applies the default settings): the
+  start-up no longer builds `DIAGNOSTIC` under the engine's temporary
+  value, and the estimated stack drops from 12,408 to 10,056 bytes
+  (journal/D-038, revision of 2026-11-27).
 - `cargo xtask size`'s `stack-depth` follows the applets reached through
   `&dyn App` (journal/D-038, revision of 2026-11-27): a call through a
   pointer from the workspace's crates counts as a call to the deepest

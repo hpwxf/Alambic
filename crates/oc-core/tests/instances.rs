@@ -219,3 +219,35 @@ fn an_instance_reads_the_trigger_its_map_plugs_in() {
         "TR2 reaches the second RATCHET alone: its A copies it, its B bursts"
     );
 }
+
+#[test]
+fn an_engine_built_without_apps_runs_the_start_app_its_settings_give() {
+    use oc_core::engine::Engine;
+    use oc_core::settings::Settings;
+    use oc_core::testing::{
+        MockAnalogIn, MockAnalogOut, MockControls, MockDigitalIn, MockDisplay, VirtualClock,
+    };
+    let empty = || {
+        Engine::without_apps(
+            MockAnalogIn::new(),
+            MockAnalogOut::new(),
+            MockDigitalIn::new(),
+            MockControls::new(),
+            VirtualClock::with_read_cost(0),
+            MockDisplay::new(),
+        )
+    };
+    let mut engine = empty();
+    assert_eq!(engine.apps().occupied(), [false; MAX_INSTANCES], "none yet");
+    assert_eq!(engine.apps().current(), AppId::Nothing);
+    let mut settings = Settings::DEFAULT;
+    settings.startup_app = AppId::Melody;
+    engine.apply_settings(settings);
+    assert_eq!(engine.apps().current(), AppId::Melody, "START APP");
+    // The defaults: what a new engine runs.
+    let mut engine = empty();
+    engine.apply_settings(Settings::DEFAULT);
+    let fresh = oc_core::testing::bare_mock_engine_at_boot(0);
+    assert_eq!(engine.apps().current(), fresh.apps().current());
+    assert_eq!(engine.apps().route(), fresh.apps().route());
+}

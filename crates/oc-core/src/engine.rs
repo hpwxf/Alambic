@@ -158,8 +158,32 @@ where
     K: Clock,
     S: Display,
 {
-    /// Builds an engine over the given platform implementations.
+    /// Builds an engine over the given platform implementations, running
+    /// the start-up applet of the default settings: [`Self::without_apps`]
+    /// then [`Self::apply_settings`].
     pub fn new(
+        analog_in: A,
+        analog_out: O,
+        digital_in: D,
+        controls: C,
+        clock: K,
+        display: S,
+    ) -> Self {
+        let mut engine =
+            Self::without_apps(analog_in, analog_out, digital_in, controls, clock, display);
+        engine.apply_settings(Settings::DEFAULT);
+        engine
+    }
+
+    /// Builds an engine whose slots are all empty, for a backend that moves
+    /// it into its place before applying its settings
+    /// ([`Self::apply_settings`]), whose start-up applet it then runs.
+    /// Choosing an applet
+    /// builds it on the stack, under every frame still on it: under the
+    /// engine's own temporary value (≈ 4.4 KiB on the firmware), that was
+    /// the deepest path of the firmware's stack (journal/D-038, revision
+    /// of 2026-11-27).
+    pub fn without_apps(
         analog_in: A,
         analog_out: O,
         digital_in: D,
@@ -176,7 +200,7 @@ where
             clock,
             display,
             settings: Settings::DEFAULT,
-            apps: AppHost::new(),
+            apps: AppHost::EMPTY,
             splash: SplashScreen::new(),
             build_id: "",
             menu: Menu::new(),
@@ -391,7 +415,7 @@ where
     /// identity on screen the same way after a manual reset as after a power
     /// cycle.
     pub fn reset(&mut self) {
-        self.apps = AppHost::new();
+        self.apps = AppHost::EMPTY;
         self.apps.select(self.settings.startup_app);
         self.splash.reset();
         self.menu.reset();
