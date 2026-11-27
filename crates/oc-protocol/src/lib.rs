@@ -405,6 +405,10 @@ pub enum Reply<'a> {
         /// instance's input can read; past its last port `false`
         /// (protocol 11, journal/D-048).
         levels: [bool; CV_CHANNELS],
+        /// Each output port's name, by which another instance's input
+        /// names it (`1:NOTE`); past its last port empty (protocol 11).
+        #[serde(borrow)]
+        names: [&'a str; CV_CHANNELS],
     },
     /// A parameter's value, answering [`Request::GetParam`] or
     /// [`Request::SetParam`].

@@ -4,6 +4,13 @@
 //! seen lately that `CENTER` fits it to. The submenu that edits it is
 //! [`editor`]; the state an applet keeps of its inputs, [`slots`].
 //!
+//! The input is a [`Source`]: a CV jack, or a port of another instance
+//! that carries a level (journal/D-048), read off the [`Bus`] its applet is
+//! given with each tick, without the converters. A jack's signal is shaped
+//! and applied by its effect; a port's is an assignment, strictly: the
+//! parameter takes the value it carries, as [`Effect::Set`] reads it,
+//! unshaped (revision of 2026-11-27).
+//!
 //! What a parameter means stays with its applet: the signal that sweeps it
 //! end to end when it follows its input (the `sweep` this module takes), how
 //! an effect applies to its value (see [`multiplied`] for `MUL`), and how it
@@ -150,22 +157,30 @@ pub const fn usable_range(
 /// Radius of the mark of a setting that can take an input and has none.
 const INPUT_MARK_RADIUS: i32 = 2;
 
+/// The most letters of a port's name the main screen writes after `=` and
+/// its slot (`=1:NOTE`, journal/D-048): eight characters in all, in the
+/// room a setting's value leaves, which an assignment does not show.
+pub const SCREEN_PORT_LETTERS: usize = 5;
+
 /// Draws, at the right of a setting's row from `top` up to `right`, what its
-/// input is (journal/D-036): its name and effect (`+CV1`, `+1a` for port
-/// `a` of the instance in slot 1, journal/D-048), or, for a setting
-/// that could take one and has none, a small ring, as a jack would show, so
-/// that the settings an input can move stand out at a glance. In `style`'s
-/// ink, so it reads on a highlighted row as on the others.
+/// input is (journal/D-036): its name and effect (`+CV1`), or `=`, the
+/// slot and the name of the port it is assigned, `port_name` (`=1:NOTE`,
+/// journal/D-048),
+/// or, for a setting that could take one and has none, a small ring, as a
+/// jack would show, so that the settings an input can move stand out at a
+/// glance. In `style`'s ink, so it reads on a highlighted row as on the
+/// others.
 pub fn draw_input(
     frame: &mut FrameBuffer,
     assign: &Assign,
+    port_name: Option<&str>,
     right: i32,
     top: i32,
     style: TextStyle,
 ) {
     if assign.input.is_some() {
         let mut name = TextBuf::<8>::new();
-        assign.write(&mut name);
+        assign.write(&mut name, port_name);
         text::draw(
             frame,
             name.as_str(),
@@ -190,7 +205,7 @@ pub enum Source {
     Lane {
         /// The instance's slot, from 0.
         slot: u8,
-        /// The port's rank, from 0: its letter `a` to `d`.
+        /// The port's rank among the instance's output ports, from 0.
         port: u8,
     },
 }
@@ -216,17 +231,22 @@ impl Source {
         }
     }
 
-    /// Writes its short name: `CV1`, or the slot from 1 and the port's
-    /// letter, `1a`.
-    fn write_name<const N: usize>(self, out: &mut TextBuf<N>) {
+    /// Writes its name: `CV1`, or the slot from 1 and the first `letters`
+    /// of `port_name`, the name of the port it reads (`1:NOTE`, `1:NOT`);
+    /// `1:--` without one, a port that is no more.
+    pub fn write_name<const N: usize>(
+        self,
+        out: &mut TextBuf<N>,
+        port_name: Option<&str>,
+        letters: usize,
+    ) {
         let _ = match self {
             Self::Jack(channel) => write!(out, "CV{}", channel.index() + 1),
-            Self::Lane { slot, port } => write!(
-                out,
-                "{}{}",
-                u32::from(slot) + 1,
-                port_letter(usize::from(port))
-            ),
+            Self::Lane { slot, .. } => {
+                let name = port_name.unwrap_or("--");
+                let name = name.get(..letters).unwrap_or(name);
+                write!(out, "{}:{name}", u32::from(slot) + 1)
+            }
         };
     }
 }
@@ -235,17 +255,6 @@ impl From<CvChannel> for Source {
     fn from(channel: CvChannel) -> Self {
         Self::Jack(channel)
     }
-}
-
-/// The letter that names output port `port` of an instance, from `a`:
-/// lower case, apart from the jacks `A` to `D` it may be routed to
-/// (journal/D-048).
-#[must_use]
-pub fn port_letter(port: usize) -> char {
-    u8::try_from(port)
-        .ok()
-        .and_then(|port| b'a'.checked_add(port))
-        .map_or('?', char::from)
 }
 
 /// The most inputs a parameter can be offered: none, the four jacks, and
@@ -318,30 +327,58 @@ impl Assign {
         self.input.map(|source| source.read(&input.cv, &input.bus))
     }
 
+    /// `raw`, what its input reads, as the parameter receives it: a jack's
+    /// shaped, a port's as it comes (see [`Self::assigns`]).
+    #[must_use]
+    pub fn shaped(&self, raw: MilliVolts) -> MilliVolts {
+        if self.assigns() { raw } else { self.shape(raw) }
+    }
+
     /// `raw`, what its input reads, shaped, and the effect; `None` without
-    /// an input.
+    /// an input. A port of another instance sets the parameter, unshaped.
     #[must_use]
     pub fn reading(&self, raw: MilliVolts) -> Option<(MilliVolts, Effect)> {
-        self.input.map(|_| (self.shape(raw), self.effect))
+        self.input.map(|_| {
+            if self.assigns() {
+                (raw, Effect::Set)
+            } else {
+                (self.shape(raw), self.effect)
+            }
+        })
+    }
+
+    /// Whether its input is a port of another instance: an assignment,
+    /// strictly (revision of 2026-11-27 of journal/D-048). The parameter
+    /// takes the value the port carries, as [`Effect::Set`] reads it; the
+    /// scale, the shift, the bounds and the effect stay as they were, for a
+    /// jack picked again, and act on nothing.
+    #[must_use]
+    pub const fn assigns(&self) -> bool {
+        matches!(self.input, Some(Source::Lane { .. }))
     }
 
     /// How the main screen names it, as an operation on the panel's value:
-    /// `=CV2`, `+CV2` or `*CV2`; `+1a` for port `a` of the instance in slot
-    /// 1 (journal/D-048).
-    pub fn write(&self, out: &mut TextBuf<8>) {
-        if let Some(source) = self.input {
+    /// `=CV2`, `+CV2` or `*CV2`; a port of another instance, assigned as it
+    /// comes, `=` and its slot and `port_name`, its name: `=1:NOTE`
+    /// (journal/D-048).
+    pub fn write(&self, out: &mut TextBuf<8>, port_name: Option<&str>) {
+        if let Some(source @ Source::Lane { .. }) = self.input {
+            let _ = write!(out, "=");
+            source.write_name(out, port_name, SCREEN_PORT_LETTERS);
+        } else if let Some(source) = self.input {
             let symbol = match self.effect {
                 Effect::Set => '=',
                 Effect::Add => '+',
                 Effect::Mul => '*',
             };
             let _ = write!(out, "{symbol}");
-            source.write_name(out);
+            source.write_name(out, port_name, SCREEN_PORT_LETTERS);
         }
     }
 
-    /// The value of `line` as the submenu shows it: the input (`CV1`, or
-    /// `1a` for a port, which the submenu writes in full), the scale as a
+    /// The value of `line` as the submenu shows it: the input (`CV1`; for a
+    /// port, `1:--`, its name being the caller's to give through
+    /// [`Source::write_name`]), the scale as a
     /// factor (`x0.50`), the shift and the bounds in volts, the effect; a
     /// host writes it the same way.
     #[must_use]
@@ -350,7 +387,7 @@ impl Assign {
         let _ = match line {
             AssignLine::Input => match self.input {
                 Some(source) => {
-                    source.write_name(&mut out);
+                    source.write_name(&mut out, None, usize::MAX);
                     Ok(())
                 }
                 None => write!(out, "--"),
@@ -443,10 +480,11 @@ impl Assign {
         }
     }
 
-    /// Whether the parameter follows its input, the panel's value unused.
+    /// Whether the parameter follows its input, the panel's value unused:
+    /// an input set with [`Effect::Set`], or a port assigned.
     #[must_use]
     pub const fn sets(&self) -> bool {
-        self.input.is_some() && matches!(self.effect, Effect::Set)
+        self.assigns() || (self.input.is_some() && matches!(self.effect, Effect::Set))
     }
 
     /// Turns `line` by `turns` detents, each value stopping at its ends; the

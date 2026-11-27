@@ -6,7 +6,7 @@ use oc_core::apps::AppId;
 use oc_core::apps::melody::{MelodyApp, Setting as MelodySetting};
 use oc_core::apps::supersaw::{Setting, SupersawApp};
 use oc_core::apps::tone::frequency_from;
-use oc_core::modulation::{AssignLine, Source};
+use oc_core::modulation::{AssignLine, Effect, Source};
 use oc_core::platform::{Button, CvChannel, TriggerChannel};
 use oc_core::testing::{MockEngine, mock_engine};
 
@@ -76,8 +76,8 @@ fn supersaw_plays_the_notes_of_melody_through_its_note_input() {
         let supersaw = engine.app::<SupersawApp>();
         assert_eq!(
             supersaw.frequency(),
-            frequency_from(supersaw.note(), note, assign.effect),
-            "MELODY's NOTE to the millivolt, no converter between"
+            frequency_from(supersaw.note(), note, Effect::Set),
+            "MELODY's pitch itself: assigned, C4 at 0 V, to the millivolt"
         );
         heard.push(supersaw.frequency());
     }
@@ -123,7 +123,7 @@ fn a_port_routed_nowhere_still_feeds_an_input_one_tick_late() {
     let supersaw = engine.app::<SupersawApp>();
     assert_eq!(
         played(&engine),
-        frequency_from(supersaw.note(), after, assign.effect),
+        frequency_from(supersaw.note(), after, Effect::Set),
         "one tick later, the step's level, though NOTE reaches no jack"
     );
 }

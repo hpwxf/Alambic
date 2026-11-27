@@ -24,8 +24,9 @@ The jacks are the defaults; the routing page moves each port as for any app
 (README, *Apps and the app menu*). Every port carries a level, so another
 app's input can read it without a cable, routed to a jack or not
 (journal/D-048): in `SUPERSAW`'s `NOTE` submenu, turn `INPUT` past `CV4` to
-`1:NOTE` (`MELODY` in slot 1) and the bank plays the melody, to the
-millivolt.
+`1:NOTE` (`MELODY` in slot 1) and the bank plays the melody's pitches
+themselves, to the millivolt: a port is assigned as it comes, with no
+scale, shift or effect.
 
 Reset arms rather than jumps: a reset and a clock arriving together, or a
 reset followed by a clock, both play step 1. A reset alone changes nothing

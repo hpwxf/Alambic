@@ -97,7 +97,8 @@ l'écran et éditable pas à pas. Plan : [etape-14-melodie.md](docs/plan/etape-1
 
 Le champ `INPUT` du sous-menu d'assignation propose, après `CV1`–`CV4`, les ports CV des autres instances (routés ou
 non) : `SUPERSAW` joue les notes de `MELODY` sans câble ni ADC. Niveau publié au tick précédent, ports audio non
-proposés, l'app elle-même sautée ; `+1a` à l'écran (emplacement, lettre du port), lettre dans la page de routage.
+proposés, l'app elle-même sautée ; un port assigne strictement le réglage (comme `SET`, sans mise en forme), `=1:NOTE`
+à l'écran, `1:NOTE` au sous-menu, à la sonde et dans la page (révision de D-048).
 Plan : [etape-15-routage-interne.md](docs/plan/etape-15-routage-interne.md). L'étape 14 attend encore son essai sur le
 module (14f).
 
@@ -105,9 +106,10 @@ module (14f).
 |---|---|---|
 | 15a | ADR D-048, plan, `PLAN.md` | ✅ |
 | 15b | `PortSignal`, `Source`, bus des niveaux dans `AppHost` et `InputSnapshot`, `Modulations::read` ; prises inchangées | ✅ |
-| 15c | sous-menu (parcours des sources, `1:NOTE`), `+1a`, lettre dans la page de routage ; écrans, scénario | ✅ |
+| 15c | sous-menu (parcours des sources, `1:NOTE`) ; écrans, scénarios | ✅ |
+| 15f | révision de D-048 : un port assigne strictement (comme `SET`, sans mise en forme ni valeur affichée), `=1:NOTE` à l'écran, `1:NOTE` ailleurs (noms dans `Reply::Instance`) ; la lettre du port abandonnée | ✅ |
 | 15d | protocole 11, CLI `cargo probe assign`, page web | ✅ (page pas essayée dans Chrome) |
-| 15e | docs, `cargo xtask size` (`.text` +3,5 Kio, 53,7 Kio d'ITCM libres ; pile +344 o, 5 984 o libres), avancement ([etape-15.md](docs/plan/avancement/etape-15.md)) | ⏳ module (TESTING 9.3j) |
+| 15e | docs, `cargo xtask size` (avec 15f : `.text` +4,3 Kio, 52,8 Kio d'ITCM libres ; pile +592 o, 5 736 o libres), avancement ([etape-15.md](docs/plan/avancement/etape-15.md)) | ⏳ module (TESTING 9.3j) |
 
 ## Décisions actées
 
@@ -153,5 +155,5 @@ Valeurs seules ; le raisonnement est dans `journal/`.
 | applets simultanées | `MAX_INSTANCES` = 4 emplacements toujours occupés, `NOTHING` dans un vide (révision du 2026-11-25), `AppId` = espèce ; ports de sortie routés vers `A` à `D` sans recouvrement, ou désactivés ; carte d'entrées par instance ; une `Voice` et un `Setup` par instance ; focus au panneau (`up` / `down` court), page de routage (appui long de `up` ; celui de `down` réservé, révision du 2026-11-26), indicateur ; protocole 10 par emplacement | D-046 |
 | applet Supersaw | sept scies PolyBLEP en `f32` (phases entières), désaccord et mix de Szabo, passe-haut sur la fondamentale ; banc dans l'app (générateur `SupersawBank`) partagé par les sorties : A / B mono ou stéréo, C sub-octave ; entrées assignables par `oc_core::modulation` sauf `STEREO`, CV1 en V/oct sur `NOTE` au démarrage ; ×4 non nécessaire (repliement mesuré) ; forme de la scie au carré (`SHAPE`) ; scies descendantes, `LEVEL` à 3 V au plus | D-037, D-044 |
 | applet Melody | jusqu'à 32 pas, chacun une place dans une fenêtre projetée à la sortie, en direct et monotone : `SPREAD` (largeur, 0–48 dt), `CENTER` (position autour de la tonique, ±100 %), `BIAS` (courbe à bornes fixes, ±100 %), puis `TRANSPOSE` et quantification dans `KEY` (tonique, gamme), `OCTAVE` ; `TR1` horloge, `TR2` reset armé (ports routables) ; remplacement au passage avec `PROB` (place uniforme, `JUMP NO REP`, ou marche `JUMP` en degrés), `REROLL` ; rythme qui boucle, tiré à part (`DENSITY` en direct, `LEGATO`, `R PROB`, `R REROLL`), note tenue sur un silence ; ports `NOTE`, `CH1`, `CH2`, `GATE` (accord de deux tons empilés, `CHORD`, inversion ↓ / – / ↑) ; aucune entrée au démarrage ; niveaux tenus ; trois pages, `KEY` et `CHORD` à deux champs ; catégorie `SEQUENCE`, `AppId` 7 | D-047 |
-| routage interne | une assignation lit une prise ou un port CV d'une autre instance (`Source::Jack` / `Lane`) ; ports `Cv` / `Audio`, seuls les premiers proposés ; niveau publié (avant calibration, sans la sonde) au tick précédent ; l'app elle-même sautée ; `+1a` à l'écran, `1:NOTE` au sous-menu, lettre du port dans la page de routage ; protocole 11 ; ports d'entrée internes au lot suivant | D-048 |
+| routage interne | une assignation lit une prise ou un port CV d'une autre instance (`Source::Jack` / `Lane`) ; ports `Cv` / `Audio`, seuls les premiers proposés ; niveau publié (avant calibration, sans la sonde) au tick précédent ; l'app elle-même sautée ; un port assigne strictement (comme `SET`, sans mise en forme, valeur du panneau masquée) `=1:NOTE` à l'écran, `1:NOTE` au sous-menu, à la sonde et dans la page (révision du 2026-11-27) ; protocole 11 ; ports d'entrée internes au lot suivant | D-048 |
 | budget mémoire | disposition de `teensy4-bsp`, reprise dans le `build.rs` d'`oc-firmware` (sans la feature `rt`) : code en ITCM, bancs 6 / 10 (192 + 320 Kio) ; coût d'une applet par différence de `xtask size` ; budgets lus dans l'ELF (`__flexram_config`), alerte sous 16 Kio d'ITCM libres ; profil `release` en `opt-level = "s"` par défaut, `3` pour `oc-dsp` (DSP), `oc-realtime` (interruption, chemin par échantillon) et `oc-vcv-ffi`, le firmware en `s`, justifié dans `Cargo.toml` ; ITCM à court : bancs repartagés, puis code en flash ; tampon de mesure : feature de test, `.uninit` en OCRAM ; arena dans `oc-core` au premier grand usage d'applet ; tampons du DMA en DTCM ; profondeur de la pile estimée par `cargo xtask size`, appels `dyn App` compris (`stack-depth` : `FAIL` au-delà de `.stack`, `warn` sous 2 Kio) ; moteur construit sans applet, démarré une fois dans sa `static` | D-038 |

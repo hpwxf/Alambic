@@ -9,9 +9,7 @@
 //! picked (`down` is the panel's, journal/D-046). Opening it is the applet's (`RATCHET`: the
 //! right encoder's click on a setting).
 
-use core::fmt::Write as _;
-
-use super::{Assign, AssignLine, Source, Window, usable_range};
+use super::{Assign, AssignLine, Window, usable_range};
 use crate::apps::InputSnapshot;
 use crate::fmt::TextBuf;
 use crate::framebuffer::{FrameBuffer, ROW_HEIGHT, WIDTH_I32};
@@ -136,10 +134,15 @@ impl AssignEditor {
         if click {
             return false;
         }
-        let len = i32::try_from(AssignLine::ALL.len()).unwrap_or(1);
-        let picks = i32::from(input.controls.delta(0));
-        let line = i32::try_from(self.line).unwrap_or(0) + picks;
-        self.line = usize::try_from(line.rem_euclid(len)).unwrap_or(0);
+        // A port assigned has no shaping to set: its one line is the input.
+        if assign.assigns() {
+            self.line = 0;
+        } else {
+            let len = i32::try_from(AssignLine::ALL.len()).unwrap_or(1);
+            let picks = i32::from(input.controls.delta(0));
+            let line = i32::try_from(self.line).unwrap_or(0) + picks;
+            self.line = usize::try_from(line.rem_euclid(len)).unwrap_or(0);
+        }
         let turns = i32::from(input.controls.delta(1));
         if turns != 0 {
             let before = assign.input;
@@ -171,6 +174,35 @@ impl AssignEditor {
         render_overlay_frame(frame, param.name, param.now);
         let line = self.line();
         let lit = TextStyle::lit(&FONT_5X8);
+        let source = input_text(assign, port_name);
+        if assign.assigns() {
+            // An assignment, strictly: the port, and what it sets.
+            let width = FONT_5X8.width_of(source.as_str());
+            let top = overlay_row(0);
+            gfx::fill_rect(
+                frame,
+                OVERLAY_LEFT - 2,
+                top,
+                width + 4,
+                ROW_HEIGHT,
+                Ink::Lit,
+            );
+            text::draw(
+                frame,
+                source.as_str(),
+                Point::new(OVERLAY_LEFT, top),
+                TextStyle::dark(&FONT_5X8),
+            );
+            text::draw(
+                frame,
+                "ASSIGNED",
+                Point::new(OVERLAY_LEFT, overlay_row(1)),
+                lit,
+            );
+            self.render_signal_bar(frame, assign, reading, SIGNAL_BAR_TOP);
+            render_param_bar(frame, assign, param, SIGNAL_BAR_TOP + ROW_HEIGHT + 3);
+            return;
+        }
         for (shown, row, x) in [
             (AssignLine::Min, 1, OVERLAY_LEFT),
             (AssignLine::Max, 1, MAX_LABEL_LEFT),
@@ -178,7 +210,6 @@ impl AssignEditor {
         ] {
             text::draw(frame, shown.label(), Point::new(x, overlay_row(row)), lit);
         }
-        let source = input_text(assign, port_name);
         let scale_left =
             SCALE_LEFT.max(OVERLAY_LEFT + FONT_5X8.width_of(source.as_str()) + SCALE_GAP);
         for (shown, row, x, align) in [
@@ -245,7 +276,7 @@ impl AssignEditor {
             BAR_LEFT + (clamped + SIGNAL_BAR_MV) * width / (2 * SIGNAL_BAR_MV)
         };
         render_bar_frame(frame, top, x_of(0));
-        if assign.min_mv > -SIGNAL_BAR_MV || assign.max_mv < SIGNAL_BAR_MV {
+        if !assign.assigns() && (assign.min_mv > -SIGNAL_BAR_MV || assign.max_mv < SIGNAL_BAR_MV) {
             for (x, inward) in [(x_of(assign.min_mv), 1), (x_of(assign.max_mv), -1)] {
                 gfx::vline(frame, x, top - 1, BAR_HEIGHT + 2, Ink::Lit);
                 gfx::pixel(frame, x + inward, top - 1, Ink::Lit);
@@ -258,7 +289,7 @@ impl AssignEditor {
         if let Some((low, high)) = self.seen.range() {
             gfx::hline(frame, x_of(low), top, x_of(high) - x_of(low) + 1, Ink::Lit);
         }
-        let shaped = x_of(assign.shape(reading));
+        let shaped = x_of(assign.shaped(reading));
         let zero = x_of(0);
         let (left, right) = (zero.min(shaped), zero.max(shaped));
         gfx::fill_rect(frame, left, top + 2, right - left + 1, 3, Ink::Lit);
@@ -277,13 +308,11 @@ impl Default for AssignEditor {
 /// instance by its slot and name, `1:NOTE` (journal/D-048), `1:--` for a
 /// port that is no more.
 fn input_text(assign: &Assign, port_name: Option<&str>) -> TextBuf<16> {
-    let Some(Source::Lane { slot, .. }) = assign.input else {
-        return assign.field(AssignLine::Input);
-    };
     let mut out = TextBuf::<16>::new();
-    let name = port_name.unwrap_or("--");
-    let name = name.get(..PORT_NAME_LETTERS).unwrap_or(name);
-    let _ = write!(out, "{}:{name}", u32::from(slot) + 1);
+    match assign.input {
+        Some(source) => source.write_name(&mut out, port_name, PORT_NAME_LETTERS),
+        None => out = assign.field(AssignLine::Input),
+    }
     out
 }
 

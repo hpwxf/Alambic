@@ -341,7 +341,10 @@ impl Message {
                 assign,
                 sweep,
             } => Self::applet(
-                format!("  {index} CV {}", apps::input_text(&assign)),
+                format!(
+                    "  {index} CV {}",
+                    apps::input_text(&assign, &apps::PortNames::default())
+                ),
                 Applet::Input(index, InputEntry { assign, sweep }),
             ),
             reply @ (Reply::Port { .. } | Reply::Instance { .. }) => Self::from_routing(&reply),
@@ -378,6 +381,7 @@ impl Message {
                 outputs,
                 inputs,
                 levels,
+                names,
             } => Self::applet(
                 format!(
                     "instance {position}: app {app}{}",
@@ -390,6 +394,7 @@ impl Message {
                     outputs,
                     inputs,
                     levels,
+                    names: names.map(str::to_owned),
                 }),
             ),
             _ => Self::with_text(MessageKind::Error, "not a routing reply".to_owned()),

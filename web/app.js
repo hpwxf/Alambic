@@ -450,6 +450,8 @@ async function showApp(probe, app) {
 
 /** Fills `view` and draws its parameters, values, actions and routing. */
 async function describe(probe, view) {
+  // The other instances' port names, by which an input names one (`1:NOTE`).
+  if (instances) view.take_ports(instances);
   const items = await probe.ask(view.describe_request(), UNTIL_DONE, true);
   for (const item of items) view.absorb(item.message);
   release(items);
@@ -492,9 +494,7 @@ function drawRouting() {
   };
   const outputs = [...OUTPUT_JACKS.map((jack, index) => [jack, index]), ["OFF", -1]];
   for (let port = 0; port < appView.output_count; port += 1) {
-    // The port's letter, as another instance's input names it (`2a`).
-    const letter = String.fromCharCode(97 + port);
-    line(`${letter} ${appView.output_name(port)}`, "→", outputs, instances.output(at, port),
+    line(appView.output_name(port), "→", outputs, instances.output(at, port),
       (output) => oc.Instances.route_request(at, port, output));
   }
   for (let port = 0; port < appView.input_port_count; port += 1) {
@@ -631,7 +631,7 @@ function showMark(entry, at) {
 /**
  * The field that edits one field of an input: a list or a text field. The
  * input's list ends with the ports of the other instances that carry a
- * level (`2a`), which it can read as a CV (journal/D-048).
+ * level (`2:NOTE`), which it can read as a CV (journal/D-048).
  */
 function inputEditor(field) {
   const choices = oc.AppView.input_choices(field);

@@ -1,6 +1,9 @@
 # Étape 15 — routage interne : les sorties CV d'une app comme entrée d'assignation
 
 > Plan de l'étape 15, suivi par git (journal/D-048).
+> Révisé le 2026-11-27 (D-048, révision) : un port assigne strictement le réglage (comme `SET`, sans mise en forme) et
+> se nomme `1:NOTE` partout ; `+1a` et la lettre du port abandonnés. Ce qui suit sur `1a`, la lettre et l'effet d'un
+> port est l'état d'avant.
 
 ## Contexte
 

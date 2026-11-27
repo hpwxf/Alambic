@@ -558,14 +558,15 @@ impl SupersawApp {
             let top = row * ROW_HEIGHT;
             text::draw(frame, setting.label(), Point::new(LIST_LEFT + 1, top), lit);
             let assign = self.assign(setting);
+            let slot = setting.input_slot();
             // A setting that follows its input has no use for the panel's
             // value: its input stands in its place.
             if !assign.is_some_and(Assign::sets) {
                 let value = self.value_text(setting);
                 text::draw(frame, value.as_str(), Point::new(VALUE_RIGHT, top), right);
             }
-            if let Some(assign) = assign {
-                crate::modulation::draw_input(frame, assign, last - 1, top, lit);
+            if let Some(slot) = slot {
+                self.inputs.draw_input(frame, slot, last - 1, top, lit);
             }
             if setting == Setting::Shape {
                 self.draw_shape(frame, top);

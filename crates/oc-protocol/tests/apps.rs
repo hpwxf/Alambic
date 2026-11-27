@@ -482,6 +482,7 @@ fn slots_are_listed_filled_routed_focused_and_emptied() {
             outputs: [Some(2), Some(3), None, None],
             inputs: [0; 4],
             levels: [false; 4],
+            names: ["L/MONO", "R/MONO", "SUB", ""],
         }
     );
 

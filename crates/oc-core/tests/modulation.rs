@@ -179,3 +179,46 @@ fn the_range_seen_forgets_what_is_older_than_two_windows() {
     panel.turn_line(AssignLine::Input, 1);
     assert_eq!(panel.editor.range(), Some((0, 0)));
 }
+
+#[test]
+fn a_port_of_another_instance_is_assigned_as_it_comes() {
+    use oc_core::fmt::TextBuf;
+
+    // Scale, shift, bounds and effect as a jack would have them...
+    let assign = Assign {
+        input: Source::lane(0, 0),
+        effect: Effect::Mul,
+        scale_percent: 50,
+        shift_mv: 1_000,
+        max_mv: 2_000,
+        ..Assign::NONE
+    };
+    // ...act on nothing: the port sets the parameter, unshaped.
+    assert!(assign.assigns() && assign.sets());
+    assert_eq!(assign.reading(4_250), Some((4_250, Effect::Set)));
+    assert_eq!(assign.shaped(4_250), 4_250);
+    let jack = Assign {
+        input: Some(Source::Jack(CvChannel::One)),
+        ..assign
+    };
+    assert!(!jack.assigns());
+    assert_eq!(
+        jack.reading(4_250),
+        Some((2_000, Effect::Mul)),
+        "kept for a jack"
+    );
+
+    // Assigned: `=`, the slot and the port's name.
+    let mut name = TextBuf::<8>::new();
+    assign.write(&mut name, Some("NOTE"));
+    assert_eq!(name.as_str(), "=1:NOTE", "the main screen");
+    let mut long = TextBuf::<8>::new();
+    assign.write(&mut long, Some("L/MONO"));
+    assert_eq!(long.as_str(), "=1:L/MON", "five letters at most");
+    let mut gone = TextBuf::<8>::new();
+    assign.write(&mut gone, None);
+    assert_eq!(gone.as_str(), "=1:--", "a port that is no more");
+    let mut cv = TextBuf::<8>::new();
+    jack.write(&mut cv, None);
+    assert_eq!(cv.as_str(), "*CV1");
+}

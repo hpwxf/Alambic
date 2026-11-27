@@ -13,6 +13,7 @@ use crate::apps::InputSnapshot;
 use crate::apps::param::ParamSpec;
 use crate::framebuffer::FrameBuffer;
 use crate::platform::MilliVolts;
+use crate::text::TextStyle;
 
 /// The slot of parameter `index` among `specs`: its rank among the
 /// assignable ones, `None` for one that takes no input or past the last.
@@ -33,9 +34,10 @@ pub struct Modulations<const N: usize> {
     /// What each slot's input read on the last tick, unshaped: a jack, or a
     /// port of another instance (journal/D-048).
     raw: [MilliVolts; N],
-    /// The name of the port the submenu's input reads, when it reads one:
-    /// what the submenu writes after the slot (`1:NOTE`).
-    port_name: Option<&'static str>,
+    /// The name of the port each slot's input reads, when it reads one
+    /// that is there: what the screen and the submenu write after its slot
+    /// (`+1:NOT`, `1:NOTE`).
+    port_names: [Option<&'static str>; N],
 }
 
 impl<const N: usize> Modulations<N> {
@@ -46,7 +48,7 @@ impl<const N: usize> Modulations<N> {
             assigns,
             editor: None,
             raw: [0; N],
-            port_name: None,
+            port_names: [None; N],
         }
     }
 
@@ -86,21 +88,25 @@ impl<const N: usize> Modulations<N> {
     /// port on its bus, and takes the open submenu's into the range it has
     /// seen, `input.elapsed_micros` after the last.
     pub fn read(&mut self, input: &InputSnapshot) {
-        for (raw, assign) in self.raw.iter_mut().zip(&self.assigns) {
+        for ((raw, name), assign) in self
+            .raw
+            .iter_mut()
+            .zip(&mut self.port_names)
+            .zip(&self.assigns)
+        {
             *raw = assign.raw(input).unwrap_or(0);
-        }
-        self.port_name = None;
-        if let Some((slot, editor)) = &mut self.editor {
-            let assign = &self.assigns[*slot];
-            if assign.input.is_some() {
-                editor.observe(self.raw[*slot], input.elapsed_micros);
-            }
-            if let Some(Source::Lane { slot, port }) = assign.input {
-                self.port_name = input
+            *name = match assign.input {
+                Some(Source::Lane { slot, port }) => input
                     .bus
                     .port(usize::from(slot), usize::from(port))
-                    .map(|port| port.name);
-            }
+                    .map(|port| port.name),
+                _ => None,
+            };
+        }
+        if let Some((slot, editor)) = &mut self.editor
+            && self.assigns[*slot].input.is_some()
+        {
+            editor.observe(self.raw[*slot], input.elapsed_micros);
         }
     }
 
@@ -119,6 +125,33 @@ impl<const N: usize> Modulations<N> {
     #[must_use]
     pub fn reading(&self, slot: usize) -> Option<(MilliVolts, Effect)> {
         self.assigns[slot].reading(self.raw[slot])
+    }
+
+    /// The name of the port `slot`'s input reads, `None` for a jack, no
+    /// input, or a port that is no more.
+    #[must_use]
+    pub const fn port_name(&self, slot: usize) -> Option<&'static str> {
+        self.port_names[slot]
+    }
+
+    /// Draws at the right of a setting's row, from `top` up to `right`,
+    /// `slot`'s input (see [`super::draw_input`]).
+    pub fn draw_input(
+        &self,
+        frame: &mut FrameBuffer,
+        slot: usize,
+        right: i32,
+        top: i32,
+        style: TextStyle,
+    ) {
+        super::draw_input(
+            frame,
+            &self.assigns[slot],
+            self.port_names[slot],
+            right,
+            top,
+            style,
+        );
     }
 
     /// The field picked in the submenu, `None` while it is closed.
@@ -146,7 +179,7 @@ impl<const N: usize> Modulations<N> {
                 frame,
                 &self.assigns[*slot],
                 self.raw[*slot],
-                self.port_name,
+                self.port_names[*slot],
                 param,
             );
         }

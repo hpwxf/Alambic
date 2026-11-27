@@ -273,7 +273,11 @@ fn main() -> anyhow::Result<()> {
         }
         Command::App { app } => {
             let (app, description) = described(&mut session, &app)?;
-            print!("{}", apps::description_text(&app.entry, &description));
+            let ports = apps::PortNames::of(&session.instances()?);
+            print!(
+                "{}",
+                apps::description_text(&app.entry, &description, &ports)
+            );
             Ok(())
         }
         Command::Get { app, name } => get(&mut session, &app, &name),
@@ -308,6 +312,8 @@ fn main() -> anyhow::Result<()> {
 /// fitting it to its signal when asked.
 fn assign(session: &mut Session, args: &AssignArgs) -> anyhow::Result<()> {
     let (app, description) = described(session, &args.app)?;
+    // The other instances' ports, by which an input names one (`1:NOTE`).
+    let ports = apps::PortNames::of(&session.instances()?);
     let spec = apps::find_spec(&description.params, &args.param)
         .with_context(|| format!("{} has no parameter {}", app.entry.name, args.param))?;
     let mut input = spec
@@ -319,7 +325,8 @@ fn assign(session: &mut Session, args: &AssignArgs) -> anyhow::Result<()> {
             let (name, text) = field
                 .split_once('=')
                 .with_context(|| format!("{field}: write it field=value"))?;
-            assign = apps::parse_input_field(assign, name, text).map_err(anyhow::Error::msg)?;
+            assign =
+                apps::parse_input_field(assign, name, text, &ports).map_err(anyhow::Error::msg)?;
         }
         input = session.set_assign(app.target, spec.index, assign)?;
     }
@@ -331,7 +338,11 @@ fn assign(session: &mut Session, args: &AssignArgs) -> anyhow::Result<()> {
         let assign = apps::centered(&input, &samples).map_err(anyhow::Error::msg)?;
         input = session.set_assign(app.target, spec.index, assign)?;
     }
-    println!("{} CV {}", spec.label, apps::input_text(&input.assign));
+    println!(
+        "{} CV {}",
+        spec.label,
+        apps::input_text(&input.assign, &ports)
+    );
     Ok(())
 }
 

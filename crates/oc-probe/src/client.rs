@@ -159,7 +159,7 @@ pub struct AppDescription {
 }
 
 /// One running instance (journal/D-046).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct InstanceEntry {
     /// Its position on the panel, left to right.
     pub position: u8,
@@ -174,6 +174,9 @@ pub struct InstanceEntry {
     /// Whether each output port carries a level another instance can read
     /// (journal/D-048).
     pub levels: [bool; 4],
+    /// Each output port's name, empty past the last: what another
+    /// instance's input names it by (`1:NOTE`).
+    pub names: [String; 4],
 }
 
 impl AppDescription {
@@ -776,6 +779,7 @@ impl<T: Read + Write> Client<T> {
                 outputs,
                 inputs,
                 levels,
+                names,
             } => Answer::Instance(InstanceEntry {
                 position,
                 app,
@@ -783,6 +787,7 @@ impl<T: Read + Write> Client<T> {
                 outputs,
                 inputs,
                 levels,
+                names: names.map(str::to_owned),
             }),
         };
         Ok(Some(answer))

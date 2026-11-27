@@ -5,8 +5,8 @@
 | **Identifiant** | D-048 |
 | **Date** | 2026-11-27 |
 | **Auteur** | Pascal Havé |
-| **Statut** | adoptée |
-| **Commits** | ADR, plan `docs/plan/etape-15-routage-interne.md` et implémentation : ce commit et les suivants de l'étape 15 |
+| **Statut** | adoptée, révisée |
+| **Commits** | `48f3689` (ADR, plan `docs/plan/etape-15-routage-interne.md`) ; implémentation `1d868b9` ; révision du 2026-11-27 : ce commit |
 | **Relations** | étend l'`Assign` de D-035 / D-036 et son assignation par le trait (D-045) ; lit les ports des instances de D-046 ; les ports d'entrée de la page de routage restent ceux de D-046 (lot suivant) ; millivolts de D-005 ; premier pas du « routage futur » annoncé par D-043 |
 
 ## 1. Contexte
@@ -71,3 +71,36 @@ conversion ni prise occupée ; tout reste dans `oc-core` (D-002), simulateur et 
   suivant.
 * Un effet à entrée audio : router des ports `Audio` dans le chemin des voix, ce qui révisera D-044 et D-046.
 * Le coût en ITCM ou en pile (`cargo xtask size`) du bus passé à chaque instance.
+
+## Révision du 2026-11-27 : un port assigne, il ne module pas ; il se nomme par son nom
+
+**Contexte.** À l'usage, l'utilisateur juge `+1a` (emplacement et lettre du rang du port) « vraiment pas explicite » :
+la lettre ne dit rien du signal, et il faut la page de routage pour la traduire. Puis il sépare deux natures : une
+entrée CV reste une modulation (`SCALE`, `SHIFT`, `MIN` / `MAX`, effet `SET` / `ADD` / `MUL`) ; un port d'une autre
+instance est « strictement une assignation » : pas de `+` (un `=` à la place), pas de valeur du panneau affichée, et
+le nom entier dans la place ainsi libérée. Des transformations viendront peut-être sur ces assignations, pas maintenant.
+
+**Options.** Nom : trois lettres après l'emplacement (`+1:NOT`), à l'écran seulement ou partout, la valeur reculant
+pour lui faire place ; le nom entier dès que la valeur s'efface. Assignation : l'effet `SET` forcé dans l'`Assign`
+quand on choisit un port (les réglages de la prise perdus) ; ou les réglages gardés mais sans effet tant qu'un port
+est choisi.
+
+**Proposé et décidé.** Un premier temps a mis `+1:NOT` à l'écran, la valeur décalée, `1:NOTE` ailleurs. La séparation
+demandée ensuite le remplace :
+
+* **assignation stricte** : un port fixe le réglage à la valeur qu'il porte, comme `SET` la lit (pour `NOTE`, 0 V =
+  C4, 1 V/octave : `SUPERSAW` joue la hauteur de `MELODY` elle-même), sans `SCALE`, `SHIFT`, bornes ni effet
+  (`Assign::assigns`, `Assign::shaped`). Ces réglages restent dans l'`Assign`, inertes, pour une prise reprise ensuite ;
+* **écran de l'app** : `=1:NOTE` (le `=` de `SET`, demandé par l'utilisateur), la valeur du panneau masquée comme
+  sous `SET` ; huit caractères, cinq lettres du nom au plus (`SCREEN_PORT_LETTERS`), `=1:--` pour un port qui n'est
+  plus ;
+* **sous-menu** : la seule ligne `INPUT` (`1:NOTE`), `ASSIGNED` dessous, les barres du signal et du réglage ;
+  l'encodeur gauche ne choisit plus d'autre ligne ;
+* **sonde et page** : `1:NOTE` seul ; la sonde lit `input=1:note` (casse ignorée) ou `1:#1` par le rang, écrit `1:#1`
+  quand elle ignore les noms, refuse les autres champs d'un port. Les noms viennent de `Reply::Instance` (`names`,
+  toujours le protocole 11, pas encore publié) ;
+* la lettre `a`–`d` disparaît partout, page de routage comprise.
+
+**Ce qui ferait changer d'avis.** Le besoin de transformer une source interne (échelle, décalage, lissage, S&H, comme
+le popup de modulations de *squares-and-circles*) : des opérations propres à l'assignation, à décider à part. Deux
+ports d'une même app aux six premières lettres égales : une abréviation déclarée par le port.

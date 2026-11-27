@@ -638,6 +638,7 @@ fn instance_reply(apps: &AppHost, position: usize) -> Option<Reply<'static>> {
                 .get(port)
                 .is_some_and(|port| port.signal == PortSignal::Cv)
         }),
+        names: core::array::from_fn(|port| outputs.get(port).map_or("", |port| port.name)),
     })
 }
 

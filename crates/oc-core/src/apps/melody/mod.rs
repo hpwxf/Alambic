@@ -1015,6 +1015,12 @@ impl MelodyApp {
                 Point::new(LIST_LEFT + 2, top),
                 style,
             );
+            // A row of one field with an input: the input's name at the
+            // right, the value left of it.
+            let slot = match fields {
+                [setting] => setting.input_slot(),
+                _ => None,
+            };
             // The fields right to left, each ending a gap left of the next.
             let mut right = VALUE_RIGHT;
             for &setting in fields.iter().rev() {
@@ -1022,10 +1028,9 @@ impl MelodyApp {
                 let width = self.draw_field(frame, setting, right, top, style, boxed);
                 right -= width + FIELD_GAP;
             }
-            if let [setting] = fields
-                && let Some(assign) = self.assign(*setting)
-            {
-                crate::modulation::draw_input(frame, assign, WIDTH_I32 - 3, top, style);
+            if let Some(slot) = slot {
+                self.inputs
+                    .draw_input(frame, slot, WIDTH_I32 - 3, top, style);
             }
         }
     }

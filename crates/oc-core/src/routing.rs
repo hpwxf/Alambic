@@ -9,9 +9,7 @@
 //! owning the outputs: every applet keeps running behind it. The left
 //! encoder picks a row, the right one turns it: an output steps through
 //! `OFF` and `A` to `D`, skipping the jacks another port holds, an input
-//! through the four jacks of its kind, which any applet may share. Each
-//! output carries the letter another instance's input names it by (`a` to
-//! `d`, journal/D-048). The
+//! through the four jacks of its kind, which any applet may share. The
 //! right encoder stops at the ends rather than wrapping round, so a quick
 //! turn down always lands on `OFF`, first, and one up on the last free jack.
 
@@ -22,7 +20,6 @@ use crate::gfx::controls::{
     LIST_LEFT, SCROLL_WIDTH, TITLE_LEFT, row_highlight, scroll_track, scroll_window,
 };
 use crate::gfx::{Ink, Point};
-use crate::modulation::port_letter;
 use crate::platform::{CV_CHANNELS, CvChannel};
 use crate::text::fonts::FONT_5X8;
 use crate::text::{self, TextStyle};
@@ -229,10 +226,7 @@ impl RoutingPage {
             .map(|name| FONT_5X8.width_of(name))
             .max()
             .unwrap_or(0);
-        // An output's letter, as another instance's input names it (`+1a`,
-        // journal/D-048), in a column of its own left of every name.
-        let name_column = TEXT_INSET + FONT_5X8.width_of("a ");
-        let arrow_column = name_column + longest + COLUMN_GAP;
+        let arrow_column = TEXT_INSET + longest + COLUMN_GAP;
         let jack_column = arrow_column + ARROW_WIDTH + COLUMN_GAP;
         for (slot, index) in (first..len).take(VISIBLE).enumerate() {
             let top = (FIRST_ROW + i32::try_from(slot).unwrap_or(0)) * ROW_HEIGHT;
@@ -246,18 +240,13 @@ impl RoutingPage {
                 TextStyle::lit(&FONT_5X8)
             };
             let (name, arrow, jack) = match Self::row(host, index) {
-                RouteRow::Output(port) => {
-                    let mut letter = [0; 4];
-                    let letter = port_letter(port).encode_utf8(&mut letter);
-                    text::draw(frame, letter, Point::new(TEXT_INSET, top), style);
-                    (
-                        app.output_ports()[port].name,
-                        "->",
-                        route
-                            .and_then(|route| route.output(port))
-                            .map_or("OFF", |jack| OUTPUTS[jack.index()]),
-                    )
-                }
+                RouteRow::Output(port) => (
+                    app.output_ports()[port].name,
+                    "->",
+                    route
+                        .and_then(|route| route.output(port))
+                        .map_or("OFF", |jack| OUTPUTS[jack.index()]),
+                ),
                 RouteRow::Input(port) => {
                     let spec = app.input_ports()[port];
                     let names = match spec.kind {
@@ -272,7 +261,7 @@ impl RoutingPage {
                     (spec.name, "<-", jack)
                 }
             };
-            text::draw(frame, name, Point::new(name_column, top), style);
+            text::draw(frame, name, Point::new(TEXT_INSET, top), style);
             text::draw(frame, arrow, Point::new(arrow_column, top), style);
             text::draw(frame, jack, Point::new(jack_column, top), style);
         }

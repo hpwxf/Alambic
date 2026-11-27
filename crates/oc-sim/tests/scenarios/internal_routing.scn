@@ -5,7 +5,7 @@
 # the left encoder and SUPERSAW with the right one, launch it. Click the
 # right encoder on NOTE to open its input submenu and turn INPUT four
 # detents: past CV2 to CV4, to MELODY's first port. Then four clocks on TR1.
-# The snapshot shows the submenu with 1:NOTE as its input, the scale pushed
+# The snapshot shows the submenu with 1:NOTE, the whole name, as its input, the scale pushed
 # right of it, the CV bar at MELODY's note.
 ticks 1100
 20  button up down

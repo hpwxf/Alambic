@@ -699,6 +699,7 @@ impl RatchetApp {
             );
             // A setting that follows its input has no use for the panel's
             // value: its input stands in its place.
+            let slot = setting.input_slot();
             if !self.assign(setting).is_some_and(Assign::sets) {
                 let mut value = TextBuf::<16>::new();
                 self.write_value(setting, &self.settings, self.sync(), &mut value);
@@ -709,8 +710,9 @@ impl RatchetApp {
                     style.aligned(Alignment::Right),
                 );
             }
-            if let Some(assign) = self.assign(setting) {
-                crate::modulation::draw_input(frame, assign, WIDTH_I32 - 3, top, style);
+            if let Some(slot) = slot {
+                self.inputs
+                    .draw_input(frame, slot, WIDTH_I32 - 3, top, style);
             }
         }
 

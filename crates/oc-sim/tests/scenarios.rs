@@ -242,6 +242,20 @@ fn supersaw_reads_melodys_note_through_its_input() {
 }
 
 #[test]
+fn supersaw_names_melodys_note_on_its_screen() {
+    use oc_core::apps::supersaw::Setting;
+    use oc_core::modulation::Source;
+    let mut simulator = replay("internal_routing_closed");
+    let supersaw = simulator.app::<SupersawApp>();
+    assert_eq!(supersaw.assigning(), None, "the submenu closed");
+    assert_eq!(
+        supersaw.assign(Setting::Note).unwrap().input,
+        Some(Source::Lane { slot: 0, port: 0 })
+    );
+    assert_screen_matches(&mut simulator, "internal_routing_closed");
+}
+
+#[test]
 fn melody_plays_its_sixth_step_of_sixteen() {
     let mut simulator = replay("melody");
     assert_eq!(simulator.current_app(), AppId::Melody);
@@ -496,6 +510,7 @@ fn every_scenario_file_has_a_test_and_a_snapshot() {
         "gfx_curves",
         "gfx_sequencer",
         "internal_routing",
+        "internal_routing_closed",
         "gfx_meters",
         "ratchet",
         "ratchet_inputs",

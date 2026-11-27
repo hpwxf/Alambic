@@ -12,6 +12,7 @@ Décision : D-048, adoptée le 2026-11-27 (choix tranchés avec l'utilisateur). 
 | 15c | sous-menu : `INPUT` parcourt `--`, `CV1`–`CV4`, puis les ports offerts emplacement par emplacement, l'app elle-même et l'audio sautés ; écrit `1:NOTE` (nom tronqué à 5 lettres), `SCALE` poussé à droite d'une entrée longue ; écran de l'app `+1a` ; lettre `a`–`d` devant chaque sortie de la page de routage (`routing.screen` régénéré) ; `tests/internal_routing.rs` (3 tests) ; scénario `internal_routing` (MELODY au 1, SUPERSAW au 2 par le menu, `NOTE` ← `1:NOTE`, quatre horloges) et son écran |
 | 15d | protocole 11 : `Assign` avec `Source`, `Reply::Port::level`, `Reply::Instance::levels` ; `SetAssign` refuse (`NoSuch`) une source non offerte ; sonde : `input=1a`…`4d` (casse ignorée), `outputs` et routage avec la lettre, `--center` refusé pour un port (l'hôte n'échantillonne que les prises) ; page : liste `input` complétée par `Instances::sources`, lettre dans le routage ; tests (`oc-probe`, `oc-protocol`) |
 | 15e | README, `docs/agents/code-map.md`, guide de `MELODY`, TESTING 9.3j ; mesures ci-dessous. **Reste** : essai sur le module (9.3j) et la page dans Chrome |
+| 15f | révision de D-048 : un port assigne strictement (`Assign::assigns`, `Assign::shaped` : la valeur comme `SET` la lit, sans `SCALE`, `SHIFT`, bornes ni effet, gardés inertes) ; écran `=1:NOTE` sans valeur (cinq lettres au plus, `=1:--` pour un port disparu), `Modulations` gardant le nom de chaque source ; sous-menu réduit à `INPUT` et `ASSIGNED` ; lettre retirée (page de routage, sonde, page web : `routing.screen` revient à l'original) ; protocole 11 : `Reply::Instance::names` ; sonde : `oc_probe::apps::PortNames`, `input=1:note` ou `1:#1`, `1:NOTE` seul affiché, autres champs d'un port refusés ; page : `AppView::take_ports`, liste `1:NOTE`… ; scénario `internal_routing_closed` ; un premier temps à `+1:NOT` (trois lettres, valeur décalée) remplacé dans la journée |
 
 ## Mesures
 
@@ -19,17 +20,18 @@ Décision : D-048, adoptée le 2026-11-27 (choix tranchés avec l'utilisateur). 
 
 | | `master` | étape 15 | écart |
 |---|---|---|---|
-| `.text` (ITCM) | 0x21b84 (57,1 Kio libres) | 0x22954 (53,7 Kio libres) | +3 536 o |
+| `.text` (ITCM) | 0x21b84 (57,1 Kio libres) | 0x22cb4 (52,8 Kio libres ; 15e 0x22954) | +4 400 o (15e +3 536) |
 | `.bss` | 0x6208 | 0x6208 | 0 en apparence (alignement) |
-| pile estimée (main + 3 interruptions) | 10 056 o (6 328 o libres) | 10 400 o (5 984 o libres) | +344 o |
+| pile estimée (main + 3 interruptions) | 10 056 o (6 328 o libres) | 10 648 o (5 736 o libres ; 15e 10 400) | +592 o (15e +344) |
 | chemin le plus profond | `run` → `Usb::serve` → `select_at` → `Instance::new` | même chemin | |
 
 Le surcoût de pile vient de l'`InputSnapshot` agrandi du `Bus` (niveaux 64 o, ports 64 o), copié par emplacement dans
-`AppHost::update`.
+`AppHost::update`, puis (15f) du nom de la source de chaque réglage gardé par `Modulations` (8 o par emplacement), qui
+agrandit chaque applet construite par `Instance::new`.
 
 ## Réserves
 
 * Pas encore essayé sur le module (TESTING 9.3j), ni la page dans Chrome.
-* La page liste `2a`… sans le nom du port ni de l'app (la description des autres instances n'est pas demandée).
+* La page liste `1:NOTE`… sans le nom de l'app.
 * Ports d'entrée internes (une horloge lue sur une sortie d'app) : lot suivant (D-048).
 * Assignations toujours non sauvegardées.
