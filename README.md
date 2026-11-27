@@ -54,7 +54,9 @@ picks a row, the right one turns it. An output (`A`, `B`, `SUB` for
 `SUPERSAW`) steps through the jacks `A` to `D` and `OFF`, skipping those
 another app holds; an input the app reads by itself (`RATCHET`'s `CLOCK`,
 `SCOPE`'s `IN`) steps through the four jacks of its kind, which apps may
-share. An app's CV inputs are set in their own submenu, on the physical jacks. Apps no longer use `up` and `down`
+share. The right encoder stops at the ends instead of wrapping round: a
+quick turn up lands on `OFF`, the last place, and one down on the first free
+jack. An app's CV inputs are set in their own submenu, on the physical jacks. Apps no longer use `up` and `down`
 themselves. A column of marks left of the title, as wide as a list's scroll
 bar, shows the slots on the app's screen and its routing page: a dot for
 each that runs an app, nothing for an empty one, the one shown across the

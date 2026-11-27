@@ -29,6 +29,9 @@ Architectural decisions behind each change are in `journal/` (French).
 
 ### Changed
 
+- On the routing page, the right encoder stops at the ends instead of
+  wrapping round (journal/D-046, revision of 2026-11-27): a quick turn up
+  lands on `OFF`, one down on the first free jack.
 - `cargo xtask size`'s `stack-depth` follows the applets reached through
   `&dyn App` (journal/D-038, revision of 2026-11-27): a call through a
   pointer from the workspace's crates counts as a call to the deepest

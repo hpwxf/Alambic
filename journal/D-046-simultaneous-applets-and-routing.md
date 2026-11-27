@@ -402,3 +402,11 @@ rien et ne bouge pas le focus ; README, guide de `MELODY`, `CHANGELOG`.
 
 **Ce qui ferait changer d'avis.** L'usage réservé à `down` qui n'arrive pas, ou un `up` long confondu à l'usage avec
 le début de l'accord : rendre l'appui long aux deux boutons.
+
+## Révision du 2026-11-27 : la valeur de la page de routage en butée
+
+Demande de l'utilisateur : l'encodeur droit de la page de routage bouclait (`A`, `B`, `C`, `D`, `OFF`, puis de nouveau
+`A`), si bien qu'atteindre `OFF` demandait de chercher. Il s'arrête désormais aux bouts : une sortie va de la première
+prise libre à `OFF`, toujours libre et dernière, en sautant les prises tenues ; une entrée de sa première à sa
+dernière prise. Un tour rapide vers le haut mène donc toujours à `OFF`, vers le bas à la première prise libre.
+L'encodeur gauche, qui choisit la ligne, boucle toujours. `routing.rs` et ses tests ; README.
