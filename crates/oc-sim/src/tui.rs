@@ -102,12 +102,15 @@ fn help_lines(layout: KeyLayout) -> Vec<String> {
         (format!("{gate1} X C V"), "hold triggers 1-4".to_owned()),
         (
             "up/down".to_owned(),
-            "cycle the output mode (on release)".to_owned(),
+            "slot on the left / right (on release)".to_owned(),
         ),
-        ("m".to_owned(), "up+down together: the app menu".to_owned()),
+        (
+            "m".to_owned(),
+            "up+down together: open / close the app menu".to_owned(),
+        ),
         (
             "Shift+up/down".to_owned(),
-            "hold (both held = the app menu)".to_owned(),
+            "hold, again to release (1 s: long press)".to_owned(),
         ),
         (
             format!("a,{turn_left_ccw}/e"),
@@ -738,7 +741,7 @@ mod tests {
     use oc_core::calibration::{CV_IN_MAX_MV, CV_IN_MIN_MV};
     use oc_core::platform::{Button, TriggerChannel};
 
-    use super::{KeyLayout, Tui, bar};
+    use super::{KeyLayout, Tui, bar, help_lines};
     use crate::braille;
     use crate::simulator::{PRESS_TICKS, SETTLE_TICKS};
 
@@ -973,6 +976,27 @@ mod tests {
             .iter()
             .map(ratatui::buffer::Cell::symbol)
             .collect()
+    }
+
+    #[test]
+    fn the_help_names_the_panels_gestures_not_an_apps() {
+        let help = help_lines(KeyLayout::Azerty).join("\n");
+        assert!(help.contains("slot on the left / right"), "{help}");
+        assert!(help.contains("1 s: long press"), "{help}");
+        assert!(
+            !help.contains("output mode"),
+            "DIAGNOSTIC's own gesture: {help}"
+        );
+
+        // As it says: Shift+up, a second, Shift+up again is a long press,
+        // which opens the routing page.
+        let mut tui = Tui::new();
+        tui.simulator.skip_splash();
+        tui.on_key(KeyEvent::new(KeyCode::Up, KeyModifiers::SHIFT));
+        tui.simulator.step_many(1_100);
+        tui.on_key(KeyEvent::new(KeyCode::Up, KeyModifiers::SHIFT));
+        tui.simulator.step_many(u64::from(SETTLE_TICKS));
+        assert!(tui.simulator.routing_is_open());
     }
 
     #[test]

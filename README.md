@@ -324,9 +324,9 @@ one:
 | `Home`         | selected CV input to 0 V                          |
 | `x` `c` `v`    | pulse triggers 2 to 4                             |
 | `X` `C` `V`    | hold triggers 2 to 4 high or low                  |
-| `↑` / `↓`      | the module's up / down buttons                    |
-| `m`            | press up and down together: the app menu          |
-| `Shift+↑` / `Shift+↓` | hold up / down until pressed again (see below) |
+| `↑` / `↓`      | the module's up / down: the slot on the left / right (on release) |
+| `m`            | press up and down together: open or close the app menu |
+| `Shift+↑` / `Shift+↓` | hold up / down, again to release: held a second, a long press (see below) |
 | `a`            | press the left encoder                            |
 | `e`            | turn the left encoder clockwise (`Shift` for ten detents) |
 | `r` / `t`      | turn the right encoder anticlockwise / clockwise (`Shift` for ten detents) |
@@ -344,6 +344,12 @@ reactions on their own, but **up and down held together** opens the app menu,
 which needs a real overlap. `m` presses both in the same tick, which is the
 one-keystroke way to do it; to hold them by hand instead, press `Shift+↑` then
 `Shift+↓` (in either order), and `Shift+↑`/`Shift+↓` again to release them.
+A long press is formed the same way, as a terminal sends no key release and
+holding a key down would only repeat it: `Shift+↑`, a second of real time,
+then `Shift+↑` again opens the shown app's routing page, and closes it. In
+the app menu, `m` closes it; the routing page has no meaning there. The encoders' presses and turns do
+what each app gives them; the panel's gestures are under *Apps and the app
+menu*.
 
 ### Settings
 
