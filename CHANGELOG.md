@@ -44,6 +44,12 @@ Architectural decisions behind each change are in `journal/` (French).
 - The clock's tempo, which `RATCHET` measured, is `oc_core::tempo`, shared
   with `MELODY`; the playhead is `gfx::patterns::playhead`.
 
+### Fixed
+
+- The simulator's TUI and `cargo sim -- replay` no longer panic once an
+  applet has replaced `DIAGNOSTIC` in its slot: they read its counters,
+  mode and offset only while it runs, and show dashes otherwise.
+
 ## 0.7.0 — 2026-11-25 (Rack plugin 2.7.0)
 
 ### Added
