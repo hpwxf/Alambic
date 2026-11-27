@@ -398,6 +398,10 @@ fn position(query: &str) -> anyhow::Result<u8> {
 /// The applet `query` names: `@N`, an instance, or a name or an index, the
 /// first instance of that applet (a fresh one to describe while none runs).
 fn addressed(session: &mut Session, query: &str) -> anyhow::Result<Addressed> {
+    if query.starts_with('@') {
+        // An instance, not a name: `@0` or `@5` is a slot that is not.
+        position(query)?;
+    }
     let Some(position) = apps::instance_position(query) else {
         let entry = found(session, query)?;
         let target = Target::App(entry.index);

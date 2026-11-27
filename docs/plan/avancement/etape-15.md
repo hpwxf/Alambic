@@ -51,6 +51,10 @@ faisait alors (15j les décale de 1) :
 * écrans capturés (`cargo probe screen`) : `SUPERSAW` écrit `NOTE  =1:NOTE` sans valeur ; `RATCHET` écrit
   `106 BPM ○`, la rafale sur la frise.
 
+Après 15j (`@1`–`@4`), sur le même firmware, la page web fermée : `instances` liste `@1 MELODY` à `@4 NOTHING`,
+`get @3 freq` lit `SUPERSAW`, `route @1` et `focus @3` visent le bon emplacement ; `@0` et `@5` répondent
+« an instance is @1 to @4 » (avant ce correctif, la recherche par nom les prenait pour des applets).
+
 Pas faits : les gestes au panneau (sous-menu, page de routage) sur le module, l'écoute, la page web dans Chrome.
 
 ## Réserves
